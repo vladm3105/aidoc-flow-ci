@@ -5,7 +5,49 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-(empty — see `ci/v1.0.2` below for everything just shipped)
+(empty — see `ci/v1.0.3` below for everything just shipped)
+
+## ci/v1.0.3 — 2026-06-24 — labels.json patch (`area: governance` description ≤100c)
+
+Patch release fixing a content bug in
+`install/templates/labels.json`. The `area: governance` description
+was 109 chars; GitHub's labels API caps descriptions at 100 chars
+and returns `HTTP 422 Validation Failed: description is too long`
+on creation. Surfaced by framework Phase A migration's first
+`install.sh` run (2026-06-24): 8/9 canonical labels created
+successfully on `vladm3105/aidoc-flow-framework`; the 9th
+(`area: governance`) failed; per the v1.0.2 install.sh "fail-loud
+on real failures" contract (OPS-#116 fix), the script exited
+nonzero as designed.
+
+### Fix
+
+Trimmed `area: governance` description from 109 → 98 chars
+(removed redundant trailing words; meaning preserved):
+
+```text
+before: "PR touches governance docs (CLAUDE.md, DECISIONS.md, IPLAN-*.md, governance/) or supersedes a locked decision"
+after:  "PR touches governance docs (CLAUDE.md, DECISIONS.md, IPLAN-*.md, governance/) or a decision"
+```
+
+### Backward compatibility
+
+- Consumers on `ci/v1.0.0` / `ci/v1.0.1` / `ci/v1.0.2` continue to
+  work; this patch only fixes the install.sh label-bootstrap step
+  for fresh adoptions.
+- Consumers that already bootstrapped via earlier versions are
+  unaffected (their `area: governance` label was never created
+  because of the bug; they can re-run `install.sh` from `ci/v1.0.3`
+  to pick it up, OR manually `gh label create` it with the fixed
+  description).
+
+### Lesson recorded
+
+Added pre-commit-suitable validation pattern: any new label entry
+in `labels.json` should fail-fast if `len(description) > 100`.
+The validation is not enforced in v1.0.3 itself (would have caught
+this; the labels.json was hand-edited without a check); v1.0.4+
+may add a pre-commit hook + CI check.
 
 ## ci/v1.0.2 — 2026-06-24 — public-CLI unblock + pre-commit reusable
 
