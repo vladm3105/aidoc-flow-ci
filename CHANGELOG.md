@@ -11,8 +11,8 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   (`.github/workflows/markdown-lint.yml`), caller template
   (`install/templates/workflows/markdown-lint.yml`), and starter
   `.markdownlint.json` config (`install/templates/.markdownlint.json`).
-  Wraps `DavidAnson/markdownlint-cli2-action@v20.0.0` (SHA-pinned
-  `992badcdf24e3b8eb7e87ff9cd2e5a2c45d4c633`) — the first-party
+  Wraps `DavidAnson/markdownlint-cli2-action@v23.2.0` (SHA-pinned
+  `fa0cd0f1a052f54da593c83860f2292982f5d142`) — the first-party
   successor to the legacy `markdownlint-cli`, recommended in
   2025-2026 over the older third-party wrappers
   (`nosborn/github-action-markdown-cli`,

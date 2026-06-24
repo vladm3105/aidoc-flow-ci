@@ -69,7 +69,7 @@ jobs:
           persist-credentials: false
 
       - name: markdownlint-cli2
-        uses: DavidAnson/markdownlint-cli2-action@992badcdf24e3b8eb7e87ff9cd2e5a2c45d4c633 # v20.0.0
+        uses: DavidAnson/markdownlint-cli2-action@fa0cd0f1a052f54da593c83860f2292982f5d142 # v23.2.0
         with:
           globs: ${{ inputs.globs }}
           config: ${{ inputs.config }}
