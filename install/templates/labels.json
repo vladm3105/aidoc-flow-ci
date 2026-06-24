@@ -23,5 +23,25 @@
     "name": "ai:autofix-applied",
     "color": "1d76db",
     "description": "AI autofix applied (IPLAN-0014)"
+  },
+  {
+    "name": "area: ci",
+    "color": "5319e7",
+    "description": "PR touches CI workflows or CI configs (.github/workflows/, .pre-commit-config.yaml, etc.)"
+  },
+  {
+    "name": "area: governance",
+    "color": "8b6914",
+    "description": "PR touches governance docs (CLAUDE.md, DECISIONS.md, IPLAN-*.md, governance/) or supersedes a locked decision"
+  },
+  {
+    "name": "area: deps",
+    "color": "0366d6",
+    "description": "PR touches dependency manifests (pyproject.toml, requirements*.txt, package.json, etc.)"
+  },
+  {
+    "name": "area: tests",
+    "color": "bfe5bf",
+    "description": "PR touches tests (tests/, test/, *_test.go, *.test.ts, etc.)"
   }
 ]

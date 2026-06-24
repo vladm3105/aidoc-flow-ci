@@ -160,7 +160,77 @@ caller workflow (`with:` block).
    (additive — no consumer template changes needed unless the
    default routing rule changes).
 
-## 3. Branch + commit naming (informal)
+## 3. Area labels — auto-applied by the labeler workflow (`area: <value>`)
+
+Third PR-label namespace, applied by the reusable `labeler.yml`
+workflow (`actions/labeler@v6`) based on which file paths a PR
+touches. Consumer provides a per-repo `.github/labeler.yml` mapping
+paths to label names; the workflow applies them.
+
+Canonical area labels in `install/templates/labels.json` (added by
+`install/install.sh` to consumer repos at bootstrap):
+
+| Label | Color | Typical when applied |
+|---|---|---|
+| `area: ci` | dark-gray (`5319e7`) | PR touches `.github/workflows/`, `.github/labeler.yml`, `.pre-commit-config.yaml`, or other CI configs |
+| `area: governance` | dark-yellow (`8b6914`) | PR touches `CLAUDE.md`, `DECISIONS.md`, `IPLAN-*.md`, `governance/`, or supersedes a locked decision |
+| `area: deps` | dark-blue (`0366d6`) | PR touches `pyproject.toml`, `requirements*.txt`, `package.json`, `package-lock.json`, `Gemfile`, or other dependency manifests |
+| `area: tests` | light-blue (`bfe5bf`) | PR touches `tests/`, `test/`, or `*_test.go` / `*.test.ts` / similar test files |
+
+### Naming convention — `area: <value>` (colon + SPACE)
+
+Area labels use **colon-space** to match GitHub's built-in label
+style (`good first issue`, `help wanted`, `wontfix`) — most
+readable for human consumers reading the PR sidebar. This is
+**intentionally different** from the `ai:<value>` (colon-NO-space)
+convention used by PR-state labels in §1:
+
+| Sub-convention | Used by | Why this form |
+|---|---|---|
+| `ai:<value>` (colon-no-space) | §1 PR-state labels (programmatic, applied by ai-review workflow) | Tight prefix because the workflow code parses + matches them; no-space avoids the workflow needing to handle quoted-string label names in shell loops |
+| `area: <value>` (colon-SPACE) | §3 area labels (semantic, applied by labeler workflow based on paths) | Human-readable; matches GitHub built-in label style; the labeler workflow + actions/labeler@v6 handles quoted YAML keys natively |
+| `<verb>-<noun>` (no prefix, hyphenated) | §1 `skip-ai-review` (user-facing directive) | Reads like a command (verb-noun); no prefix because it's not part of a namespace — it's a one-off control flag |
+
+Three sub-conventions, each justified by its purpose. **Do NOT
+mix:** a state label MUST use `ai:<value>` no-space form; an area
+label MUST use `area: <value>` space form. Consistency within each
+sub-convention is the discipline.
+
+### Interaction with GitHub built-in labels
+
+GitHub auto-creates 9 default labels on every new repo (`bug`,
+`documentation`, `duplicate`, `enhancement`, `good first issue`,
+`help wanted`, `invalid`, `question`, `wontfix`). The canonical
+`area: <value>` labels are **additive** — they don't replace the
+built-ins. A consumer may use `documentation` (GitHub default) AND
+`area: ci` (aidoc-flow-ci canonical) on the same PR.
+
+Common overlaps (consumer picks one or accepts both):
+
+- `documentation` (GitHub) vs `area: docs` (NOT in canonical — we
+  defer to GitHub's built-in for the docs area)
+- `dependencies` (Dependabot convention) vs `area: deps` (canonical)
+  — both are common; consumer's labeler config picks one
+
+### Adding a new area label
+
+Same process as PR-state labels (see §1 "Adding a new PR label"):
+
+1. Edit `install/templates/labels.json` to add the `{name, color, description}` entry
+2. Document the label's purpose in §3's table above + the path mapping it expects
+3. PATCH-tag a new release per `CHANGELOG.md` semver rules
+4. Consumers re-run `install/install.sh` to pick up the new label
+
+### Per-repo `.github/labeler.yml` config
+
+The reusable `labeler.yml` workflow (when shipped) calls
+`actions/labeler@v6`, which reads `.github/labeler.yml` from the
+consumer repo. The config is per-repo because path layouts differ
+across consumers. A starter config will be shipped at
+`install/templates/labeler.yml` for consumers to adopt verbatim or
+customize.
+
+## 4. Branch + commit naming (informal)
 
 Conventional Commits — `<type>(<scope>):` or `<type>:`:
 
@@ -176,7 +246,7 @@ Conventional Commits — `<type>(<scope>):` or `<type>:`:
 Branch naming follows from commit type: `feat/...`, `fix/...`,
 `docs/...`, etc.
 
-## 4. Future label categories (anticipated, not yet adopted)
+## 5. Future label categories (anticipated, not yet adopted)
 
 If `aidoc-flow-ci` ever needs additional label categories:
 
@@ -191,7 +261,7 @@ These are NOT in the canonical taxonomy today. Add them only with
 a documented use case + PATCH bump per the "Adding a new PR label"
 process above.
 
-## 5. References
+## 6. References
 
 - `install/templates/labels.json` — canonical 5-label taxonomy
 - `install/install.sh` — idempotent install + fail-loud creation

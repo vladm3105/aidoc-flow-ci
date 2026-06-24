@@ -7,6 +7,17 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ### Added
 
+- **`LABELS.md` §3 + `install/templates/labels.json` — area-label
+  namespace** (`area: <value>` colon-space, matching GitHub built-in
+  style). Third PR-label sub-convention alongside `ai:<value>` (§1
+  state) and `<verb>-<noun>` (§1 control). 4 canonical area labels
+  added to the install taxonomy: `area: ci`, `area: governance`,
+  `area: deps`, `area: tests` — auto-applied by the (forthcoming)
+  reusable `labeler.yml` workflow when a consumer provides
+  `.github/labeler.yml` mapping paths to label names. LABELS.md §3
+  documents the three sub-conventions side-by-side with the
+  rationale per form (programmatic vs semantic vs control directive).
+  Sections 4-6 renumbered accordingly.
 - **`docs/README.md`** — index for the `docs/` tree. Lists the
   available docs (`LABELS.md` today), the planned docs
   (`architecture` / `runners` / `overrides` / `security` /
