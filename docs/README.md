@@ -4,7 +4,7 @@ Index of `aidoc-flow-ci` documentation. The repo's three top-level
 docs cover consumer-facing intro, install, and release notes:
 
 | Doc | Scope |
-|---|---|
+| --- | --- |
 | [`../README.md`](../README.md) | Consumer-facing intro: what ships, how to install, override modes, v1.0.0 known limitations |
 | [`../install/README.md`](../install/README.md) | `install/install.sh` usage + next steps |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | Release notes per `ci/vX.Y.Z` tag |
@@ -14,6 +14,9 @@ This `docs/` tree covers reference + design topics.
 ## Available now
 
 | Doc | Scope |
+| --- | --- |
+| [`../LABELS.md`](../LABELS.md) | PR + runner label conventions (three namespaces: state, area, runner; separator rules; routing rule by visibility; processes for adding labels / runner origins) |
+| [`troubleshooting.md`](troubleshooting.md) | Common issues + fixes (composition race; skip-ai-review carry-forward; runner-not-found; fabricated SHA pins; `gh: not found`; label install errors; Azure SWA quota; lychee bot-hostile hosts; v1.0.0 public-CLI gap; MD024; CHANGELOG rebase conflicts) |
 |---|---|
 | [`../LABELS.md`](../LABELS.md) | PR + runner label conventions (three namespaces: state, area, runner; separator rules; routing rule by visibility; processes for adding labels / runner origins) |
 | [`security.md`](security.md) | Threat model, trust boundaries, fork-PR handling, secrets model, `pull_request_target` rationale, SHA-pinning, layered secret-scan defense |
@@ -29,12 +32,11 @@ that motivates the page). Drafting all 5 preemptively risks
 documenting hypothetical patterns instead of real usage.
 
 | Planned doc | Scope | Trigger |
-|---|---|---|
+| --- | --- | --- |
 | `docs/architecture.md` | How `ai-review.yml` + `composition.yml` work together; trust gate; job dependencies; reusable-workflow pattern | First consumer asks "how does this work end-to-end" |
 | `docs/runners.md` | How to register a self-hosted runner pool with the right labels; reference image (`aidoc-flow-runner:latest`) provisioning; per-origin cost / visibility tradeoffs | Founder onboards a second self-hosted pool, OR a new origin (Azure / AWS / Fargate) joins |
 | `docs/overrides.md` | The 3 override modes (parameter / full replacement / custom workflow) — concrete examples per mode | First consumer asks how to customize for their case |
 | `docs/security.md` | Trust gate semantics; fork-PR handling; secret model; `pull_request_target` vs `pull_request` choice; threat model | Security review by a consumer, OR an incident |
-| `docs/troubleshooting.md` | Common issues + fixes (composition race; stale runs; label-create permission failures; CLI install failures) | First repeat issue across consumers |
 | `docs/migration.md` | v1.0.0 → v1.0.1 migration; v1.0.X → v1.1.0 (when MINOR ships) | When v1.0.1 ships |
 
 ## How to contribute a new doc

@@ -7,6 +7,19 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ### Added
 
+- **`docs/troubleshooting.md`** — 12-section troubleshooting guide
+  drawn from operations PRs #100-118 + aidoc-flow-ci v1.0.0
+  bootstrap + Wave-2 SHA-fix incident. Covers: composition
+  pre-ai-review race; skip-ai-review carry-forward; runner not
+  found (label mismatch / invalid chars / org-vs-repo); fabricated
+  SHA pin (with `gh api` verify recipe); `gh: not found` (operations
+  PR #101 root-cause); label install loop swallowing errors (PR
+  #116); Azure SWA staging quota (memory `reference_azure_swa_staging_env_quota`);
+  labeler "label does not exist" (consumer not bootstrapped); lychee
+  flakes on bot-hostile hosts; v1.0.0 public-CLI gap; MD024
+  duplicate-heading siblings_only fix; CHANGELOG rebase-conflict
+  python recipe for stacked PRs. Per-section: symptom + cause +
+  fix with concrete commands.
 - **`docs/security.md`** — threat model + trust boundaries +
   fork-PR handling + secrets model + `pull_request_target`
   rationale + SHA-pinning + layered secret-scan defense. Honestly
