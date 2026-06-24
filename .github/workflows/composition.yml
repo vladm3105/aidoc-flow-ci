@@ -1,0 +1,173 @@
+# composition — IPLAN-0016 §2a-v3 (A4). The AUTHORITATIVE identity gate for counting AI approvals.
+#
+# WHY THIS EXISTS: a GitHub App can submit an approving review but CANNOT be a CODEOWNER (and can't be
+# request_reviewers'd), so "require review from Code Owners" can't make the reviewer App's approval
+# *required*. This required status check encodes that rule instead: on a routine PR it is GREEN only when,
+# at the CURRENT head SHA, an APPROVED review exists from the reviewer App — matched on the App's bot-user
+# NUMERIC id (the login string is spoofable) + user.type == "Bot". It is the SOLE identity enforcement, so
+# it must stay in branch protection's required-checks set (removing it is a governance change).
+#
+# RE-RUNS ON `pull_request_review` so it flips GREEN the moment the App's approval lands (the ai-review job
+# submits that review; we must re-evaluate without re-running the heavy reviewer CLI — hence a SEPARATE,
+# lightweight workflow). Reads PR review metadata only via the GITHUB_TOKEN; never checks out or runs PR code.
+#
+# INERT / EXEMPT (passes green, never blocks): when `vars.APP_REVIEWER_1_BOT_ID` is unset (App not yet
+# wired); on a governance-locked PR (human-merge — must not double-block); and on a fork / non-allowlisted-
+# author PR (ai-review routes those to HUMAN-REVIEW-ONLY and skips the reviewer, so the App never approves —
+# composition must not strand them). Arming = set the repo variable to the App's bot-user id (printed by
+# scripts/verify_app_review_counts.sh, G1) + add `composition` to required checks (A6).
+name: composition
+
+on:
+  workflow_call:
+    inputs:
+      runner_labels:
+        description: 'JSON array of runner labels. Default ubuntu-latest (safe for both public + private consumers; private consumers typically override with their self-hosted ci-ephemeral label set).'
+        type: string
+        default: '"ubuntu-latest"'
+
+permissions:
+  pull-requests: read
+  contents: read
+
+# Serialize per-PR evaluations, but NEVER cancel an in-flight run: the run started by the App's
+# `pull_request_review:submitted` is exactly the one that records the check GREEN — cancelling it (a
+# cancelled required check is NOT success) would leave a satisfied PR permanently blocked. Runs are cheap
+# (`gh api` only); let each complete so the latest evaluation for a given head SHA wins.
+concurrency:
+  group: composition-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  composition:
+    # On a label event, only run for `skip-ai-review` (other label writes shouldn't re-trigger).
+    if: ${{ (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'skip-ai-review' }}
+    # Private repo → ci-ephemeral self-hosted (this account has no GitHub-hosted minutes, OPS-0049);
+    # public repo → GitHub-hosted. Lightweight: only `gh api` calls, no checkout of PR code.
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    steps:
+      - name: Assert a counting reviewer-App approval at head
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_ID: ${{ vars.APP_REVIEWER_1_BOT_ID }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          SKIP_REVIEW: ${{ contains(github.event.pull_request.labels.*.name, 'skip-ai-review') && '1' || '' }}
+        run: |
+          set -uo pipefail
+
+          # The self-hosted runner's api.github.com is intermittently flaky; a transient failure must NEVER
+          # read as "no approval" (that would FALSE-block a satisfied PR). Every gh-api call below is retried.
+
+          # INERT until armed — the check passes so it never blocks before the App is wired.
+          if [ -z "${EXPECTED_ID:-}" ]; then
+            echo "::notice::composition INERT — vars.APP_REVIEWER_1_BOT_ID is not set (reviewer App not yet armed). Passing."
+            exit 0
+          fi
+          case "$EXPECTED_ID" in ''|*[!0-9]*) echo "::error::APP_REVIEWER_1_BOT_ID must be the App bot-user NUMERIC id (got '$EXPECTED_ID')"; exit 1;; esac
+
+          # CARRY-FORWARD: when ai-review is skipped via the `skip-ai-review` label, the App does not re-
+          # approve the new head, so there is no APPROVED-at-head review to find. Pass (carry the prior
+          # approval forward) so composition doesn't block a PR that's only iterating on OTHER checks. Same
+          # safe-by-intent contract as the gate: the label is added deliberately, never on reviewed-code change.
+          if [ "${SKIP_REVIEW:-}" = "1" ]; then
+            echo "::notice::composition carried forward — 'skip-ai-review' label present (reviewer not re-run on this push). Passing."
+            exit 0
+          fi
+
+          # TRUST GATE (mirror ai-review.yml). Fork / non-allowlisted authors are HUMAN-REVIEW-ONLY there —
+          # the reviewer job is skipped, so the App will NEVER approve their PR. composition must NOT block
+          # them (else a human-reviewed PR is permanently stuck). Read the trusted allowlist from main (a PR
+          # can't change main). Fail-closed = ENFORCE if the config can't be read (an attacker must not earn
+          # an exemption by breaking the read; a trusted author's App approval still arrives and clears it).
+          if [ "${IS_FORK:-}" = "true" ]; then
+            echo "::notice::fork PR from ${AUTHOR:-?} — human-review-only; composition not enforced (pass)."
+            exit 0
+          fi
+          CFG=$(mktemp); cfg_err=$(mktemp); cfg_ok=
+          # 7 attempts × backoff capped at 20s places the FINAL attempt at
+          # t≈63s (after sleeps of 3+6+9+12+15+18s between attempts 1-7).
+          # No sleep AFTER the final attempt (the original 6-attempt design
+          # wasted the last sleep without making another request, so the
+          # claimed "~63s budget" actually peaked at t=45s — caught by
+          # ai-reviewer on PR #105). Real multi-minute outages still
+          # fail-closed (the right behavior). Both retry loops use the
+          # same shape.
+          for n in 1 2 3 4 5 6 7; do
+            if gh api "repos/$GH_REPO/contents/.github/ai-review/config.json?ref=main" -q '.content' 2>"$cfg_err" | base64 -d > "$CFG" 2>/dev/null && [ -s "$CFG" ]; then cfg_ok=1; break; fi
+            # Capture the actual stderr from gh (or note when gh itself is missing)
+            # so a future failure surfaces its real cause, not a hardcoded
+            # "(api.github.com)" string that previously cost hours of debugging
+            # when the real cause was `gh: not found` in the runner image.
+            cfg_reason=$(head -3 "$cfg_err" 2>/dev/null | tr '\n' ' ' | head -c 240)
+            command -v gh >/dev/null 2>&1 || cfg_reason="gh CLI not installed in runner image — rebuild via scripts/ci-runner/build-image.sh (Dockerfile bakes gh atop actions-runner:latest). ${cfg_reason}"
+            echo "::warning::config.json read attempt $n failed: ${cfg_reason:-(no stderr captured)} — retrying"
+            [ "$n" -lt 7 ] && sleep $(( n*3 < 20 ? n*3 : 20 ))
+          done
+          if [ -n "$cfg_ok" ]; then
+            if ! jq -e --arg a "${AUTHOR:-}" '(.trust.ai_review // []) | index($a)' "$CFG" >/dev/null 2>&1; then
+              echo "::notice::author ${AUTHOR:-?} not in trust.ai_review — human-review-only; composition not enforced (pass)."
+              exit 0
+            fi
+          else
+            echo "::warning::could not read trusted config.json from main after retries — fail-closed (enforcing the App-approval requirement)."
+          fi
+
+          # GOVERNANCE FLOOR (same globs as the ai-review gate). Governance-locked PRs are human-merge; this
+          # check must NOT double-block them (the reviewer App never approves them by design). Fail-closed =
+          # ENFORCE: if the changed-file list can't be proven complete, we do NOT exempt (a routine PR must
+          # never slip through unenforced just because a blip hid a non-governance file list).
+          FILES=$(mktemp)
+          for i in 1 2 3 4; do gh api --paginate "repos/$GH_REPO/pulls/$PR/files" -q '.[].filename' > "$FILES" 2>/dev/null && [ -s "$FILES" ] && break; sleep $((i*3)); done
+          CHANGED_N=""; for i in 1 2 3 4; do CHANGED_N=$(gh api "repos/$GH_REPO/pulls/$PR" -q '.changed_files' 2>/dev/null) && [ -n "$CHANGED_N" ] && break; sleep $((i*3)); done
+          LISTED_N=$(grep -c '' "$FILES" 2>/dev/null || echo 0)
+          COMPLETE=true
+          [ -s "$FILES" ] || COMPLETE=false
+          case "$CHANGED_N" in ''|*[!0-9]*) COMPLETE=false;; *) [ "$LISTED_N" -ge "$CHANGED_N" ] || COMPLETE=false;; esac
+          LOCKED=false
+          if [ "$COMPLETE" = "true" ] && grep -qE '(^|/)governance/|(^|/)\.github/|(^|/)templates/ai-review/' "$FILES"; then LOCKED=true; fi
+          case "$GH_REPO" in */aidoc-flow-framework) LOCKED=true;; esac
+          if [ "$LOCKED" = "true" ]; then
+            echo "::notice::governance-locked PR (listed ${LISTED_N}/changed ${CHANGED_N:-?}) → human-merge; composition not enforced (pass)."
+            exit 0
+          fi
+
+          # ENFORCE: an APPROVED review from the reviewer App (numeric id + type Bot) tied to THIS head SHA.
+          # RETRY the API fetch — `gh api` exits non-zero on an HTTP failure (→ retry), while a genuine
+          # "no matching review" exits 0 with empty output (→ real block). Without this, ONE network blip on
+          # the flaky runner reads as "no approval" and FALSE-blocks a PR the App already approved. Streams
+          # matching review ids across pages (a per-page length would miscount).
+          ids=""; fetched=; rev_err=$(mktemp)
+          # Same shape as the config-fetch loop above: 7 attempts × backoff
+          # capped at 20s, FINAL attempt at t≈63s, no trailing sleep. The
+          # fail-closed-as-INFRASTRUCTURE annotation below correctly
+          # distinguishes a real outage from a "no approval at head" verdict
+          # (which has its own exit path further down).
+          for n in 1 2 3 4 5 6 7; do
+            if ids=$(gh api "repos/$GH_REPO/pulls/$PR/reviews" --paginate \
+                  -q ".[] | select(.user.id == ($EXPECTED_ID) and .user.type == \"Bot\" and .state == \"APPROVED\" and .commit_id == \"$HEAD_SHA\") | .id" 2>"$rev_err"); then
+              fetched=1; break
+            fi
+            # Capture the actual stderr from gh so a future failure surfaces its
+            # real cause (e.g. `gh: not found`, auth failure, rate-limit) rather
+            # than the hardcoded "(api.github.com)" string that previously
+            # hid a `gh CLI missing in runner image` bug.
+            rev_reason=$(head -3 "$rev_err" 2>/dev/null | tr '\n' ' ' | head -c 240)
+            command -v gh >/dev/null 2>&1 || rev_reason="gh CLI not installed in runner image — rebuild via scripts/ci-runner/build-image.sh. ${rev_reason}"
+            echo "::warning::reviews fetch attempt $n failed: ${rev_reason:-(no stderr captured)} — retrying"
+            [ "$n" -lt 7 ] && sleep $(( n*3 < 20 ? n*3 : 20 ))
+          done
+          if [ -z "$fetched" ]; then
+            echo "::error::could not fetch PR reviews after retries — INFRASTRUCTURE, not a verdict. Fail-closed (blocking); re-run this check."
+            exit 1
+          fi
+          MATCHES=$(printf '%s\n' "$ids" | grep -c . || true)
+          if [ "${MATCHES:-0}" -ge 1 ]; then
+            echo "composition satisfied — reviewer App ($EXPECTED_ID) APPROVED at head $HEAD_SHA."
+            exit 0
+          fi
+          echo "::error::no counting reviewer-App approval (bot id $EXPECTED_ID) at head $HEAD_SHA — blocking merge until the App approves the current head."
+          exit 1
