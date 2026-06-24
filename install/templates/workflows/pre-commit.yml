@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/pre-commit.yml@ci/v1.0.2
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/pre-commit.yml@ci/v1.0.6
     with:
       python-version: '3.12'
       # Override examples:

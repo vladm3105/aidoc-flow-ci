@@ -26,6 +26,8 @@ For the broader architecture, see
 | Reviewer CLI not installed on `ubuntu-latest` | [§10 Public-consumer CLI gap](#10-public-consumer-cli-gap-v100-known-limitation) |
 | Markdownlint says MD024/no-duplicate-heading | [§11 Markdownlint MD024](#11-markdownlint-md024no-duplicate-heading) |
 | Rebase conflict on shared CHANGELOG.md | [§12 CHANGELOG rebase conflicts](#12-changelog-rebase-conflicts-on-stacked-prs) |
+| Reusable workflow `startup_failure` (no logs, empty jobs) | [§13 Actions allowlist blocks reusable](#13-startup_failure--reusable-workflow-blocked-by-consumers-actions-allowlist) |
+| Reusable workflow `startup_failure` after §13 fix | [§14 Caller workflow_permissions blocks reusable](#14-startup_failure--callers-workflow_permissions-read-blocks-reusables-write) |
 
 ## 1. Composition pre-ai-review race
 
@@ -341,6 +343,115 @@ HEAD content. Adjust order if you want HEAD-first.
 For PRs in long stacks, consider rebasing each PR onto the
 previous (rather than onto main) so conflicts arise once at the
 top of the stack instead of cascading.
+
+## 13. `startup_failure` — reusable workflow blocked by consumer's Actions allowlist
+
+**Symptom:** Consumer's PR fires `ai-review` (or any reusable
+workflow), but the run completes immediately with
+`conclusion: startup_failure`. The run has zero jobs spawned.
+GitHub's UI shows: "This run likely failed because of a workflow
+file issue."
+
+**Cause:** The consumer repo's Actions permissions are set to
+`selected actions` mode (`allowed_actions: "selected"`) with
+`github_owned_allowed: true` only — third-party reusable workflows
+like `vladm3105/aidoc-flow-ci/.github/workflows/*.yml` are NOT in
+the `patterns_allowed` list, so GitHub blocks them at workflow-load
+time.
+
+**Diagnose:**
+
+```bash
+gh api repos/<owner>/<consumer-repo>/actions/permissions
+# If allowed_actions == "selected":
+gh api repos/<owner>/<consumer-repo>/actions/permissions/selected-actions
+# patterns_allowed should include "vladm3105/aidoc-flow-ci/*"
+```
+
+**Fix:**
+
+```bash
+gh api repos/<owner>/<consumer-repo>/actions/permissions/selected-actions \
+  -X PUT \
+  -F github_owned_allowed=true \
+  -F verified_allowed=false \
+  -f "patterns_allowed[]=vladm3105/aidoc-flow-ci/*"
+# (To preserve existing patterns_allowed entries, fetch them first + merge.)
+```
+
+After the change, re-trigger the workflow via label cycle (add then
+remove `skip-ai-review`) — `gh run rerun` does NOT work for
+startup_failure runs.
+
+Surfaced by framework Phase A activation 2026-06-24. The
+`pull_request_target` event reads workflows from the BASE ref, so
+the bootstrap PR (adding the caller workflow) doesn't trigger the
+reusable workflow itself — the first PR AFTER the bootstrap merges
+is when this failure mode surfaces.
+
+## 14. `startup_failure` — caller's `workflow_permissions: read` blocks reusable's `write`
+
+**Symptom:** Consumer's `ai-review` or `composition` fires but
+fails with `startup_failure`. Run logs are unavailable; jobs array
+is empty. Allowlist (§13) already includes `vladm3105/aidoc-flow-ci/*`.
+
+**Cause:** Consumer's repo-default workflow permissions are
+`read`. The reusable `ai-review.yml` declares `contents: write` +
+`pull-requests: write` in its body, but a callee workflow CANNOT
+elevate permissions above the caller's level — only restrict them.
+GitHub blocks the run at startup because the declared permissions
+can't be granted.
+
+**Diagnose:**
+
+```bash
+gh api repos/<owner>/<consumer-repo>/actions/permissions/workflow
+# If default_workflow_permissions == "read":
+```
+
+**Fix (recommended — caller-level permissions block):** add an
+explicit `permissions:` block to the consumer's caller workflows.
+For the `ai-review` caller:
+
+```yaml
+name: ai-review
+on: { ... }
+# Required because the consumer's repo-default workflow_permissions
+# is `read`; the reusable workflow's `contents: write` cannot
+# elevate above the caller's grant.
+permissions:
+  contents: write        # auto-merge
+  pull-requests: write   # review comment, labels, merge
+  issues: write          # labels
+jobs:
+  call:
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v1.0.X
+    secrets: inherit  # pragma: allowlist secret
+```
+
+For the `composition` caller:
+
+```yaml
+permissions:
+  pull-requests: read
+  contents: read
+```
+
+**Fix (alternative — bump repo default to `write`):** less granular
+but works for ALL workflows in the repo. Trade-off: broader
+permission grant by default.
+
+```bash
+gh api repos/<owner>/<consumer-repo>/actions/permissions/workflow \
+  -X PUT \
+  -F default_workflow_permissions=write \
+  -F can_approve_pull_request_reviews=false
+```
+
+Surfaced by framework Phase A activation 2026-06-24. Framework
+v1.0.6 caller templates do NOT include the `permissions:` block
+by default (would surprise consumers who don't need it); document
+the requirement so consumers can add it when they hit this.
 
 ## Reporting new issues
 

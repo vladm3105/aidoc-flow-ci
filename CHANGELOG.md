@@ -5,7 +5,87 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-(empty — see `ci/v1.0.5` below for everything just shipped)
+(empty — see `ci/v1.0.6` below for everything just shipped)
+
+## ci/v1.0.6 — 2026-06-24 — caller-template backport + docs hardening (post-framework-Phase-A)
+
+Patch release **completing the framework Phase A activation
+loop**. Backports the local-only template fixes that framework had
+to apply during PR #168 + documents the two undocumented consumer-
+side prerequisites discovered during activation.
+
+### Template fixes (backport from framework PR #168 commit `caed708`)
+
+All 4 caller templates (`ai-review-{public,private}.yml` +
+`composition-{public,private}.yml`) updated:
+
+1. **yamllint colons** — removed alignment double-space after
+   `runner_labels_review:`; default yamllint rules flag as
+   `[colons] too many spaces after colon`.
+2. **detect-secrets pragma** — appended `# pragma: allowlist secret`
+   to all `secrets: inherit` lines (Yelp/detect-secrets flags the
+   word "secrets" as high-entropy).
+
+These were applied locally on framework's bootstrap to pass its
+pre-commit hooks. Backporting means future consumers don't need
+the same manual intervention. PR #20 originally drafted these fixes
+(closed per founder direction during the `ci/v1.0.4` misplaced-tag
+incident); re-shipped properly now that v1.0.5 is stable.
+
+### Caller-pin bumps (all 10 templates)
+
+All `install/templates/workflows/*.yml` pins bumped from `@ci/v1.0.2`
+→ `@ci/v1.0.6`. Reusable workflow bodies functionally identical to
+v1.0.5; v1.0.6 is templates + docs only.
+
+### `install.sh` default `CI_TAG`
+
+Bumped `ci/v1.0.2` → `ci/v1.0.6`.
+
+### Docs hardening — 2 new troubleshooting sections
+
+[`docs/troubleshooting.md`](docs/troubleshooting.md) gains
+**§13 + §14**, both surfaced by framework Phase A activation:
+
+- **§13 — `startup_failure` from Actions allowlist.** Consumer
+  in `selected actions` mode must add `vladm3105/aidoc-flow-ci/*`
+  to `patterns_allowed` (or the reusable workflow is silently
+  blocked at workflow-load). Includes diagnose + fix commands.
+- **§14 — `startup_failure` from caller's `workflow_permissions:
+  read`.** Reusable workflow's `contents: write` declaration can't
+  elevate above the caller's grant; consumer must add an explicit
+  `permissions:` block to the caller workflow. Both targeted
+  (caller-level) + alternative (bump repo default) fixes shown.
+
+Both sections reference the framework Phase A surface event with
+the operations PR #122 runbook for full activation context.
+
+### `README.md` + `install/README.md` known-limitations refresh
+
+The `v1.0.2 known limitations` section dropped the "unverified-in-
+CI" caveat (verified end-to-end on framework Phase A) + added the
+two new per-consumer prerequisites (Actions allowlist + caller
+permissions) with pointers to the §13-14 troubleshooting sections.
+`README.md` "What ships" table updated to 8 workflows (pre-commit
+was added in v1.0.2 but not surfaced in the README until now).
+
+### Backward compatibility
+
+- Consumers on `ci/v1.0.0..ci/v1.0.5` continue to work; this patch
+  only changes templates + docs. The reusable workflows themselves
+  are unchanged from v1.0.5.
+- Already-bootstrapped consumers can re-run `install.sh` from
+  `ci/v1.0.6` to pick up the template fixes + pin bump.
+
+### Rule 1 EXCEPTION audit-trail
+
+This PR touches **4 surface families** (caller templates +
+install.sh + docs + README/CHANGELOG = 6 distinct files), over
+the ≤3 limit. Atomic release-prep pattern (same precedent as
+W4.1 + W4.4 + v1.0.5): splitting creates incomplete intermediate
+states where some refs say "ci/v1.0.6" + others still say
+"ci/v1.0.2". Founder pre-approved this session: "Option 2 now"
++ "Ship all of the above as v1.0.6".
 
 ## ci/v1.0.5 — 2026-06-24 — fix: export reviewer auth env to "Run review" step
 
