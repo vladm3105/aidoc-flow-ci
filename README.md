@@ -5,26 +5,36 @@ projects. Consumer repos call the reusable workflows via `uses:` from
 their own `.github/workflows/`; local files always win
 ([IPLAN-0017 §3.1a](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0017_unified-ci-flows.md)).
 
-## What ships in `ci/v1.0.0`
+## What ships in `ci/v1.0.1`
 
 | Workflow | Purpose |
-|---|---|
+| --- | --- |
 | `ai-review.yml` | AI-review gate (trust → reviewer App → comment / label / merge) |
 | `composition.yml` | App-approval status check (PR-#111 conservative trigger shape; full `workflow_run` redesign deferred to Phase B) |
+| `labeler.yml` | Path-based PR area labeling (`actions/labeler@v6`) |
+| `codeql.yml` | CodeQL security analysis (matrix-driven explicit languages) |
+| `markdown-lint.yml` | Markdownlint (`markdownlint-cli2-action`; inline PR annotations) |
+| `links.yml` | Link checking (`lychee-action`; internal blocking + external cron non-blocking) |
+| `secret-scan.yml` | Secret detection (`gacts/gitleaks` MIT — **not** the proprietary `gitleaks/gitleaks-action`) |
 
 Plus `install/install.sh` (one-shot consumer bootstrap; raw-URL
-template fetch; preserves local overrides), the 4 caller templates +
-config + labels in `install/templates/`, and `sync/check-drift.sh`
-(warning-only drift detector).
+template fetch; preserves local overrides), 9 caller templates +
+starter configs in `install/templates/`, `sync/check-drift.sh`
+(warning-only drift detector), `LABELS.md` (3 label-namespace
+conventions), and 5 consumer-facing docs in `docs/` (architecture,
+runners, overrides, security, troubleshooting).
+
+For the per-workflow design rationale see [`docs/architecture.md`](docs/architecture.md).
 
 ## Install on a new consumer repo
 
 ```sh
-bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.0.0/install/install.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.0.1/install/install.sh) \
   vladm3105/<consumer-repo> --visibility private
 ```
 
-See `install/README.md` for details + next steps.
+See `install/README.md` for details + next steps. For the override
+patterns + when to use each, see [`docs/overrides.md`](docs/overrides.md).
 
 ## Local overrides shared — the foundational rule
 
@@ -53,17 +63,18 @@ pinned `ci/vX.Y.Z` tag and reports any diff as a `::warning::`.
 **Never blocks the commit or the PR.** Run as a pre-commit hook or
 periodic GitHub Action.
 
-## v1.0.0 known limitations
+## v1.0.1 known limitations
 
 - **Public consumers**: `runner_labels_review` in the public
-  ai-review template ships as a `REPLACE-ME-with-runner-having-
-  reviewer-CLI` placeholder. The reusable workflow body invokes
-  `codex` / `claude` CLI directly; GitHub-hosted `ubuntu-latest`
-  does NOT have those installed + authenticated. Public consumers
-  MUST point at a self-hosted runner with the CLI until v1.0.1
-  ships explicit install + auth steps for the GitHub-hosted path.
+  ai-review template still ships as a `REPLACE-ME-with-runner-
+  having-reviewer-CLI` placeholder. The original v1.0.1 plan was
+  to add ubuntu-latest CLI install + auth steps; deferred to
+  v1.0.2 to keep v1.0.1 atomic + low-risk. Public consumers MUST
+  still point at a self-hosted runner with the CLI until v1.0.2
+  ships verified install commands for `codex` / `claude` on
+  `ubuntu-latest`.
 - **Secret names hardcoded** to `APP_REVIEWER_1_ID` /
-  `APP_REVIEWER_1_KEY` — v1.0.0 doesn't parameterize. v1.0.1+ may
+  `APP_REVIEWER_1_KEY` — v1.0.1 doesn't parameterize. v1.0.2+ may
   add `app_id_secret_name` / `app_key_secret_name` inputs IF
   consumers actually need non-default names.
 - **Composition trigger shape** uses the PR-#111-conservative shape
@@ -72,6 +83,12 @@ periodic GitHub Action.
   `workflow_run` redesign per IPLAN-0017 §3.4 is the Phase-B target
   (requires rewriting the composition body to handle
   `github.event.workflow_run.pull_requests[0]`).
+
+For workarounds on these limitations, see
+[`docs/troubleshooting.md`](docs/troubleshooting.md) §10
+(Public-consumer CLI gap) + the security model in
+[`docs/security.md`](docs/security.md) §4.3 (secret-name
+convention) + §3 (self-hosted-on-PUBLIC accepted-risk path).
 
 ## Charter + design
 

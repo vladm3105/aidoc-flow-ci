@@ -6,9 +6,9 @@ on:
     types: [submitted]
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v1.0.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v1.0.1
     with:
       reviewer: codex
-      runner_labels_routine: '["self-hosted", "aidoc", "ci-ephemeral"]'
-      runner_labels_review:  '["self-hosted", "aidoc", "ai-review"]'
+      runner_labels_routine: '"runner-self"'
+      runner_labels_review:  '"runner-self"'
     secrets: inherit
