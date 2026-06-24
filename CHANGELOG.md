@@ -7,6 +7,27 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ### Added
 
+- **Reusable `links.yml` workflow** (`.github/workflows/links.yml`),
+  caller template (`install/templates/workflows/links.yml`), and
+  starter `.lychee.toml` config (`install/templates/.lychee.toml`).
+  Wraps `lycheeverse/lychee-action@v2.6.1` (SHA-pinned
+  `885c65f3dc543b57c898c8099f4e08c8afd178a2`) — the 2025-2026
+  de-facto leader for link checking (Rust-based, async, fast).
+  Chosen over the older `gaurav-nelson/github-action-markdown-link-check`
+  (Node-based, slower, no built-in caching). Implements the mature
+  **internal vs external split** pattern: internal mode is
+  PR-blocking + uses `--offline` to skip http(s) URLs; external
+  mode runs on cron + is non-blocking (rate-limited services flake;
+  never gate PRs on them). Both share a `.lycheecache` cache via
+  `actions/cache/restore` + `actions/cache/save@v4.2.0` with
+  `if:always()` so cache persists even on failure. Starter
+  `.lychee.toml` ships sensible defaults: 200/206/429 accept,
+  fragment-checking, 14-concurrency, 1d cache age, excludes for
+  loopback/private + bot-hostile hosts (twitter/x, linkedin) that
+  403 on automated UA. Inputs: `mode` (internal|external), `paths`
+  (default `.`), `config-file` (default `.lychee.toml`),
+  `fail-on-error` (default true), `runner_labels` (default
+  `"ubuntu-latest"`).
 - **Reusable `markdown-lint.yml` workflow**
   (`.github/workflows/markdown-lint.yml`), caller template
   (`install/templates/workflows/markdown-lint.yml`), and starter
