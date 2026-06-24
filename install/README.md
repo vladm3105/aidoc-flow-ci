@@ -7,12 +7,12 @@ founder. Preserves any existing files (local override always wins).
 ## Run it
 
 ```bash
-# Latest pinned tag (ci/v1.0.2) — adjust as new tags ship:
-bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.0.2/install/install.sh) \
+# Latest pinned tag (ci/v1.0.6) — adjust as new tags ship:
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.0.6/install/install.sh) \
   vladm3105/<consumer-repo> --visibility private
 
 # Or override the tag:
-CI_TAG=ci/v1.0.2 bash install.sh vladm3105/<consumer-repo> --visibility public
+CI_TAG=ci/v1.0.6 bash install.sh vladm3105/<consumer-repo> --visibility public
 ```
 
 ## What it does
@@ -44,19 +44,29 @@ CI_TAG=ci/v1.0.2 bash install.sh vladm3105/<consumer-repo> --visibility public
 - Doesn't overwrite existing workflow files (preserve = local override always
   wins).
 
-## v1.0.2 known limitations
+## v1.0.6 known limitations
 
-- **Public-consumer CLI install — unverified-in-CI.** v1.0.2 ships the
-  ubuntu-latest CLI install step in `ai-review.yml` (codex via npm; claude
-  via curl install.sh), closing the v1.0.0/v1.0.1 public-CLI gap. **The
-  install commands are not yet verified on a real consumer's CI run.**
-  First PUBLIC consumer adoption (framework Phase A migration) will
-  validate; v1.0.3 may revise. Required consumer-side secrets:
-  `OPENAI_API_KEY` (codex) and/or `ANTHROPIC_API_KEY` (claude).
+- **ubuntu-latest CLI install validated end-to-end** on framework Phase A
+  activation (2026-06-24). Reviewer auth env vars
+  (`CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`)
+  are explicitly exported as of `ci/v1.0.5` (earlier `secrets: inherit`
+  gap fixed). Required consumer-side: ONE of
+  `CLAUDE_CODE_OAUTH_TOKEN` (claude subscription auth — preferred,
+  free under Pro/Max plans) / `ANTHROPIC_API_KEY` (claude pay-per-token)
+  / `OPENAI_API_KEY` (codex pay-per-token).
 - **Secret names hardcoded** to `APP_REVIEWER_1_ID` / `APP_REVIEWER_1_KEY` —
-  v1.0.2 doesn't parameterize. v1.0.3+ may add `app_id_secret_name` /
-  `app_key_secret_name` inputs IF consumers actually need non-default names.
+  v1.0.6 doesn't parameterize. v1.1.0+ may add inputs IF consumers
+  need non-default names.
 
-See [`../docs/troubleshooting.md`](../docs/troubleshooting.md) §10
-(Public-consumer CLI gap) for current workarounds + how to file issues
-if the install step fails on your consumer repo.
+### Per-consumer prerequisites (discovered during framework Phase A)
+
+After `install.sh` runs, two additional consumer-side settings are
+required for the reusable workflow to start:
+
+| Setting | Why | Doc |
+|---|---|---|
+| **Actions allowlist** | If consumer is in `selected actions` mode (`gh api repos/<c>/actions/permissions`), `vladm3105/aidoc-flow-ci/*` must be in `patterns_allowed` or the reusable workflow returns `startup_failure` | [`../docs/troubleshooting.md` §13](../docs/troubleshooting.md#13-startup_failure--reusable-workflow-blocked-by-consumers-actions-allowlist) |
+| **Caller `permissions:` block** | If consumer's repo-default `workflow_permissions: read` (`gh api repos/<c>/actions/permissions/workflow`), the reusable's `contents: write` declaration is rejected — add an explicit `permissions:` block to the caller workflow | [`../docs/troubleshooting.md` §14](../docs/troubleshooting.md#14-startup_failure--callers-workflow_permissions-read-blocks-reusables-write) |
+
+See [`../docs/troubleshooting.md`](../docs/troubleshooting.md) for the
+14-section troubleshooting guide.

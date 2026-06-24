@@ -11,7 +11,7 @@
 #
 # Usage:
 #   bash install.sh <owner/repo> [--visibility public|private]
-#   CI_TAG=ci/v1.0.2 bash install.sh <owner/repo> --visibility private
+#   CI_TAG=ci/v1.0.6 bash install.sh <owner/repo> --visibility private
 #
 # Requires: gh (authenticated for write on the target repo) + curl + git.
 
@@ -28,7 +28,7 @@ while [ $# -gt 0 ]; do
 done
 case "$VISIBILITY" in public|private) ;; *) echo "--visibility must be public|private" >&2; exit 1 ;; esac
 
-CI_TAG="${CI_TAG:-ci/v1.0.2}"
+CI_TAG="${CI_TAG:-ci/v1.0.6}"
 TEMPLATE_BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/templates"
 
 echo "==> bootstrapping $TARGET_REPO (visibility=$VISIBILITY, tag=$CI_TAG)"

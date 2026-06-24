@@ -12,7 +12,7 @@ on:
     types: [submitted, dismissed, edited]
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/composition.yml@ci/v1.0.2
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/composition.yml@ci/v1.0.6
     with:
       runner_labels: '"runner-self"'
-    secrets: inherit
+    secrets: inherit  # pragma: allowlist secret
