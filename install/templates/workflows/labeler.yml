@@ -1,0 +1,35 @@
+# Caller template for aidoc-flow-ci's reusable labeler workflow.
+#
+# Drop this at .github/workflows/labeler.yml in the consumer repo.
+# Requires a per-repo .github/labeler.yml config (path -> label map).
+# A starter config is shipped at install/templates/labeler.yml in
+# aidoc-flow-ci — copy + adapt to your repo's path layout.
+#
+# Visibility: single template (works for both PRIVATE + PUBLIC). The
+# default runner is ubuntu-latest (cheap; labeler only reads PR
+# metadata + writes labels via gh-token). PRIVATE consumers may
+# override `runner_labels` to '"runner-self"' to keep CI on the
+# self-hosted pool per OPS-0049 (no GitHub-hosted minutes for private).
+
+name: labeler
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  call:
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/labeler.yml@ci/v1.0.1
+    permissions:
+      contents: read
+      pull-requests: write
+    # Override the default for PRIVATE consumers:
+    # with:
+    #   runner_labels: '"runner-self"'
