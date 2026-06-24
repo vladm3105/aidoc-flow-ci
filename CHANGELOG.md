@@ -5,6 +5,42 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+(empty — see `ci/v1.0.2` below for everything just shipped)
+
+## ci/v1.0.2 — 2026-06-24 — public-CLI unblock + pre-commit reusable
+
+Patch release closing the v1.0.0/v1.0.1 public-CLI gap + adding a
+reusable pre-commit workflow.
+
+### Highlights
+
+- **PUBLIC consumers unblocked** — `ai-review.yml` now installs
+  codex + claude CLI at workflow start on `ubuntu-latest` (gated;
+  no-op on self-hosted runners with pre-baked CLI). Public ai-review
+  caller template REPLACE-ME placeholder removed; pinned to
+  `@ci/v1.0.2`.
+- **8th reusable workflow** — `pre-commit.yml` wraps the standard
+  `pre-commit run --all-files` pattern used by framework +
+  iplan-runner + operations.
+- **All caller templates pinned to `@ci/v1.0.2`** — backward
+  compatible (v1.0.0 + v1.0.1 callers continue to work).
+- **`install.sh` default `CI_TAG` bumped to `ci/v1.0.2`**.
+- **Honest framing on CLI install:** assembled from official upstream
+  docs but unverified-in-CI as of v1.0.2 ship; first PUBLIC consumer
+  adoption (likely framework Phase A migration) will validate;
+  v1.0.3 may revise.
+
+### Known limitations carried forward to v1.0.3
+
+- **Public-consumer CLI install unverified-in-CI.** See
+  `docs/troubleshooting.md` §10 for current state + how to report
+  issues if the install step fails on your consumer repo.
+- **Secret names hardcoded** to `APP_REVIEWER_1_ID` /
+  `APP_REVIEWER_1_KEY` — v1.0.2 still doesn't parameterize.
+- **Composition trigger shape** still the PR-#111 conservative
+  pre-Phase-B shape; `workflow_run` redesign deferred per IPLAN-0017
+  §3.4.
+
 ### Added
 
 - **ubuntu-latest CLI install step in `ai-review.yml`** —

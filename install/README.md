@@ -7,8 +7,8 @@ founder. Preserves any existing files (local override always wins).
 ## Run it
 
 ```bash
-# Latest pinned tag (ci/v1.0.1) — adjust as new tags ship:
-bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.0.1/install/install.sh) \
+# Latest pinned tag (ci/v1.0.2) — adjust as new tags ship:
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.0.2/install/install.sh) \
   vladm3105/<consumer-repo> --visibility private
 
 # Or override the tag:
@@ -44,19 +44,19 @@ CI_TAG=ci/v1.0.2 bash install.sh vladm3105/<consumer-repo> --visibility public
 - Doesn't overwrite existing workflow files (preserve = local override always
   wins).
 
-## v1.0.1 known limitations
+## v1.0.2 known limitations
 
-(Carried forward from v1.0.0; not yet resolved in v1.0.1.)
-
-- **Public consumers**: `runner_labels_review` still ships as a `REPLACE-ME-
-  with-runner-having-reviewer-CLI` placeholder. The original v1.0.1 plan was
-  to add ubuntu-latest CLI install + auth steps; deferred to v1.0.2 to keep
-  v1.0.1 atomic + low-risk. Public consumers MUST still point at a
-  self-hosted runner with the CLI until v1.0.2 ships verified install
-  commands for `codex` / `claude` on `ubuntu-latest`.
+- **Public-consumer CLI install — unverified-in-CI.** v1.0.2 ships the
+  ubuntu-latest CLI install step in `ai-review.yml` (codex via npm; claude
+  via curl install.sh), closing the v1.0.0/v1.0.1 public-CLI gap. **The
+  install commands are not yet verified on a real consumer's CI run.**
+  First PUBLIC consumer adoption (framework Phase A migration) will
+  validate; v1.0.3 may revise. Required consumer-side secrets:
+  `OPENAI_API_KEY` (codex) and/or `ANTHROPIC_API_KEY` (claude).
 - **Secret names hardcoded** to `APP_REVIEWER_1_ID` / `APP_REVIEWER_1_KEY` —
-  v1.0.1 doesn't parameterize. v1.0.2+ may add `app_id_secret_name` /
+  v1.0.2 doesn't parameterize. v1.0.3+ may add `app_id_secret_name` /
   `app_key_secret_name` inputs IF consumers actually need non-default names.
 
 See [`../docs/troubleshooting.md`](../docs/troubleshooting.md) §10
-(Public-consumer CLI gap) for current workarounds.
+(Public-consumer CLI gap) for current workarounds + how to file issues
+if the install step fails on your consumer repo.
