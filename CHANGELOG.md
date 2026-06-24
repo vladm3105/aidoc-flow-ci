@@ -3,6 +3,22 @@
 Notable releases of the shared CI library. SemVer per `ci/vX.Y.Z`
 tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
+## Unreleased
+
+### Added
+
+- **`LABELS.md`** — first piece of CI documentation living on this
+  repo (vs the operations governance tree). Defines conventions
+  for the **two distinct label namespaces** used by `aidoc-flow-ci`:
+  GitHub PR labels (the canonical 5-label taxonomy applied by
+  `ai-review.yml`) and GitHub runner labels (per-origin convention:
+  `runner-self` for our self-hosted pool; `ubuntu-latest` for
+  GitHub-hosted; reserved `runner-azure`/`runner-aws`/… for future
+  origins). Documents WHY the two namespaces use different separator
+  conventions (PR labels can use `:`; runner labels cannot per
+  GitHub Actions rules) and includes the routing rule by visibility
+  (PRIVATE → `runner-self`, PUBLIC → `ubuntu-latest`).
+
 ## ci/v1.0.0 — 2026-06-23 — bootstrap MVP
 
 Initial release. Unblocks IPLAN-0017 Phase A (framework migration)
