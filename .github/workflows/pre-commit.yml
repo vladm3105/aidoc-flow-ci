@@ -1,0 +1,85 @@
+# pre-commit.yml — reusable pre-commit hook runner.
+#
+# Wraps the standard `pre-commit run --all-files` pattern used by
+# framework + iplan-runner + operations. Consumer provides a
+# `.pre-commit-config.yaml` in the repo root; this workflow runs
+# all hooks against all files.
+#
+# Design decisions:
+#   - Python-version is an input (default 3.12; matches the existing
+#     framework + iplan-runner + operations pattern).
+#   - Optional `extra-deps` input: list of additional pip requirements
+#     to install (e.g., conformance deps, project-specific tooling
+#     hooks need). Empty by default — pre-commit alone is enough for
+#     most repos.
+#   - Optional `run-stage` input: pre-commit hook stage to run
+#     (`commit-stage` default; `manual` for stuff like pip-audit that
+#     framework runs as a separate "Dependency audit" step).
+#   - Standard actions SHA-pinned per feedback_verify_sha_pins
+#     memory (verified via gh api repos/<owner>/<repo>/git/refs/tags).
+#
+# Consumer caller (typical):
+#
+#   name: pre-commit
+#   on:
+#     pull_request:
+#     push: { branches: [main] }
+#   jobs:
+#     hooks:
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/pre-commit.yml@ci/v1.0.2
+#       with:
+#         python-version: "3.12"
+#         # extra-deps: |
+#         #   -r tests/conformance/requirements.txt
+
+name: pre-commit
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: 'Python version for the pre-commit runtime. Default "3.12" (matches framework + iplan-runner + operations).'
+        type: string
+        default: '3.12'
+      extra-deps:
+        description: 'Newline-separated additional pip install args (e.g. "-r tests/conformance/requirements.txt"). Default empty — pre-commit alone covers most repos. Use when a hook needs project-specific deps.'
+        type: string
+        default: ''
+      run-stage:
+        description: 'pre-commit hook stage. Default "" (runs the default commit-stage hooks). Set to "manual" for opt-in audits (e.g., pip-audit). Pass to the --hook-stage flag.'
+        type: string
+        default: ''
+      runner_labels:
+        description: 'JSON array (or single-string) of runner labels. Default "ubuntu-latest" — pre-commit is lightweight Python. PRIVATE consumers per OPS-0049 may override to "runner-self".'
+        type: string
+        default: '"ubuntu-latest"'
+
+permissions:
+  contents: read
+
+jobs:
+  pre-commit:
+    name: Lint / format / security hooks
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install pre-commit (+ optional extra deps)
+        run: |
+          pip install pre-commit ${{ inputs.extra-deps }}
+
+      - name: Run hooks
+        run: |
+          if [ -n "${{ inputs.run-stage }}" ]; then
+            pre-commit run --all-files --show-diff-on-failure --hook-stage "${{ inputs.run-stage }}"
+          else
+            pre-commit run --all-files --show-diff-on-failure
+          fi

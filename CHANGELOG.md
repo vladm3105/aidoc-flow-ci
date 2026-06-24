@@ -5,7 +5,23 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-(empty — see `ci/v1.0.1` below for everything just shipped)
+### Added
+
+- **Reusable `pre-commit.yml` workflow** (`.github/workflows/pre-commit.yml`)
+  + caller template (`install/templates/workflows/pre-commit.yml`).
+  Eighth reusable workflow shipped. Wraps the standard
+  `pre-commit run --all-files` pattern used by framework +
+  iplan-runner + operations (all three repos had nearly identical
+  pre-commit workflow files; abstracted into one reusable). Inputs:
+  `python-version` (default `"3.12"`), `extra-deps` (default empty;
+  pip-install args for project-specific hook deps like
+  `-r tests/conformance/requirements.txt`), `run-stage` (default
+  empty; set `"manual"` for opt-in audits like pip-audit),
+  `runner_labels` (default `"ubuntu-latest"`; PRIVATE consumers
+  override to `"runner-self"`). Standard actions SHA-pinned per
+  `feedback_verify_sha_pins` memory — both verified via `gh api`:
+  `actions/checkout@v4.2.2` (`11bd71901bbe5b1630ceea73d27597364c9af683`)
+  + `actions/setup-python@v6.2.0` (`a309ff8b426b58ec0e2a45f0f869d46889d02405`).
 
 ## ci/v1.0.1 — 2026-06-24 — origin-based labels + 5 new reusable workflows + docs tree
 
