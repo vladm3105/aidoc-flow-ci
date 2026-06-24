@@ -7,6 +7,15 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ### Added
 
+- **`docs/runners.md`** — runner-pool operational guide. Covers
+  the runner-label convention recap (with `runner-self` /
+  `ubuntu-latest` / future origins), the reference
+  `aidoc-flow-runner:latest` Docker image (with operations' build
+  scripts as reference), org-level vs repo-level runner registration
+  with `runner-self` as additive label, per-origin operational
+  tradeoffs (cost / latency / CLI availability / fork-PR safety),
+  pool scaling, and the process for adding a new runner origin
+  (e.g., `runner-azure`). `docs/README.md` index updated.
 - **`docs/architecture.md`** — first focused design doc on
   `aidoc-flow-ci`. Covers: reusable-workflow model (consumer caller
   via `uses:`; runs in consumer's repo context); inventory of the 7
