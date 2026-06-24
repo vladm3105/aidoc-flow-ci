@@ -10,5 +10,5 @@ jobs:
     with:
       reviewer: codex
       runner_labels_routine: '"runner-self"'
-      runner_labels_review:  '"runner-self"'
-    secrets: inherit
+      runner_labels_review: '"runner-self"'
+    secrets: inherit  # pragma: allowlist secret

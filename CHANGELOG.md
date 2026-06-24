@@ -5,7 +5,59 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-(empty — see `ci/v1.0.3` below for everything just shipped)
+(empty — see `ci/v1.0.4` below for everything just shipped)
+
+## ci/v1.0.4 — 2026-06-24 — caller-template yamllint + detect-secrets compatibility patch
+
+Patch release fixing 2 caller-template compatibility issues
+surfaced by framework Phase A migration's first CI run (PR #168
+on `vladm3105/aidoc-flow-framework`, 2026-06-24):
+
+### Fix 1 — yamllint `[colons] too many spaces after colon`
+
+`install/templates/workflows/ai-review-{public,private}.yml` used
+double-space after `runner_labels_review:` for visual alignment
+with the adjacent `runner_labels_routine:` line. Framework's
+yamllint config (and the default yamllint rules, per the
+[upstream docs](https://yamllint.readthedocs.io/en/stable/rules.html#module-yamllint.rules.colons))
+flags alignment spaces as `[colons] too many spaces after colon`.
+
+**Fix:** removed the alignment double-space — single space after
+`:` per yamllint default.
+
+### Fix 2 — detect-secrets false-positive on `secrets: inherit`
+
+All 4 caller templates (`ai-review-{public,private}.yml` +
+`composition-{public,private}.yml`) had bare `secrets: inherit`
+lines. `Yelp/detect-secrets`' high-entropy heuristic flags the
+word `secrets` as a potential committed secret.
+
+**Fix:** appended `# pragma: allowlist secret` to each
+`secrets: inherit` line per detect-secrets' documented mitigation
+pattern.
+
+### Backward compatibility
+
+- Consumers on `ci/v1.0.0` / `ci/v1.0.1` / `ci/v1.0.2` / `ci/v1.0.3`
+  continue to work; this patch fixes the templates only — the
+  reusable workflows themselves are unchanged.
+- Already-bootstrapped consumers can re-run `install.sh` from
+  `ci/v1.0.4` to pick up the fixes (idempotent — preserves any
+  existing local files; only updates files that don't already
+  exist), OR manually apply the 2 edits to their existing files
+  (remove the alignment space; add the pragma comment).
+
+### Lesson recorded
+
+Framework Phase A activation surfaced this as the second v1.0.X
+patch round (after v1.0.3 fixed labels.json). The runbook contract
+("if v1.0.X issues surface, ship a patch") is working as designed.
+Future template additions should be validated against:
+
+- `yamllint` with default rules
+- `detect-secrets` with default `.secrets.baseline`
+
+before tagging.
 
 ## ci/v1.0.3 — 2026-06-24 — labels.json patch (`area: governance` description ≤100c)
 
