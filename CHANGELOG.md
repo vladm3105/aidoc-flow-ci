@@ -7,6 +7,27 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ### Added
 
+- **Reusable `secret-scan.yml` workflow** (`.github/workflows/secret-scan.yml`),
+  caller template (`install/templates/workflows/secret-scan.yml`),
+  and starter `.gitleaks.toml` allowlist
+  (`install/templates/.gitleaks.toml`). Wraps **`gacts/gitleaks@v1.3.2`**
+  (SHA-pinned `c9a0338361dc45a01aa7ebaaa5330179f3c62873`) — the
+  **MIT-licensed** community wrapper. **Critical: NOT the official
+  `gitleaks/gitleaks-action`** which switched to a proprietary EULA
+  at v2.0.0 (May 2026); org-owned repos (including OSS) require a
+  paid license. The CMS OSPO guide
+  (`https://dsacms.github.io/ospo-guide/resources/gitleaks-action-license/`)
+  explicitly points to `gacts/gitleaks` as the MIT wrapper for this
+  use case. Same `gitleaks` binary underneath; no license key, no
+  signup. Full-history scan (`fetch-depth: 0`) since `gitleaks
+  detect` is the right shape for a PR gate. SARIF output uploaded
+  to GitHub Code Scanning via `github/codeql-action/upload-sarif@v4.36.1`
+  so findings appear in the PR's "Files changed" view via
+  annotations. Inputs: `config-path` (optional `.gitleaks.toml`),
+  `fail-on-findings` (default true — a PR gate that doesn't block
+  isn't a gate), `runner_labels` (default `"ubuntu-latest"`).
+  Starter `.gitleaks.toml` ships an allowlist for common test
+  fixtures + docs examples + extends the default ruleset.
 - **Reusable `links.yml` workflow** (`.github/workflows/links.yml`),
   caller template (`install/templates/workflows/links.yml`), and
   starter `.lychee.toml` config (`install/templates/.lychee.toml`).
