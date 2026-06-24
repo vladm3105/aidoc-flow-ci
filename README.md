@@ -5,7 +5,7 @@ projects. Consumer repos call the reusable workflows via `uses:` from
 their own `.github/workflows/`; local files always win
 ([IPLAN-0017 §3.1a](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0017_unified-ci-flows.md)).
 
-## What ships in `ci/v1.0.1`
+## What ships in `ci/v1.0.2`
 
 | Workflow | Purpose |
 | --- | --- |
@@ -29,7 +29,7 @@ For the per-workflow design rationale see [`docs/architecture.md`](docs/architec
 ## Install on a new consumer repo
 
 ```sh
-bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.0.1/install/install.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.0.2/install/install.sh) \
   vladm3105/<consumer-repo> --visibility private
 ```
 
@@ -63,18 +63,21 @@ pinned `ci/vX.Y.Z` tag and reports any diff as a `::warning::`.
 **Never blocks the commit or the PR.** Run as a pre-commit hook or
 periodic GitHub Action.
 
-## v1.0.1 known limitations
+## v1.0.2 known limitations
 
-- **Public consumers**: `runner_labels_review` in the public
-  ai-review template still ships as a `REPLACE-ME-with-runner-
-  having-reviewer-CLI` placeholder. The original v1.0.1 plan was
-  to add ubuntu-latest CLI install + auth steps; deferred to
-  v1.0.2 to keep v1.0.1 atomic + low-risk. Public consumers MUST
-  still point at a self-hosted runner with the CLI until v1.0.2
-  ships verified install commands for `codex` / `claude` on
-  `ubuntu-latest`.
+- **Public-consumer CLI install — unverified-in-CI.** v1.0.2 ships
+  the ubuntu-latest CLI install step (codex via npm; claude via
+  curl install.sh) inside the reusable `ai-review.yml`, closing
+  the v1.0.0/v1.0.1 public-CLI gap. The install commands are
+  assembled from official upstream docs but **not yet tested on a
+  real consumer's CI run**. First PUBLIC consumer adoption (likely
+  framework's Phase A migration per
+  `aidoc-flow-operations` IPLAN-0017 §4) will validate; v1.0.3 may
+  revise based on real-world consumer feedback. Required secrets
+  consumer-side: `OPENAI_API_KEY` (codex) and/or `ANTHROPIC_API_KEY`
+  (claude).
 - **Secret names hardcoded** to `APP_REVIEWER_1_ID` /
-  `APP_REVIEWER_1_KEY` — v1.0.1 doesn't parameterize. v1.0.2+ may
+  `APP_REVIEWER_1_KEY` — v1.0.2 doesn't parameterize. v1.0.3+ may
   add `app_id_secret_name` / `app_key_secret_name` inputs IF
   consumers actually need non-default names.
 - **Composition trigger shape** uses the PR-#111-conservative shape
