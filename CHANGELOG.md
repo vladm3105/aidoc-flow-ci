@@ -11,7 +11,7 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   caller template (`install/templates/workflows/links.yml`), and
   starter `.lychee.toml` config (`install/templates/.lychee.toml`).
   Wraps `lycheeverse/lychee-action@v2.6.1` (SHA-pinned
-  `1d97d84f0bc547f7b25f4c2170d87d810dc2fb2c`) — the 2025-2026
+  `885c65f3dc543b57c898c8099f4e08c8afd178a2`) — the 2025-2026
   de-facto leader for link checking (Rust-based, async, fast).
   Chosen over the older `gaurav-nelson/github-action-markdown-link-check`
   (Node-based, slower, no built-in caching). Implements the mature
