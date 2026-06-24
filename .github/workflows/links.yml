@@ -1,0 +1,105 @@
+# links.yml — reusable link-checking workflow (powered by lychee).
+#
+# Wraps lycheeverse/lychee-action — the de-facto leader for
+# markdown/HTML/text link checking in 2025-2026 (Rust-based, async,
+# fast, actively maintained). Chosen over the older
+# gaurav-nelson/github-action-markdown-link-check (Node-based,
+# slower, no built-in caching).
+#
+# Design decisions (research findings 2026-06-24):
+#   - SHA-pinned to lycheeverse/lychee-action@v2.6.1.
+#   - Two modes via `mode` input — internal (blocking, PR-gate) vs
+#     external (scheduled cron, non-blocking, opens issue on
+#     failure). Mature OSS pattern (lychee itself uses it).
+#   - Cache via actions/cache/restore + actions/cache/save with
+#     if:always() so cache persists even when run fails.
+#   - GITHUB_TOKEN passed via env to avoid GH rate limits on
+#     github.com links.
+#
+# Consumer caller (typical — uses BOTH modes via two job calls):
+#
+#   name: links
+#   on:
+#     pull_request:                # internal, blocking
+#     push: { branches: [main] }
+#     schedule: [{ cron: '0 6 * * 1' }]   # external, non-blocking
+#   jobs:
+#     internal:
+#       if: github.event_name != 'schedule'
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/links.yml@ci/v1.0.1
+#       with: { mode: internal, fail-on-error: true }
+#     external:
+#       if: github.event_name == 'schedule'
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/links.yml@ci/v1.0.1
+#       with: { mode: external, fail-on-error: false }
+#       permissions:
+#         contents: read
+#         issues: write   # for create-issue-from-file on failure
+
+name: links
+
+on:
+  workflow_call:
+    inputs:
+      mode:
+        description: '"internal" (PR-blocking; uses --offline so external URLs are skipped) or "external" (scheduled cron; checks external URLs).'
+        type: string
+        default: internal
+      paths:
+        description: 'Files/dirs to check. Default "." (whole repo; lychee handles .md/.html/.rst/.txt globs).'
+        type: string
+        default: '.'
+      config-file:
+        description: 'Path to a lychee.toml in the consumer repo. Default ".lychee.toml" — falls back to lychee defaults if missing.'
+        type: string
+        default: '.lychee.toml'
+      fail-on-error:
+        description: 'Whether broken links fail the job. Default true for internal mode (set false in caller for external).'
+        type: boolean
+        default: true
+      runner_labels:
+        description: 'JSON array (or single-string) of runner labels. Default "ubuntu-latest". PRIVATE consumers per OPS-0049 may override to "runner-self".'
+        type: string
+        default: '"ubuntu-latest"'
+
+permissions:
+  contents: read
+
+jobs:
+  lychee:
+    name: lychee (${{ inputs.mode }})
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Restore lychee cache
+        id: cache-restore
+        uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: .lycheecache
+          key: lychee-${{ inputs.mode }}-${{ github.sha }}
+          restore-keys: |
+            lychee-${{ inputs.mode }}-
+
+      - name: lychee
+        uses: lycheeverse/lychee-action@1d97d84f0bc547f7b25f4c2170d87d810dc2fb2c # v2.6.1
+        with:
+          fail: ${{ inputs.fail-on-error }}
+          # The --offline flag in internal mode skips http(s) URLs
+          # entirely; external mode hits the network.
+          args: >-
+            --config ${{ inputs.config-file }}
+            ${{ inputs.mode == 'internal' && '--offline' || '' }}
+            ${{ inputs.paths }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Save lychee cache
+        if: always()
+        uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: .lycheecache
+          key: ${{ steps.cache-restore.outputs.cache-primary-key }}
