@@ -7,6 +7,26 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ### Added
 
+- **Reusable `markdown-lint.yml` workflow**
+  (`.github/workflows/markdown-lint.yml`), caller template
+  (`install/templates/workflows/markdown-lint.yml`), and starter
+  `.markdownlint.json` config (`install/templates/.markdownlint.json`).
+  Wraps `DavidAnson/markdownlint-cli2-action@v20.0.0` (SHA-pinned
+  `992badcdf24e3b8eb7e87ff9cd2e5a2c45d4c633`) — the first-party
+  successor to the legacy `markdownlint-cli`, recommended in
+  2025-2026 over the older third-party wrappers
+  (`nosborn/github-action-markdown-cli`,
+  `igorshubovych/markdownlint-cli`). Uses cli2's built-in `github`
+  outputFormatter so findings show as inline PR annotations (no
+  separate problem-matcher action needed). Starter config relaxes
+  the rules most projects override (MD013 line-length 120 with
+  code-blocks/tables excluded; MD024 `siblings_only`; MD033 allows
+  `br`/`details`/`summary`/`kbd`/`sup`/`sub`; MD041 disabled).
+  Inputs: `globs` (default `**/*.md`), `config` (default empty —
+  cli2 auto-resolves `.markdownlint.{json,yaml,…}` or
+  `.markdownlint-cli2.*`), `fix` (default false), `runner_labels`
+  (default `"ubuntu-latest"`).
+
 - **Reusable `codeql.yml` workflow** (`.github/workflows/codeql.yml`),
   caller template (`install/templates/workflows/codeql.yml`). Wraps
   `github/codeql-action@v4.36.1` (SHA-pinned

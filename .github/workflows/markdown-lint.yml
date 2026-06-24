@@ -1,0 +1,76 @@
+# markdown-lint.yml — reusable markdown-lint workflow.
+#
+# Wraps DavidAnson/markdownlint-cli2-action — the first-party
+# successor to the older `markdownlint-cli`. Maintained by the
+# library author; recommended in 2025-2026 over the legacy CLI +
+# its third-party action wrappers.
+#
+# Design decisions (research findings 2026-06-24):
+#   - Use markdownlint-cli2-action (not nosborn/github-action-markdown-cli
+#     which wraps the legacy cli, nor igorshubovych/markdownlint-cli
+#     which is the legacy cli itself).
+#   - SHA-pinned to v23.2.0 (latest as of 2026-05-06).
+#   - Config file: .markdownlint.json default (most portable; works
+#     with both CLIs + every editor plugin). Override via `config`
+#     input for repos using .markdownlint-cli2.{jsonc,yaml,cjs,mjs}.
+#   - Reporter: cli2's built-in `github` outputFormatter emits
+#     ::error file=…,line=…:: workflow commands inline on PRs — no
+#     separate problem-matcher action needed.
+#   - Globs: caller passes glob list (default '**/*.md' which globs
+#     all markdown in the repo).
+#
+# Consumer caller (typical):
+#
+#   name: markdown-lint
+#   on:
+#     pull_request:
+#     push: { branches: [main] }
+#   jobs:
+#     md:
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v1.0.1
+#       with:
+#         globs: |
+#           **/*.md
+#           !node_modules
+
+name: markdown-lint
+
+on:
+  workflow_call:
+    inputs:
+      globs:
+        description: 'Newline-separated list of globs to lint. Default "**/*.md". Use !pattern to exclude (e.g. "!node_modules/**").'
+        type: string
+        default: '**/*.md'
+      config:
+        description: 'Path to a markdownlint config file. Default empty — cli2 auto-resolves .markdownlint-cli2.{jsonc,yaml,cjs,mjs} or .markdownlint.{jsonc,json,yaml,yml,cjs,mjs} in the repo root.'
+        type: string
+        default: ''
+      fix:
+        description: 'Apply automatic fixes (writes back to working tree). Default false; useful for the autofix pipeline (IPLAN-0014) but not for a blocking PR gate.'
+        type: boolean
+        default: false
+      runner_labels:
+        description: 'JSON array (or single-string) of runner labels. Default "ubuntu-latest" — lightweight Node-based linter. PRIVATE consumers per OPS-0049 may override to "runner-self".'
+        type: string
+        default: '"ubuntu-latest"'
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: markdownlint
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: markdownlint-cli2
+        uses: DavidAnson/markdownlint-cli2-action@992badcdf24e3b8eb7e87ff9cd2e5a2c45d4c633 # v20.0.0
+        with:
+          globs: ${{ inputs.globs }}
+          config: ${{ inputs.config }}
+          fix: ${{ inputs.fix }}
