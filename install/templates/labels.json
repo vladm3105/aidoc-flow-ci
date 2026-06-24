@@ -1,0 +1,27 @@
+[
+  {
+    "name": "ai:review-passed",
+    "color": "0e8a16",
+    "description": "AI reviewer verdict: passed"
+  },
+  {
+    "name": "ai:review-changes",
+    "color": "d93f0b",
+    "description": "AI reviewer verdict: changes requested"
+  },
+  {
+    "name": "ai:human-review-required",
+    "color": "fbca04",
+    "description": "Human review required (untrusted author / governance)"
+  },
+  {
+    "name": "skip-ai-review",
+    "color": "5319e7",
+    "description": "Skip ai-review on subsequent pushes"
+  },
+  {
+    "name": "ai:autofix-applied",
+    "color": "1d76db",
+    "description": "AI autofix applied (IPLAN-0014)"
+  }
+]
