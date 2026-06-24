@@ -11,7 +11,7 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   caller template (`install/templates/workflows/secret-scan.yml`),
   and starter `.gitleaks.toml` allowlist
   (`install/templates/.gitleaks.toml`). Wraps **`gacts/gitleaks@v1.3.2`**
-  (SHA-pinned `4d44e5c10bb4cbca65e8d4e96c54d5e1717823df`) — the
+  (SHA-pinned `c9a0338361dc45a01aa7ebaaa5330179f3c62873`) — the
   **MIT-licensed** community wrapper. **Critical: NOT the official
   `gitleaks/gitleaks-action`** which switched to a proprietary EULA
   at v2.0.0 (May 2026); org-owned repos (including OSS) require a
