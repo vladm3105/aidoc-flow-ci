@@ -7,6 +7,22 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ### Added
 
+- **Reusable `codeql.yml` workflow** (`.github/workflows/codeql.yml`),
+  caller template (`install/templates/workflows/codeql.yml`). Wraps
+  `github/codeql-action@v4.36.1` (SHA-pinned
+  `21eb7f7842f33eafc83782b56fff2a2c43e9696f`) per GitHub's
+  enterprise-scale code-scanning rollout pattern. Inputs: `languages`
+  (JSON array, default `["actions"]`), `config-file` /
+  `config` (inline alternative to file), `build-command` (override
+  autobuild for compiled languages), `runner_labels` (default
+  `"ubuntu-latest"`). Uses `category: /language:${{matrix.language}}`
+  so multiple CodeQL workflows coexist without overwriting results.
+  Matrix-driven explicit languages (not autodetect — autodetect
+  breaks reproducibility on newly-added languages). Caller template
+  triggers on push + PR + weekly cron (Mon 14:20 UTC) +
+  workflow_dispatch per GitHub's recommended pattern. v3 enters
+  deprecation Dec 2026; v4 is the supported major.
+
 - **Reusable `labeler.yml` workflow** (`.github/workflows/labeler.yml`),
   caller template (`install/templates/workflows/labeler.yml`), and
   starter `.github/labeler.yml` config (`install/templates/labeler.yml`).
