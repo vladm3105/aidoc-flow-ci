@@ -7,6 +7,18 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ### Added
 
+- **`docs/security.md`** — threat model + trust boundaries +
+  fork-PR handling + secrets model + `pull_request_target`
+  rationale + SHA-pinning + layered secret-scan defense. Honestly
+  frames the self-hosted-on-public concern (the routing rule
+  follows GitHub's recommendation: PRIVATE → `runner-self`,
+  PUBLIC → `ubuntu-latest`; deviation is accepted-risk only).
+  Covers the trust-gate semantics + how fork PRs route to
+  HUMAN-REVIEW-ONLY, the App-identity model behind `composition`,
+  the `v1.0.0` secret-name limitation, and the
+  `gacts/gitleaks` vs `gitleaks/gitleaks-action` license choice.
+  Documents the SHA-pinning verification workflow per
+  `feedback_verify_sha_pins` memory entry.
 - **`docs/overrides.md`** — consumer-facing guide to the 3 override
   modes: (1) parameter override via `with:` (preferred — smallest
   deviation); (2) full replacement (drop `uses:`, write own jobs);
