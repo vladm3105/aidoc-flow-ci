@@ -1,0 +1,27 @@
+# v1.0.0 NOTE: public consumers MUST set `runner_labels_review` to a runner
+# that has the reviewer CLI (codex / claude) installed + authenticated.
+# `ubuntu-latest` is NOT acceptable — the copied reviewer body invokes the
+# CLI directly and would fail before producing a verdict. v1.0.1+ may ship
+# CLI install + auth steps for the GitHub-hosted path; until then public
+# consumers need their own self-hosted reviewer runner.
+#
+# `pull_request_target` (not `pull_request`) is required because the trust
+# gate needs write-capable credentials to apply labels/comments on fork PRs
+# and the heavy review job needs secrets — both unavailable under
+# `pull_request` on fork PRs. The trust gate decides whether to proceed; the
+# heavy job runs only for trusted authors per the allowlist in
+# `.github/ai-review/config.json`.
+name: ai-review
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  pull_request_review:
+    types: [submitted]
+jobs:
+  call:
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v1.0.0
+    with:
+      reviewer: codex
+      runner_labels_routine: '"ubuntu-latest"'
+      runner_labels_review:  '"REPLACE-ME-with-runner-having-reviewer-CLI"'
+    secrets: inherit
