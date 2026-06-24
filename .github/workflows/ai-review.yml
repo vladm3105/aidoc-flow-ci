@@ -172,6 +172,61 @@ jobs:
           ref: main
           token: ${{ secrets.AI_REVIEW_TOKEN || secrets.GITHUB_TOKEN }}
 
+      # v1.0.2 PUBLIC consumer support: install codex + claude CLI on
+      # GitHub-hosted runners (ubuntu-latest) just-in-time. No-op on
+      # self-hosted runners ("runner-self") that have the CLI pre-baked
+      # (e.g., aidoc-flow-runner:latest manually extended; see
+      # docs/runners.md). The "Resolve reviewer + verify its CLI" step
+      # below then succeeds on PATH check.
+      #
+      # Install commands sourced from research findings 2026-06-24:
+      #   - codex: npm install -g @openai/codex@<version> per openai/codex README
+      #     (https://github.com/openai/codex)
+      #   - claude: curl install.sh per code.claude.com/docs/en/setup
+      #     (https://code.claude.com/docs/en/setup)
+      # Both are pinned to a specific version to avoid silent upstream
+      # drift breaking consumer CI; bump per a documented release.
+      #
+      # **Unverified-in-CI** as of v1.0.2 ship — first real PUBLIC
+      # consumer adoption will validate. See CHANGELOG ci/v1.0.2 +
+      # docs/troubleshooting.md §10 for context. Report issues at
+      # vladm3105/aidoc-flow-ci; v1.0.3 may revise based on real-world
+      # consumer feedback.
+      - name: Set up Node (only for ubuntu-latest CLI install)
+        if: ${{ env.SKIP_REVIEW != '1' && contains(inputs.runner_labels_review, 'ubuntu-latest') }}
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '20'
+
+      - name: Install codex + claude CLI (ubuntu-latest only)
+        if: ${{ env.SKIP_REVIEW != '1' && contains(inputs.runner_labels_review, 'ubuntu-latest') }}
+        env:
+          CODEX_VERSION: '0.142.0'
+          CLAUDE_VERSION: '2.1.89'
+        run: |
+          set -euo pipefail
+          echo "::group::Install codex@${CODEX_VERSION}"
+          npm install -g "@openai/codex@${CODEX_VERSION}"
+          if ! command -v codex >/dev/null; then
+            echo "::error::codex install failed (binary not on PATH after npm install -g)"
+            exit 1
+          fi
+          codex --version
+          echo "::endgroup::"
+          echo "::group::Install claude@${CLAUDE_VERSION}"
+          curl -fsSL https://claude.ai/install.sh | bash -s "${CLAUDE_VERSION}"
+          # Native installer drops binary at ~/.local/bin; not on default PATH.
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          # Verify in a subshell with the augmented PATH (GITHUB_PATH only
+          # applies to subsequent steps; current step needs the export).
+          export PATH="$HOME/.local/bin:$PATH"
+          if ! command -v claude >/dev/null; then
+            echo "::error::claude install failed (binary not at ~/.local/bin after install.sh)"
+            exit 1
+          fi
+          claude --version
+          echo "::endgroup::"
+
       - name: Resolve reviewer + verify its CLI
         if: ${{ env.SKIP_REVIEW != '1' }}
         env:

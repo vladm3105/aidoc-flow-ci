@@ -7,6 +7,37 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ### Added
 
+- **ubuntu-latest CLI install step in `ai-review.yml`** —
+  PUBLIC consumers can now use `runner_labels_review: '"ubuntu-latest"'`
+  and the workflow installs `codex` + `claude` CLI just-in-time
+  before invoking them. **Closes the v1.0.0/v1.0.1 public-CLI gap.**
+  Install step gated on `contains(inputs.runner_labels_review,
+  'ubuntu-latest')` — no-op on self-hosted runners that have the CLI
+  pre-baked (e.g., operations' `aidoc-flow-runner:latest` manually
+  extended).
+  - `codex` via `npm install -g @openai/codex@0.142.0` (pinned)
+  - `claude` via `curl -fsSL https://claude.ai/install.sh | bash -s 2.1.89`
+    + `echo "$HOME/.local/bin" >> "$GITHUB_PATH"` (native installer
+    drops binary at `~/.local/bin`; not on default PATH)
+  - `actions/setup-node@v5.0.0` (SHA-pinned
+    `a0853c24544627f65ddf259abe73b1d18a591444` — verified via `gh api`)
+    runs first since codex install uses npm
+  - Required secrets on consumer side: `OPENAI_API_KEY` (codex) and/or
+    `ANTHROPIC_API_KEY` (claude); `secrets: inherit` passes them
+  - **Honest framing: unverified-in-CI as of v1.0.2 ship.** Install
+    commands assembled from official docs ([openai/codex
+    README](https://github.com/openai/codex) +
+    [code.claude.com/docs/en/setup](https://code.claude.com/docs/en/setup))
+    but not tested on a real consumer's CI run; first PUBLIC consumer
+    adoption (likely framework's Phase A migration per
+    `aidoc-flow-operations` IPLAN-0017 §4) will validate. Report
+    issues at `vladm3105/aidoc-flow-ci`; v1.0.3 may revise based on
+    real-world consumer feedback.
+- **`install/templates/workflows/ai-review-public.yml`** updated:
+  `runner_labels_review: '"REPLACE-ME-with-runner-having-reviewer-CLI"'`
+  → `runner_labels_review: '"ubuntu-latest"'`. Pin bumped to
+  `@ci/v1.0.2`. Header comment rewritten to document the new install
+  step + the required secrets + the unverified-in-CI caveat.
 - **Reusable `pre-commit.yml` workflow** (`.github/workflows/pre-commit.yml`)
   + caller template (`install/templates/workflows/pre-commit.yml`).
   Eighth reusable workflow shipped. Wraps the standard
