@@ -16,6 +16,7 @@ This `docs/` tree covers reference + design topics.
 | Doc | Scope |
 |---|---|
 | [`../LABELS.md`](../LABELS.md) | PR + runner label conventions (three namespaces: state, area, runner; separator rules; routing rule by visibility; processes for adding labels / runner origins) |
+| [`overrides.md`](overrides.md) | The 3 override modes (parameter / full replacement / custom workflow) with concrete examples per mode; what you cannot do; conflict resolution; examples in the wild |
 | [`runners.md`](runners.md) | How to register self-hosted runner pools with the right labels; reference image (`aidoc-flow-runner:latest`) provisioning; per-origin cost/latency/CLI/fork-safety tradeoffs; scaling + adding new origins |
 | [`architecture.md`](architecture.md) | How the pieces fit together: reusable-workflow model; the 7 shared workflows; trust + verdict flow (ai-review + composition); per-repo policy surfaces; versioning + tag scheme |
 
@@ -30,7 +31,6 @@ documenting hypothetical patterns instead of real usage.
 |---|---|---|
 | `docs/architecture.md` | How `ai-review.yml` + `composition.yml` work together; trust gate; job dependencies; reusable-workflow pattern | First consumer asks "how does this work end-to-end" |
 | `docs/runners.md` | How to register a self-hosted runner pool with the right labels; reference image (`aidoc-flow-runner:latest`) provisioning; per-origin cost / visibility tradeoffs | Founder onboards a second self-hosted pool, OR a new origin (Azure / AWS / Fargate) joins |
-| `docs/overrides.md` | The 3 override modes (parameter / full replacement / custom workflow) — concrete examples per mode | First consumer asks how to customize for their case |
 | `docs/security.md` | Trust gate semantics; fork-PR handling; secret model; `pull_request_target` vs `pull_request` choice; threat model | Security review by a consumer, OR an incident |
 | `docs/troubleshooting.md` | Common issues + fixes (composition race; stale runs; label-create permission failures; CLI install failures) | First repeat issue across consumers |
 | `docs/migration.md` | v1.0.0 → v1.0.1 migration; v1.0.X → v1.1.0 (when MINOR ships) | When v1.0.1 ships |

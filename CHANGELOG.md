@@ -7,6 +7,16 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ### Added
 
+- **`docs/overrides.md`** — consumer-facing guide to the 3 override
+  modes: (1) parameter override via `with:` (preferred — smallest
+  deviation); (2) full replacement (drop `uses:`, write own jobs);
+  (3) add a custom workflow (additive; no override at all). Includes
+  concrete examples per mode (PRIVATE consumer overriding runner
+  labels; custom reviewer replacement; per-repo conformance check),
+  a what-you-cannot-do list (no step insertion inside reusable
+  workflows; no `@main` pinning; no colons in runner labels), and
+  the conflict-resolution menu when canonical updates clash with
+  local overrides (re-align / keep divergence / upstream the change).
 - **`docs/runners.md`** — runner-pool operational guide. Covers
   the runner-label convention recap (with `runner-self` /
   `ubuntu-latest` / future origins), the reference
