@@ -7,6 +7,18 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ### Added
 
+- **`docs/architecture.md`** — first focused design doc on
+  `aidoc-flow-ci`. Covers: reusable-workflow model (consumer caller
+  via `uses:`; runs in consumer's repo context); inventory of the 7
+  shared workflows + what each does + typical triggers; trust + verdict
+  flow connecting `ai-review` + `composition` (with Mermaid diagram);
+  per-repo policy surfaces (the 6 config files consumers carry);
+  inputs that vary per consumer (primarily `runner_labels`);
+  versioning + tag scheme; local-overrides-shared rule pointer to
+  `overrides.md`; drift detection (warning-only) pointer; and a
+  pointer to operations governance for the deeper WHY (IPLAN-0017
+  + charter + DECISIONS). `docs/README.md` updated to list it.
+
 - **Reusable `secret-scan.yml` workflow** (`.github/workflows/secret-scan.yml`),
   caller template (`install/templates/workflows/secret-scan.yml`),
   and starter `.gitleaks.toml` allowlist

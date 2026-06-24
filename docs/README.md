@@ -15,7 +15,8 @@ This `docs/` tree covers reference + design topics.
 
 | Doc | Scope |
 |---|---|
-| [`../LABELS.md`](../LABELS.md) | PR + runner label conventions (two namespaces; separator rules; routing rule by visibility; processes for adding labels / runner origins) |
+| [`../LABELS.md`](../LABELS.md) | PR + runner label conventions (three namespaces: state, area, runner; separator rules; routing rule by visibility; processes for adding labels / runner origins) |
+| [`architecture.md`](architecture.md) | How the pieces fit together: reusable-workflow model; the 7 shared workflows; trust + verdict flow (ai-review + composition); per-repo policy surfaces; versioning + tag scheme |
 
 ## Planned (drafted on demand, not preemptively)
 
@@ -26,7 +27,6 @@ documenting hypothetical patterns instead of real usage.
 
 | Planned doc | Scope | Trigger |
 |---|---|---|
-| `docs/architecture.md` | How `ai-review.yml` + `composition.yml` work together; trust gate; job dependencies; reusable-workflow pattern | First consumer asks "how does this work end-to-end" |
 | `docs/runners.md` | How to register a self-hosted runner pool with the right labels; reference image (`aidoc-flow-runner:latest`) provisioning; per-origin cost / visibility tradeoffs | Founder onboards a second self-hosted pool, OR a new origin (Azure / AWS / Fargate) joins |
 | `docs/overrides.md` | The 3 override modes (parameter / full replacement / custom workflow) — concrete examples per mode | First consumer asks how to customize for their case |
 | `docs/security.md` | Trust gate semantics; fork-PR handling; secret model; `pull_request_target` vs `pull_request` choice; threat model | Security review by a consumer, OR an incident |
