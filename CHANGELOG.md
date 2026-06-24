@@ -10,7 +10,7 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 - **Reusable `codeql.yml` workflow** (`.github/workflows/codeql.yml`),
   caller template (`install/templates/workflows/codeql.yml`). Wraps
   `github/codeql-action@v4.36.1` (SHA-pinned
-  `87557b9c84dde89fdd9b10e88954ac2f4248e463`) per GitHub's
+  `21eb7f7842f33eafc83782b56fff2a2c43e9696f`) per GitHub's
   enterprise-scale code-scanning rollout pattern. Inputs: `languages`
   (JSON array, default `["actions"]`), `config-file` /
   `config` (inline alternative to file), `build-command` (override
