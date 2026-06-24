@@ -32,7 +32,7 @@
   {
     "name": "area: governance",
     "color": "8b6914",
-    "description": "PR touches governance docs (CLAUDE.md, DECISIONS.md, IPLAN-*.md, governance/) or supersedes a locked decision"
+    "description": "PR touches governance docs (CLAUDE.md, DECISIONS.md, IPLAN-*.md, governance/) or a decision"
   },
   {
     "name": "area: deps",
