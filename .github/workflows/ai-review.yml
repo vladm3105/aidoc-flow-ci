@@ -1,0 +1,454 @@
+# AI review gate — IPLAN-0011 (operations pilot; reusable home for rollout).
+#
+# TWO-JOB SPLIT (safe-by-design for PUBLIC repos):
+#   job `trust`     → PUBLIC repo: GitHub-hosted (ubuntu-latest). PRIVATE repo: self-hosted
+#                     ci-ephemeral (no GitHub-hosted minutes on this account — OPS-0049). The
+#                     author-trust DECISION only — reads the allowlist from operations@main +
+#                     PR metadata (never PR code); fork/untrusted → `ai:human-review-required`
+#                     label + comment and STOP. Emits the `ai_review_ok` job output.
+#   job `ai-review` → self-hosted [aidoc, ai-review]: runs ONLY if trust passed
+#                     (`needs: trust` + `if`). The reviewer CLI (no secret) reads the
+#                     PR DIFF and emits a verdict; this job posts result + label + gates merge.
+#
+# Why the split: on a PUBLIC repo an untrusted fork PR must never cause execution on
+# our self-hosted reviewer. The trust gate runs on disposable infra (GitHub-hosted for
+# public; a self-hosted throwaway container for private) reading config + PR metadata only
+# (never PR code); the self-hosted reviewer job is gated behind `needs.trust`, so untrusted
+# fork PRs never reach the reviewer at all. (Public repos get free GitHub-hosted minutes; the
+# private path uses the ci-ephemeral runner because this account's GitHub-hosted minutes are
+# exhausted — and private repos have no untrusted forks to keep off-box anyway.)
+#
+# Trust boundary: "we trust only ourself" — config-driven login allowlists in
+# operations@main config.json (`trust.ai_review` → gate; `trust.auto_fix` → also auto-fix).
+# Fork PRs are NEVER trusted. A login not in `ai_review` → HUMAN REVIEW ONLY.
+# Security: workflow/config/rubric/schema are pinned to operations@main (trusted — a PR
+# can't tamper, and rollout repos can't drift the shared rubric); only the PR diff is read
+# (no PR code executed); reviewer adapter is INLINE; the reviewer has no shell-exec tool.
+# Auth: reviewer = the runner's logged-in CLIs (no secret); the only secret is
+# AI_REVIEW_TOKEN, a scoped read-only PAT for cross-repo PRIVATE asset checkout (operations@main).
+# P1/P2 = review + label + block/auto-merge; auto-fix loop + escalation = P3 (deferred, IPLAN-0013).
+name: ai-review
+
+on:
+  # pull_request_target runs the workflow + config + rubric from the BASE ref
+  # (main, trusted) — a PR cannot tamper with them. We only READ the PR diff.
+  workflow_call:
+    inputs:
+      reviewer:
+        description: "reviewer vendor override (claude|codex); empty = config default"
+        type: string
+        default: ""
+      model:
+        description: "model override; empty = the vendor's config default"
+        type: string
+        default: ""
+      max_budget_usd:
+        description: "per-review spend cap (USD); empty = config default"
+        type: string
+        default: ""
+      tier:
+        description: "routine | spec — `spec` (framework/governance) never auto-merges; a human merges after approval"
+        type: string
+        default: "routine"
+      runner_labels_routine:
+        description: 'JSON array of runner labels for the trust job. Default ubuntu-latest (safe for public; private consumers set their self-hosted label set).'
+        type: string
+        default: '"ubuntu-latest"'
+      runner_labels_review:
+        description: 'JSON array of runner labels for the heavy reviewer job. Public consumers MUST point at a runner with the reviewer CLI installed + authenticated (ubuntu-latest does NOT qualify); private consumers set their self-hosted reviewer label set.'
+        type: string
+        default: '"ubuntu-latest"'
+
+permissions:
+  contents: write        # auto-merge
+  pull-requests: write   # review comment, labels, merge
+  issues: write          # labels
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Job 1: author-trust decision on DISPOSABLE infra ────────────────────────────
+  # Keeps untrusted / fork PRs OFF our self-hosted reviewer: the decision is made here,
+  # reading only the allowlist (operations@main) + PR metadata — never PR code. The
+  # reviewer job below runs only if this job says the author is trusted.
+  #
+  # Runner by repo VISIBILITY (this account has NO GitHub-hosted Actions minutes — see OPS-0049):
+  #   PUBLIC  → ubuntu-latest — free GitHub-hosted minutes AND keeps untrusted fork PRs
+  #             entirely off our box (the safe-by-design guarantee that matters for forks).
+  #   PRIVATE → self-hosted ci-ephemeral — no GitHub-hosted minutes available on this
+  #             account; private repos have no untrusted forks, and this job reads only our
+  #             config + PR metadata (never PR code), so a self-hosted disposable container
+  #             is safe here. (Served by the JIT ephemeral supervisor; reverts to ubuntu-latest
+  #             once GitHub-hosted minutes are restored — just drop the conditional.)
+  trust:
+    # Run on normal events; on a label event run ONLY when it's `skip-ai-review` (so the gate's own
+    # ai:review-* label writes don't re-trigger a wasteful round).
+    if: ${{ github.event.pull_request.draft == false && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'skip-ai-review') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_routine) }}
+    outputs:
+      ai_review_ok: ${{ steps.trust.outputs.ai_review_ok }}
+      auto_fix_ok: ${{ steps.trust.outputs.auto_fix_ok }}
+    steps:
+      # Pull the trust allowlist from operations@main (the single trusted source).
+      # Safe for any author: checks out operations@main (trusted), never PR code. Under
+      # workflow_call a bare checkout would clone the CALLER repo; pinning repository+ref
+      # fixes that. Token: scoped read-only PAT (AI_REVIEW_TOKEN, cross-repo PRIVATE) →
+      # GITHUB_TOKEN (sufficient when operations reviews its own PRs).
+      - name: Checkout trust allowlist (operations@main)
+        uses: actions/checkout@v4
+        with:
+          repository: vladm3105/aidoc-flow-operations
+          ref: main
+          token: ${{ secrets.AI_REVIEW_TOKEN || secrets.GITHUB_TOKEN }}
+
+      # "We trust only ourself." Config-driven role allowlists in config.json:
+      #   trust.ai_review = logins whose PRs get the AI gate (+ auto-merge)
+      #   trust.auto_fix  = subset that ALSO gets auto-fix (IPLAN-0013)
+      # Fork PRs are NEVER trusted. A login not in ai_review → HUMAN REVIEW ONLY
+      # (reviewer / auto-merge / auto-fix skipped; `ai:human-review-required` label).
+      - name: Author-trust gate
+        id: trust
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          CFG=.github/ai-review/config.json
+          in_list() { jq -e --arg a "$AUTHOR" --arg k "$1" '(.trust[$k] // []) | index($a)' "$CFG" >/dev/null 2>&1; }
+          AI_REVIEW_OK=false; AUTO_FIX_OK=false
+          if [ "$IS_FORK" = "true" ]; then
+            echo "::notice::fork PR from $AUTHOR — never trusted."
+          else
+            in_list ai_review && AI_REVIEW_OK=true
+            in_list auto_fix  && AUTO_FIX_OK=true
+          fi
+          echo "ai_review_ok=$AI_REVIEW_OK" >> "$GITHUB_OUTPUT"
+          echo "auto_fix_ok=$AUTO_FIX_OK"   >> "$GITHUB_OUTPUT"
+          if [ "$AI_REVIEW_OK" = "true" ]; then
+            echo "author $AUTHOR — ai_review=$AI_REVIEW_OK auto_fix=$AUTO_FIX_OK (trusted)."
+          else
+            echo "::notice::author $AUTHOR (fork=$IS_FORK) not in trust.ai_review — human review only."
+            for l in ai:review-passed ai:review-changes; do
+              gh api -X DELETE "repos/$GH_REPO/issues/$PR/labels/${l/:/%3A}" >/dev/null 2>&1 || true
+            done
+            gh api -X POST "repos/$GH_REPO/issues/$PR/labels" -f "labels[]=ai:human-review-required" >/dev/null 2>&1 || true
+            gh pr comment "$PR" --body "### AI review skipped — submitter not in the trust allowlist
+          \`$AUTHOR\` (fork \`$IS_FORK\`) is not in this repo's \`trust.ai_review\` allowlist. Per policy (we trust only our own PRs), the **AI review gate and auto-fix do not run** — this PR needs **human review** before merge." || true
+          fi
+
+  # ── Job 2: the reviewer — self-hosted, gated behind a trusted-author decision ────
+  # Runs ONLY when job `trust` cleared the author (`needs.trust` + `if`). Untrusted /
+  # fork PRs never reach this job, so nothing PR-triggered executes on our host for them.
+  ai-review:
+    needs: trust
+    if: ${{ needs.trust.outputs.ai_review_ok == 'true' && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'skip-ai-review') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_review) }}
+    # job-level env so step `if:` can branch on App-config presence (the `secrets` context is NOT
+    # available in step `if:` — only in job env / `with`). '1' once the founder sets the reviewer App
+    # private key (IPLAN-0016 §2a-v3 A2); empty until then → the gate stays in its pre-activation
+    # (comment-only) behaviour.
+    env:
+      APP_KEY_PRESENT: ${{ secrets.APP_REVIEWER_1_KEY != '' && '1' || '' }}
+      # `skip-ai-review` label → the reviewer was already approved on this PR; subsequent pushes that only
+      # fix OTHER checks (lint/links/CI) should not re-run this long-running gate. When the label is
+      # present, every heavy step below is skipped and the job ends green (prior approval carried forward).
+      # SAFE-BY-INTENT: the label is added deliberately (after a clean review + a self-review of the new
+      # change) — it must NOT be used when a push changes reviewed code. Governance PRs are human-merged
+      # regardless. See docs/AI_REVIEW_OPS.md.
+      SKIP_REVIEW: ${{ contains(github.event.pull_request.labels.*.name, 'skip-ai-review') && '1' || '' }}
+    steps:
+      # Re-checkout the reviewer assets here (a fresh self-hosted workspace): the rubric,
+      # verdict schema, and config (reviewer/model/budget). operations@main = trusted;
+      # never PR code. Same pin + token rationale as the trust job.
+      - name: Checkout trusted reviewer assets (operations@main)
+        if: ${{ env.SKIP_REVIEW != '1' }}
+        uses: actions/checkout@v4
+        with:
+          repository: vladm3105/aidoc-flow-operations
+          ref: main
+          token: ${{ secrets.AI_REVIEW_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Resolve reviewer + verify its CLI
+        if: ${{ env.SKIP_REVIEW != '1' }}
+        env:
+          REVIEWER_IN: ${{ inputs.reviewer }}
+        run: |
+          R="${REVIEWER_IN:-$(jq -r '.reviewer' .github/ai-review/config.json)}"
+          echo "REVIEWER=$R" >> "$GITHUB_ENV"
+          command -v "$R" >/dev/null || { echo "::error::reviewer CLI '$R' not found on runner"; exit 1; }
+          echo "reviewer resolved: $R"
+
+      - name: Fetch PR diff + files (+ governance floor)
+        if: ${{ env.SKIP_REVIEW != '1' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+          mkdir -p .ai-review
+          # Fetch the PR DIFF with retries. A transient api.github.com blip on the self-hosted runner must
+          # NOT yield an empty diff that the reviewer then "reviews" into a SPURIOUS verdict. Retry only on
+          # an actual API FAILURE (so a genuinely empty no-op PR is still accepted, not mis-flagged); a
+          # persistent failure fails at THIS step — a clear INFRASTRUCTURE error, not a code rejection — so
+          # the reviewer never runs and no spurious verdict / stuck review is produced.
+          n=0
+          until gh api -H "Accept: application/vnd.github.diff" "repos/$GH_REPO/pulls/$PR" > .ai-review/diff.txt 2>/dev/null; do
+            n=$((n+1))
+            if [ "$n" -ge 5 ]; then
+              echo "::error::could not fetch the PR diff after ${n} attempts — INFRASTRUCTURE error (api.github.com unreachable from the runner), NOT a review verdict. Re-run the job."
+              gh pr comment "$PR" --body "### AI review — ⚠️ infrastructure error: could not fetch the PR diff after retries. This is **not** a code finding — please re-run the \`ai-review\` job." >/dev/null 2>&1 || true
+              exit 1
+            fi
+            echo "::warning::diff fetch attempt ${n} failed — retrying in $((n*4))s"; sleep $((n*4))
+          done
+          [ -s .ai-review/diff.txt ] || echo "::notice::PR diff is empty (no-op PR) — proceeding"
+          echo "diff bytes: $(wc -c < .ai-review/diff.txt)"
+          # GOVERNANCE FLOOR (server-side; can't be loosened by config). A PR touching the gate itself
+          # (.github/**, templates/ai-review/**), any */governance/** tree, or the framework repo is
+          # human-merge-always — NEVER auto-merge — regardless of the auto_merge allowlist or `tier`.
+          # Fail-closed: an empty/unreadable/INCOMPLETE file list locks (a transient API blip — or a very
+          # large PR that exceeds GitHub's files-listing cap — must never silently open the floor). The
+          # count + list are retried so a blip locks unnecessarily less often, but a persistent failure locks.
+          CHANGED_N=""; for i in 1 2 3; do CHANGED_N=$(gh api "repos/$GH_REPO/pulls/$PR" -q '.changed_files' 2>/dev/null) && [ -n "$CHANGED_N" ] && break; sleep $((i*3)); done
+          : > .ai-review/files.txt
+          for i in 1 2 3; do gh api --paginate "repos/$GH_REPO/pulls/$PR/files" -q '.[].filename' > .ai-review/files.txt 2>/dev/null && [ -s .ai-review/files.txt ] && break; sleep $((i*3)); done
+          LISTED_N=$(grep -c '' .ai-review/files.txt 2>/dev/null || echo 0)
+          LOCKED=false
+          [ -s .ai-review/files.txt ] || LOCKED=true
+          # the listing must be provably COMPLETE: a known count that the list fully covers, else lock.
+          case "$CHANGED_N" in ''|*[!0-9]*) LOCKED=true;; *) [ "$LISTED_N" -ge "$CHANGED_N" ] || LOCKED=true;; esac
+          grep -qE '(^|/)governance/|(^|/)\.github/|(^|/)templates/ai-review/' .ai-review/files.txt && LOCKED=true
+          case "$GH_REPO" in */aidoc-flow-framework) LOCKED=true;; esac
+          echo "GOV_LOCKED=$LOCKED" >> "$GITHUB_ENV"
+          echo "governance_locked=$LOCKED (listed ${LISTED_N} / changed ${CHANGED_N:-?})"
+
+      # Reviewer adapter is INLINE (not a PR-checked-out script) so a PR cannot
+      # introduce arbitrary runner execution by editing a separate script file.
+      - name: Run review (selected vendor) → verdict file
+        if: ${{ env.SKIP_REVIEW != '1' }}
+        env:
+          MODEL_IN: ${{ inputs.model }}
+          BUDGET_IN: ${{ inputs.max_budget_usd }}
+        run: |
+          CFG=.github/ai-review/config.json
+          MODEL="${MODEL_IN:-$(jq -r --arg v "$REVIEWER" '.vendors[$v].model // ""' "$CFG")}"
+          BUDGET="${BUDGET_IN:-$(jq -r --arg v "$REVIEWER" '.vendors[$v].budget_usd // "2.00"' "$CFG")}"
+          RUBRIC=.github/ai-review/review-prompt.md
+          SCHEMA=.github/ai-review/verdict.schema.json
+          OUT=.ai-review/verdict.json
+          rm -f "$OUT"
+          # Review the diff ONLY (no PR code is checked out under pull_request_target).
+          TASK="Review this pull request based on the unified diff at .ai-review/diff.txt. Follow the review instructions exactly."
+          echo "reviewer=$REVIEWER model=${MODEL:-<default>} budget=$BUDGET"
+          case "$REVIEWER" in
+            claude)
+              # No Bash tool — the reviewer reads the diff + writes the verdict, never executes.
+              claude -p --model "${MODEL:-sonnet}" --setting-sources user \
+                --allowed-tools "Read,Glob,Grep,Write" --permission-mode bypassPermissions \
+                --max-budget-usd "$BUDGET" --append-system-prompt-file "$RUBRIC" \
+                "$TASK Then WRITE the verdict JSON to $OUT and nothing else to that file." \
+                > .ai-review/reviewer.log 2>&1 || echo "claude rc=$?" >> .ai-review/reviewer.log ;;
+            codex)
+              { cat "$RUBRIC"; printf '\n\n%s\n\nOutput ONLY the verdict JSON object as your final message.' "$TASK"; } \
+                | codex exec ${MODEL:+-m "$MODEL"} -s read-only --skip-git-repo-check \
+                    --output-schema "$SCHEMA" -o "$OUT" > .ai-review/reviewer.log 2>&1 || echo "codex rc=$?" >> .ai-review/reviewer.log ;;
+            *)
+              echo "::error::reviewer '$REVIEWER' has no inline adapter"; echo "no adapter for $REVIEWER" > .ai-review/reviewer.log ;;
+          esac
+          tail -n 6 .ai-review/reviewer.log 2>/dev/null || true
+
+      # IPLAN-0016 §2a-v3 (A3): mint a short-lived GitHub App INSTALLATION TOKEN so the verdict can be
+      # submitted as the reviewer APP — the identity whose APPROVED review the `composition` check counts
+      # (an App can't be a CODEOWNER, so the check is the authoritative enforcement). Run ONLY on routine
+      # PRs with the App configured: governance-locked PRs stay human-merge + comment-only (the App must
+      # never review them), and an unconfigured App (no key) keeps today's behaviour. `continue-on-error`
+      # so a MINT FAILURE never kills the job before the gate posts a signal — the gate treats an empty
+      # token on a routine, App-configured PR as fail-closed (NO silent fall-through to comment-only).
+      # The token is scoped to THIS repo and auto-revoked at job end (no lingering credential).
+      - name: Mint reviewer App token (routine PRs only)
+        id: app_token
+        if: ${{ env.SKIP_REVIEW != '1' && env.GOV_LOCKED != 'true' && env.APP_KEY_PRESENT == '1' }}
+        continue-on-error: true
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_REVIEWER_1_ID }}
+          private-key: ${{ secrets.APP_REVIEWER_1_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Gate · comment · label · merge
+        if: ${{ env.SKIP_REVIEW != '1' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # We checked out operations@main for the reviewer assets, so the local
+          # git remote is operations — pin every `gh pr` op to the CALLER repo
+          # (the PR being reviewed), not whatever remote the checkout left behind.
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          TIER: ${{ inputs.tier }}
+          # IPLAN-0016 §2a-v3 (A3): the reviewer GitHub App installation token (minted above; empty on
+          # governance-locked PRs, on mint failure, or before the App is configured). When present, a
+          # routine verdict is submitted AS THE APP so the approval is the identity the `composition`
+          # check counts. APP_CONFIGURED distinguishes "App not set up yet" (→ comment-only, inert) from
+          # "App set up but token empty" (→ mint failure → fail-closed). Supersedes the machine-user
+          # PAT_REVIEWER_1 path (IPLAN-0016 §2a, retained in history; that secret is no longer set).
+          APP_TOKEN: ${{ steps.app_token.outputs.token }}
+          APP_CONFIGURED: ${{ env.APP_KEY_PRESENT }}
+        run: |
+          set -uo pipefail
+          F=.ai-review/verdict.json
+          # REVIEWER is exported by the resolve step (GITHUB_ENV); fall back to config.
+          REVIEWER="${REVIEWER:-$(jq -r '.reviewer' .github/ai-review/config.json)}"
+
+          # Set the review-state label via the REST API. (`gh pr edit --add-label`
+          # trips the deprecated Projects-classic GraphQL path and silently fails.)
+          # Retry a command on transient failure (api.github.com blips on the self-hosted runner) — keeps a
+          # network blip from LOSING a verdict comment/review. Returns the command's status after up to 4 tries.
+          retry() { local n=0; until "$@"; do n=$((n+1)); [ "$n" -ge 4 ] && return 1; echo "::warning::retry $n/3 for: $1 …"; sleep $((n*3)); done; }
+
+          set_label() {
+            for l in ai:review-passed ai:review-changes; do
+              [ "$l" = "$1" ] && continue
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/$PR/labels/${l/:/%3A}" >/dev/null 2>&1 || true
+            done
+            retry gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/labels" -f "labels[]=$1" >/dev/null 2>&1 || true
+          }
+
+          # Fail-closed: no parseable verdict, or an invalid decision.
+          if [ ! -f "$F" ] || ! jq -e . "$F" >/dev/null 2>&1; then
+            echo "::error::no parseable verdict — fail-closed"; tail -n 40 .ai-review/reviewer.log 2>/dev/null || true
+            set_label ai:review-changes
+            gh pr comment "$PR" --body "### AI review — could not produce a verdict (fail-closed). See the \`ai-review\` job log." || true
+            exit 1
+          fi
+          DECISION=$(jq -r '.decision' "$F")
+          if [ "$DECISION" != "approve" ] && [ "$DECISION" != "request_changes" ]; then
+            echo "::error::invalid decision '$DECISION' — fail-closed"
+            set_label ai:review-changes
+            exit 1
+          fi
+
+          # Build the human-readable comment from the verdict.
+          {
+            if [ "$DECISION" = "approve" ]; then echo "### AI review — ✅ approved"; else echo "### AI review — ❌ changes requested"; fi
+            echo ""
+            jq -r '.summary // ""' "$F"
+            echo ""
+            if [ "$(jq '.findings | length' "$F")" -gt 0 ]; then
+              echo "**Findings:**"
+              jq -r '.findings[] | "- [" + .severity + "] " + ((.path // "") + (if (.line // 0) > 0 then ":" + (.line|tostring) else "" end)) + " — " + .body + (if (.fix // "") != "" then "\n  - **fix:** " + .fix else "" end)' "$F"
+            else
+              echo "_No blocking findings._"
+            fi
+            echo ""
+            echo "_AI review (reviewer: $REVIEWER) · verdict-gated · IPLAN-0011_"
+          } > .ai-review/comment.md
+          # Submit the verdict as a review. IPLAN-0016 §2a-v3 (A3):
+          #   • routine PR + App configured + token minted → a review submitted AS THE REVIEWER APP
+          #     (a head-SHA-tied approve/request-changes); the App's APPROVED review is the identity the
+          #     `composition` required check counts toward the merge gate;
+          #   • GOVERNANCE-LOCKED PR → advisory COMMENT only — governance PRs are human-merge anyway, and
+          #     the reviewer App must never submit a review on them (DoD);
+          #   • App not configured yet (no key) → today's behaviour: advisory COMMENT (inert);
+          #   • App configured but token EMPTY (mint failed) → return non-zero → caller fails CLOSED
+          #     (NEVER fall through to comment-only, which would silently drop enforcement on a routine PR).
+          # Returns non-zero ONLY when an intended COUNTING submission fails, so the caller can fail-closed.
+          submit_verdict() {   # $1 = --approve | --request-changes
+            # Comment-only path: governance-locked, OR the App isn't configured yet. (Never a github-
+            # actions[bot] REVIEW — the bot CANNOT approve, so a bot request_changes would stick forever;
+            # the required `ai-review` CHECK is the real signal here. The App, unlike the bot, CAN approve
+            # and supersede its own prior review by latest-state, so it has no stuck-PR failure mode.)
+            if [ "${GOV_LOCKED:-true}" = "true" ] || [ -z "${APP_CONFIGURED:-}" ]; then
+              retry gh pr comment "$PR" --body-file .ai-review/comment.md \
+                || echo "::error::could not post the verdict comment after retries — the verdict still stands via the ai-review check status (this is a visibility loss, not a changed verdict)."
+              return 0
+            fi
+            # routine + App configured: a minted token is REQUIRED. An empty token means the mint step
+            # failed (continue-on-error) — fail CLOSED rather than silently degrade to a non-counting
+            # comment. (IPLAN-0016 A3 / #11.)
+            if [ -z "${APP_TOKEN:-}" ]; then
+              echo "::error::reviewer App token mint failed (empty token on a routine, App-configured PR) — fail-closed, no fall-through to comment-only"
+              return 1
+            fi
+            # Submit AS THE APP (its review is what the composition check counts). Never log the token.
+            GH_TOKEN="$APP_TOKEN" retry gh pr review "$PR" "$1" --body-file .ai-review/comment.md && return 0
+            return 1
+          }
+
+          # On a clean verdict, dismiss any STALE github-actions[bot] CHANGES_REQUESTED review left by an
+          # earlier run — the bot can't supersede it by approving, so it would block the PR forever.
+          dismiss_stale_bot_blocks() {
+            for rid in $(gh api "repos/$GH_REPO/pulls/$PR/reviews" --paginate \
+                  -q '.[] | select(.user.login=="github-actions[bot]" and .state=="CHANGES_REQUESTED") | .id' 2>/dev/null); do
+              gh api -X PUT "repos/$GH_REPO/pulls/$PR/reviews/$rid/dismissals" \
+                -f message="superseded by a clean AI re-review" -f event=DISMISS >/dev/null 2>&1 \
+                || echo "::warning::could not dismiss stale bot review $rid — it may still block the PR"
+            done
+          }
+
+          if [ "$DECISION" = "approve" ]; then
+            # Fail-closed but signalling: if the COUNTING approval can't be recorded, do NOT auto-merge —
+            # label + comment so there's a signal, then block (never armed-but-unapproved). IPLAN-0016 F1/F5.
+            if ! submit_verdict --approve; then
+              echo "::error::reviewer approval submission failed — fail-closed (no auto-merge)"
+              set_label ai:review-changes
+              gh pr comment "$PR" --body "### AI review — verdict was *approve* but the **counting reviewer submission failed** → blocked (fail-closed). Re-run the gate; see the \`ai-review\` job log." || true
+              exit 1
+            fi
+            dismiss_stale_bot_blocks   # clear any stale bot CHANGES_REQUESTED that would otherwise stick
+            set_label ai:review-passed
+            # Auto-merge ONLY when ALL hold (the rest are already enforced upstream):
+            #   • verdict = approve            (this branch)
+            #   • NOT governance-locked        (the path floor above — gate/.github/governance/framework)
+            #   • trusted author               (job runs only if needs.trust.outputs.ai_review_ok)
+            #   • all required checks green     (GitHub enforces via `gh pr merge --auto`)
+            #   • tier != spec                 (framework/governance never auto-merges)
+            #   • repo ∈ config auto_merge.repos allowlist (opt-in per repo; operations@main)
+            # Governance-locked, spec tier, or a repo not in the allowlist → labelled passed, a HUMAN merges.
+            in_automerge() { jq -e --arg r "$GH_REPO" '(.auto_merge.repos // []) | index($r)' .github/ai-review/config.json >/dev/null 2>&1; }
+            if [ "${GOV_LOCKED:-true}" = "true" ]; then
+              echo "Review clean — governance floor (gate / .github / governance / framework): a human merges (no auto-merge)."
+            elif [ "${TIER:-routine}" = "spec" ]; then
+              echo "Review clean — spec/governance tier: a human merges (no auto-merge)."
+            elif in_automerge; then
+              gh pr merge "$PR" --auto --merge || true
+              echo "Review clean — repo in auto_merge allowlist: auto-merge enabled."
+            else
+              echo "Review clean — repo NOT in auto_merge allowlist: labelled passed, a human merges."
+            fi
+            exit 0
+          else
+            # request_changes blocks via this job's exit 1. Still submit the verdict; on an App-submission
+            # failure, SIGNAL it distinctly (DoD symmetry: blocked-WITH-signal, never silently masked as a
+            # plain comment) before the already-blocking exit — an operator must be able to tell a counting-
+            # review outage from a normal changes-requested.
+            if ! submit_verdict --request-changes; then
+              echo "::error::reviewer App request-changes submission failed — fallback comment only (merge already blocked by exit 1)"
+              gh pr comment "$PR" --body-file .ai-review/comment.md || true
+            fi
+            set_label ai:review-changes
+            echo "Changes requested — blocking."
+            exit 1
+          fi
+
+      # When the skip-ai-review label is present every heavy step above is skipped; this step runs so the
+      # job concludes SUCCESS (the required `ai-review` check stays green without re-running the reviewer).
+      - name: ai-review skipped (label)
+        if: ${{ env.SKIP_REVIEW == '1' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          echo "::notice::ai-review SKIPPED — 'skip-ai-review' label present. Prior approval carried forward; the reviewer was not re-run (only other checks were being iterated). Remove the label to force a fresh review."
+          gh pr comment "$PR" --body "### AI review — ⏭️ skipped (carried forward)
+          The \`skip-ai-review\` label is set, so the reviewer was **not re-run** on this push (prior approval carried forward — intended for iterating on *other* checks without changing reviewed code). Remove the label to force a fresh review." >/dev/null 2>&1 || true
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf .ai-review
