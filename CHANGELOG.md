@@ -7,6 +7,13 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ### Added
 
+- **`docs/README.md`** — index for the `docs/` tree. Lists the
+  available docs (`LABELS.md` today), the planned docs
+  (`architecture` / `runners` / `overrides` / `security` /
+  `troubleshooting` / `migration`) with their drafting triggers
+  (drafted on demand, not preemptively), the contribution process,
+  and cross-references to the operations governance tree
+  (IPLAN-0017 + charter + DECISIONS).
 - **`LABELS.md`** — first piece of CI documentation living on this
   repo (vs the operations governance tree). Defines conventions
   for the **two distinct label namespaces** used by `aidoc-flow-ci`:
