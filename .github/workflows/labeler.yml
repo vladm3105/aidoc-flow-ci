@@ -1,0 +1,60 @@
+# labeler.yml — reusable workflow for path-based PR labeling.
+#
+# Reads the CONSUMER repo's `.github/labeler.yml` config (path -> label
+# map in `actions/labeler` v5+ format) and applies the labels on every
+# `pull_request`. Labels must already exist in the consumer repo;
+# `install/install.sh` bootstraps the canonical set (see
+# `install/templates/labels.json` + `LABELS.md`).
+#
+# Consumer caller:
+#
+#   jobs:
+#     labeler:
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/labeler.yml@ci/v1.0.X
+#       with:
+#         runner_labels: '"ubuntu-latest"'   # or '"runner-self"' for PRIVATE
+#       permissions:
+#         contents: read
+#         pull-requests: write
+#
+# The reusable workflow itself declares the minimum required permissions
+# on the called job. Consumer must also declare them on the calling job
+# (per GitHub's reusable-workflow permissions model — the caller's
+# permissions are the ceiling).
+#
+# Body intentionally trivial: just `actions/labeler@v6`. All policy
+# (which paths -> which labels) is in the consumer's `.github/labeler.yml`
+# so different consumers can use different mappings without forking
+# this workflow.
+
+name: labeler
+
+on:
+  workflow_call:
+    inputs:
+      runner_labels:
+        description: 'JSON array (or single string) of runner labels. Default "ubuntu-latest" (cheap; lightweight job; safe for both PRIVATE + PUBLIC consumers since this job only reads PR metadata + writes labels via gh-token). PRIVATE consumers per OPS-0049 may prefer "runner-self".'
+        type: string
+        default: '"ubuntu-latest"'
+      config_path:
+        description: 'Path to the actions/labeler config in the consumer repo. Default .github/labeler.yml.'
+        type: string
+        default: '.github/labeler.yml'
+      sync_labels:
+        description: 'Whether actions/labeler removes labels that no longer match (true) or only adds matching ones (false). Default false to avoid surprising consumers who may have human-applied labels.'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    name: Auto-label by path
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    steps:
+      - uses: actions/labeler@f27b608878404679385c85cfa523b85ccb86e213 # v6.1.0
+        with:
+          configuration-path: ${{ inputs.config_path }}
+          sync-labels: ${{ inputs.sync_labels }}

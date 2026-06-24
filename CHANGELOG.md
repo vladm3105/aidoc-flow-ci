@@ -7,6 +7,21 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ### Added
 
+- **Reusable `labeler.yml` workflow** (`.github/workflows/labeler.yml`),
+  caller template (`install/templates/workflows/labeler.yml`), and
+  starter `.github/labeler.yml` config (`install/templates/labeler.yml`).
+  Third reusable workflow shipped (after `ai-review` and `composition`).
+  Auto-applies path-based PR labels via `actions/labeler@v6.1.0`
+  (SHA-pinned `f27b608878404679385c85cfa523b85ccb86e213`). Consumer
+  provides a per-repo `.github/labeler.yml` mapping paths to labels;
+  the starter config maps common paths to the 4 canonical area
+  labels added in the LABELS.md §3 area-namespace addition plus
+  GitHub's built-in `documentation` label. Inputs: `runner_labels`
+  (default `"ubuntu-latest"`; PRIVATE consumers override to
+  `"runner-self"`), `config_path` (default `.github/labeler.yml`),
+  `sync_labels` (default `false` — additive only; doesn't remove
+  human-applied labels).
+
 - **`LABELS.md` §3 + `install/templates/labels.json` — area-label
   namespace** (`area: <value>` colon-space, matching GitHub built-in
   style). Third PR-label sub-convention alongside `ai:<value>` (§1

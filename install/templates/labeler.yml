@@ -1,0 +1,68 @@
+# Starter .github/labeler.yml config for actions/labeler@v6.
+#
+# Path -> label map; the labeler workflow applies the named label
+# when a PR touches any of the matching paths. Labels MUST already
+# exist in the consumer repo; install/install.sh bootstraps the
+# canonical aidoc-flow-ci taxonomy (see install/templates/labels.json
+# + LABELS.md).
+#
+# This is a STARTER — consumers should adapt to their own path layout.
+# Common repo-specific additions: "platform: <name>" for monorepos,
+# "area: docs" if you prefer that over GitHub's built-in
+# `documentation`, etc.
+#
+# Format: actions/labeler v5+ (changed-files / any-glob-to-any-file).
+# See https://github.com/actions/labeler for the full spec.
+
+"area: ci":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/**"
+          - ".github/labeler.yml"
+          - ".pre-commit-config.yaml"
+          - "scripts/ci-*.sh"
+
+"area: governance":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "CLAUDE.md"
+          - "DECISIONS.md"
+          - "**/DECISIONS.md"
+          - "plans/PLAN-*.md"
+          - "ops/iplans/IPLAN-*.md"
+          - "governance/**"
+          - "**/governance/**"
+
+"area: deps":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/pyproject.toml"
+          - "**/requirements*.txt"
+          - "**/package.json"
+          - "**/package-lock.json"
+          - "**/Gemfile"
+          - "**/Gemfile.lock"
+          - "**/go.mod"
+          - "**/go.sum"
+          - "**/Cargo.toml"
+          - "**/Cargo.lock"
+
+"area: tests":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "tests/**"
+          - "test/**"
+          - "**/*_test.go"
+          - "**/*.test.ts"
+          - "**/*.test.tsx"
+          - "**/*.spec.ts"
+          - "**/*.spec.tsx"
+          - "**/test_*.py"
+          - "**/*_test.py"
+
+# GitHub built-in label (auto-created on every repo):
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "**/*.md"
