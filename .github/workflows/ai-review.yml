@@ -289,6 +289,15 @@ jobs:
         env:
           MODEL_IN: ${{ inputs.model }}
           BUDGET_IN: ${{ inputs.max_budget_usd }}
+          # Export consumer-provided auth secrets to the CLI process env.
+          # Without these the CLI cannot authenticate (claude returns
+          # "Not logged in"; codex returns "OPENAI_API_KEY not set").
+          # secrets: inherit from the caller makes the lookup succeed
+          # for whichever of these the consumer set; the others resolve
+          # to empty + are ignored by the unselected CLI.
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           CFG=.github/ai-review/config.json
           MODEL="${MODEL_IN:-$(jq -r --arg v "$REVIEWER" '.vendors[$v].model // ""' "$CFG")}"

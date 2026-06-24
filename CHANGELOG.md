@@ -5,7 +5,63 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-(empty — see `ci/v1.0.3` below for everything just shipped)
+(empty — see `ci/v1.0.5` below for everything just shipped)
+
+## ci/v1.0.5 — 2026-06-24 — fix: export reviewer auth env to "Run review" step
+
+Patch release fixing a real reviewer-auth bug in `ai-review.yml`'s
+"Run review" step, surfaced by **framework Phase A migration's first
+real ai-review run** (2026-06-24 PR #169 on
+`vladm3105/aidoc-flow-framework`).
+
+### Bug
+
+The "Run review (selected vendor) → verdict file" step only declared
+`MODEL_IN` + `BUDGET_IN` in its `env:` block. The auth env vars the
+CLIs need (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`,
+`OPENAI_API_KEY`) were NOT exported, so the CLIs ran without
+credentials:
+
+```text
+Not logged in · Please run /login   ← claude CLI without CLAUDE_CODE_OAUTH_TOKEN
+##[error]no parseable verdict — fail-closed
+claude rc=1
+```
+
+`secrets: inherit` on the caller passes secret values into the
+reusable workflow's `secrets` context, but they don't auto-export to
+the step's process env — each step that uses a secret as env var
+must explicitly declare it in `env:`.
+
+### Fix
+
+Added 3 env exports. Whichever auth secret the consumer set takes
+effect; the others resolve to empty and are ignored by the
+unselected CLI.
+
+### Why operations dodged this
+
+Operations runs the same workflow body as STANDALONE (not reusable),
+so its `env:` block resolves `${{ secrets.X }}` against operations'
+repo secrets directly — no inheritance hop. When the body was lifted
+into a reusable workflow for v1.0.0, the env exports were omitted —
+the inheritance hop made the bug invisible until the first real
+consumer test (framework, 2026-06-24).
+
+### Backward compatibility
+
+Pure addition; no input/output changes. Consumers bump pin
+`@ci/v1.0.X` → `@ci/v1.0.5`.
+
+### Note on v1.0.4
+
+`ci/v1.0.4` exists as a misplaced annotated tag (created in error
+during PR #20 close; points at `ci/v1.0.3`'s commit). Skipping to
+v1.0.5 avoids the broken tag.
+
+## ci/v1.0.3 — 2026-06-24 — labels.json patch (`area: governance` description ≤100c)
+
+Patch release fixing a content bug in
 
 ## ci/v1.0.3 — 2026-06-24 — labels.json patch (`area: governance` description ≤100c)
 
