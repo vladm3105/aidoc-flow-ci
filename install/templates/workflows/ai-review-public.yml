@@ -19,7 +19,7 @@ on:
     types: [submitted]
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v1.0.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v1.0.1
     with:
       reviewer: codex
       runner_labels_routine: '"ubuntu-latest"'

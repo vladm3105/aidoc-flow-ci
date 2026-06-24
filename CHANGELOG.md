@@ -5,6 +5,55 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+(empty — see `ci/v1.0.1` below for everything just shipped)
+
+## ci/v1.0.1 — 2026-06-24 — origin-based labels + 5 new reusable workflows + docs tree
+
+Minor release bundling the 5 new reusable workflows + 5 new docs +
+the per-origin runner-label convention rename. **Backward
+compatible** — v1.0.0 callers continue to work; the rename is in
+the consumer caller templates only, not in the reusable workflow
+inputs.
+
+### Highlights
+
+- **5 new reusable workflows** (`labeler` / `codeql` /
+  `markdown-lint` / `links` / `secret-scan`) — see per-workflow
+  entries below
+- **Per-origin runner-label convention** — verbose v1.0.0 arrays
+  (`'["self-hosted", "aidoc", "ci-ephemeral"]'`) replaced with
+  clean `'"runner-self"'` in the per-visibility caller templates
+- **5 new consumer-facing docs** under `docs/` (architecture +
+  runners + overrides + security + troubleshooting) + docs index
+  + LABELS.md area-namespace addition
+- **All consumer caller templates pinned to `@ci/v1.0.1`**
+  (existing v1.0.0 callers continue to work; consumers can
+  optionally re-run `install.sh` to pick up the v1.0.1 templates)
+- **`install.sh` default `CI_TAG` bumped to `ci/v1.0.1`**
+- All SHA-pinned actions verified via
+  `gh api repos/<owner>/<repo>/git/refs/tags/<tag>` per the
+  `feedback_verify_sha_pins` lesson from the v1.0.1 prep
+
+### Known limitations carried forward to v1.0.2
+
+- **Public consumers using `ubuntu-latest` for `runner_labels_review`**
+  still don't have a working reviewer-CLI install step. The
+  `install/templates/workflows/ai-review-public.yml` keeps the
+  `REPLACE-ME-with-runner-having-reviewer-CLI` placeholder
+  pending v1.0.2. The original v1.0.1 plan was to add the
+  install step in this release but it was deferred to keep
+  v1.0.1 atomic + low-risk; v1.0.2 will ship verified install
+  commands for `codex` / `claude` CLIs on ubuntu-latest.
+- **Secret names hardcoded** to `APP_REVIEWER_1_ID` /
+  `APP_REVIEWER_1_KEY` — v1.0.1 still doesn't parameterize.
+  v1.0.2+ may add `app_id_secret_name` / `app_key_secret_name`
+  inputs IF consumers actually need non-default names.
+- **Composition trigger shape** is still the PR-#111
+  conservative pre-Phase-B shape. The full `workflow_run`
+  redesign per IPLAN-0017 §3.4 is the Phase-B target (requires
+  rewriting the composition body to handle
+  `github.event.workflow_run.pull_requests[0]`).
+
 ### Added
 
 - **`docs/troubleshooting.md`** — 12-section troubleshooting guide
