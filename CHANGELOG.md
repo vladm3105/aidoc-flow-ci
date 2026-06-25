@@ -5,6 +5,40 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — IPLAN-0022 PR-A: reviewer assets moved to aidoc-flow-ci (ci/v1.1.0 target; 2026-06-25)
+
+- **`ai-review/review-prompt.md`** (NEW; moved from
+  `aidoc-flow-operations/.github/ai-review/`; 97 lines; opening
+  paragraph generalized — "the calling consumer repo" instead of
+  hardcoded `aidoc-flow-operations`).
+- **`ai-review/verdict.schema.json`** (NEW; moved byte-identical
+  from operations).
+- **`ai-review/README.md`** (NEW; directory pointer + "how it's
+  consumed" + per-consumer-override-future framing).
+- **`.github/workflows/ai-review.yml`** "Checkout reviewer assets"
+  step replaced: was `actions/checkout` of `aidoc-flow-operations@main`;
+  now sparse-checkout of `aidoc-flow-ci@${{ github.workflow_ref }}`
+  `ai-review/` directory only. Downstream `RUBRIC=` + `SCHEMA=` lines
+  updated to `./reviewer-assets/ai-review/*` paths.
+- **`docs/ai-review-assets.md`** (NEW; consumer-facing spec — what
+  lives in `ai-review/`, how the workflow consumes it, per-consumer
+  override future framing, schema-change discipline, why-not-in-`.github/`
+  rationale matching IPLAN-0018 `scripts/docs-sync/` precedent).
+- **Per IPLAN-0022 §3.7 P1:** ships as `ci/v1.1.0` after merge.
+  Phase 2 (consumer pin-bumps on operations + framework) ships as
+  separate per-consumer PRs after this lands. Phase 3 (legacy
+  delete on operations) ships after 1 week of clean reviews on the
+  new path.
+- **Trust allowlist still on operations:** only the rubric + schema
+  moved; the trust allowlist (`.github/ai-review/config.json`
+  `trust.ai_review`) remains on `aidoc-flow-operations` per separate
+  governance home (operations governance ≠ CI infrastructure).
+- **Rule 1 EXCEPTION (6 surfaces):** atomic asset-move — splitting
+  creates broken intermediate states where workflow checkout-source
+  and asset-destination are inconsistent. Founder pre-approved per
+  IPLAN-0022 §4 + chat direction 2026-06-25 "Start with #1 (IPLAN-0022
+  PR-A implementation)".
+
 ### Added — `docs/local-pre-push.md`: canonical pre-push self-check pattern for consumers (2026-06-25)
 
 - **`docs/local-pre-push.md`** (NEW; ~140 lines) — canonical pattern

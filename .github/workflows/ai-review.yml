@@ -21,11 +21,13 @@
 # Trust boundary: "we trust only ourself" — config-driven login allowlists in
 # operations@main config.json (`trust.ai_review` → gate; `trust.auto_fix` → also auto-fix).
 # Fork PRs are NEVER trusted. A login not in `ai_review` → HUMAN REVIEW ONLY.
-# Security: workflow/config/rubric/schema are pinned to operations@main (trusted — a PR
-# can't tamper, and rollout repos can't drift the shared rubric); only the PR diff is read
-# (no PR code executed); reviewer adapter is INLINE; the reviewer has no shell-exec tool.
+# Security: workflow itself + trust allowlist + per-consumer config are pinned to
+# operations@main (trusted); rubric + schema are pinned to aidoc-flow-ci@<consumer-pinned-tag>
+# per IPLAN-0022 (ci/v1.1.0+). A PR can't tamper with either source; only the PR diff is
+# read (no PR code executed); reviewer adapter is INLINE; the reviewer has no shell-exec tool.
 # Auth: reviewer = the runner's logged-in CLIs (no secret); the only secret is
-# AI_REVIEW_TOKEN, a scoped read-only PAT for cross-repo PRIVATE asset checkout (operations@main).
+# AI_REVIEW_TOKEN, a scoped read-only PAT for cross-repo PRIVATE asset checkout
+# (operations@main for trust + config; aidoc-flow-ci@<pinned> for rubric + schema).
 # P1/P2 = review + label + block/auto-merge; auto-fix loop + escalation = P3 (deferred, IPLAN-0013).
 name: ai-review
 
@@ -161,15 +163,51 @@ jobs:
       # regardless. See docs/AI_REVIEW_OPS.md.
       SKIP_REVIEW: ${{ contains(github.event.pull_request.labels.*.name, 'skip-ai-review') && '1' || '' }}
     steps:
-      # Re-checkout the reviewer assets here (a fresh self-hosted workspace): the rubric,
-      # verdict schema, and config (reviewer/model/budget). operations@main = trusted;
-      # never PR code. Same pin + token rationale as the trust job.
-      - name: Checkout trusted reviewer assets (operations@main)
+      # Per IPLAN-0022 (ci/v1.1.0+): rubric + schema moved to aidoc-flow-ci/ai-review/.
+      # Per-consumer config (`.github/ai-review/config.json`) STILL comes from operations@main
+      # for now — it's the per-repo POLICY (trust allowlist, reviewer choice, budget),
+      # legitimately separate from the CI ASSETS that moved. Per-consumer-config improvement
+      # (each consumer's own config from its own repo) is a follow-up IPLAN — out of scope
+      # for IPLAN-0022 PR-A which is strictly the asset-move.
+      #
+      # The trust JOB still reads the trust allowlist from operations@main (separate file;
+      # operations is the governance home for trust policy — see step "Checkout trust allowlist").
+      - name: Resolve aidoc-flow-ci pinned ref from workflow_ref
+        if: ${{ env.SKIP_REVIEW != '1' }}
+        id: pin
+        env:
+          GITHUB_WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          # github.workflow_ref format: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@<ref>
+          REF="${GITHUB_WORKFLOW_REF##*@}"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "::notice::ai-review fetching assets from aidoc-flow-ci@${REF}"
+
+      - name: Checkout trusted reviewer assets (aidoc-flow-ci@pinned tag)
+        if: ${{ env.SKIP_REVIEW != '1' }}
+        uses: actions/checkout@v4
+        with:
+          repository: vladm3105/aidoc-flow-ci
+          ref: ${{ steps.pin.outputs.ref }}
+          path: ./reviewer-assets
+          sparse-checkout: |
+            ai-review
+          sparse-checkout-cone-mode: false
+          token: ${{ secrets.AI_REVIEW_TOKEN || secrets.GITHUB_TOKEN }}
+
+      # Pull config.json from operations@main into workspace root (preserves pre-IPLAN-0022
+      # behavior for the four downstream `.github/ai-review/config.json` reads).
+      # Future IPLAN will move config.json to a per-consumer fetch from each consumer's
+      # own repo BASE ref; for now operations@main is the authoritative source.
+      - name: Checkout per-consumer config (operations@main; transitional)
         if: ${{ env.SKIP_REVIEW != '1' }}
         uses: actions/checkout@v4
         with:
           repository: vladm3105/aidoc-flow-operations
           ref: main
+          sparse-checkout: |
+            .github/ai-review/config.json
+          sparse-checkout-cone-mode: false
           token: ${{ secrets.AI_REVIEW_TOKEN || secrets.GITHUB_TOKEN }}
 
       # v1.0.2 PUBLIC consumer support: install codex + claude CLI on
@@ -302,8 +340,10 @@ jobs:
           CFG=.github/ai-review/config.json
           MODEL="${MODEL_IN:-$(jq -r --arg v "$REVIEWER" '.vendors[$v].model // ""' "$CFG")}"
           BUDGET="${BUDGET_IN:-$(jq -r --arg v "$REVIEWER" '.vendors[$v].budget_usd // "2.00"' "$CFG")}"
-          RUBRIC=.github/ai-review/review-prompt.md
-          SCHEMA=.github/ai-review/verdict.schema.json
+          # Per IPLAN-0022 (ci/v1.1.0+): rubric + schema fetched via sparse-checkout from
+          # aidoc-flow-ci into ./reviewer-assets (NOT the workspace-root .github/ path).
+          RUBRIC=./reviewer-assets/ai-review/review-prompt.md
+          SCHEMA=./reviewer-assets/ai-review/verdict.schema.json
           OUT=.ai-review/verdict.json
           rm -f "$OUT"
           # Review the diff ONLY (no PR code is checked out under pull_request_target).
@@ -349,9 +389,10 @@ jobs:
         if: ${{ env.SKIP_REVIEW != '1' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # We checked out operations@main for the reviewer assets, so the local
-          # git remote is operations — pin every `gh pr` op to the CALLER repo
-          # (the PR being reviewed), not whatever remote the checkout left behind.
+          # Per IPLAN-0022: reviewer assets are in ./reviewer-assets/ (from aidoc-flow-ci);
+          # operations@main provides config.json (workspace root .github/ai-review/config.json).
+          # Pin every `gh pr` op to the CALLER repo (the PR being reviewed), not whatever
+          # remote the most-recent checkout left behind.
           GH_REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           TIER: ${{ inputs.tier }}
