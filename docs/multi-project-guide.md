@@ -196,7 +196,18 @@ The **library** owns:
 | **aidoc-flow** (current) | Active. Operations + framework consumers live on `@ci/v1.0.6`. Phase C (iplan-runner, business, iplanic, iplan-standard, web-site, engramory) queued for onboarding. |
 | Future projects (trading, etc.) | Not yet started. Will adopt this onboarding flow when they begin. |
 
-## 8. References
+## 8. Local pre-push self-check (canonical pattern)
+
+Every consumer should ship `scripts/pre_push_check.sh` that runs
+mechanical linters + a local AI self-review via `claude` CLI on the
+diff vs `origin/main`. The local pass is a **mirror** of CI's
+`ai-review.yml` gate (same rubric); it catches issues earlier so
+CI iteration count drops. CI remains the authoritative merge gate.
+
+Full pattern + reference implementation + hardening principles:
+[`local-pre-push.md`](local-pre-push.md).
+
+## 9. References
 
 - [`architecture.md`](architecture.md) — the per-project CI
   architecture (reusable-workflow model; the workflows; trust +

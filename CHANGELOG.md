@@ -5,6 +5,31 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — `docs/local-pre-push.md`: canonical pre-push self-check pattern for consumers (2026-06-25)
+
+- **`docs/local-pre-push.md`** (NEW; ~140 lines) — canonical pattern
+  for consumer repos to ship a `scripts/pre_push_check.sh` that runs
+  mechanical linters + a local AI self-review via `claude` CLI on
+  the diff. Local pass is a MIRROR of CI's `ai-review.yml` gate
+  (same rubric); catches issues earlier; CI remains authoritative.
+- **Reference implementation:** operations PR #137 ships the
+  pattern; this doc canonicalizes it for adoption by other
+  consumers (framework + Phase C: iplan-runner, business, iplanic,
+  iplan-standard, web-site, engramory) and future company projects.
+- **Hardening principles documented:** 5-min `timeout` wrapper on
+  claude call; verdict regex anchored to first-line `^VERDICT:`;
+  model-drift fallback; diff truncation; `SKIP_LOCAL_AI_REVIEW=1`
+  escape hatch; future hardening notes for diff fence-collision.
+- **Adoption prerequisites enumerated:** claude CLI install +
+  auth; `.github/ai-review/review-prompt.md` (IPLAN-0022 will move
+  this to `aidoc-flow-ci/ai-review/`); pre-commit hook wiring.
+- **`docs/multi-project-guide.md`** §8 added — references the new
+  doc + summarizes the pattern as part of the canonical onboarding.
+- **`docs/README.md`** — index updated.
+- **Future enhancement noted:** ship `install/templates/scripts/
+  pre_push_check.sh` so `install.sh` drops it automatically on new
+  consumers; not blocking; tracked in §8 of the new doc.
+
 ### Fixed — `ci/v1.1.0-alpha.2`: docs-sync count step fails when no proposals (alpha.1 bug surfaced by operations Phase A first natural fire 2026-06-25)
 
 - **`.github/workflows/docs-sync.yml`** "Count proposed changes" step:
