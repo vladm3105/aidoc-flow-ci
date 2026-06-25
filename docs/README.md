@@ -17,6 +17,7 @@ This `docs/` tree covers reference + design topics.
 | --- | --- |
 | [`../LABELS.md`](../LABELS.md) | PR + runner label conventions (three namespaces: state, area, runner; separator rules; routing rule by visibility; processes for adding labels / runner origins) |
 | [`troubleshooting.md`](troubleshooting.md) | Common issues + fixes (composition race; skip-ai-review carry-forward; runner-not-found; fabricated SHA pins; `gh: not found`; label install errors; Azure SWA quota; lychee bot-hostile hosts; v1.0.0 public-CLI gap; MD024; CHANGELOG rebase conflicts) |
+| [`multi-project-guide.md`](multi-project-guide.md) | aidoc-flow-ci as company-wide CI library — three-layer architecture (library / project-governance / consumer); onboarding flow for new company projects; per-project decision boundaries |
 |---|---|
 | [`../LABELS.md`](../LABELS.md) | PR + runner label conventions (three namespaces: state, area, runner; separator rules; routing rule by visibility; processes for adding labels / runner origins) |
 | [`security.md`](security.md) | Threat model, trust boundaries, fork-PR handling, secrets model, `pull_request_target` rationale, SHA-pinning, layered secret-scan defense |
