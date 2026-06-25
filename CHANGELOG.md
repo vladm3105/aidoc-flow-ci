@@ -5,6 +5,30 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — `ci/v1.1.0-alpha.2`: docs-sync count step fails when no proposals (alpha.1 bug surfaced by operations Phase A first natural fire 2026-06-25)
+
+- **`.github/workflows/docs-sync.yml`** "Count proposed changes" step:
+  alpha.1 ran `find .docs-sync-proposed -maxdepth 1 ...` without first
+  ensuring the directory exists. When ALL 3 operation scripts produced
+  no proposals (the common case — operations' first natural fire on
+  PR #134 merge had no triggers matching), `.docs-sync-proposed/`
+  didn't exist, `find` exited 1, and `set -euo pipefail` killed the
+  job. Net effect: every "no-changes" dry-run was reported as failure
+  instead of clean "proposed=0".
+- **Fix:** `mkdir -p .docs-sync-proposed` before the count step,
+  guaranteeing the directory exists. `find` then returns 0 with an
+  empty result; count = 0; workflow exits clean.
+- **`install/templates/workflows/docs-sync.yml`** caller template pin
+  bumped from `@ci/v1.1.0-alpha.1` → `@ci/v1.1.0-alpha.2`.
+- **Validation:** confirmed via [actions/runs/28193174223](https://github.com/vladm3105/aidoc-flow-operations/actions/runs/28193174223)
+  — operations docs-sync run from PR #134 merge: trigger ✓ auth ✓
+  setup ✓ 3 op scripts ✓ "no proposals" detection ✓ → count step ✗
+  (the bug this fix closes).
+- This is the **first real-world validation of the alpha.1 skeleton**
+  on a live consumer — exactly what Phase A dry-run pilots are for.
+  Operations bumps its caller pin to `@ci/v1.1.0-alpha.2` in a
+  follow-up PR; next natural fire will validate the fix.
+
 ### Added
 
 - **`docs/multi-project-guide.md`** — explicit documentation of the

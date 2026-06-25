@@ -144,7 +144,11 @@ jobs:
         id: detect
         run: |
           set -euo pipefail
-          COUNT=$(find .docs-sync-proposed -maxdepth 1 -name '*.proposed' -type f 2>/dev/null | wc -l)
+          # alpha.1 bug: find on missing dir exits 1 → set -euo pipefail kills job
+          # when ALL ops produced no proposals (the common case in alpha). Ensure
+          # the dir exists before counting so an empty result is "proposed=0", not failure.
+          mkdir -p .docs-sync-proposed
+          COUNT=$(find .docs-sync-proposed -maxdepth 1 -name '*.proposed' -type f | wc -l)
           echo "proposed=$COUNT" >> "$GITHUB_OUTPUT"
           echo "::notice::docs-sync proposed $COUNT changes"
 
