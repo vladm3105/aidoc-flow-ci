@@ -7,6 +7,30 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ### Added
 
+- **`docs/multi-project-guide.md`** — explicit documentation of the
+  three-layer architecture: `aidoc-flow-ci` as company-wide CI
+  library; per-project governance repo (one per company project);
+  per-consumer config + optional overrides. Onboarding flow for
+  new company projects (create project's governance repo →
+  bootstrap each consumer via `install.sh` → per-project overrides
+  as needed). Per-project decision boundaries enumerated (what
+  stays per-project vs what library owns). Documents the
+  long-implicit "all future company projects" framing from
+  [IPLAN-0017-CHARTER §1](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0017-CHARTER_aidoc-flow-ci.md#1-purpose).
+- **`docs/architecture.md` §0** — new "two-repo architecture
+  (library vs project-governance)" section at the top of the doc.
+  Concrete artifact-placement matrix for library / project-governance
+  / consumer layers. Cross-references the new
+  [`multi-project-guide.md`](docs/multi-project-guide.md).
+- **`README.md`** "Who uses this" section — names current
+  consumers (aidoc-flow-operations, aidoc-flow-framework on
+  `@ci/v1.0.6`) + invites future company projects to use the
+  onboarding flow in `docs/multi-project-guide.md`.
+- **`docs/README.md`** — index updated to list the new
+  `multi-project-guide.md`.
+
+### Added
+
 - **`.github/workflows/docs-sync.yml`** — new reusable workflow
   (alpha; first half of IPLAN-0018 implementation). Mechanical
   post-merge documentation fixer. Triggered by consumer caller on

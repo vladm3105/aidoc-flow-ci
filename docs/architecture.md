@@ -1,15 +1,51 @@
 # Architecture — `aidoc-flow-ci`
 
 How the pieces fit together. This doc covers the reusable-workflow
-model, the 7 shared workflows + what each does, the trust + verdict
-flow that ties `ai-review` and `composition` together, and the
-per-repo policy surfaces consumers configure.
+model, the shared workflows + what each does, the trust + verdict
+flow that ties `ai-review` and `composition` together, the per-repo
+policy surfaces consumers configure, and **the multi-repo + multi-project
+architecture** (`aidoc-flow-ci` as the company-wide CI library;
+per-project governance lives in each project's own repo).
 
 For consumer-facing intro + install, see [`../README.md`](../README.md).
-For label conventions, see [`../LABELS.md`](../LABELS.md). For
-override patterns, see [`overrides.md`](overrides.md). For security
-model, see [`security.md`](security.md). For runner-pool setup, see
+For onboarding a new company project, see
+[`multi-project-guide.md`](multi-project-guide.md). For label
+conventions, see [`../LABELS.md`](../LABELS.md). For override
+patterns, see [`overrides.md`](overrides.md). For security model,
+see [`security.md`](security.md). For runner-pool setup, see
 [`runners.md`](runners.md).
+
+## 0. The two-repo architecture (library vs project-governance)
+
+**`aidoc-flow-ci` is the company-wide CI library.** It hosts the
+reusable workflows, scripts, install templates, and shared CI assets
+(reviewer rubric + verdict schema, future shared skills). Every
+project + every consumer repo uses it via `uses: vladm3105/aidoc-flow-ci/...@ci/vX.Y.Z`.
+
+**Each PROJECT (aidoc-flow, future trading, etc.) has its OWN
+governance repo.** Operations (`aidoc-flow-operations`) is the
+governance home for the aidoc-flow project: IPLANs, DECISIONS log,
+HANDOFF, inbox runbooks, ROADMAP, OKRs. Future projects get their
+own equivalent.
+
+**Each CONSUMER repo (operations, framework, business, iplanic,
+future projects' consumers) has its OWN per-repo config** —
+`.github/ai-review/config.json` (trust allowlist, vendor choice,
+auto-merge eligibility) + `.github/docs-sync.json` + optional
+overrides via `.github/ai-review/review-prompt.md` (per-consumer
+rubric) etc.
+
+| Layer | Where | Scope | Examples |
+|---|---|---|---|
+| **CI library** | `aidoc-flow-ci` | Single source-of-truth across the company | Reusable workflows; install templates; shared rubric; verdict schema; scripts; docs |
+| **Project governance** | Per project (`aidoc-flow-operations` for aidoc-flow; future projects get their own) | One per company project | IPLANs, DECISIONS log, HANDOFF, inbox runbooks, ROADMAP, OKRs |
+| **Consumer repo** | Each repo that runs CI (operations, framework, business, etc.) | One per repo | Caller workflow files; per-repo `config.json`; optional asset overrides |
+
+Per [IPLAN-0017-CHARTER §1](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0017-CHARTER_aidoc-flow-ci.md#1-purpose),
+this repo is "A single source-of-truth repo for CI infrastructure
+shared across the aidoc-flow workspace **and all future company
+projects**." See [`multi-project-guide.md`](multi-project-guide.md)
+for the onboarding flow when a new company project adopts.
 
 ## 1. The reusable-workflow model
 

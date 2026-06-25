@@ -1,9 +1,22 @@
 # aidoc-flow-ci
 
-Shared CI library for the **aidoc-flow** workspace and future company
-projects. Consumer repos call the reusable workflows via `uses:` from
-their own `.github/workflows/`; local files always win
+**Single source-of-truth CI library** for the **aidoc-flow** workspace
++ all future company projects. Consumer repos call the reusable
+workflows via `uses:` from their own `.github/workflows/`; local files
+always win
 ([IPLAN-0017 §3.1a](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0017_unified-ci-flows.md)).
+
+## Who uses this
+
+| Project | Status | Consumers |
+|---|---|---|
+| **aidoc-flow** (current) | Active | `aidoc-flow-operations`, `aidoc-flow-framework` on `@ci/v1.0.6` |
+| Future company projects | Onboarding flow ready | See [`docs/multi-project-guide.md`](docs/multi-project-guide.md) for new-project adoption |
+
+This library is **decoupled from any single project's product cadence** —
+it ships its own `ci/vX.Y.Z` tags driven by CI infrastructure changes
+(reviewer-engine swaps, runner-platform updates, security-scan vendor
+changes), not project releases.
 
 ## What ships in `ci/v1.0.6`
 
