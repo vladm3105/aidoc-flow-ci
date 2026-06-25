@@ -105,12 +105,12 @@ purpose, so they live at the top level next to other library content
 (`scripts/`, `install/`, `docs/`).
 
 Same precedent: `aidoc-flow-ci/scripts/docs-sync/` (per IPLAN-0018; top-level)
-+ this `ai-review/` directory.
+plus this `ai-review/` directory.
 
 ## 6. References
 
 - [`../ai-review/README.md`](../ai-review/README.md) — directory contents pointer
-- [IPLAN-0022](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0022_source-of-truth-migration.md) — the migration plan
+- [IPLAN-0022 — source-of-truth migration plan](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0022_source-of-truth-migration.md)
 - [`architecture.md`](architecture.md) — three-layer CI architecture
 - [`multi-project-guide.md`](multi-project-guide.md) — multi-project framing
 - [`local-pre-push.md`](local-pre-push.md) — pre-push self-check (uses the same rubric locally)

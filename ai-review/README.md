@@ -10,7 +10,7 @@ this directory is the canonical home for the reviewer assets that
 |---|---|---|
 | `review-prompt.md` | The system prompt the reviewer LLM uses (98 lines) — defines the rubric (severity scale, dimensions, doc-currency rule, governance-PR discipline, anti-injection guidance) | Generalized 2026-06-25 to address "the calling consumer repo" instead of `aidoc-flow-operations` specifically (1-line additive change vs the 97-line source on operations) |
 | `verdict.schema.json` | JSON Schema for the structured verdict the reviewer emits | Downstream parsers depend on this shape; changes require careful coordination |
-| `README.md` | This file |
+| `README.md` | This file | — |
 
 ## How it's consumed
 
@@ -49,6 +49,6 @@ older asset version (semver-honest).
 
 - [`docs/ai-review-assets.md`](../docs/ai-review-assets.md) — the canonical
   consumer-facing spec for these assets + override pattern future
-- [IPLAN-0022](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0022_source-of-truth-migration.md) — the migration plan
+- [IPLAN-0022 — the migration plan](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0022_source-of-truth-migration.md)
 - [`docs/architecture.md`](../docs/architecture.md) — three-layer CI architecture
 - [`docs/multi-project-guide.md`](../docs/multi-project-guide.md) — multi-project framing
