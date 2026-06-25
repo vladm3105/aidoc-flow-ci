@@ -5,7 +5,51 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-(empty — see `ci/v1.0.6` below for everything just shipped)
+### Added
+
+- **`.github/workflows/docs-sync.yml`** — new reusable workflow
+  (alpha; first half of IPLAN-0018 implementation). Mechanical
+  post-merge documentation fixer. Triggered by consumer caller on
+  `push: branches: [main]`. Three operations (each disable-able
+  via `.github/docs-sync.json`): CHANGELOG stub-entry on workflow
+  changes; version-string propagation (alpha.1 stub — detection
+  only; full regex-map in alpha.2); cross-ref dead-link repair
+  (alpha.2). Belt-and-suspenders recursion guards (`[skip ci]` +
+  `if: github.actor != 'aidoc-flow-bot[bot]'`). Dry-run mode by
+  default (posts PR comment with proposed changes; no commits).
+  Live-mode commit logic requires `AIDOC_FLOW_BOT_ID` +
+  `AIDOC_FLOW_BOT_KEY` secrets + 🔴 founder-created `aidoc-flow-bot`
+  App per IPLAN-0018 §3.4 (separate from `aidoc-reviewer` for
+  separation of concerns). Concurrency-group serialized.
+  SHA-pinned actions: `actions/checkout@v4.2.2`
+  (`11bd71901bbe5b1630ceea73d27597364c9af683`) +
+  `actions/setup-python@v6.2.0`
+  (`a309ff8b426b58ec0e2a45f0f869d46889d02405`).
+- **`install/templates/workflows/docs-sync.yml`** — caller template
+  pinned at `@ci/v1.1.0-alpha.1`. Single template (works for both
+  PRIVATE + PUBLIC). Documents prerequisites (founder creates App
+  + sets secrets) + the rollout phases per IPLAN-0018 §3.7
+  (operations pilot dry-run for 1 week → live → framework opts in
+  → Phase C consumers).
+- **`install/templates/docs-sync.json`** — per-consumer config
+  template. Ships with `dry_run: true` by default (mandatory for
+  first 1-2 weeks per §3.7 P3). Three operation kill-switches
+  (`changelog_stub.enabled`, `version_sync.enabled`,
+  `cross_ref_repair.enabled`). Allowlisted commit-target paths
+  (`CHANGELOG.md`, `README.md`, `docs/**`, `*.md`) per the §3.5
+  threat model commit-content allowlist.
+
+### Targeting `ci/v1.1.0-alpha.1`
+
+This release ships the IPLAN-0018 SKELETON — workflow body + caller
+template + config template. Operations adopts in dry-run mode for
+~1 week per the §3.7 P3 graduation criteria; live-mode commit
+logic + full operation implementations land in `ci/v1.1.0-alpha.2`
+after operations pilot validates the skeleton. Stable `ci/v1.1.0`
+ships after operations pilot graduates to live mode (≥5 merges
+with zero proposed-vs-applied file-set divergence).
+
+
 
 ## ci/v1.0.6 — 2026-06-24 — caller-template backport + docs hardening (post-framework-Phase-A)
 
