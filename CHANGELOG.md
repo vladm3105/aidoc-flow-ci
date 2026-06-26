@@ -5,6 +5,40 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — ci/v1.1.3: second checkout step `clean: false` (silent killer of v1.1.2 full-clone; 2026-06-26)
+
+- **`.github/workflows/ai-review.yml`** "Checkout per-consumer config
+  (operations@main; transitional)" step: added `clean: false`.
+- **Why:** default `clean: true` runs `git clean -ffdx` at workspace
+  root before the second checkout fetches. That recursively wiped
+  the prior "Checkout trusted reviewer assets" step's
+  `./reviewer-assets/` subdirectory — which contained the rubric
+  file needed by the reviewer adapter. Net effect: the rubric got
+  fetched (by step 1) then immediately deleted (by step 2's clean)
+  → `claude --append-system-prompt-file` failed with 'file not
+  found' → ai-review verdict broken.
+- **Validation evidence:** operations PR #142 (v1.1.2 validation
+  smoke) ai-review log showed `Removing reviewer-assets/` IMMEDIATELY
+  before `HEAD is now at e1e7b4e` (the operations@main config.json
+  checkout) — the second checkout step removed the first's output.
+- **Why this wasn't caught in earlier diagnostic rounds:** v1.1.0 +
+  v1.1.1 attempts focused on sparse-checkout pattern theory; the
+  `clean: true` interaction is a separate failure mode that became
+  the proximate cause once sparse-checkout was correctly removed
+  in v1.1.2 (the full-clone DID populate the directory; the second
+  step then wiped it).
+- **Consumer impact:** consumers bump caller pin `@ci/v1.1.2` →
+  `@ci/v1.1.3` to consume the fix.
+- **Chicken-and-egg:** SAME as v1.1.1 + v1.1.2 — PRs that bump the
+  pin can't pass ai-review (BASE main has buggy v1.1.2 workflow);
+  ship via `skip-ai-review` label + admin-merge.
+- **Lesson recorded:** any multi-checkout workflow needs explicit
+  `clean: false` on all but the first checkout, OR per-checkout
+  path isolation, OR the multi-checkout pattern itself replaced
+  with a single full clone + manual file copies. Future workflow
+  changes adding additional `actions/checkout@vN` steps need
+  this constraint codified.
+
 ### Fixed — install/templates/workflows/composition-{private,public}.yml: add `opened` trigger (Gap 2 propagation fix; 2026-06-26)
 
 - **`install/templates/workflows/composition-private.yml`** triggers
