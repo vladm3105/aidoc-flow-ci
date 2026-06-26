@@ -213,6 +213,15 @@ jobs:
           sparse-checkout: |
             .github/ai-review/config.json
           sparse-checkout-cone-mode: false
+          # CRITICAL ci/v1.1.3 fix: default `clean: true` runs `git clean -ffdx`
+          # at workspace root which WIPES the prior `Checkout trusted reviewer
+          # assets` step's `./reviewer-assets/` subdirectory. Symptom (operations
+          # PR #142): the rubric file got fetched then immediately removed,
+          # causing the SAME 'Append system prompt file not found' error that
+          # ci/v1.1.2's full-clone fix was supposed to resolve. The full-clone
+          # fix itself was correct; the second checkout's clean was the
+          # silent killer. `clean: false` preserves the reviewer-assets/ subdir.
+          clean: false
           token: ${{ secrets.AI_REVIEW_TOKEN || secrets.GITHUB_TOKEN }}
 
       # v1.0.2 PUBLIC consumer support: install codex + claude CLI on
