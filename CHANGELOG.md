@@ -5,6 +5,23 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — README.md: refresh to current `ci/v1.1.3` (was stale at `ci/v1.0.6`; 2026-06-26)
+
+- **`README.md`** "Who uses this" table, "What ships" section
+  header, install URL, and "known limitations" section header all
+  bumped from `@ci/v1.0.6` → `@ci/v1.1.3` matching the current
+  consumer state on operations + framework.
+- **Why:** README was the public-facing entry point + still cited
+  v1.0.6 as current despite v1.1.0/v1.1.1/v1.1.2/v1.1.3 ships
+  today (sparse-checkout saga + composition trigger Gap 2 + full-
+  clone fix). New Phase C consumers reading the README would get
+  the wrong version on install. Historical `v1.0.6` context (the
+  pre-v1.1.0 secret-naming limitation note) preserved for
+  reference.
+- Doc-currency rule per `CLAUDE.md` "Keep docs current": every
+  pin-bump session refreshes README references in the same batch.
+  This entry closes today's saga.
+
 ### Fixed — ci/v1.1.3: second checkout step `clean: false` (silent killer of v1.1.2 full-clone; 2026-06-26)
 
 - **`.github/workflows/ai-review.yml`** "Checkout per-consumer config
