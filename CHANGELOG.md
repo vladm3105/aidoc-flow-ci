@@ -5,6 +5,34 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — ci/v1.1.2: full clone of aidoc-flow-ci reviewer assets (sparse-checkout deemed unfixable after 2 attempts; 2026-06-26)
+
+- **`.github/workflows/ai-review.yml`** "Checkout trusted reviewer
+  assets" step: removed sparse-checkout entirely; uses full clone.
+  - **Why:** ci/v1.1.1 (cone-mode) STILL failed to populate
+    `./reviewer-assets/ai-review/` on GitHub-hosted runner fresh
+    clones (verified via framework PR #173 + operations PR #140
+    ai-review failures with `Append system prompt file not found`
+    error AFTER bumping to @ci/v1.1.1).
+  - **Hypothesis:** `actions/checkout@v4` interaction between
+    `path: ./reviewer-assets` parameter + sparse-checkout (any mode)
+    doesn't populate sub-directory files reliably on fresh clones.
+    Could be a `@v4` quirk; could need `@v5`; could be an undocumented
+    constraint. Stopped iterating after 2 attempts per minimal-and-
+    realistic rule.
+  - **Trade-off accepted:** full clone of aidoc-flow-ci is a few
+    seconds slower per ai-review fire vs sparse-checkout — acceptable
+    cost for reliability. The repo is small (~tens of files); the
+    runtime impact is negligible.
+- **Validation:** consumers (operations + framework) bump caller pin
+  `@ci/v1.1.1` → `@ci/v1.1.2`; next ai-review fire on either consumer
+  validates the full-clone path end-to-end.
+- **Chicken-and-egg context:** PRs that bump the pin can't pass
+  ai-review (BASE main still has the buggy v1.1.1 workflow); they
+  ship via the documented `skip-ai-review` label escape hatch +
+  admin-merge. Same pattern as operations PR #140 / framework PR #175
+  used for v1.1.1.
+
 ### Fixed — runner CLASS vs LABEL terminology cleanup + `docs/runners.md` §0 canonical reference (2026-06-26)
 
 - **`docs/runners.md` §0** (NEW): canonical terminology reference —
