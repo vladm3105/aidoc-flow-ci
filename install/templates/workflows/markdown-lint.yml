@@ -2,8 +2,8 @@
 #
 # Single template (works for both PRIVATE + PUBLIC). The reusable
 # workflow uses markdownlint-cli2-action which is lightweight + fast
-# on ubuntu-latest. PRIVATE consumers per OPS-0049 may override
-# runner_labels to '"runner-self"'.
+# on GitHub-hosted runners (e.g. `ubuntu-latest`). PRIVATE consumers
+# per OPS-0049 may override runner_labels to '"runner-self"'.
 #
 # Companion starter config: copy install/templates/.markdownlint.json
 # to your repo root for sensible rule defaults (or rely on cli2's

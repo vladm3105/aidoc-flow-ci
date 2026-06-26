@@ -57,7 +57,7 @@ on:
         type: string
         default: '"ubuntu-latest"'
       runner_labels_review:
-        description: 'JSON array of runner labels for the heavy reviewer job. Public consumers MUST point at a runner with the reviewer CLI installed + authenticated (ubuntu-latest does NOT qualify); private consumers set their self-hosted reviewer label set.'
+        description: 'JSON array of runner labels for the heavy reviewer job. Public consumers MUST point at a runner with the reviewer CLI installed + authenticated (GitHub-hosted runners like ubuntu-latest do NOT qualify out-of-the-box — the CLI is installed at workflow start per ci/v1.0.2+); private consumers set their self-hosted reviewer label set.'
         type: string
         default: '"ubuntu-latest"'
 

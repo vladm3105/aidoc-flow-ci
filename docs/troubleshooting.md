@@ -273,7 +273,8 @@ with `codex: not found` (or `claude: not found`).
 **Cause:** `ci/v1.0.0` ships the public ai-review template with
 `runner_labels_review: '"REPLACE-ME-with-runner-having-reviewer-CLI"'`
 as a placeholder. Consumers who set the value to `"ubuntu-latest"`
-hit this — ubuntu-latest doesn't have the reviewer CLI.
+hit this — GitHub-hosted runners (including `ubuntu-latest`) don't
+have the reviewer CLI pre-installed.
 
 **Fix:** Two options:
 
