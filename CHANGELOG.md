@@ -5,6 +5,34 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — runner CLASS vs LABEL terminology cleanup + `docs/runners.md` §0 canonical reference (2026-06-26)
+
+- **`docs/runners.md` §0** (NEW): canonical terminology reference —
+  runners have two CLASSES (GitHub-hosted vs self-hosted; managed by
+  GitHub vs operator) and many possible LABELS (`ubuntu-latest`,
+  custom self-hosted pools); cites
+  [GitHub Actions docs](https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners).
+  Includes a "common mistakes to AVOID" table + worked example.
+- **`.github/workflows/ai-review.yml`** `runner_labels_review` input
+  description: "(ubuntu-latest does NOT qualify)" → "(GitHub-hosted
+  runners like ubuntu-latest do NOT qualify out-of-the-box — CLI is
+  installed at workflow start per ci/v1.0.2+)" — gives reader the
+  class context + the relevant ci/v1.0.2+ behavior in one place.
+- **`docs/troubleshooting.md` §10**: "ubuntu-latest doesn't have the
+  reviewer CLI" → "GitHub-hosted runners (including `ubuntu-latest`)
+  don't have the reviewer CLI pre-installed" — class-first framing.
+- **`install/templates/workflows/markdown-lint.yml`** header comment:
+  "on ubuntu-latest" → "on GitHub-hosted runners (e.g. `ubuntu-latest`)".
+- **Why this matters:** confusing class with label leads to bugs like
+  the IPLAN-0022 sparse-checkout pattern (fixed in PR #29 / ci/v1.1.1)
+  — the bug was masked on self-hosted because of cached state; only
+  exposed on GitHub-hosted fresh clones. If we'd thought
+  "ubuntu-latest is just a runner" we'd have assumed it behaves like
+  the other runners; the class distinction makes the cached-state-vs-
+  fresh-clone difference predictable.
+- All historical/already-shipped CHANGELOG entries with "ubuntu-latest"
+  framing are left as-is (ship-date-fixed); only NEW docs going forward
+  use class-first framing per §0.
 ### Fixed — ci/v1.1.1: sparse-checkout pattern fix (IPLAN-0022 PR-A bug; 2026-06-26)
 
 - **`.github/workflows/ai-review.yml`** "Checkout trusted reviewer

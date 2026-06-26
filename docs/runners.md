@@ -11,6 +11,40 @@ visibility)". For the bigger architectural picture, see
 [`architecture.md`](architecture.md) §5 ("Inputs that vary per
 consumer").
 
+## 0. Terminology — runner CLASS vs runner LABEL (canonical)
+
+Per [GitHub Actions docs](https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners),
+runners have two distinct CLASSES and many possible LABELS:
+
+| Concept | Definition | Examples |
+|---|---|---|
+| **Runner CLASS** | Who provisions + manages the runner machine | "GitHub-hosted runners" (managed by GitHub) · "self-hosted runners" (operator-provisioned) |
+| **Runner LABEL** | String matched by `runs-on:` to identify a specific runner image / pool within a class | `ubuntu-latest`, `ubuntu-22.04`, `windows-latest` (GitHub-hosted images) · `[self-hosted, aidoc, ci-ephemeral]`, `[self-hosted, aidoc, ai-review]` (custom self-hosted pools) |
+
+**Common terminology mistakes to AVOID** (these conflate class and label):
+
+| ❌ Incorrect framing | ✅ Correct framing |
+|---|---|
+| "ubuntu-latest runner" | "GitHub-hosted runner (e.g. `ubuntu-latest`)" |
+| "ubuntu-latest does fresh clone" | "GitHub-hosted runners do fresh clone per job" |
+| "PRIVATE consumers use ubuntu-latest runner" | "PRIVATE consumers use a GitHub-hosted runner labeled `ubuntu-latest`" |
+| "on ubuntu-latest" (as a category) | "on GitHub-hosted runners (image: ubuntu-latest)" |
+
+The distinction matters because:
+
+- **Class** determines billing model (GitHub-hosted = metered for PRIVATE / free for PUBLIC; self-hosted = your infra cost)
+- **Class** determines lifecycle (GitHub-hosted = fresh VM per job; self-hosted = persistent state unless ephemeral-by-design)
+- **Label** determines which runner image / pool gets the job (`ubuntu-latest` resolves to GitHub's latest Ubuntu LTS image; `[self-hosted, aidoc, ai-review]` resolves to your reviewer-CLI-pre-baked pool)
+
+Workflow YAML uses labels (e.g. `runs-on: ubuntu-latest`); prose
+should use class names when talking about the runner category, and
+label names when talking about a specific image / pool. Example:
+
+> "Operations uses self-hosted runners labeled `[self-hosted, aidoc,
+> ci-ephemeral]` for the trust job and `[self-hosted, aidoc, ai-review]`
+> for the heavy reviewer; framework uses GitHub-hosted runners
+> (`ubuntu-latest`) for both."
+
 ## 1. The runner-label convention recap
 
 | Label | Origin | What's installed |
