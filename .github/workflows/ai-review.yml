@@ -190,9 +190,14 @@ jobs:
           repository: vladm3105/aidoc-flow-ci
           ref: ${{ steps.pin.outputs.ref }}
           path: ./reviewer-assets
+          # Cone-mode sparse-checkout: pass directory NAME (not glob). Cone mode
+          # treats the value as a directory path + populates it recursively.
+          # Earlier non-cone-mode `ai-review` glob matched the literal filename
+          # (not the directory contents) — broke on GitHub-hosted runner fresh
+          # clones (worked on self-hosted only due to cached state from prior
+          # runs). Fixed in ci/v1.1.1 per framework PR #173 ai-review failure.
           sparse-checkout: |
             ai-review
-          sparse-checkout-cone-mode: false
           token: ${{ secrets.AI_REVIEW_TOKEN || secrets.GITHUB_TOKEN }}
 
       # Pull config.json from operations@main into workspace root (preserves pre-IPLAN-0022

@@ -33,6 +33,35 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 - All historical/already-shipped CHANGELOG entries with "ubuntu-latest"
   framing are left as-is (ship-date-fixed); only NEW docs going forward
   use class-first framing per §0.
+### Fixed — ci/v1.1.1: sparse-checkout pattern fix (IPLAN-0022 PR-A bug; 2026-06-26)
+
+- **`.github/workflows/ai-review.yml`** "Checkout trusted reviewer
+  assets" step: removed `sparse-checkout-cone-mode: false` so the
+  step uses default cone-mode. The non-cone-mode pattern `ai-review`
+  matched the literal filename (not the directory contents) →
+  on fresh clones (GitHub-hosted runners, e.g. `ubuntu-latest`),
+  the `ai-review/` directory wasn't populated →
+  `review-prompt.md` not found → `claude --append-system-prompt-file`
+  failed → ai-review verdict broken on every PUBLIC consumer using
+  GitHub-hosted runners.
+- **How operations passed despite the bug:** operations runs on a
+  self-hosted runner with cached state from prior `actions/checkout`
+  invocations that populated the full repo; sparse-checkout pattern
+  issue was masked. GitHub-hosted runners do fresh clone per job →
+  bug exposed on framework's PR.
+- **Validation:** framework [PR #173](https://github.com/vladm3105/aidoc-flow-framework/pull/173)
+  ai-review failed with:
+  `Error: Append system prompt file not found: .../reviewer-assets/ai-review/review-prompt.md`
+- After ci/v1.1.1 tag ships: consumers can bump caller pin
+  `@ci/v1.1.0` → `@ci/v1.1.1` to consume the fix. Framework PR #173
+  will re-fire ai-review with the new path-population behavior.
+- This is the **first real-world cross-runner-class validation** of
+  IPLAN-0022 PR-A — self-hosted (operations) masked a bug that
+  GitHub-hosted (framework) exposed. Per GitHub Actions terminology:
+  runners have two CLASSES (GitHub-hosted vs self-hosted); labels
+  (`ubuntu-latest`, custom self-hosted labels) identify specific
+  runner images within each class. Lesson: any new sparse-checkout
+  pattern should be tested on BOTH classes before declaring success.
 
 ### Added — `docs/troubleshooting.md` §15: label-cycle retrigger pattern (2026-06-26)
 
