@@ -10,7 +10,7 @@ always win
 
 | Project | Status | Consumers |
 |---|---|---|
-| **aidoc-flow** (current) | Active | `aidoc-flow-operations`, `aidoc-flow-framework` on `@ci/v1.0.6` |
+| **aidoc-flow** (current) | Active | `aidoc-flow-operations`, `aidoc-flow-framework` on `@ci/v1.1.3` |
 | Future company projects | Onboarding flow ready | See [`docs/multi-project-guide.md`](docs/multi-project-guide.md) for new-project adoption |
 
 This library is **decoupled from any single project's product cadence** —
@@ -18,7 +18,7 @@ it ships its own `ci/vX.Y.Z` tags driven by CI infrastructure changes
 (reviewer-engine swaps, runner-platform updates, security-scan vendor
 changes), not project releases.
 
-## What ships in `ci/v1.0.6`
+## What ships in `ci/v1.1.3`
 
 | Workflow | Purpose |
 | --- | --- |
@@ -43,7 +43,7 @@ For the per-workflow design rationale see [`docs/architecture.md`](docs/architec
 ## Install on a new consumer repo
 
 ```sh
-bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.0.6/install/install.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.1.3/install/install.sh) \
   vladm3105/<consumer-repo> --visibility private
 ```
 
@@ -86,7 +86,7 @@ pinned `ci/vX.Y.Z` tag and reports any diff as a `::warning::`.
 **Never blocks the commit or the PR.** Run as a pre-commit hook or
 periodic GitHub Action.
 
-## v1.0.6 known limitations
+## v1.1.3 known limitations
 
 - **Public-consumer CLI install — validated end-to-end on framework
   Phase A activation 2026-06-24.** The ubuntu-latest CLI install
