@@ -28,6 +28,7 @@ For the broader architecture, see
 | Rebase conflict on shared CHANGELOG.md | [§12 CHANGELOG rebase conflicts](#12-changelog-rebase-conflicts-on-stacked-prs) |
 | Reusable workflow `startup_failure` (no logs, empty jobs) | [§13 Actions allowlist blocks reusable](#13-startup_failure--reusable-workflow-blocked-by-consumers-actions-allowlist) |
 | Reusable workflow `startup_failure` after §13 fix | [§14 Caller workflow_permissions blocks reusable](#14-startup_failure--callers-workflow_permissions-read-blocks-reusables-write) |
+| Stuck check on latest commit (no new push to retrigger) | [§15 Label-cycle retrigger](#15-stuck-check--label-cycle-retrigger) |
 
 ## 1. Composition pre-ai-review race
 
@@ -452,6 +453,68 @@ Surfaced by framework Phase A activation 2026-06-24. Framework
 v1.0.6 caller templates do NOT include the `permissions:` block
 by default (would surprise consumers who don't need it); document
 the requirement so consumers can add it when they hit this.
+
+## 15. Stuck check — label-cycle retrigger
+
+Some workflows in this library (`composition.yml`, `ai-review.yml`)
+listen on `pull_request_target` event types that include `labeled` +
+`unlabeled`. When a required check is genuinely STUCK on the latest
+commit (e.g., composition didn't fire after a merge-with-main; an
+ai-review verdict is stale on a prior commit but no new push to
+re-trigger), a **label cycle** injects a synthetic PR event that
+fires the listening workflows on the current commit state:
+
+```bash
+gh pr edit <PR> --add-label "skip-ai-review"    # fires labeled event
+sleep 3
+gh pr edit <PR> --remove-label "skip-ai-review" # fires unlabeled event
+```
+
+Result: two fresh `pull_request_target` events → every workflow with
+`labeled`/`unlabeled` in its trigger types runs again on the current
+commit (no commit/push required).
+
+### The `skip-ai-review` label specifically
+
+`skip-ai-review` is a workflow-recognized label. When PRESENT,
+`ai-review.yml` reads:
+
+```yaml
+env:
+  SKIP_REVIEW: ${{ contains(github.event.pull_request.labels.*.name, 'skip-ai-review') && '1' || '' }}
+```
+
+Every step has `if: env.SKIP_REVIEW != '1'`, so the heavy review work
+is skipped + the workflow emits a fast `ai:review-passed` outcome.
+This is the LIBRARY mechanism for "I know this push has no new content
+worth reviewing" — used during the cycle to keep ai-review fast.
+
+### When to use a label cycle
+
+| Scenario | Use it? |
+| --- | --- |
+| Composition stuck on `pending` after a rebase-with-main commit (no actual review changes) | ✅ Yes — composition fires only on PR events; cycle injects fresh ones |
+| ai-review verdict still on a STALE commit after a rebase | ✅ Yes — forces re-fire on latest commit |
+| Rebase-only commit that introduces no logical changes (previously APPROVED) | ❌ **Don't cycle** — add `skip-ai-review` label **permanently** (no remove) so ai-review skips entirely |
+| Random "let me retry" reflex | ❌ No — wastes CI runner-minutes |
+
+### Cost / risk
+
+Each cycle fires **every workflow listening on labeled/unlabeled** —
+not just the one you're trying to retrigger. So a cycle aimed at
+composition also fires ai-review (which respects `skip-ai-review` if
+present during the cycle but still uses runner slots). On a busy
+queue, cycles can also cause cancellation races where a newer run
+cancels an in-progress earlier one.
+
+**Rule of thumb:** only cycle when a check is genuinely stuck for
+≥10 min beyond expected runtime. Otherwise, wait — the queue is
+likely just slow.
+
+Surfaced as a session-end debrief 2026-06-26: operations + framework
+were each cycling redundantly during IPLAN-0022 PR-B/PR-C rollout;
+the label-cycle pattern works but compounded slowness on the 2-runner
+self-hosted pool. Documented here as canonical guidance for consumers.
 
 ## Reporting new issues
 
