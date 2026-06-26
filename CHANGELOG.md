@@ -5,6 +5,26 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — install/templates/workflows/composition-{private,public}.yml: add `opened` trigger (Gap 2 propagation fix; 2026-06-26)
+
+- **`install/templates/workflows/composition-private.yml`** triggers
+  extended: `[synchronize, labeled, unlabeled]` →
+  `[opened, synchronize, reopened, ready_for_review, labeled, unlabeled]`.
+- **`install/templates/workflows/composition-public.yml`** triggers
+  extended: `[synchronize, labeled, unlabeled]` →
+  `[opened, synchronize, reopened, labeled, unlabeled]`.
+- **Why:** the install templates had the same Gap 2 bug fixed in
+  operations PR #140 + framework PR #175 — missing `opened` trigger
+  meant freshly-opened PRs left composition pending (only ai-review
+  fires on `opened`) → merge blocked until label-cycle / push woke
+  composition. New consumers onboarded via `install.sh` would
+  inherit the bug. This fix propagates the root-cause repair to
+  future consumers.
+- **Phase C consumers now safe:** iplan-runner, business, iplanic,
+  iplan-standard, web-site, engramory can onboard via `install.sh`
+  + get the correct triggers by default. Removes the per-consumer
+  hand-copy friction noted in the readiness assessment.
+
 ### Fixed — ci/v1.1.2: full clone of aidoc-flow-ci reviewer assets (sparse-checkout deemed unfixable after 2 attempts; 2026-06-26)
 
 - **`.github/workflows/ai-review.yml`** "Checkout trusted reviewer

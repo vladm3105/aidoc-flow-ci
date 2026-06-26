@@ -1,13 +1,17 @@
-# v1.0.0 trigger shape per aidoc-flow-operations PR #111 (conservative
-# pre-Phase-B): pull_request_target [synchronize, labeled, unlabeled] +
-# pull_request_review. `synchronize` (push) is needed for the
-# skip-ai-review carry-forward path. Full workflow_run redesign is the
-# Phase-B target (IPLAN-0017 §3.4) when the composition body can be
-# rewritten to handle github.event.workflow_run.pull_requests[0].
+# Trigger shape per aidoc-flow-operations PR #111 + Gap 2 fix 2026-06-26
+# (operations PR #140 + framework PR #175): added `opened`, `reopened`,
+# `ready_for_review` to pull_request_target types. Without them,
+# freshly-opened PRs left composition pending (only ai-review fired on
+# `opened`) → merge blocked until label-cycle / push woke composition.
+# The label-cycle pattern in `docs/troubleshooting.md §15` was the
+# workaround; this is the root-cause fix. `synchronize` (push) remains
+# needed for the skip-ai-review carry-forward path. Full workflow_run
+# redesign is the Phase-B target (IPLAN-0017 §3.4) when the composition
+# body can be rewritten to handle github.event.workflow_run.pull_requests[0].
 name: composition
 on:
   pull_request_target:
-    types: [synchronize, labeled, unlabeled]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   pull_request_review:
     types: [submitted, dismissed, edited]
 jobs:
