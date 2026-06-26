@@ -1,9 +1,15 @@
-# v1.0.0 trigger shape per aidoc-flow-operations PR #111. See
-# composition-private.yml for the trigger-shape rationale.
+# Trigger shape per aidoc-flow-operations PR #111 + Gap 2 fix 2026-06-26
+# (framework PR #175): added `opened`, `reopened` to pull_request_target
+# types. Without them, freshly-opened PRs left composition pending (only
+# ai-review fired on `opened`) → merge blocked until label-cycle / push
+# woke composition. See composition-private.yml for the full rationale.
+# Public-repo variant omits `ready_for_review` (no draft→ready flow on
+# PUBLIC consumers historically); add it if your public consumer uses
+# drafts.
 name: composition
 on:
   pull_request_target:
-    types: [synchronize, labeled, unlabeled]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   pull_request_review:
     types: [submitted, dismissed, edited]
 jobs:
