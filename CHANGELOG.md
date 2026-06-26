@@ -5,6 +5,38 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — ci/v1.1.4: reorder checkouts (workspace-root FIRST) — GitHub-hosted runner fix (2026-06-26)
+
+- **`.github/workflows/ai-review.yml`** "Checkout per-consumer
+  config" + "Checkout trusted reviewer assets" steps: swapped
+  order. Workspace-root checkout (operations config) NOW runs
+  FIRST on the fresh workspace; subdir checkout (reviewer assets
+  via `path: ./reviewer-assets`) runs SECOND.
+- **Why:** `actions/checkout@v4` at workspace root runs
+  `"Deleting the contents of [workspace]"` during INIT when the
+  workspace is non-empty AND has no `.git/` at root. This is a
+  SEPARATE mechanism from `clean: true/false` (which only affects
+  the post-fetch `git clean -ffdx` step). The prior order
+  (reviewer-assets FIRST, config SECOND) populated
+  `./reviewer-assets/` then the workspace-root second checkout
+  wiped it on GitHub-hosted runners (framework PR #178 evidence).
+- **Why operations passed v1.1.3:** self-hosted runner has a
+  persistent workspace with prior `.git/` at root → that path is
+  "Removing previously created refs" instead of contents-delete
+  → reviewer-assets/ subdir is preserved. GitHub-hosted runners
+  (fresh workspace, no prior `.git/`) → contents-delete fires →
+  reviewer-assets/ wiped.
+- **Lesson:** runner-class behavior difference (self-hosted vs
+  GitHub-hosted) means `clean: false` alone is insufficient — the
+  INIT-time contents-delete is a separate code path. Future
+  multi-checkout workflows: do workspace-root checkout FIRST on
+  fresh runners; subsequent path-isolated checkouts second.
+- **Saga update:** 5 cycles total now (v1.1.0 → v1.1.1 → v1.1.2
+  → v1.1.3 → v1.1.4). Operations + framework will need pin bumps
+  to consume.
+- **Chicken-and-egg:** SAME pattern. Ships via `skip-ai-review`
+  label + admin-merge.
+
 ### Changed — README.md: refresh to current `ci/v1.1.3` (was stale at `ci/v1.0.6`; 2026-06-26)
 
 - **`README.md`** "Who uses this" table, "What ships" section

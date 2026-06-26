@@ -183,27 +183,21 @@ jobs:
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
           echo "::notice::ai-review fetching assets from aidoc-flow-ci@${REF}"
 
-      - name: Checkout trusted reviewer assets (aidoc-flow-ci@pinned tag)
-        if: ${{ env.SKIP_REVIEW != '1' }}
-        uses: actions/checkout@v4
-        with:
-          repository: vladm3105/aidoc-flow-ci
-          ref: ${{ steps.pin.outputs.ref }}
-          path: ./reviewer-assets
-          # FULL clone (no sparse-checkout) per ci/v1.1.2 after two failed
-          # sparse-checkout iterations: v1.1.0 non-cone-mode `ai-review`
-          # matched literal filename; v1.1.1 cone-mode `ai-review` still
-          # didn't populate `./reviewer-assets/ai-review/` on GitHub-hosted
-          # runner fresh clones (root cause unclear — possibly an
-          # actions/checkout@v4 interaction between `path:` + sparse-checkout
-          # that needs `actions/checkout@v5` or similar). aidoc-flow-ci is
-          # small (~tens of files); full clone takes a few seconds; reliable.
-          token: ${{ secrets.AI_REVIEW_TOKEN || secrets.GITHUB_TOKEN }}
-
-      # Pull config.json from operations@main into workspace root (preserves pre-IPLAN-0022
-      # behavior for the four downstream `.github/ai-review/config.json` reads).
-      # Future IPLAN will move config.json to a per-consumer fetch from each consumer's
-      # own repo BASE ref; for now operations@main is the authoritative source.
+      # ORDER MATTERS (ci/v1.1.4): per-consumer config FIRST at workspace
+      # root, reviewer assets SECOND in subdir. The reverse order broke on
+      # GitHub-hosted runners (framework PR #178): actions/checkout@v4 at
+      # workspace root runs "Deleting the contents of [workspace]" during
+      # INIT when the workspace is non-empty AND has no .git/ at root
+      # (separate mechanism from `clean: true/false` which only affects the
+      # post-fetch git clean step). On self-hosted runners (operations) the
+      # workspace has a persistent .git/ → that path is "Removing previously
+      # created refs" instead of contents-delete → reviewer-assets/ subdir
+      # is preserved → operations passed v1.1.3. On GitHub-hosted (fresh
+      # workspace, no prior .git/) → contents-delete wiped reviewer-assets/.
+      # Fix: do workspace-root checkout (operations config) FIRST on the
+      # fresh workspace (nothing to delete; init clean); reviewer assets
+      # SECOND into subdir (path: ./reviewer-assets) so its delete-content
+      # only operates on that subdir.
       - name: Checkout per-consumer config (operations@main; transitional)
         if: ${{ env.SKIP_REVIEW != '1' }}
         uses: actions/checkout@v4
@@ -213,15 +207,20 @@ jobs:
           sparse-checkout: |
             .github/ai-review/config.json
           sparse-checkout-cone-mode: false
-          # CRITICAL ci/v1.1.3 fix: default `clean: true` runs `git clean -ffdx`
-          # at workspace root which WIPES the prior `Checkout trusted reviewer
-          # assets` step's `./reviewer-assets/` subdirectory. Symptom (operations
-          # PR #142): the rubric file got fetched then immediately removed,
-          # causing the SAME 'Append system prompt file not found' error that
-          # ci/v1.1.2's full-clone fix was supposed to resolve. The full-clone
-          # fix itself was correct; the second checkout's clean was the
-          # silent killer. `clean: false` preserves the reviewer-assets/ subdir.
-          clean: false
+          token: ${{ secrets.AI_REVIEW_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Checkout trusted reviewer assets (aidoc-flow-ci@pinned tag)
+        if: ${{ env.SKIP_REVIEW != '1' }}
+        uses: actions/checkout@v4
+        with:
+          repository: vladm3105/aidoc-flow-ci
+          ref: ${{ steps.pin.outputs.ref }}
+          path: ./reviewer-assets
+          # FULL clone (no sparse-checkout per ci/v1.1.2). With ORDER swapped
+          # in ci/v1.1.4 (this step now SECOND), the subdir is fresh + the
+          # workspace-root checkout's content is preserved. aidoc-flow-ci is
+          # small; full clone takes a few seconds; reliable on both runner
+          # classes (self-hosted + GitHub-hosted).
           token: ${{ secrets.AI_REVIEW_TOKEN || secrets.GITHUB_TOKEN }}
 
       # v1.0.2 PUBLIC consumer support: install codex + claude CLI on
