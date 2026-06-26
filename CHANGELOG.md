@@ -5,6 +5,34 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — `docs/troubleshooting.md` §15: label-cycle retrigger pattern (2026-06-26)
+
+- **`docs/troubleshooting.md`** new §15 "Stuck check — label-cycle
+  retrigger": canonical guidance on the label-cycle pattern (add +
+  remove `skip-ai-review` label to inject synthetic
+  `pull_request_target` labeled/unlabeled events that re-fire
+  workflows on the current commit state).
+- Includes the `skip-ai-review` label mechanism explanation,
+  when-to-use table, cost/risk warning (each cycle fires every
+  workflow with labeled/unlabeled triggers), and the "rebase-only
+  commit → add label PERMANENTLY (no remove)" pattern.
+- TOC row added.
+- Surfaced during IPLAN-0022 PR-B/PR-C rollout 2026-06-25/26:
+  cycles became compounding-slow on the 2-runner self-hosted pool;
+  documenting the pattern + its proper use prevents future reflexive
+  cycling.
+
+### Fixed — IPLAN-0022 §3.7 → §4 cross-ref correction (2026-06-26)
+
+- **`CHANGELOG.md` line 28** (IPLAN-0022 PR-A entry): cited
+  "IPLAN-0022 §3.7 P1" but the rollout phases moved to §4 when
+  IPLAN-0022 Pass 2 collapsed 7→3 phases. Corrected to "§4 P1".
+- Same bug exists in framework `CHANGELOG.md:18` — fixed in
+  separate framework PR (different repo; can't bundle).
+- Originally surfaced by operations PR #138's second ai-review
+  re-fire (caught what the first fire missed; reviewer is
+  non-deterministic between runs on the same commit).
+
 ### Added — IPLAN-0022 PR-A: reviewer assets moved to aidoc-flow-ci (ci/v1.1.0 target; 2026-06-25)
 
 - **`ai-review/review-prompt.md`** (NEW; moved from
@@ -24,7 +52,7 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   lives in `ai-review/`, how the workflow consumes it, per-consumer
   override future framing, schema-change discipline, why-not-in-`.github/`
   rationale matching IPLAN-0018 `scripts/docs-sync/` precedent).
-- **Per IPLAN-0022 §3.7 P1:** ships as `ci/v1.1.0` after merge.
+- **Per IPLAN-0022 §4 P1:** ships as `ci/v1.1.0` after merge.
   Phase 2 (consumer pin-bumps on operations + framework) ships as
   separate per-consumer PRs after this lands. Phase 3 (legacy
   delete on operations) ships after 1 week of clean reviews on the
