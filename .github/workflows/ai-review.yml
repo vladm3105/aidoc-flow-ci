@@ -584,8 +584,18 @@ jobs:
               # Discovered 2026-06-27 via IPLAN-0018 docs-sync bypass on operations
               # PRs #149 + #150 (auto-merge by github-actions[bot] → no push event).
               if [ -n "${APP_TOKEN:-}" ]; then
-                merge_err=$(GH_TOKEN="$APP_TOKEN" gh pr merge "$PR" --auto --merge 2>&1)
-                merge_rc=$?
+                # `var=$(failing_cmd)` under GitHub Actions' default `bash -e {0}`
+                # shell triggers immediate set -e exit when the inner cmd fails,
+                # which would skip the merge_rc capture + the warning fallback (the
+                # bug that shipped in ci/v1.1.6 and surfaced on operations PR #152).
+                # The `if cmd; then ...; else ...; fi` form exempts the cmd from
+                # set -e (bash documented behavior) so non-zero exits flow into the
+                # fallback branch cleanly.
+                if merge_err=$(GH_TOKEN="$APP_TOKEN" gh pr merge "$PR" --auto --merge 2>&1); then
+                  merge_rc=0
+                else
+                  merge_rc=$?
+                fi
               else
                 merge_rc=99   # sentinel: App not configured
                 merge_err="APP_TOKEN unavailable (reviewer App not configured for this consumer)"

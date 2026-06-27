@@ -5,6 +5,52 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — ci/v1.1.7: `ai-review.yml` auto-merge `bash -e` interaction bug (regression from v1.1.6; 2026-06-27)
+
+- **`.github/workflows/ai-review.yml`** auto-merge App-token branch:
+  the `merge_err=$(GH_TOKEN=$APP_TOKEN gh pr merge ... 2>&1)` shell
+  pattern triggered immediate `set -e` exit under GitHub Actions'
+  default `bash -e {0}` shell whenever the inner `gh pr merge` exited
+  non-zero (e.g., auto-merge already enabled; permission denied;
+  transient network blip) — bypassing both the `merge_rc=$?` capture
+  AND the warning fallback. The whole gate step exited 1, blocking
+  the required check on every auto-merge attempt where the App-path
+  hit a non-zero exit.
+- **Fix:** wrap the App-path merge call in the `if cmd; then ...;
+  else ...; fi` form, which bash explicitly exempts from `set -e`
+  (per documented behavior). Non-zero exits now flow into the else
+  branch + fallback path cleanly:
+  ```bash
+  if merge_err=$(GH_TOKEN="$APP_TOKEN" gh pr merge "$PR" --auto --merge 2>&1); then
+    merge_rc=0
+  else
+    merge_rc=$?
+  fi
+  ```
+- **Why this wasn't caught pre-ship in v1.1.6:** the v1.1.6 self-
+  review focused on logic + permission concerns (reviewer flagged
+  `--auto` actor-attribution + stderr capture as MEDIUMs, both
+  addressed). The `bash -e` + command-substitution interaction is
+  documented bash arcana that the reviewer didn't flag and the
+  shipped CHANGELOG only suggested "10-min empirical test on a
+  throwaway PR" which wasn't executed. **First real-PR validation
+  on operations PR #152 was where the bug surfaced** (gate step
+  exited 1 after 3 seconds; no warning emitted; App's APPROVED
+  review WAS posted earlier in the same step before the bug bit).
+- **Validation:** v1.1.7 fix verified by inspection. Post-deploy
+  validation: next auto-merged routine PR after operations + framework
+  bump to `@ci/v1.1.7` must pass `call / ai-review` clean (the bug
+  manifested as immediate 3-second gate-step failure with zero log
+  output; success looks like the gate's full review/comment/merge
+  sequence).
+- **Consumer impact:** consumers bump pin `@ci/v1.1.6` → `@ci/v1.1.7`.
+  v1.1.7 is a strict superset of v1.1.6 (App-token path + fallback);
+  no schema or input changes.
+- **Lesson recorded:** the auto-merge step deserves an end-to-end
+  empirical test (a throwaway PR with the App configured) before
+  tagging future v1.1.X releases — code review couldn't catch this;
+  the failure shape is runtime-only.
+
 ### Fixed — ci/v1.1.6: `ai-review.yml` auto-merge uses reviewer App token (fixes silent docs-sync bypass on auto-merged PRs; 2026-06-27)
 
 - **`.github/workflows/ai-review.yml`** "Gate · comment · label · merge"
