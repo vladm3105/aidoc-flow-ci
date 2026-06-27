@@ -5,6 +5,73 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — ci/v1.1.5: replace `ai-review.yml` cross-repo `actions/checkout` with `curl` (eliminates v1.1.x bug class; 2026-06-27)
+
+- **`.github/workflows/ai-review.yml`** "Resolve aidoc-flow-ci pinned ref",
+  "Checkout trusted reviewer assets (aidoc-flow-ci@pinned tag)", and
+  "Checkout per-consumer config (operations@main; transitional)" steps
+  consolidated into a single "Fetch reviewer assets + per-consumer config"
+  step using `curl` instead of `actions/checkout@v4`.
+- **Why:** the 5-cycle v1.1.0→v1.1.3 saga (sparse-checkout pattern, cone-
+  mode, full-clone, `clean: false`) + the v1.1.4 reorder attempt proved
+  the `actions/checkout` interaction with workspace state, INIT-time
+  content-delete, and runner-class differences was the failure mode
+  itself. `curl` has none of those failure modes: writes bytes to a
+  path; workspace state, runner class, and `pull_request_target` event
+  semantics don't matter. Fetch either works (HTTP 200) or fails loudly
+  (`--fail`).
+- **What stays the same (intentionally):** trust gate's
+  `actions/checkout` of operations@main (separate job; no second
+  checkout to interact with; works today). `AI_REVIEW_TOKEN` secret
+  (curl uses it for the PRIVATE operations@main fetch). All downstream
+  paths (`./reviewer-assets/ai-review/{review-prompt.md,verdict.schema.json}`
+  + workspace-root `.github/ai-review/config.json`). Workflow
+  `workflow_call:` interface, inputs, runner_labels. Library pattern
+  intact (IPLAN-0017 + IPLAN-0022 + IPLAN-0023 all unchanged).
+- **Asset retrieval shape:** rubric + schema from
+  `https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/<pinned-ref>/ai-review/{review-prompt.md,verdict.schema.json}`
+  (PUBLIC; raw works unauth). Per-consumer config from
+  `https://raw.githubusercontent.com/vladm3105/aidoc-flow-operations/main/.github/ai-review/config.json`
+  (PRIVATE; `Authorization: Bearer ${AI_REVIEW_TOKEN}` then fallback to
+  GitHub API contents endpoint with `Accept: application/vnd.github.raw`
+  on raw failure). All fetches `--fail --silent --show-error --location
+  --retry 3 --retry-delay 2`. `test -s` verifies every fetched file is
+  non-empty (defense against silent HTTP-200-empty-body pathology).
+- **R1 + R2 bundle-ins both DROPPED from this PR after self-review:**
+  - **R1** (narrow trust/ai-review `if:` to fire on `labeled` only for
+    `skip-ai-review`) would break the `docs/troubleshooting.md §15`
+    label-cycle "force fresh review on stale verdict" path: removing
+    the label is the documented way to re-fire ai-review on the
+    latest commit after a rebase, and R1's drop of the `unlabeled`
+    branch silently disables it. HANDOFF's "halves cost" rationale
+    misanalyzed which branch does the work — the `labeled` half runs
+    `SKIP_REVIEW=1` (cheap no-op skip step), the `unlabeled` half is
+    the one that runs the full review. The real intent ("don't re-
+    fire when verdict already APPROVED at HEAD") is what R3 (early-
+    exit step, ~20 lines) addresses — tracked for its own small IPLAN.
+  - **R2** (bare 1-line `workflow_dispatch:` on composition install
+    templates) does not achieve its stated retrigger goal — the
+    reusable composition.yml body depends on
+    `github.event.pull_request.*` fields that are empty on
+    `workflow_dispatch` events. Proper implementation needs
+    `workflow_dispatch.inputs.pr_number:` + reusable workflow
+    fallback logic. Tracked for its own small IPLAN.
+- **Consumer impact:** consumers bump caller pin `@ci/v1.1.3` →
+  `@ci/v1.1.5` to consume the fix. Existing `AI_REVIEW_TOKEN` secret +
+  workflow inputs unchanged. No behavior change for `skip-ai-review`
+  label workflows (R1 dropped).
+- **Validation:** P3 (operations pin-bump) validates on self-hosted
+  runner (the saga's KNOWN-GOOD class — operations works on v1.1.3
+  today, so a regression on operations would be the first signal that
+  curl introduced a NEW failure mode). P4 (framework pin-bump) is the
+  CRITICAL validation — proves curl-replaces-checkout works on the
+  GitHub-hosted runner class, the bug-class home that v1.1.0-v1.1.3
+  couldn't escape.
+- **Chicken-and-egg:** PRs that bump the pin can't pass ai-review at
+  BASE main (still has the v1.1.3 workflow); ship via
+  `skip-ai-review` label + admin-merge per `docs/troubleshooting.md §15`.
+- **Plan reference:** IPLAN-0024 (operations PR #145; approved + merged 2026-06-26).
+
 ### Changed — README.md: refresh to current `ci/v1.1.3` (was stale at `ci/v1.0.6`; 2026-06-26)
 
 - **`README.md`** "Who uses this" table, "What ships" section
