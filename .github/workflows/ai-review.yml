@@ -555,8 +555,50 @@ jobs:
             elif [ "${TIER:-routine}" = "spec" ]; then
               echo "Review clean — spec/governance tier: a human merges (no auto-merge)."
             elif in_automerge; then
-              gh pr merge "$PR" --auto --merge || true
-              echo "Review clean — repo in auto_merge allowlist: auto-merge enabled."
+              # Anti-recursion fix (ci/v1.1.6): the default GITHUB_TOKEN-authored merge
+              # commit does NOT trigger downstream `push:` workflows per GitHub's
+              # documented anti-recursion rule (https://docs.github.com/en/actions/
+              # using-workflows/triggering-a-workflow#triggering-a-workflow-from-a-
+              # workflow), so docs-sync.yml + any other push-triggered consumer
+              # workflow is silently bypassed on every auto-merged PR. Authenticate
+              # the auto-merge as the reviewer App instead — non-GITHUB_TOKEN actors
+              # DO fire downstream push: workflows.
+              #
+              # Mechanism: `gh pr merge --auto` ENABLES auto-merge under the supplied
+              # token's actor; the merge commit author is the arming actor (verified
+              # empirically by operations PRs #149+#150 — armed by ai-review under
+              # GITHUB_TOKEN → merge commit author = github-actions[bot]). Therefore
+              # arming under APP_TOKEN should produce App-authored merge commits that
+              # DO fire push: workflows. Post-deploy verification per CHANGELOG.
+              #
+              # Graceful fallback: if APP_TOKEN is absent (App not configured) or the
+              # App lacks `contents: write` permission, fall back to GITHUB_TOKEN so
+              # the merge still happens (PRs never get stuck waiting); surface the
+              # captured stderr in a ::warning:: so the operator sees the exact
+              # failure mode (HTTP 403 = missing permission; 404 = App not installed
+              # on repo; transient = network). `gh pr merge --auto` is idempotent
+              # against itself (enabling auto-merge twice is a no-op), so the
+              # fallback's redundant call is safe even if the primary partially
+              # succeeded.
+              #
+              # Discovered 2026-06-27 via IPLAN-0018 docs-sync bypass on operations
+              # PRs #149 + #150 (auto-merge by github-actions[bot] → no push event).
+              if [ -n "${APP_TOKEN:-}" ]; then
+                merge_err=$(GH_TOKEN="$APP_TOKEN" gh pr merge "$PR" --auto --merge 2>&1)
+                merge_rc=$?
+              else
+                merge_rc=99   # sentinel: App not configured
+                merge_err="APP_TOKEN unavailable (reviewer App not configured for this consumer)"
+              fi
+              if [ "$merge_rc" = 0 ]; then
+                echo "Review clean — auto-merge enabled (App-authored; downstream push: workflows will fire on merge)."
+              else
+                # Capture the actual failure reason so operators don't have to dig.
+                reason=$(printf '%s' "$merge_err" | head -3 | tr '\n' ' ' | head -c 240)
+                echo "::warning::auto-merge falling back to GITHUB_TOKEN (App-path rc=$merge_rc, reason: ${reason:-unknown}). Downstream push: workflows (docs-sync.yml, etc.) will NOT fire on the merge commit per GitHub anti-recursion. To restore push: workflow firing, grant the reviewer App \`contents: write\` permission at https://github.com/settings/apps/aidoc-reviewer (Permissions → Repository permissions → Contents: Read and write)."
+                gh pr merge "$PR" --auto --merge || true
+                echo "Review clean — auto-merge enabled (GITHUB_TOKEN fallback; push: workflows suppressed)."
+              fi
             else
               echo "Review clean — repo NOT in auto_merge allowlist: labelled passed, a human merges."
             fi
