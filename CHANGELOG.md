@@ -5,6 +5,62 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — ci/v1.1.6: `ai-review.yml` auto-merge uses reviewer App token (fixes silent docs-sync bypass on auto-merged PRs; 2026-06-27)
+
+- **`.github/workflows/ai-review.yml`** "Gate · comment · label · merge"
+  step's auto-merge branch: `gh pr merge "$PR" --auto --merge` now
+  authenticated with the reviewer App's installation token (`APP_TOKEN`)
+  instead of the default `GITHUB_TOKEN`. Graceful fallback: if
+  `APP_TOKEN` is unavailable (App not configured) OR the App lacks
+  `contents: write` permission, falls back to `GITHUB_TOKEN` and emits
+  a `::warning::` so the missing-permission case is operator-visible.
+- **Why:** per GitHub's documented anti-recursion rule, any merge
+  commit authored by `GITHUB_TOKEN` does NOT trigger downstream `push:`
+  workflows. Operations PRs that pass ai-review's auto-merge path were
+  therefore silently bypassing `docs-sync.yml` (and any other consumer
+  workflow listening on `push: branches: [main]`). Surfaced 2026-06-27
+  during IPLAN-0018 docs-sync verification: operations PRs #149 + #150
+  auto-merged by `github-actions[bot]` → zero downstream `push` runs
+  fired on either merge commit. Only the previous merge (PR #148, which
+  was governance-locked → human-merged) fired docs-sync.
+- **Consumer requirement:** the reviewer App needs `contents: write`
+  permission for the App-authored merge to succeed. operations +
+  framework already have the App installed; verify the permission is
+  granted via the App's settings page (`https://github.com/settings/
+  apps/aidoc-reviewer` → Permissions → Repository permissions →
+  Contents: Read and write). If the permission is missing, the fix
+  gracefully falls back to GITHUB_TOKEN (same as today's behavior) +
+  emits the `::warning::` — the merge still happens; only push:
+  workflows stay suppressed until the permission is added.
+- **Backward compatibility:** fully compatible. Consumers without the
+  App (App-not-configured path) get the GITHUB_TOKEN fallback —
+  identical to pre-v1.1.6 behavior. Consumers with the App + correct
+  permissions get the fix automatically on pin bump to `@ci/v1.1.6`.
+  No schema or input changes.
+- **Consumer impact:** consumers bump caller pin `@ci/v1.1.5` →
+  `@ci/v1.1.6` to consume the fix.
+- **Validation (post-deploy verification required):** after operations
+  + framework pin-bump to `@ci/v1.1.6`, the **first auto-merged routine
+  PR** must be verified to:
+  1. Have merge commit authored by `aidoc-reviewer[bot]` (not
+     `github-actions[bot]`) — confirms the App-token arming carried
+     through to merge author per documented GitHub behavior (verified
+     empirically on PRs #149+#150 under the OLD code: arming actor →
+     merge actor; this fix changes the arming actor to the App).
+  2. Have `docs-sync.yml` trigger a `push` workflow run on the merge
+     commit sha (verify via `gh run list -R vladm3105/aidoc-flow-
+     operations --workflow docs-sync.yml --event push --limit 3`).
+  If (1) holds but (2) doesn't, GitHub's anti-recursion behavior differs
+  from the documented rule — investigate. If (1) fails (merge commit
+  still by `github-actions[bot]`), the App permission may be missing
+  (check the `::warning::` in the auto-merge step log) — grant
+  `contents: write` per "Consumer requirement" above and retry.
+- **Related work:** mechanical-scripts docs-sync (IPLAN-0018) is a
+  narrow approach; AI-driven `doc-maintainer.yml` (TODO matrix row 6,
+  formerly DEFERRED) is being promoted to an active IPLAN-0025 that
+  supersedes IPLAN-0018's mechanical design. This v1.1.6 fix is the
+  immediate symptom fix; IPLAN-0025 will be the structural fix.
+
 ### Fixed — ci/v1.1.5: replace `ai-review.yml` cross-repo `actions/checkout` with `curl` (eliminates v1.1.x bug class; 2026-06-27)
 
 - **`.github/workflows/ai-review.yml`** "Resolve aidoc-flow-ci pinned ref",
