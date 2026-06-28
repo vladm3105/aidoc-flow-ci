@@ -6,15 +6,24 @@
 # Public-repo variant omits `ready_for_review` (no draft→ready flow on
 # PUBLIC consumers historically); add it if your public consumer uses
 # drafts.
+#
+# IPLAN-0026 P2 (ci/v1.2.0): added `workflow_run` trigger ALONGSIDE the
+# existing triggers (parallel transition for migration safety; see
+# composition-private.yml for the full Phase-1/Phase-2 rationale).
 name: composition
 on:
   pull_request_target:
+    # KEPT during Phase-1 transition for safety (drop in Phase 2 after 1+ clean cycle on workflow_run).
     types: [opened, synchronize, reopened, labeled, unlabeled]
   pull_request_review:
     types: [submitted, dismissed, edited]
+  workflow_run:
+    # NEW per IPLAN-0026 §2.3: fires AFTER consumer's `ai-review` caller completes (any conclusion).
+    workflows: ["ai-review"]
+    types: [completed]
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/composition.yml@ci/v1.0.6
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/composition.yml@ci/v1.2.0
     with:
       runner_labels: '"ubuntu-latest"'
     secrets: inherit  # pragma: allowlist secret

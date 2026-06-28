@@ -4,19 +4,38 @@
 # freshly-opened PRs left composition pending (only ai-review fired on
 # `opened`) → merge blocked until label-cycle / push woke composition.
 # The label-cycle pattern in `docs/troubleshooting.md §15` was the
-# workaround; this is the root-cause fix. `synchronize` (push) remains
-# needed for the skip-ai-review carry-forward path. Full workflow_run
-# redesign is the Phase-B target (IPLAN-0017 §3.4) when the composition
-# body can be rewritten to handle github.event.workflow_run.pull_requests[0].
+# workaround; this was the root-cause fix at the time.
+#
+# IPLAN-0026 P2 (ci/v1.2.0): added `workflow_run` trigger ALONGSIDE the
+# existing triggers (parallel transition for migration safety per
+# IPLAN-0017 §3.4 + IPLAN-0026 §2.3). The `workflow_run` trigger fires
+# AFTER the consumer's `ai-review` caller completes (success / failure /
+# skipped / cancelled — all conclusions per the `types: [completed]`
+# default), which is the long-term path to eliminate composition's
+# early-fire stale-red pattern.
+#
+# Phase 1 keeps `pull_request_target` for safety (one clean cycle on the
+# new trigger required before dropping). Phase 2 (separate small IPLAN +
+# `ci/v1.3.0` tag) drops `pull_request_target` and delivers the actual
+# friction relief — every composition fire becomes a real state change
+# rather than an early-fire FAILURE → label-cycle → SUCCESS → merge dance.
 name: composition
 on:
   pull_request_target:
+    # KEPT during Phase-1 transition for safety (drop in Phase 2 after 1+ clean cycle on workflow_run).
     types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   pull_request_review:
     types: [submitted, dismissed, edited]
+  workflow_run:
+    # NEW per IPLAN-0026 §2.3: fires AFTER consumer's `ai-review` caller completes (any conclusion).
+    # `types: [completed]` covers success / failure / skipped / cancelled — covers all four real state-
+    # change scenarios (routine-approve / routine-reject / skip-ai-review-carry / ai-review-infra-failure)
+    # without the wasted early-fire `pull_request_target` run that creates the stale-red.
+    workflows: ["ai-review"]
+    types: [completed]
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/composition.yml@ci/v1.0.6
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/composition.yml@ci/v1.2.0
     with:
       runner_labels: '"runner-self"'
     secrets: inherit  # pragma: allowlist secret
