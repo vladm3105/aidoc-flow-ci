@@ -5,6 +5,58 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — ci/v1.2.0 (Phase 1): `composition.yml` body handles `workflow_run` event shape (IPLAN-0026 P1; 2026-06-27)
+
+- **`.github/workflows/composition.yml`** body refactored to source PR
+  data from EITHER event shape:
+  - `pull_request_review` event → `github.event.pull_request.*` (the
+    original shape; current consumer caller trigger)
+  - `workflow_run` event → `github.event.workflow_run.pull_requests[0].*`
+    (new path; consumer caller installs trigger in §2.3 install-
+    templates change shipping next as Phase-1 P2)
+  Each env field uses `||` fallback expression: LHS = pull_request_review
+  shape; RHS = workflow_run shape. Concurrency group uses the same
+  fallback so per-PR serialization works for both event shapes.
+- **Job `if:` condition** extended to allow `workflow_run` events
+  through unconditionally (workflow_run only fires from the ai-review
+  workflow completing — exactly when composition should re-evaluate).
+  Non-label events (pull_request_review, etc.) always run; label events
+  still only run for `skip-ai-review` (unchanged contract).
+- **SKIP_REVIEW resolution** moved from env-block expression (which
+  required the `pull_request_review` payload's `labels` field) to a
+  `gh-api` lookup in the body (shape-agnostic; works regardless of event
+  type; default-empty + retry on transient failure).
+- **Fork PR edge case:** `github.event.workflow_run.pull_requests[]`
+  is empty when the source workflow ran from a fork; both `||` fallback
+  expressions resolve to empty strings → body detects empty `$PR` +
+  exits with `::notice::` (forks are HUMAN-REVIEW-ONLY per ai-review's
+  trust gate; composition correctly exempts them via the IS_FORK branch
+  for non-workflow_run events too — both paths land at the same
+  behavior).
+- **Reusable contract unchanged** — composition.yml is still
+  `workflow_call:` only. Trigger declaration is on the consumer caller
+  templates (composition-{private,public}.yml installed via
+  `install.sh`); those get the `workflow_run` trigger in the next
+  Phase-1 P2 PR.
+- **Phase-1 ships MECHANISM only.** The early-fire stale-red friction
+  is NOT yet eliminated — Phase 1 keeps `pull_request_target` in
+  parallel for safety per IPLAN-0017 §3.4 migration discipline. Phase 2
+  (ci/v1.3.0, separate small IPLAN after empirical validation) drops
+  `pull_request_target` from install templates and delivers the actual
+  friction relief. Set expectations accordingly.
+- **Plan:** [IPLAN-0026](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0026_composition-workflow-run-redesign.md)
+  (operations PR #156, merged 2026-06-27 commit `44f4b5b`; READY status
+  with 3 verified-planning review passes + check_plan.py gate green).
+- **Consumer impact:** consumers bump pin `@ci/v1.1.7` → `@ci/v1.2.0`
+  to consume this body refactor. The `workflow_run` trigger declaration
+  in install templates ships in a separate Phase-1 P2 PR (also targeting
+  ci/v1.2.0; both land together).
+- **Backward compatibility:** consumers on the current install
+  templates (pull_request_target + pull_request_review triggers only)
+  continue to work identically — the body's `||` fallback resolves to
+  the LHS for those events; new workflow_run handling is dormant until
+  the consumer adds the new trigger to their caller.
+
 ### Fixed — ci/v1.1.7: `ai-review.yml` auto-merge `bash -e` interaction bug (regression from v1.1.6; 2026-06-27)
 
 - **`.github/workflows/ai-review.yml`** auto-merge App-token branch:
