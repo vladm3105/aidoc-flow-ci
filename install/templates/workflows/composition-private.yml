@@ -1,41 +1,41 @@
-# Trigger shape per aidoc-flow-operations PR #111 + Gap 2 fix 2026-06-26
-# (operations PR #140 + framework PR #175): added `opened`, `reopened`,
-# `ready_for_review` to pull_request_target types. Without them,
-# freshly-opened PRs left composition pending (only ai-review fired on
-# `opened`) → merge blocked until label-cycle / push woke composition.
-# The label-cycle pattern in `docs/troubleshooting.md §15` was the
-# workaround; this was the root-cause fix at the time.
+# IPLAN-0026 Phase 2 (ci/v1.3.0): dropped `pull_request_target` trigger
+# from the recommended install-template set. Phase 1 (ci/v1.2.0) shipped
+# the `workflow_run` mechanism alongside `pull_request_target` for safety
+# during the transition. Phase 2 drops `pull_request_target` and delivers
+# the actual friction relief — every composition fire now corresponds to
+# a real state change (the consumer's `ai-review` caller completed, OR a
+# review was submitted/dismissed/edited) rather than firing pre-emptively
+# on PR open + creating the stale-red FAILURE that branch-protection's
+# rollup retained until a `skip-ai-review` label-cycle.
 #
-# IPLAN-0026 P2 (ci/v1.2.0): added `workflow_run` trigger ALONGSIDE the
-# existing triggers (parallel transition for migration safety per
-# IPLAN-0017 §3.4 + IPLAN-0026 §2.3). The `workflow_run` trigger fires
-# AFTER the consumer's `ai-review` caller completes (success / failure /
-# skipped / cancelled — all conclusions per the `types: [completed]`
-# default), which is the long-term path to eliminate composition's
-# early-fire stale-red pattern.
+# The fully-superseded Phase-1 trigger set (KEPT here as commit history for
+# reference) was:
+#   pull_request_target:
+#     types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+# Existing consumers can still locally override and re-add it if they have
+# a flow that depends on it; the Phase-2 install template no longer
+# inherits it.
 #
-# Phase 1 keeps `pull_request_target` for safety (one clean cycle on the
-# new trigger required before dropping). Phase 2 (separate small IPLAN +
-# `ci/v1.3.0` tag) drops `pull_request_target` and delivers the actual
-# friction relief — every composition fire becomes a real state change
-# rather than an early-fire FAILURE → label-cycle → SUCCESS → merge dance.
+# Reusable composition.yml body (v1.2.0+) already handles BOTH event shapes
+# (`pull_request_review` AND `workflow_run`) via `||` fallback expressions
+# — see aidoc-flow-ci/.github/workflows/composition.yml — so dropping
+# `pull_request_target` here does not require any reusable-side change.
 name: composition
 on:
-  pull_request_target:
-    # KEPT during Phase-1 transition for safety (drop in Phase 2 after 1+ clean cycle on workflow_run).
-    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   pull_request_review:
     types: [submitted, dismissed, edited]
   workflow_run:
-    # NEW per IPLAN-0026 §2.3: fires AFTER consumer's `ai-review` caller completes (any conclusion).
-    # `types: [completed]` covers success / failure / skipped / cancelled — covers all four real state-
-    # change scenarios (routine-approve / routine-reject / skip-ai-review-carry / ai-review-infra-failure)
-    # without the wasted early-fire `pull_request_target` run that creates the stale-red.
+    # Fires AFTER consumer's `ai-review` caller completes (any conclusion:
+    # success / failure / skipped / cancelled — `types: [completed]` covers
+    # all terminal states). Covers routine-approve, routine-reject,
+    # skip-ai-review-carry, and ai-review-infra-failure scenarios without
+    # the wasted early-fire `pull_request_target` run that created the
+    # stale-red.
     workflows: ["ai-review"]
     types: [completed]
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/composition.yml@ci/v1.2.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/composition.yml@ci/v1.3.0
     with:
       runner_labels: '"runner-self"'
     secrets: inherit  # pragma: allowlist secret

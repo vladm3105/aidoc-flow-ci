@@ -5,6 +5,51 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — ci/v1.3.0 (Phase 2 P7): drop `pull_request_target` from composition install templates (IPLAN-0026 P7; 2026-06-28)
+
+- **`install/templates/workflows/composition-private.yml`** + **`install/templates/workflows/composition-public.yml`** triggers
+  reduced to `pull_request_review` + `workflow_run` only — Phase-2
+  drop of `pull_request_target` per IPLAN-0026 §2.3 + IPLAN-0017 §3.4.
+  The kept trigger set covers all four real state-change scenarios
+  (routine-approve / routine-reject / skip-ai-review-carry / ai-review-
+  infra-failure) without the wasted early-fire `pull_request_target`
+  run that created the stale-red FAILURE on every routine PR.
+- **`uses:` pin bumped** from `@ci/v1.2.0` to `@ci/v1.3.0` in both
+  templates — `install.sh`-onboarded consumers get the v1.3.0 install
+  shape (no `pull_request_target`) at install time.
+- **Phase-2 ships the friction-relief benefit.** Phase 1 (ci/v1.2.0)
+  shipped the `workflow_run` mechanism alongside `pull_request_target`
+  for safe migration; Phase 2 drops `pull_request_target` so every
+  composition fire now corresponds to a real state change. The label-
+  cycle merge-recovery pattern documented at `docs/troubleshooting.md`
+  §15 should no longer be needed for routine PRs after consumers bump
+  their caller pin to `@ci/v1.3.0` + drop `pull_request_target` from
+  their caller composition.yml (IPLAN-0026 P8 — separate consumer PRs
+  on operations + framework, bundled into the same `ci/v1.3.0` release
+  cycle).
+- **`docs/security.md` §5** updated: composition no longer uses
+  `pull_request_target` (new "Composition no longer uses
+  `pull_request_target` (ci/v1.3.0+)" subsection); ai-review continues
+  to use it. Security analysis still applies — composition's
+  `pull_request_review` + `workflow_run` triggers carry the same
+  BASE-ref + secrets posture as `pull_request_target`, so the
+  Phase-2 drop is about merge-friction relief, not changing the
+  security model.
+- **Existing consumers** can still locally re-add `pull_request_target`
+  if they have a flow dependent on it (local always wins per
+  `docs/overrides.md`). The Phase-2 install template just no longer
+  inherits it as a default.
+- **Bundled with IPLAN-0027 P1** (R3 ai-review early-exit + troubleshooting
+  §15 update) in the same `ci/v1.3.0` release — both are Phase-2 friction-
+  relief cleanups; consumers do ONE pin-bump cycle to get both benefits.
+- **Plan:** [IPLAN-0026](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0026_composition-workflow-run-redesign.md)
+  P7 (Phase-2 cleanup; promotes IPLAN-0017 §3.4 Phase-B target to
+  active state).
+- **Consumer impact:** consumers bump caller pin `@ci/v1.2.0` →
+  `@ci/v1.3.0` + drop `pull_request_target` from their caller
+  `composition.yml` (IPLAN-0026 P8 — operations PR + framework PR
+  shipping next).
+
 ### Changed — ci/v1.2.0 (Phase 1 P2): install templates add `workflow_run` trigger + pin bump (IPLAN-0026 P2; 2026-06-27)
 
 - **`install/templates/workflows/composition-private.yml`** + **`install/templates/workflows/composition-public.yml`** triggers

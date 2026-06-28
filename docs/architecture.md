@@ -71,7 +71,7 @@ docs](https://docs.github.com/en/actions/sharing-automations/reusing-workflows):
 | Workflow | File | What it does | Triggers (typical caller) |
 |---|---|---|---|
 | `ai-review` | [`.github/workflows/ai-review.yml`](../.github/workflows/ai-review.yml) | AI-reviewer gate — trust check → reviewer App → post verdict + apply state label | `pull_request_target`, `pull_request_review` |
-| `composition` | [`.github/workflows/composition.yml`](../.github/workflows/composition.yml) | App-approval status check — required for merge; fires GREEN only when a counting reviewer-App approval exists at the current head SHA | `pull_request_target [labeled, unlabeled, synchronize]`, `pull_request_review` |
+| `composition` | [`.github/workflows/composition.yml`](../.github/workflows/composition.yml) | App-approval status check — required for merge; fires GREEN only when a counting reviewer-App approval exists at the current head SHA | `pull_request_review [submitted, dismissed, edited]`, `workflow_run` [completed] (from ai-review). v1.3.0+ install default — `pull_request_target` overrideable per [`overrides.md`](overrides.md). |
 | `labeler` | [`.github/workflows/labeler.yml`](../.github/workflows/labeler.yml) | Path-based PR area labeling via `actions/labeler@v6` | `pull_request` |
 | `codeql` | [`.github/workflows/codeql.yml`](../.github/workflows/codeql.yml) | CodeQL security analysis (matrix-driven explicit languages) | `push`, `pull_request`, weekly `schedule`, `workflow_dispatch` |
 | `markdown-lint` | [`.github/workflows/markdown-lint.yml`](../.github/workflows/markdown-lint.yml) | Markdown linting via `markdownlint-cli2-action` (inline PR annotations) | `pull_request`, `push` |

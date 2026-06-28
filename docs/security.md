@@ -161,8 +161,8 @@ non-default names. See
 
 ## 5. `pull_request_target` vs `pull_request` — why `_target`
 
-Both `ai-review` + `composition` use `pull_request_target` (not
-`pull_request`). The choice has a security reason:
+`ai-review` uses `pull_request_target` (not `pull_request`). The
+choice has a security reason:
 
 | Trigger | Secrets on fork PR? | Write permissions on fork PR? | Workflow code from | PR code checked out? |
 |---|---|---|---|---|
@@ -184,6 +184,23 @@ Both `ai-review` + `composition` use `pull_request_target` (not
 This is the **standard pattern** for fork-PR-safe automation
 (per [GitHub's `pull_request_target`
 docs](https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#pull_request_target)).
+
+### Composition no longer uses `pull_request_target` (ci/v1.3.0+)
+
+`composition` originally used `pull_request_target` for the same
+reasons (write to apply labels; BASE-ref governance). IPLAN-0026
+Phase 2 (ci/v1.3.0) dropped that trigger from the install template:
+composition is now driven by `pull_request_review` (App's APPROVED
+review submission) and `workflow_run` (consumer's `ai-review` caller
+completing — any conclusion). Both triggers carry the same BASE-ref
++ secrets posture as `pull_request_target` (workflow code from
+default branch; secrets available; no PR code checked out), so the
+security analysis above still applies — composition never executed
+fork code under `pull_request_target` either. The Phase-2 drop is
+about eliminating the early-fire stale-red merge-friction pattern,
+not about changing the security model. Existing consumers that have
+a flow dependent on the old trigger can still locally re-add it
+(local always wins per `docs/overrides.md`).
 
 ## 6. SHA-pinning external Actions
 
