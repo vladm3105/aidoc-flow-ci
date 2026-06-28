@@ -455,15 +455,12 @@ v1.0.6 caller templates do NOT include the `permissions:` block
 by default (would surprise consumers who don't need it); document
 the requirement so consumers can add it when they hit this.
 
-## 15. Stuck check — label-cycle retrigger
+## 15. Stuck check — label-cycle retrigger (+ R3 force-fresh path, ci/v1.3.0+)
 
-Some workflows in this library (`composition.yml`, `ai-review.yml`)
-listen on `pull_request_target` event types that include `labeled` +
-`unlabeled`. When a required check is genuinely STUCK on the latest
-commit (e.g., composition didn't fire after a merge-with-main; an
-ai-review verdict is stale on a prior commit but no new push to
-re-trigger), a **label cycle** injects a synthetic PR event that
-fires the listening workflows on the current commit state:
+`ai-review.yml` still listens on `pull_request_target` event types
+that include `labeled` + `unlabeled` — so a **label cycle** still
+injects synthetic PR events that fire ai-review on the current
+commit state:
 
 ```bash
 gh pr edit <PR> --add-label "skip-ai-review"    # fires labeled event
@@ -471,9 +468,60 @@ sleep 3
 gh pr edit <PR> --remove-label "skip-ai-review" # fires unlabeled event
 ```
 
-Result: two fresh `pull_request_target` events → every workflow with
-`labeled`/`unlabeled` in its trigger types runs again on the current
-commit (no commit/push required).
+**ci/v1.3.0+ change (IPLAN-0026 Phase 2):** the recommended
+composition install template **no longer listens on
+`pull_request_target`** — it listens on `pull_request_review`
+(submitted/dismissed/edited) and `workflow_run` (ai-review
+completed). A label cycle therefore **no longer directly
+retriggers composition**; it retriggers ai-review, which on
+completion fires `workflow_run` → composition picks up the
+fresh signal. The net effect on a routine PR is the same, but
+**composition is now event-causal from ai-review** rather than
+being independently cycled. Consumers that locally re-added
+`pull_request_target` to composition (per `docs/overrides.md`)
+retain the direct retrigger path.
+
+**ci/v1.3.0+ change (IPLAN-0027 P1, R3 early-exit):** when
+ai-review fires and the reviewer App has **already APPROVED**
+the current HEAD SHA, a new R3 early-exit step skips the heavy
+reviewer CLI and carries the prior approval forward (saves
+~$0.10-0.20 + ~2-3 min per redundant re-fire). This means a
+`skip-ai-review` label cycle on an **already-approved** PR (at
+the SAME HEAD) now ends with the R3 carry-forward — **not** a
+fresh review. If you actually want a fresh review at the same
+HEAD, use the gh-api dismissal force-fresh path (next section).
+
+### Force-fresh-review path (ci/v1.3.0+) — dismiss the App's prior review
+
+When the App has already APPROVED at the current HEAD and you
+want a NEW review (e.g., the rubric changed; the review was
+posted under a now-fixed bug; you want belt-and-braces
+verification), DISMISS the App's existing review via the
+GitHub API and the next ai-review fire will run fresh:
+
+```bash
+PR=<pr-number>
+REPO=$(gh repo view --json owner,name -q '.owner.login + "/" + .name')
+HEAD_SHA=$(gh pr view "$PR" --json headRefOid -q .headRefOid)
+
+# 1. Look up the App's APPROVED review id at the current HEAD SHA. Filtering on commit_id
+#    avoids picking a stale older-commit approval in a multi-bot or multi-cycle scenario.
+review_id=$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate \
+  -q ".[] | select(.user.type==\"Bot\" and .state==\"APPROVED\" and .commit_id==\"$HEAD_SHA\") | .id" | tail -1)
+
+# 2. Dismiss it.
+gh api -X PUT "repos/$REPO/pulls/$PR/reviews/$review_id/dismissals" \
+  -f event=DISMISS -f message="forcing fresh ai-review at same HEAD"
+
+# 3. Trigger ai-review — a label cycle, a no-op push, or any PR event will do.
+#    R3 will now find no APPROVED-at-HEAD review → full review path runs.
+gh pr edit "$PR" --add-label "skip-ai-review" && sleep 3 && gh pr edit "$PR" --remove-label "skip-ai-review"
+```
+
+The dismissal API is the explicit operator action for
+force-fresh; the old label-cycle-alone path (which worked
+pre-R3 because every cycle retriggered the full review) is
+superseded by the dismiss-then-cycle pattern.
 
 ### The `skip-ai-review` label specifically
 
@@ -483,30 +531,43 @@ commit (no commit/push required).
 ```yaml
 env:
   SKIP_REVIEW: ${{ contains(github.event.pull_request.labels.*.name, 'skip-ai-review') && '1' || '' }}
+  SKIP_REASON: ${{ contains(github.event.pull_request.labels.*.name, 'skip-ai-review') && 'label' || '' }}
 ```
 
-Every step has `if: env.SKIP_REVIEW != '1'`, so the heavy review work
-is skipped + the workflow emits a fast `ai:review-passed` outcome.
-This is the LIBRARY mechanism for "I know this push has no new content
-worth reviewing" — used during the cycle to keep ai-review fast.
+Every heavy step has `if: env.SKIP_REVIEW != '1'`, so the work
+is skipped + the workflow emits a fast `ai:review-passed`
+outcome. This is the LIBRARY mechanism for "I know this push
+has no new content worth reviewing" — used during the cycle to
+keep ai-review fast.
+
+The R3 early-exit step (IPLAN-0027 P1, ci/v1.3.0+) can ALSO
+flip `SKIP_REVIEW=1` via `$GITHUB_ENV` with `SKIP_REASON=r3`
+when the App has already APPROVED the current HEAD SHA — see
+the workflow comment header above the step. The final
+"ai-review skipped" step branches on `$SKIP_REASON` to emit
+the right notice (and posts a PR comment **only** for the
+`label` case to avoid spamming label-cycles).
 
 ### When to use a label cycle
 
 | Scenario | Use it? |
 | --- | --- |
-| Composition stuck on `pending` after a rebase-with-main commit (no actual review changes) | ✅ Yes — composition fires only on PR events; cycle injects fresh ones |
-| ai-review verdict still on a STALE commit after a rebase | ✅ Yes — forces re-fire on latest commit |
+| Composition stuck on `pending` after a rebase-with-main commit (no actual review changes), pre-v1.3.0 install template | ✅ Yes — composition fires only on PR events; cycle injects fresh ones |
+| Composition stuck on `pending` on a ci/v1.3.0+ install template (no `pull_request_target`) | ✅ Yes — cycle fires ai-review on `unlabeled`; ai-review completion fires `workflow_run` → composition |
+| ai-review verdict still on a STALE commit after a rebase (HEAD CHANGED) | ✅ Yes — R3 finds no APPROVED-at-new-HEAD review; full review runs |
+| ai-review verdict carrying forward on the SAME HEAD (you want a fresh review) | ❌ Cycle alone won't do it (R3 carries forward). Use the gh-api dismissal force-fresh path above. |
 | Rebase-only commit that introduces no logical changes (previously APPROVED) | ❌ **Don't cycle** — add `skip-ai-review` label **permanently** (no remove) so ai-review skips entirely |
 | Random "let me retry" reflex | ❌ No — wastes CI runner-minutes |
 
 ### Cost / risk
 
 Each cycle fires **every workflow listening on labeled/unlabeled** —
-not just the one you're trying to retrigger. So a cycle aimed at
-composition also fires ai-review (which respects `skip-ai-review` if
-present during the cycle but still uses runner slots). On a busy
-queue, cycles can also cause cancellation races where a newer run
-cancels an in-progress earlier one.
+post ci/v1.3.0, that's ai-review (and any locally-overridden
+composition that re-added `pull_request_target`). Composition on the
+v1.3.0+ install template fires only causally from ai-review's
+`workflow_run` event, so the cycle blast radius is narrower than
+pre-v1.3.0. On a busy queue, cycles can still cause cancellation
+races where a newer run cancels an in-progress earlier one.
 
 **Rule of thumb:** only cycle when a check is genuinely stuck for
 ≥10 min beyond expected runtime. Otherwise, wait — the queue is

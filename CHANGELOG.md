@@ -50,6 +50,83 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   `composition.yml` (IPLAN-0026 P8 — operations PR + framework PR
   shipping next).
 
+### Changed — ci/v1.3.0 (P1): R3 ai-review early-exit when App already APPROVED at HEAD (IPLAN-0027 P1; 2026-06-28)
+
+- **`.github/workflows/ai-review.yml`** — new "R3 early-exit if App
+  already APPROVED at HEAD" step inserted at the top of the
+  `ai-review` job's `steps:` list (before "Fetch reviewer assets").
+  Queries the same App-APPROVED-at-HEAD review set that
+  `composition.yml` uses (matching `user.id == APP_REVIEWER_1_BOT_ID`
+  + `user.type == "Bot"` + `state == "APPROVED"` + `commit_id == HEAD_SHA`).
+  When match found: writes `SKIP_REVIEW=1` + `SKIP_REASON=r3` to
+  `$GITHUB_ENV` → all heavy downstream steps (`Fetch reviewer assets`,
+  rubric run, App-token mint, verdict post, etc.) skip via their
+  existing `if: env.SKIP_REVIEW != '1'` guards. Saves ~$0.10-0.20 +
+  ~2-3 min per redundant re-fire (typical case: label-cycle-
+  retriggered ai-review after the App had already APPROVED the same
+  HEAD).
+- **Safety: fail-OPEN on persistent API failure** — 7-attempt retry
+  with `n*3` backoff capped at 20s (symmetric with
+  `composition.yml:187-200` enforcement query). On all-7-retries-
+  failed, R3 emits `::warning::` + exits 0 → full review path takes
+  over. NEVER silently skips a needed review.
+- **Safety: HEAD-SHA-tied query** — only the App's APPROVED-at-current-
+  HEAD review counts. Force-push to a new SHA → no match at the new
+  SHA → full review runs. Force-fresh-at-same-HEAD path: dismiss the
+  App's prior review via
+  `gh api -X PUT repos/<repo>/pulls/<pr>/reviews/<id>/dismissals
+  -f event=DISMISS`.
+- **Safety: INERT-when-App-not-armed** — when `vars.APP_REVIEWER_1_BOT_ID`
+  is unset, R3 emits `::notice::` + exits 0 → full review runs (same
+  behavior as composition's INERT branch). Numeric-id validation
+  enforced (composition's pattern reused).
+- **New `SKIP_REASON` env field** alongside `SKIP_REVIEW` distinguishes
+  the two skip paths in the final "ai-review skipped" step:
+  - `SKIP_REASON=label` — set in the job env block when the
+    `skip-ai-review` label is present. The notice references the
+    label + posts a one-time PR comment (existing behavior).
+  - `SKIP_REASON=r3` — set by the R3 step via `$GITHUB_ENV` when the
+    App has already APPROVED at HEAD. The notice references R3 +
+    points operators to the gh-api dismissal force-fresh path. **NO
+    PR comment** (would spam every label-cycle on an approved PR).
+- **Renamed final step** from "ai-review skipped (label)" → "ai-review
+  skipped (label OR R3 pre-approved)" so workflow-log readers see the
+  dual-purpose role at a glance.
+- **`docs/troubleshooting.md` §15** updated: documents the v1.3.0+
+  semantics (composition install template no longer listens on
+  `pull_request_target`; R3 carries forward on already-approved-at-HEAD
+  cycles; new gh-api dismissal force-fresh path replaces the
+  pre-R3 "label-cycle-alone forces fresh" pattern). Decision matrix
+  table refreshed for v1.3.0+ scenarios.
+- **Cost saved (observed):** the 5 case-study operations PRs from
+  2026-06-27 (#149, #150, #152, #154, #155) each used the label-cycle
+  recovery → ai-review re-fired AFTER the App had APPROVED → ~$0.10-
+  0.20 + ~2-3 min per re-fire. R3 eliminates the heavy CLI re-run;
+  total session-equivalent savings ≈ ~$0.50-1.00 + ~10-15 min in
+  observed wasted work. Scales linearly with PR volume.
+- **Bundled with IPLAN-0026 P7** (drop `pull_request_target` from
+  composition install templates) in the same `ci/v1.3.0` release —
+  both are Phase-2 friction-relief cleanups; consumers do ONE
+  pin-bump cycle to get both benefits.
+- **Release coordination:** `ci/v1.3.0` will NOT be tagged until
+  IPLAN-0026 P7 PR also merges. If P7 stalls, this PR's
+  `docs/troubleshooting.md §15` description of composition's
+  v1.3.0+ install-template triggers (no `pull_request_target`)
+  requires a follow-up fix (the §15 wording is forward-looking
+  and accurate only after P7 lands).
+- **Plan:** [IPLAN-0027](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0027_r3-ai-review-early-exit.md)
+  (READY status with 3 verified-planning review passes + check_plan.py
+  gate GREEN; operations PR #161, merged 2026-06-27).
+- **Consumer impact:** consumers bump caller pin `@ci/v1.2.0` →
+  `@ci/v1.3.0` (operations + framework caller PRs shipping next).
+  No caller-workflow shape change required for R3 (the new step lives
+  inside the reusable; consumers benefit automatically after pin
+  bump).
+- **Backward compatibility:** R3 is additive — when the App hasn't
+  approved at HEAD (first fire, new HEAD SHA, dismissed prior
+  review), the query returns empty → full review runs identically
+  to pre-v1.3.0 behavior.
+
 ### Changed — ci/v1.2.0 (Phase 1 P2): install templates add `workflow_run` trigger + pin bump (IPLAN-0026 P2; 2026-06-27)
 
 - **`install/templates/workflows/composition-private.yml`** + **`install/templates/workflows/composition-public.yml`** triggers

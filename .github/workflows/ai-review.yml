@@ -165,7 +165,74 @@ jobs:
       # change) — it must NOT be used when a push changes reviewed code. Governance PRs are human-merged
       # regardless. See docs/AI_REVIEW_OPS.md.
       SKIP_REVIEW: ${{ contains(github.event.pull_request.labels.*.name, 'skip-ai-review') && '1' || '' }}
+      # IPLAN-0027 (ci/v1.3.0+): label-set source for SKIP_REVIEW resolves to the `label` reason via this env
+      # field; the R3 step (below) can also flip SKIP_REVIEW=1 via $GITHUB_ENV with SKIP_REASON=r3 when the
+      # App has ALREADY approved the current HEAD SHA and a fresh review would add zero signal. The final
+      # "ai-review skipped" step branches on $SKIP_REASON to emit the right notice (and post a PR comment
+      # only for the label case to avoid spamming label-cycles).
+      SKIP_REASON: ${{ contains(github.event.pull_request.labels.*.name, 'skip-ai-review') && 'label' || '' }}
     steps:
+      # IPLAN-0027 R3 early-exit (ci/v1.3.0+): skip the heavy reviewer CLI when the reviewer App has
+      # ALREADY APPROVED the current HEAD SHA. Saves ~$0.10-0.20 + ~2-3 min per redundant re-fire
+      # (typical case: label-cycle-retriggered ai-review after the verdict was already counted at
+      # this HEAD). Safe because the App's approval IS the gate signal that composition counts at
+      # HEAD; re-running the reviewer doesn't add value.
+      #
+      # Force-fresh-review path: a new HEAD SHA (push) OR a dismissed prior App review
+      # (`gh api -X PUT repos/<repo>/pulls/<pr>/reviews/<id>/dismissals -f event=DISMISS`)
+      # produces an empty query result → full review runs. INERT App, first fire on PR, or fork PR
+      # (non-allowlisted) all also produce empty results → full review path takes over correctly.
+      #
+      # `if: env.SKIP_REVIEW != '1'` guard keeps this step inert when the `skip-ai-review` label is
+      # present (existing label flow handles it).
+      - name: R3 early-exit if App already APPROVED at HEAD
+        if: ${{ env.SKIP_REVIEW != '1' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_ID: ${{ vars.APP_REVIEWER_1_BOT_ID }}
+        run: |
+          set -uo pipefail
+
+          # INERT until armed — no App configured means no prior approval to carry forward; proceed.
+          if [ -z "${EXPECTED_ID:-}" ]; then
+            echo "::notice::R3 early-exit skipped: vars.APP_REVIEWER_1_BOT_ID unset (App not wired); proceeding to full review."
+            exit 0
+          fi
+          case "$EXPECTED_ID" in ''|*[!0-9]*) echo "::error::APP_REVIEWER_1_BOT_ID must be the App bot-user NUMERIC id (got '$EXPECTED_ID')"; exit 1;; esac
+
+          # Same query shape composition.yml uses (line 189). Retry on transient API blips —
+          # fail-OPEN (proceed to full review) on persistent failure so we never SILENTLY skip a
+          # needed review. The query is HEAD-SHA-tied: only the App's APPROVED-at-current-HEAD
+          # counts; a prior approval on an older commit doesn't match.
+          # Retry budget matches composition.yml's 7-attempt × backoff-capped-at-20s shape
+          # (lines 187-200 of composition.yml) — symmetric with the enforcement query for
+          # consistent flaky-runner tolerance.
+          matches=0; fetched=
+          for n in 1 2 3 4 5 6 7; do
+            if ids=$(gh api "repos/$GH_REPO/pulls/$PR/reviews" --paginate \
+                  -q ".[] | select(.user.id == ($EXPECTED_ID) and .user.type == \"Bot\" and .state == \"APPROVED\" and .commit_id == \"$HEAD_SHA\") | .id" 2>/dev/null); then
+              matches=$(printf '%s\n' "$ids" | grep -c . || true)
+              fetched=1
+              break
+            fi
+            [ "$n" -lt 7 ] && sleep $(( n*3 < 20 ? n*3 : 20 ))
+          done
+          if [ -z "$fetched" ]; then
+            echo "::warning::R3 early-exit: gh-api review fetch failed after 7 retries — fail-OPEN (proceeding to full review). Persistent failure suggests infrastructure outage; the full review path is the safe default."
+            exit 0
+          fi
+
+          if [ "${matches:-0}" -ge 1 ]; then
+            echo "::notice::R3 early-exit: reviewer App ($EXPECTED_ID) already APPROVED at head $HEAD_SHA — skipping heavy reviewer CLI. To force a fresh review at this HEAD, dismiss the App's review via the GitHub API (see docs/troubleshooting.md §15)."
+            echo "SKIP_REVIEW=1" >> "$GITHUB_ENV"
+            echo "SKIP_REASON=r3" >> "$GITHUB_ENV"
+          else
+            echo "no prior App-APPROVED review at $HEAD_SHA — proceeding to full review."
+          fi
+
       # Per IPLAN-0024 (ci/v1.1.5+): rubric + schema + per-consumer config fetched
       # via `curl` instead of `actions/checkout`. The 5-cycle v1.1.0→v1.1.3
       # sparse-checkout saga (non-cone-mode, cone-mode, full-clone, clean: false)
@@ -627,18 +694,37 @@ jobs:
             exit 1
           fi
 
-      # When the skip-ai-review label is present every heavy step above is skipped; this step runs so the
-      # job concludes SUCCESS (the required `ai-review` check stays green without re-running the reviewer).
-      - name: ai-review skipped (label)
+      # When SKIP_REVIEW=1 every heavy step above is skipped; this step runs so the job concludes
+      # SUCCESS (the required `ai-review` check stays green without re-running the reviewer). The
+      # SKIP_REASON env var distinguishes the two skip paths (IPLAN-0027 §2.2):
+      #   - label → set in the job env block when the `skip-ai-review` label is present. The notice
+      #     references the label + posts a one-time PR comment so the operator sees the carry-forward
+      #     contract.
+      #   - r3    → set by the R3 early-exit step (above) via $GITHUB_ENV when the reviewer App has
+      #     already APPROVED the current HEAD SHA. The notice references R3 and points operators to
+      #     the gh-api dismissal path for forced refresh. NO PR comment (would spam every label-cycle
+      #     on an approved PR — operators don't need a comment per cycle for the R3 carry-forward).
+      - name: ai-review skipped (label OR R3 pre-approved)
         if: ${{ env.SKIP_REVIEW == '1' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
+          SKIP_REASON: ${{ env.SKIP_REASON }}
         run: |
-          echo "::notice::ai-review SKIPPED — 'skip-ai-review' label present. Prior approval carried forward; the reviewer was not re-run (only other checks were being iterated). Remove the label to force a fresh review."
-          gh pr comment "$PR" --body "### AI review — ⏭️ skipped (carried forward)
-          The \`skip-ai-review\` label is set, so the reviewer was **not re-run** on this push (prior approval carried forward — intended for iterating on *other* checks without changing reviewed code). Remove the label to force a fresh review." >/dev/null 2>&1 || true
+          case "${SKIP_REASON:-}" in
+            label)
+              echo "::notice::ai-review SKIPPED — 'skip-ai-review' label present. Prior approval carried forward; the reviewer was not re-run (only other checks were being iterated). Remove the label to force a fresh review."
+              gh pr comment "$PR" --body "### AI review — ⏭️ skipped (carried forward)
+              The \`skip-ai-review\` label is set, so the reviewer was **not re-run** on this push (prior approval carried forward — intended for iterating on *other* checks without changing reviewed code). Remove the label to force a fresh review." >/dev/null 2>&1 || true
+              ;;
+            r3)
+              echo "::notice::ai-review SKIPPED — R3 early-exit (reviewer App already APPROVED at HEAD). Prior approval carried forward; the reviewer CLI was not re-run on this fire because a fresh run would add zero signal at the same HEAD SHA. To force a fresh review at THIS HEAD, dismiss the App's existing review via the GitHub API: gh api -X PUT repos/\$GH_REPO/pulls/\$PR/reviews/<review-id>/dismissals -f event=DISMISS -f message=<reason>. See docs/troubleshooting.md §15. No PR comment is posted for the R3 path to avoid spamming label-cycles."
+              ;;
+            *)
+              echo "::warning::ai-review SKIPPED — SKIP_REVIEW=1 but SKIP_REASON unset. Defensive fallback notice; this state should not occur in normal operation."
+              ;;
+          esac
 
       - name: Cleanup
         if: always()
