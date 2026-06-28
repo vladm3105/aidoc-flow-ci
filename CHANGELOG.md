@@ -5,6 +5,48 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — ci/v1.4.0 (Phase 1 P1 PR-A): new AI-driven `doc-maintainer.yml` reusable workflow + supporting scripts (IPLAN-0025 P1 PR-A; 2026-06-28)
+
+- **`.github/workflows/doc-maintainer.yml`** — new reusable workflow
+  (`workflow_call:` only). Post-merge AI-driven doc-of-record
+  maintainer. Reads merge diff + per-consumer conventions doc + invokes
+  `claude` (or `codex`) to PLAN which docs need updating; risk-tier
+  partitions the plan; dry-run posts PR comment, live mode opens
+  follow-up bot PR for low-risk edits + GitHub issue for high-risk
+  edits. Per IPLAN-0025 §2.1 (12-step job structure with deterministic
+  dedup before LLM cost, fail-LOUD on infrastructure errors per D12).
+- **`scripts/doc-maintainer/planner.py`** — step 4-7 (inventory
+  candidates + AI plan + validate against outer allowlist + tier-classify).
+  alpha.1 status: emits empty plan; real LLM invocation in v1.4.1.
+- **`scripts/doc-maintainer/apply.py`** — step 8 (apply low-risk edits
+  in apply-mode; produces `.proposed` files). alpha.1 status: no-op
+  pass-through; real apply-mode in v1.4.1.
+- **`scripts/doc-maintainer/reconcile.py`** — scheduled-cron backup
+  reconciler (per §2.4 cron + Pass-2 BLOCKER #2 fix). Scans main
+  commits in the lookback window + reports any SHA without an
+  associated doc-maintainer run. alpha.1 status: report-only; auto-
+  dispatch in v1.4.1.
+- **Job-level permissions:** `contents: write` + `pull-requests: write`
+  + `issues: write` + `actions: read`. Last one required for the
+  reconciler's `actions/runs` query per Pass-3 HIGH Finding #3.
+- **Recursion guards** (belt-and-suspenders): `[skip ci]` in bot
+  commit message + `if: github.actor != 'aidoc-flow-bot[bot]'`.
+- **Concurrency:** `group: doc-maintainer-${{ github.ref }}` with
+  `cancel-in-progress: false`.
+- **alpha.1 ship strategy:** the workflow wiring + scripts ship NOW
+  (v1.4.0) so the dry-run pilot on operations can observe trigger
+  reliability empirically (addressing IPLAN-0018 "didn't fire" gap
+  ahead of LLM cost kicking in). Real LLM invocation + bot-PR
+  creation + issue creation + reconciler auto-dispatch all ship in
+  v1.4.1 after dry-run validates the skeleton.
+- **PR-B coming next:** install templates
+  (`install/templates/workflows/doc-maintainer-{private,public}.yml`)
+  + docs updates (architecture.md / security.md / troubleshooting.md).
+- **Plan:** [IPLAN-0025](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0025_ai-doc-maintainer.md)
+  P1 PR-A (Phase 1 mechanism-only ship; full functionality in v1.4.1).
+- **Consumer impact:** consumers do NOT bump pin until v1.4.0 ships
+  via PR-B + tag. This PR-A is the workflow + scripts foundation.
+
 ### Changed — ci/v1.3.0 (Phase 2 P7): drop `pull_request_target` from composition install templates (IPLAN-0026 P7; 2026-06-28)
 
 - **`install/templates/workflows/composition-private.yml`** + **`install/templates/workflows/composition-public.yml`** triggers

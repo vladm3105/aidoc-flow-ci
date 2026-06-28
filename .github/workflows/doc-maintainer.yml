@@ -1,0 +1,330 @@
+# doc-maintainer.yml — AI-driven post-merge doc-of-record maintainer.
+#
+# Per IPLAN-0025 (operations 2026-06-28) — supersedes mechanical
+# docs-sync.yml at end of Phase 3 (ci/v2.0.0). This reusable workflow:
+#
+#   1. Reads the merge diff + per-consumer conventions doc.
+#   2. Invokes `claude` (or `codex`) to PLAN which docs-of-record need
+#      updating (the AI decides scope; no hardcoded trigger map).
+#   3. Risk-tier partitions the plan into low-risk and high-risk sets.
+#   4. Dry-run: posts a PR-comment listing proposed edits. Live: opens
+#      a follow-up bot PR for low-risk edits (auto-merges through the
+#      v1.3.0 ai-review chain — REQUIRES P3a trust-allowlist precondition
+#      adding aidoc-flow-bot[bot] to consumer's .github/ai-review/config.json
+#      per IPLAN-0025 Risk 13 / D11) AND/OR opens a GitHub issue for
+#      high-risk edits (human applies).
+#
+# SAFETY (per IPLAN-0025 §1 + §4 risks):
+#   1. Outer path allowlist — plan entries outside `allowed_paths` are
+#      rejected before LLM apply-mode (Risk 1).
+#   2. Per-op kill switches in config.json (changelog / handoff_narrative
+#      / roadmap / iplan_status / decisions / date_staleness /
+#      version_propagation / cross_ref_repair).
+#   3. dry_run mode (PR-comment only; no bot PR) and kill_switch (workflow
+#      exits before LLM cost). See §2.2 _comment2.
+#   4. max_edits_per_pr + max_prs_per_day caps.
+#   5. Prompt redacts secret-shaped strings (Risk 11) and forbids source
+#      code / governance config edits.
+#   6. claude unavailable → fail LOUD with ::error:: + open tracking
+#      issue (D12 / Risk 12); never silently misses.
+#
+# RECURSION GUARDS (belt-and-suspenders):
+#   - [skip ci] in bot commit message (suppresses push trigger).
+#   - if: github.actor != 'aidoc-flow-bot[bot]' (second guard).
+#
+# Consumer caller (typical):
+#
+#   name: doc-maintainer
+#   on:
+#     push: { branches: [main] }
+#     schedule:
+#       - cron: '7,37 * * * *'   # off-peak reconciler (per IPLAN-0025 D9)
+#   jobs:
+#     call:
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v1.4.0
+#       secrets: inherit
+
+name: doc-maintainer
+
+on:
+  workflow_call:
+    inputs:
+      config_path:
+        description: 'Path to consumer config file. Default: .github/doc-maintainer.json'
+        type: string
+        default: '.github/doc-maintainer.json'
+      conventions_path:
+        description: 'Path to consumer conventions doc (AI reads). Default: .github/doc-maintainer-conventions.md'
+        type: string
+        default: '.github/doc-maintainer-conventions.md'
+      reviewer:
+        description: 'LLM: claude (default; subscription-auth) or codex (OPENAI_API_KEY)'
+        type: string
+        default: 'claude'
+      runner_labels:
+        description: 'JSON array of runner labels. Default ubuntu-latest.'
+        type: string
+        default: '"ubuntu-latest"'
+      dry_run_override:
+        description: 'Override config dry_run (true=force dry-run; false=force live). Empty = use config.'
+        type: string
+        default: ''
+    secrets:
+      AIDOC_FLOW_BOT_ID:
+        description: 'aidoc-flow-bot App numeric ID. Required for non-dry-run mode.'
+        required: false
+      AIDOC_FLOW_BOT_KEY:
+        description: 'aidoc-flow-bot App private key (PEM). Required for non-dry-run mode.'
+        required: false
+      CLAUDE_CODE_OAUTH_TOKEN:
+        description: 'Claude subscription auth token. Required when reviewer=claude.'
+        required: false
+      OPENAI_API_KEY:
+        description: 'OpenAI API key. Required when reviewer=codex.'
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+
+concurrency:
+  group: doc-maintainer-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    # Recursion guard #2 (belt-and-suspenders for [skip ci]).
+    if: ${{ github.actor != 'aidoc-flow-bot[bot]' && github.event.head_commit.author.username != 'aidoc-flow-bot[bot]' }}
+    name: AI-driven doc maintenance
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      MERGE_SHA: ${{ github.sha }}
+      CONFIG_PATH: ${{ inputs.config_path }}
+      CONVENTIONS_PATH: ${{ inputs.conventions_path }}
+      REVIEWER: ${{ inputs.reviewer }}
+      DRY_RUN_OVERRIDE: ${{ inputs.dry_run_override }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - name: Checkout (full history for git rename detection + doc inventory)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Fetch operation scripts from aidoc-flow-ci
+        env:
+          CI_TAG: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          # Per IPLAN-0024 curl-replaces-checkout: fetch the per-tag operation
+          # scripts so they match the reusable's pinned tag exactly.
+          TAG="${CI_TAG##*@}"
+          BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${TAG}/scripts/doc-maintainer"
+          mkdir -p .doc-maintainer-scripts
+          for op in planner apply reconcile; do
+            curl -fsSL "${BASE}/${op}.py" -o ".doc-maintainer-scripts/${op}.py"
+            chmod +x ".doc-maintainer-scripts/${op}.py"
+          done
+          ls -la .doc-maintainer-scripts/
+
+      - name: Step 0 — Reconcile (schedule event only; per §2.4 cron + Pass-2 BLOCKER #2 fix)
+        if: ${{ github.event_name == 'schedule' }}
+        run: |
+          set -uo pipefail
+          # Per IPLAN-0025 §2.4: scheduled cron is the reliability backup for
+          # the IPLAN-0018 "didn't fire" gap. Reconciler scans recent main
+          # commits for any SHA without an associated doc-maintainer run and
+          # reports them. v1.4.0 alpha.1 ships report-only; v1.4.1 adds
+          # workflow_dispatch fan-out. Schedule-fired runs skip the rest of
+          # the pipeline (they're reconciler-only).
+          python3 .doc-maintainer-scripts/reconcile.py \
+            --gh-repo "$GH_REPO" \
+            --lookback-min 90 \
+            || { echo "::error::reconcile.py failed — failing LOUD per IPLAN-0025 D12 / Risk 12"; exit 1; }
+          echo "::notice::reconciler complete; schedule-fired run exits here (per-event-name branch)."
+          exit 0
+
+      - name: Step 1 — Deterministic dedup check (skip if maintainer-bot PR exists for this SHA)
+        if: ${{ github.event_name != 'schedule' }}
+        id: dedup
+        run: |
+          set -uo pipefail
+          # Per IPLAN-0025 §2.1 step 1: SHA-tied dedup. If an open
+          # maintainer-bot PR already targets this merge SHA's branch
+          # suffix, exit cleanly — saves LLM cost.
+          # per_page=100 in case the consumer has >30 open PRs (default
+          # pagination would miss the bot PR in the dedup scan).
+          SHA8="${MERGE_SHA:0:8}"
+          existing=$(gh api "repos/$GH_REPO/pulls?state=open&per_page=100" \
+            --jq "[.[] | select(.user.login == \"aidoc-flow-bot[bot]\" and (.head.ref | endswith(\"-$SHA8\")))] | length" 2>/dev/null || echo "0")
+          if [ "${existing:-0}" -ge 1 ]; then
+            echo "::notice::Step 1 dedup: existing maintainer-bot PR covers SHA $SHA8 — exiting cleanly."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Step 2 — Resolve config + conventions + dry-run mode
+        if: ${{ steps.dedup.outputs.skip != 'true' }}
+        id: cfg
+        run: |
+          set -uo pipefail
+          if [ ! -f "$CONFIG_PATH" ]; then
+            echo "::notice::No $CONFIG_PATH found; doc-maintainer is opt-in — exiting cleanly."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Validate JSON syntax BEFORE jq queries; malformed config must fail
+          # LOUD (per D12) not fail-open to LIVE mode. Without this check, a
+          # broken config silently yields empty KILL + empty DRY_RUN, which
+          # would fall through to step 10's live-mode `if:`.
+          jq empty "$CONFIG_PATH" >/dev/null 2>&1 \
+            || { echo "::error::malformed config JSON at $CONFIG_PATH — failing LOUD per IPLAN-0025 D12"; exit 1; }
+          KILL=$(jq -r '.kill_switch // false' "$CONFIG_PATH")
+          if [ "$KILL" = "true" ]; then
+            echo "::notice::doc-maintainer kill_switch=true; exiting cleanly (no LLM cost incurred)."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          DRY_RUN=$(jq -r '.dry_run // true' "$CONFIG_PATH")
+          if [ -n "$DRY_RUN_OVERRIDE" ]; then
+            DRY_RUN="$DRY_RUN_OVERRIDE"
+          fi
+          echo "dry_run=$DRY_RUN" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::doc-maintainer running; dry_run=$DRY_RUN reviewer=$REVIEWER"
+
+      - name: Step 3 — Resolve LLM CLI (install if ubuntu-latest)
+        if: ${{ steps.cfg.outputs.skip != 'true' }}
+        run: |
+          set -uo pipefail
+          case "$REVIEWER" in
+            claude)
+              if ! command -v claude >/dev/null 2>&1; then
+                if [ -n "${RUNNER_OS:-}" ] && [ "${RUNNER_OS}" = "Linux" ]; then
+                  npm install -g @anthropic-ai/claude-code 2>&1 | tail -3
+                fi
+              fi
+              command -v claude >/dev/null 2>&1 || { echo "::error::claude CLI not available + cannot install; failing LOUD per D12"; exit 1; }
+              ;;
+            codex)
+              command -v codex >/dev/null 2>&1 || { echo "::error::codex CLI not available; failing LOUD per D12"; exit 1; }
+              ;;
+            *)
+              echo "::error::Unknown reviewer: $REVIEWER (expected claude or codex)"
+              exit 1
+              ;;
+          esac
+
+      - name: Steps 4-7 — Inventory candidates + AI plan + validate + tier-classify
+        if: ${{ steps.cfg.outputs.skip != 'true' }}
+        id: plan
+        run: |
+          set -uo pipefail
+          # planner.py exits non-zero on hard errors (allowlist violation,
+          # LLM outage after retries, invalid config schema) → workflow must
+          # fail LOUD per D12 / Risk 12. Explicit gate is required because
+          # `set -uo pipefail` (no -e) would otherwise swallow the planner
+          # non-zero exit + fall through to jq lines (which would then fail
+          # on missing plan JSON, emit error to stderr, but produce empty
+          # low_count/high_count outputs → downstream `if:` conditions would
+          # evaluate against "" not "0" → live-mode steps would fire).
+          python3 .doc-maintainer-scripts/planner.py \
+            --merge-sha "$MERGE_SHA" \
+            --gh-repo "$GH_REPO" \
+            --config "$CONFIG_PATH" \
+            --conventions "$CONVENTIONS_PATH" \
+            --reviewer "$REVIEWER" \
+            --out-plan .doc-maintainer-plan.json \
+            || { echo "::error::planner.py failed — failing LOUD per IPLAN-0025 D12 / Risk 12"; exit 1; }
+          # Now safe to read the plan JSON.
+          low_count=$(jq '.low_risk_set | length' .doc-maintainer-plan.json)
+          high_count=$(jq '.high_risk_set | length' .doc-maintainer-plan.json)
+          echo "low_count=$low_count" >> "$GITHUB_OUTPUT"
+          echo "high_count=$high_count" >> "$GITHUB_OUTPUT"
+          echo "::notice::Plan: low_risk=$low_count, high_risk=$high_count"
+
+      - name: Step 8 — Apply edits (low-risk set; produces .proposed files)
+        if: ${{ steps.cfg.outputs.skip != 'true' && steps.plan.outputs.low_count != '0' }}
+        run: |
+          set -uo pipefail
+          # Same fail-LOUD discipline as the planner: apply.py exit 1 must
+          # not be swallowed by `set -uo pipefail` (no -e).
+          python3 .doc-maintainer-scripts/apply.py \
+            --plan .doc-maintainer-plan.json \
+            --tier low_risk \
+            --gh-repo "$GH_REPO" \
+            --reviewer "$REVIEWER" \
+            --out-dir .doc-maintainer-proposed \
+            || { echo "::error::apply.py failed — failing LOUD per IPLAN-0025 D12 / Risk 12"; exit 1; }
+
+      - name: Step 9 — Dry-run branch — post PR comment + exit
+        if: ${{ steps.cfg.outputs.skip != 'true' && steps.cfg.outputs.dry_run == 'true' }}
+        run: |
+          set -uo pipefail
+          PR=$(gh api "repos/$GH_REPO/commits/$MERGE_SHA/pulls" --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -z "$PR" ]; then
+            echo "::notice::dry-run: no PR found for merge $MERGE_SHA; skipping comment"
+            exit 0
+          fi
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          LOW_COUNT="${{ steps.plan.outputs.low_count }}"
+          HIGH_COUNT="${{ steps.plan.outputs.high_count }}"
+          BODY=$(mktemp)
+          {
+            echo "🤖 **doc-maintainer (dry-run)** — proposed doc edits after merge of PR #${PR}."
+            echo ""
+            echo "- **Low-risk edits proposed:** ${LOW_COUNT} (would land via a bot PR through ai-review chain in live mode)"
+            echo "- **High-risk edits proposed:** ${HIGH_COUNT} (would surface as a GitHub issue for human application in live mode)"
+            echo ""
+            echo "Workflow run: ${RUN_URL}"
+            echo ""
+            echo "Per IPLAN-0025 §3 P4, graduation to live requires ≥5 dry-run cycles with coherent edit proposals + zero allowlist violations + zero infrastructure errors."
+          } > "$BODY"
+          gh pr comment "$PR" --body-file "$BODY"
+
+      - name: Step 10 — Live branch (low-risk) — open bot PR
+        if: ${{ steps.cfg.outputs.skip != 'true' && steps.cfg.outputs.dry_run != 'true' && steps.plan.outputs.low_count != '0' }}
+        env:
+          BOT_ID: ${{ secrets.AIDOC_FLOW_BOT_ID }}
+          BOT_KEY: ${{ secrets.AIDOC_FLOW_BOT_KEY }}
+        run: |
+          set -uo pipefail
+          if [ -z "${BOT_ID:-}" ] || [ -z "${BOT_KEY:-}" ]; then
+            echo "::error::live-mode requires AIDOC_FLOW_BOT_ID + AIDOC_FLOW_BOT_KEY secrets (per IPLAN-0025 P5a App permission expansion runbook)."
+            exit 1
+          fi
+          PR=$(gh api "repos/$GH_REPO/commits/$MERGE_SHA/pulls" --jq '.[0].number' 2>/dev/null || echo "")
+          # Live-mode commit/push/open-PR logic ships in v1.4.1 (alpha.1 stub
+          # per IPLAN-0025 §3 P5 — graduation gated on P5a App permission
+          # expansion + P3a trust allowlist expansion).
+          # alpha.1: emit notice; alpha.2 ships the App-token-mint + branch
+          # push + PR-open via planner.json apply mode.
+          echo "::notice::alpha.1 stub — live low-risk PR creation ships in v1.4.1 after P5a App permission + P3a trust allowlist preconditions land (per IPLAN-0025 §3 + Risk 7 + Risk 13)"
+
+      - name: Step 11 — Live branch (high-risk) — open GitHub issue
+        if: ${{ steps.cfg.outputs.skip != 'true' && steps.cfg.outputs.dry_run != 'true' && steps.plan.outputs.high_count != '0' }}
+        env:
+          BOT_ID: ${{ secrets.AIDOC_FLOW_BOT_ID }}
+          BOT_KEY: ${{ secrets.AIDOC_FLOW_BOT_KEY }}
+        run: |
+          set -uo pipefail
+          if [ -z "${BOT_ID:-}" ] || [ -z "${BOT_KEY:-}" ]; then
+            echo "::error::live-mode requires AIDOC_FLOW_BOT_ID + AIDOC_FLOW_BOT_KEY secrets"
+            exit 1
+          fi
+          echo "::notice::alpha.1 stub — high-risk issue creation ships in v1.4.1 (per IPLAN-0025 §2.1 step 11 + D8)"
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf .doc-maintainer-scripts .doc-maintainer-proposed .doc-maintainer-plan.json
