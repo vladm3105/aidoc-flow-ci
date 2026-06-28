@@ -5,6 +5,31 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — ci/v1.2.0 (Phase 1 P2): install templates add `workflow_run` trigger + pin bump (IPLAN-0026 P2; 2026-06-27)
+
+- **`install/templates/workflows/composition-private.yml`** + **`install/templates/workflows/composition-public.yml`** triggers
+  extended to add `workflow_run` (fires AFTER consumer's `ai-review`
+  caller completes — any conclusion) ALONGSIDE the existing
+  `pull_request_target` + `pull_request_review` triggers. Parallel-
+  trigger transition for safety per IPLAN-0017 §3.4 + IPLAN-0026 §2.3 D2
+  migration discipline.
+- **`uses:` pin bumped** from `@ci/v1.0.6` to `@ci/v1.2.0` in both
+  templates — `install.sh`-onboarded consumers now get the v1.2.0 body
+  (which handles the new `workflow_run` event shape from P1) at install
+  time. Existing consumers bump their caller pin via separate Phase-1
+  P4/P5 PRs (operations + framework callers).
+- **Phase 1 ships MECHANISM only.** During Phase 1 the early-fire stale-
+  red still happens (kept `pull_request_target` fires composition before
+  the App approves; FAILS legitimately; later re-fires SUCCESS via
+  `pull_request_review` or now `workflow_run`; rollup still shows the
+  stale FAILURE; label-cycle still needed). **Phase 2 (ci/v1.3.0,
+  separate small IPLAN after empirical validation) drops
+  `pull_request_target` from these install templates** and delivers the
+  actual friction relief.
+- **Phase-1 P3 next:** tag `ci/v1.2.0` against the most recent
+  composition + install-template commits (P1 + P2 land together under
+  the same minor version per IPLAN-0026 §3).
+
 ### Changed — ci/v1.2.0 (Phase 1): `composition.yml` body handles `workflow_run` event shape (IPLAN-0026 P1; 2026-06-27)
 
 - **`.github/workflows/composition.yml`** body refactored to source PR
