@@ -11,6 +11,15 @@
 # submits that review; we must re-evaluate without re-running the heavy reviewer CLI — hence a SEPARATE,
 # lightweight workflow). Reads PR review metadata only via the GITHUB_TOKEN; never checks out or runs PR code.
 #
+# IPLAN-0026 P1 (ci/v1.2.0): body now handles TWO event-shape sources for PR data:
+#   1. pull_request_review event → `github.event.pull_request.*` (the original shape)
+#   2. workflow_run event (after ai-review completes) → `github.event.workflow_run.pull_requests[0].*`
+# The env block uses `||` expressions to source from whichever shape is non-empty per event. Per IPLAN-0026
+# §2.1 fork-edge-case: workflow_run from a fork PR has empty `pull_requests[]` → body detects + early-exits
+# (forks are already routed to HUMAN-REVIEW-ONLY by ai-review; composition exempts them via the IS_FORK
+# branch below regardless of trigger). The reusable itself stays `workflow_call:` only; the new triggers
+# live on the consumer caller templates (composition-{private,public}.yml) per IPLAN-0026 §2.3.
+#
 # INERT / EXEMPT (passes green, never blocks): when `vars.APP_REVIEWER_1_BOT_ID` is unset (App not yet
 # wired); on a governance-locked PR (human-merge — must not double-block); and on a fork / non-allowlisted-
 # author PR (ai-review routes those to HUMAN-REVIEW-ONLY and skips the reviewer, so the App never approves —
@@ -34,14 +43,20 @@ permissions:
 # `pull_request_review:submitted` is exactly the one that records the check GREEN — cancelling it (a
 # cancelled required check is NOT success) would leave a satisfied PR permanently blocked. Runs are cheap
 # (`gh api` only); let each complete so the latest evaluation for a given head SHA wins.
+# Concurrency group: per-PR; uses `||` fallback over both event shapes per IPLAN-0026 §2.1 D7. For
+# pull_request_review events the LHS resolves; for workflow_run the RHS resolves. For the fork-edge-case
+# (workflow_run from fork PR with empty pull_requests[]) both sides resolve to empty → global serialization
+# on group `composition-` is harmless because the body exits early in that case (per §2.1 fork-detection).
 concurrency:
-  group: composition-${{ github.event.pull_request.number }}
+  group: composition-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number }}
   cancel-in-progress: false
 
 jobs:
   composition:
-    # On a label event, only run for `skip-ai-review` (other label writes shouldn't re-trigger).
-    if: ${{ (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'skip-ai-review' }}
+    # Run on workflow_run events unconditionally (they only fire from the ai-review workflow completing —
+    # exactly when composition should re-evaluate). On label events, run only for `skip-ai-review` (other
+    # label writes shouldn't re-trigger). Non-label events (pull_request_review, etc.) always run.
+    if: ${{ github.event_name == 'workflow_run' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'skip-ai-review' }}
     # Private repo → ci-ephemeral self-hosted (this account has no GitHub-hosted minutes, OPS-0049);
     # public repo → GitHub-hosted. Lightweight: only `gh api` calls, no checkout of PR code.
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
@@ -50,17 +65,31 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # IPLAN-0026 P1: each field uses `||` fallback so PR data sources from whichever event shape is
+          # non-empty. LHS = pull_request_review; RHS = workflow_run. For fork PRs on workflow_run both sides
+          # may evaluate to empty (GitHub omits pull_requests[] when source workflow ran from a fork); the
+          # body's fork-detection branch below handles that case.
+          PR: ${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.workflow_run.pull_requests[0].head.sha }}
           EXPECTED_ID: ${{ vars.APP_REVIEWER_1_BOT_ID }}
-          IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
-          AUTHOR: ${{ github.event.pull_request.user.login }}
-          SKIP_REVIEW: ${{ contains(github.event.pull_request.labels.*.name, 'skip-ai-review') && '1' || '' }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.fork || github.event.workflow_run.pull_requests[0].head.repo.fork }}
+          AUTHOR: ${{ github.event.pull_request.user.login || github.event.workflow_run.actor.login }}
+          # SKIP_REVIEW resolved via gh-api below (the workflow_run payload doesn't include PR labels;
+          # gh-api is the shape-agnostic source per IPLAN-0026 §2.1 D10).
         run: |
           set -uo pipefail
 
           # The self-hosted runner's api.github.com is intermittently flaky; a transient failure must NEVER
           # read as "no approval" (that would FALSE-block a satisfied PR). Every gh-api call below is retried.
+
+          # IPLAN-0026 P1 fork edge case: workflow_run from a fork PR has empty pull_requests[] → both
+          # `||` fallback expressions above resolve to empty strings → exit cleanly. Forks are HUMAN-REVIEW-
+          # ONLY (ai-review never approves them) so composition must NOT block them; the IS_FORK branch
+          # below covers the same case for pull_request_review-triggered runs.
+          if [ -z "${PR:-}" ]; then
+            echo "::notice::composition: empty PR number from event payload (workflow_run from fork PR with empty pull_requests[], or non-PR event) — passing without enforcement."
+            exit 0
+          fi
 
           # INERT until armed — the check passes so it never blocks before the App is wired.
           if [ -z "${EXPECTED_ID:-}" ]; then
@@ -68,6 +97,15 @@ jobs:
             exit 0
           fi
           case "$EXPECTED_ID" in ''|*[!0-9]*) echo "::error::APP_REVIEWER_1_BOT_ID must be the App bot-user NUMERIC id (got '$EXPECTED_ID')"; exit 1;; esac
+
+          # SKIP_REVIEW resolved via gh-api (shape-agnostic; the workflow_run payload doesn't include PR
+          # labels). Retried for the same flaky-api reason as the loops below. Default to empty (no skip)
+          # on persistent failure — fail-closed enforces the App-approval requirement.
+          SKIP_REVIEW=""
+          for n in 1 2 3 4; do
+            SKIP_REVIEW=$(gh api "repos/$GH_REPO/pulls/$PR" --jq '[.labels[].name] | contains(["skip-ai-review"]) | if . then "1" else "" end' 2>/dev/null) && break
+            [ "$n" -lt 4 ] && sleep $((n*3))
+          done
 
           # CARRY-FORWARD: when ai-review is skipped via the `skip-ai-review` label, the App does not re-
           # approve the new head, so there is no APPROVED-at-head review to find. Pass (carry the prior
