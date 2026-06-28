@@ -5,6 +5,30 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — ci/v1.4.0 (Phase 1 P1 PR-B): install templates + docs for `doc-maintainer.yml` (IPLAN-0025 P1 PR-B; 2026-06-28)
+
+- **`install/templates/workflows/doc-maintainer-private.yml`** +
+  **`install/templates/workflows/doc-maintainer-public.yml`** — new
+  thin caller templates per IPLAN-0025 §2.4. Triggers: `push: branches:
+  [main]` (primary, after every merge) + `schedule: cron '7,37 * * * *'`
+  (backup reconciler — off-peak slots per IPLAN-0025 D9 / Pass-3 minor
+  #3 calibration, addresses IPLAN-0018 "didn't fire" gap
+  deterministically). Pin: `@ci/v1.4.0`. Private variant uses
+  `runner-self`; public variant uses `ubuntu-latest`.
+- **`docs/architecture.md` §2** updated: workflow inventory table
+  expanded from 7 → 9 shared workflows; new `docs-sync` row
+  (mechanical; deprecated by doc-maintainer at end of IPLAN-0025
+  Phase 3) + new `doc-maintainer` row (AI-driven; supersedes
+  mechanical at end of Phase 3).
+- **Consumer install prerequisites** documented in template headers:
+  P3a 🟡 governance PR (add `aidoc-flow-bot[bot]` to consumer's
+  `.github/ai-review/config.json#trust.ai_review`) + P5a 🟡 founder
+  runbook (expand App permissions to `Pull-requests: write` +
+  `Issues: write`). Dry-run path does NOT need these — they gate live
+  mode (P5 graduation per the plan).
+- **Bundled with PR-A** ([PR #43](https://github.com/vladm3105/aidoc-flow-ci/pull/43))
+  in the same `ci/v1.4.0` release. Tag pushed after both PRs land.
+
 ### Added — ci/v1.4.0 (Phase 1 P1 PR-A): new AI-driven `doc-maintainer.yml` reusable workflow + supporting scripts (IPLAN-0025 P1 PR-A; 2026-06-28)
 
 - **`.github/workflows/doc-maintainer.yml`** — new reusable workflow

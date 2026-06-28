@@ -1,0 +1,57 @@
+# Caller template for aidoc-flow-ci's AI-driven doc-maintainer workflow.
+# Per IPLAN-0025 (operations 2026-06-28; READY via PR #166). Ships as
+# ci/v1.4.0 alpha.1.
+#
+# This is OPT-IN: consumer must drop this file into .github/workflows/ AND
+# provide the per-consumer config + conventions:
+#   - .github/doc-maintainer.json (config schema per IPLAN-0025 §2.2)
+#   - .github/doc-maintainer-conventions.md (consumer-authored prose
+#     describing the consumer's doc-of-record discipline; AI consumes this
+#     as part of the planning prompt)
+#
+# PREREQUISITES (per IPLAN-0025 §3 + §2.6 "Changes required outside
+# doc-maintainer.yml itself"):
+#   - P3a 🟡 governance PR: add `aidoc-flow-bot[bot]` to the consumer's
+#     `.github/ai-review/config.json#trust.ai_review` allowlist. Without
+#     this, the bot's low-risk PRs hit ai-review's HUMAN-REVIEW-ONLY
+#     branch + auto-merge collapses (Pass-2 BLOCKER #1 / Risk 13 / D11).
+#   - P5a 🟡 founder runbook: expand `aidoc-flow-bot` App permissions to
+#     `Pull-requests: write` + `Issues: write` (Risk 7 / D7). The dry-run
+#     path (P3) does NOT need this — comments use GITHUB_TOKEN.
+#   - secrets AIDOC_FLOW_BOT_ID + AIDOC_FLOW_BOT_KEY set on consumer
+#     (live mode only; dry-run mode runs without them).
+#   - CLAUDE_CODE_OAUTH_TOKEN set (when reviewer=claude — default).
+#
+# Phase 1 (this template's purpose): dry-run pilot on operations.
+# Mechanical docs-sync.yml stays LIVE during the pilot. After ≥5 clean
+# dry-run cycles (P4 graduation gate) + P3a + P5a preconditions: flip
+# `doc_maintainer.dry_run: false` per IPLAN-0025 §3 P5.
+#
+# TRIGGERS:
+#   push: branches: [main] — primary trigger after every merge
+#   schedule: cron '7,37 * * * *' — backup reconciler (off-peak slots per
+#     IPLAN-0025 D9 / Pass-3 minor #3 calibration). Addresses the
+#     IPLAN-0018 "didn't fire" reliability gap deterministically by
+#     scanning recent main commits for any SHA without an associated
+#     doc-maintainer run.
+#
+# alpha.1 (v1.4.0) status: workflow wiring + script skeleton; LLM
+# invocation stubbed → planner emits empty plan + dry-run posts a count-
+# only PR comment. Trigger reliability observation begins immediately
+# upon adoption. Real LLM call + bot-PR creation + issue creation +
+# reconciler auto-dispatch ship in v1.4.1.
+
+name: doc-maintainer
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '7,37 * * * *'
+
+jobs:
+  call:
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v1.4.0
+    with:
+      runner_labels: '"runner-self"'
+    secrets: inherit  # pragma: allowlist secret
