@@ -66,12 +66,14 @@ docs](https://docs.github.com/en/actions/sharing-automations/reusing-workflows):
 - Pinning is by **tag** (semver `ci/vX.Y.Z`) or SHA; the consumer's
   `.github/workflows/<name>.yml` file is what GitHub actually runs.
 
-## 2. The 7 shared workflows
+## 2. The 9 shared workflows
 
 | Workflow | File | What it does | Triggers (typical caller) |
 |---|---|---|---|
 | `ai-review` | [`.github/workflows/ai-review.yml`](../.github/workflows/ai-review.yml) | AI-reviewer gate — trust check → reviewer App → post verdict + apply state label | `pull_request_target`, `pull_request_review` |
 | `composition` | [`.github/workflows/composition.yml`](../.github/workflows/composition.yml) | App-approval status check — required for merge; fires GREEN only when a counting reviewer-App approval exists at the current head SHA | `pull_request_review [submitted, dismissed, edited]`, `workflow_run` [completed] (from ai-review). v1.3.0+ install default — `pull_request_target` overrideable per [`overrides.md`](overrides.md). |
+| `docs-sync` | [`.github/workflows/docs-sync.yml`](../.github/workflows/docs-sync.yml) | **Mechanical** post-merge doc fixer (CHANGELOG stub-entry + version propagation + cross-ref repair). Per IPLAN-0018. Direct-commits to main with `[skip ci]`. **Deprecated by `doc-maintainer` at end of IPLAN-0025 Phase 3 (ci/v2.0.0).** | `push: branches: [main]` |
+| `doc-maintainer` | [`.github/workflows/doc-maintainer.yml`](../.github/workflows/doc-maintainer.yml) | **AI-driven** post-merge doc-of-record maintainer (CHANGELOG / HANDOFF / ROADMAP / IPLAN status / DECISIONS narrative-grade edits). Per IPLAN-0025. Reads merge diff + conventions doc + decides scope via LLM; opens follow-up bot PR for low-risk edits (auto-merges through ai-review chain) AND/OR GitHub issue for high-risk edits (human applies). Available v1.4.0+; supersedes mechanical `docs-sync` at end of Phase 3. | `push: branches: [main]`, `schedule [cron '7,37 * * * *']` (backup reconciler) |
 | `labeler` | [`.github/workflows/labeler.yml`](../.github/workflows/labeler.yml) | Path-based PR area labeling via `actions/labeler@v6` | `pull_request` |
 | `codeql` | [`.github/workflows/codeql.yml`](../.github/workflows/codeql.yml) | CodeQL security analysis (matrix-driven explicit languages) | `push`, `pull_request`, weekly `schedule`, `workflow_dispatch` |
 | `markdown-lint` | [`.github/workflows/markdown-lint.yml`](../.github/workflows/markdown-lint.yml) | Markdown linting via `markdownlint-cli2-action` (inline PR annotations) | `pull_request`, `push` |

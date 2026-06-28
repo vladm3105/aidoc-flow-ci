@@ -1,0 +1,31 @@
+# Caller template for aidoc-flow-ci's AI-driven doc-maintainer workflow.
+# Per IPLAN-0025 (operations 2026-06-28; READY via PR #166). Ships as
+# ci/v1.4.0 alpha.1.
+#
+# This is the PUBLIC-runner variant (ubuntu-latest). For full rationale +
+# prerequisites, see doc-maintainer-private.yml header.
+#
+# PUBLIC-runner specifics:
+#   - Runs on ubuntu-latest (GitHub-hosted) per docs/security.md §3
+#     (self-hosted runners on PUBLIC repos = accepted-risk only).
+#   - LLM CLI install step (workflow body step 3) actually installs
+#     claude/codex via npm at job start (on self-hosted runners with the
+#     CLI pre-baked, the install step is a no-op).
+#   - Fork PRs do NOT trigger this workflow (push: main fires only after
+#     merge to default, by which point the trust gate has already routed
+#     fork-authored PRs to HUMAN-REVIEW-ONLY in ai-review.yml).
+
+name: doc-maintainer
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '7,37 * * * *'
+
+jobs:
+  call:
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v1.4.0
+    with:
+      runner_labels: '"ubuntu-latest"'
+    secrets: inherit  # pragma: allowlist secret
