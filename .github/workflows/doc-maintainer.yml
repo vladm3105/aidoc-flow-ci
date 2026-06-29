@@ -204,21 +204,40 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "::notice::doc-maintainer running; dry_run=$DRY_RUN reviewer=$REVIEWER"
 
-      - name: Step 3 — Resolve LLM CLI (install if ubuntu-latest)
+      - name: Step 3 — Resolve LLM CLI (best-effort install; warn-not-error)
         if: ${{ steps.cfg.outputs.skip != 'true' }}
         run: |
           set -uo pipefail
+          # IPLAN-0025 v1.4.1 hotfix (operations PR #171 alpha.1 bug): step 3
+          # MUST be warn-not-error. Rationale: the alpha.1 stub planner.py does
+          # NOT invoke the LLM (emits empty plan); the actual CLI requirement
+          # only kicks in v1.4.1+ when the real LLM call ships in planner.py
+          # apply-mode. fail-LOUD discipline (D12) is preserved BUT moved
+          # INSIDE planner.py / apply.py where the LLM is actually invoked.
+          # Step 3 is now a best-effort install for ubuntu-latest convenience;
+          # self-hosted runners pre-bake the CLI; npm-less runners (e.g.
+          # operations' ci-ephemeral pool) emit warning + downstream Python
+          # scripts decide whether to fail.
           case "$REVIEWER" in
             claude)
-              if ! command -v claude >/dev/null 2>&1; then
-                if [ -n "${RUNNER_OS:-}" ] && [ "${RUNNER_OS}" = "Linux" ]; then
-                  npm install -g @anthropic-ai/claude-code 2>&1 | tail -3
+              if command -v claude >/dev/null 2>&1; then
+                echo "::notice::claude CLI already available (pre-baked on this runner)."
+              elif command -v npm >/dev/null 2>&1; then
+                if npm install -g @anthropic-ai/claude-code 2>&1 | tail -3; then
+                  echo "::notice::claude CLI installed via npm."
+                else
+                  echo "::warning::claude CLI install via npm FAILED — downstream LLM steps will fail LOUD if/when they invoke claude (alpha.1 stub does not invoke it)."
                 fi
+              else
+                echo "::warning::claude CLI not available + npm not available on this runner (e.g. ci-ephemeral pool); downstream LLM steps will fail LOUD if/when they invoke claude. Operator: pre-bake claude CLI on this runner pool to silence this warning."
               fi
-              command -v claude >/dev/null 2>&1 || { echo "::error::claude CLI not available + cannot install; failing LOUD per D12"; exit 1; }
               ;;
             codex)
-              command -v codex >/dev/null 2>&1 || { echo "::error::codex CLI not available; failing LOUD per D12"; exit 1; }
+              if command -v codex >/dev/null 2>&1; then
+                echo "::notice::codex CLI already available."
+              else
+                echo "::warning::codex CLI not available + this workflow does not auto-install it; downstream LLM steps will fail LOUD if/when they invoke codex. Operator: pre-bake codex CLI on this runner pool."
+              fi
               ;;
             *)
               echo "::error::Unknown reviewer: $REVIEWER (expected claude or codex)"

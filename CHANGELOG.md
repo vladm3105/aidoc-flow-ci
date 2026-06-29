@@ -5,6 +5,43 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — ci/v1.4.1: doc-maintainer.yml step 3 warn-not-error on missing CLI (IPLAN-0025 alpha.1 hotfix; 2026-06-29)
+
+- **`.github/workflows/doc-maintainer.yml` step 3 'Resolve LLM CLI'** —
+  changed from fail-LOUD-on-missing-CLI to best-effort install + warn-
+  not-error. Rationale: the alpha.1 stub `planner.py` does NOT invoke
+  the LLM (emits empty plan; per IPLAN-0025 §3 alpha-stub note); the
+  actual CLI requirement only kicks in v1.4.1+ when the real LLM call
+  ships in `planner.py` apply-mode. D12 fail-LOUD discipline preserved
+  but MOVED INSIDE planner.py / apply.py where the LLM is actually
+  invoked. Step 3 is now a best-effort install for ubuntu-latest
+  convenience.
+- **Bug discovered on FIRST live fire** on operations' ci-ephemeral
+  self-hosted runner pool — pool does NOT have `npm` installed →
+  `npm install -g @anthropic-ai/claude-code` exits 127 → step 3
+  `command -v claude || exit 1` fails LOUD → workflow fails. Two
+  consecutive failures observed (push event 2026-06-28 23:35:35Z run
+  28340559175 + schedule event 2026-06-29 00:06:18Z run 28340614376).
+- **Defensive shape:** step 3 now branches on `command -v claude` →
+  `command -v npm` → no-op path, each with appropriate `::notice::` or
+  `::warning::` output. Operator visibility preserved.
+- **Operators on npm-less runners** (e.g., operations' ci-ephemeral):
+  warning notice points to pre-baking the CLI as the production
+  remediation. The alpha.1 stub doesn't need this fix (no LLM call)
+  but the production v1.4.1+ ship will need pre-baked CLIs.
+- **Consumer impact:** consumers bump `uses:` pin `@ci/v1.4.0` →
+  `@ci/v1.4.1` to receive the fix. Operations specifically: also flips
+  its `.github/doc-maintainer.json#kill_switch` back to `false` to
+  re-arm the dry-run pilot (kill_switch was set to `true` as the
+  immediate hotfix per operations PR #171).
+- **Plan:** [IPLAN-0025 §3](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0025_ai-doc-maintainer.md)
+  — alpha.1 ship strategy + alpha.1 stub design.
+- **Discovered observability win:** the alpha.1 ship strategy worked
+  as designed — shipping the workflow wiring first surfaced this
+  runner-environment-assumption bug BEFORE LLM cost was incurred.
+  Validates the IPLAN-0018 "didn't fire" lesson + the IPLAN-0025
+  alpha.1 staged-ship discipline.
+
 ### Added — ci/v1.4.0 (Phase 1 P1 PR-B): install templates + docs for `doc-maintainer.yml` (IPLAN-0025 P1 PR-B; 2026-06-28)
 
 - **`install/templates/workflows/doc-maintainer-private.yml`** +
