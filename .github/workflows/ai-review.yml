@@ -178,6 +178,15 @@ jobs:
       # this HEAD). Safe because the App's approval IS the gate signal that composition counts at
       # HEAD; re-running the reviewer doesn't add value.
       #
+      # ci/v1.4.2+: ALSO skip on any `pull_request_review` event — a review never changes code, so
+      # the verdict at this HEAD already stands and the separate `composition` workflow recomputes
+      # the gate on the review event. Re-running the reviewer adds zero signal and previously
+      # surfaced a FALSE-RED `ai-review` check when the asset/config fetch failed on the redundant
+      # fire. (Spec-tier PRs never get an App APPROVED review — they carry the `ai:review-passed`
+      # label instead — so the SHA-tied approval query below never matched them, making the
+      # review-event re-fire the dominant false-positive source.) The job still concludes SUCCESS
+      # via the skip-notice step, so the check stays green even where it is required.
+      #
       # Force-fresh-review path: a new HEAD SHA (push) OR a dismissed prior App review
       # (`gh api -X PUT repos/<repo>/pulls/<pr>/reviews/<id>/dismissals -f event=DISMISS`)
       # produces an empty query result → full review runs. INERT App, first fire on PR, or fork PR
@@ -185,7 +194,7 @@ jobs:
       #
       # `if: env.SKIP_REVIEW != '1'` guard keeps this step inert when the `skip-ai-review` label is
       # present (existing label flow handles it).
-      - name: R3 early-exit if App already APPROVED at HEAD
+      - name: R3 early-exit (skip redundant heavy review)
         if: ${{ env.SKIP_REVIEW != '1' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -195,6 +204,20 @@ jobs:
           EXPECTED_ID: ${{ vars.APP_REVIEWER_1_BOT_ID }}
         run: |
           set -uo pipefail
+
+          # A `pull_request_review` event never changes code: the App's verdict at this HEAD already
+          # stands from the push-triggered run, and the separate `composition` workflow recomputes
+          # the merge gate on the review event. Re-running the reviewer here adds zero signal and
+          # risks a false-red when a transient asset/config fetch fails on the redundant fire. Skip
+          # the heavy review (the job still concludes SUCCESS via the skip-notice step). This fires
+          # regardless of App config, so it also covers spec-tier PRs (which never get an App
+          # APPROVED review and so never matched the SHA-tied query below).
+          if [ "${GITHUB_EVENT_NAME:-}" = "pull_request_review" ]; then
+            echo "::notice::R3 early-exit: pull_request_review event — verdict at this HEAD already stands; skipping the reviewer CLI (composition handles the gate)."
+            echo "SKIP_REVIEW=1" >> "$GITHUB_ENV"
+            echo "SKIP_REASON=review-event" >> "$GITHUB_ENV"
+            exit 0
+          fi
 
           # INERT until armed — no App configured means no prior approval to carry forward; proceed.
           if [ -z "${EXPECTED_ID:-}" ]; then
@@ -704,7 +727,10 @@ jobs:
       #     already APPROVED the current HEAD SHA. The notice references R3 and points operators to
       #     the gh-api dismissal path for forced refresh. NO PR comment (would spam every label-cycle
       #     on an approved PR — operators don't need a comment per cycle for the R3 carry-forward).
-      - name: ai-review skipped (label OR R3 pre-approved)
+      #   - review-event → set by the R3 early-exit step on a `pull_request_review` event (ci/v1.4.2+).
+      #     A review never changes code, so the verdict at this HEAD already stands and composition
+      #     recomputes the gate; the reviewer is not re-run. NO PR comment (avoids spamming on reviews).
+      - name: ai-review skipped (label OR R3 pre-approved OR review-event)
         if: ${{ env.SKIP_REVIEW == '1' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -720,6 +746,9 @@ jobs:
               ;;
             r3)
               echo "::notice::ai-review SKIPPED — R3 early-exit (reviewer App already APPROVED at HEAD). Prior approval carried forward; the reviewer CLI was not re-run on this fire because a fresh run would add zero signal at the same HEAD SHA. To force a fresh review at THIS HEAD, dismiss the App's existing review via the GitHub API: gh api -X PUT repos/\$GH_REPO/pulls/\$PR/reviews/<review-id>/dismissals -f event=DISMISS -f message=<reason>. See docs/troubleshooting.md §15. No PR comment is posted for the R3 path to avoid spamming label-cycles."
+              ;;
+            review-event)
+              echo "::notice::ai-review SKIPPED — pull_request_review event. A review never changes code, so the verdict at this HEAD already stands and the composition gate is recomputed by the review event; the reviewer CLI was not re-run (it would add zero signal and could surface a false-red on a transient asset fetch). To force a fresh review, push a new commit or dismiss the App's review (see docs/troubleshooting.md §15). No PR comment is posted to avoid spamming on reviews."
               ;;
             *)
               echo "::warning::ai-review SKIPPED — SKIP_REVIEW=1 but SKIP_REASON unset. Defensive fallback notice; this state should not occur in normal operation."

@@ -5,6 +5,34 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — ci/v1.4.2: ai-review skips the heavy review on `pull_request_review` events (eliminates false-red `ai-review` check; 2026-06-29)
+
+- **`.github/workflows/ai-review.yml` R3 early-exit** — now also sets
+  `SKIP_REVIEW=1` (`SKIP_REASON=review-event`) on any
+  `pull_request_review` event, before the SHA-tied App-approval query.
+  A review never changes code, so the reviewer's verdict at the current
+  HEAD already stands from the push-triggered run, and the separate
+  `composition` workflow recomputes the merge gate on the review event.
+  The job still concludes SUCCESS via the existing skip-notice step, so
+  the `ai-review` check stays green even where it is a required context.
+- **Root cause of the false positive:** R3 only skipped when the reviewer
+  App had *APPROVED* the HEAD SHA. **Spec-tier PRs never get an App
+  APPROVED review** — the App carries `ai:review-passed` instead — so the
+  SHA-tied query never matched them. Every review-event re-fire therefore
+  re-ran the full reviewer, and the "Fetch reviewer assets + per-consumer
+  config" step (private `operations@main` config fetch) could fail on the
+  redundant run, painting a red `call / ai-review` that meant nothing (the
+  authoritative review for that commit had already passed on the
+  push-triggered run). Surfaced on framework PR #206 (spec-tier).
+- **Why not fail-open the asset fetch instead:** that would mask a genuine
+  asset/config-fetch failure on a real *code-change* run, where a review
+  must happen. Skipping only on review events (which can't change code)
+  removes the false positive without weakening real-code-change coverage.
+- **`labeled`/`unlabeled` events** were already excluded by the job `if:`
+  (except `skip-ai-review`); this closes the remaining redundant trigger.
+- **Consumer impact:** bump the `uses:` pin `@ci/v1.4.1` → `@ci/v1.4.2` on
+  `ai-review.yml`. No caller-shape change; `composition.yml` unchanged.
+
 ### Fixed — ci/v1.4.1: doc-maintainer.yml step 3 warn-not-error on missing CLI (IPLAN-0025 alpha.1 hotfix; 2026-06-29)
 
 - **`.github/workflows/doc-maintainer.yml` step 3 'Resolve LLM CLI'** —
