@@ -490,17 +490,21 @@ jobs:
           esac
           tail -n 6 .ai-review/reviewer.log 2>/dev/null || true
 
-      # IPLAN-0016 §2a-v3 (A3): mint a short-lived GitHub App INSTALLATION TOKEN so the verdict can be
-      # submitted as the reviewer APP — the identity whose APPROVED review the `composition` check counts
-      # (an App can't be a CODEOWNER, so the check is the authoritative enforcement). Run ONLY on routine
-      # PRs with the App configured: governance-locked PRs stay human-merge + comment-only (the App must
-      # never review them), and an unconfigured App (no key) keeps today's behaviour. `continue-on-error`
-      # so a MINT FAILURE never kills the job before the gate posts a signal — the gate treats an empty
-      # token on a routine, App-configured PR as fail-closed (NO silent fall-through to comment-only).
-      # The token is scoped to THIS repo and auto-revoked at job end (no lingering credential).
-      - name: Mint reviewer App token (routine PRs only)
+      # IPLAN-0016 §2a-v3 (A3) + IPLAN-0029 Pivot 2: mint a short-lived GitHub App INSTALLATION TOKEN.
+      # On routine PRs the verdict is submitted as the reviewer APP — the identity whose APPROVED review
+      # the `composition` check counts (an App can't be a CODEOWNER, so the check is the authoritative
+      # enforcement). On governance-locked PRs (per IPLAN-0029 Pivot 2) the App MAY submit a `--comment`
+      # (NON-COUNTING) review solely to fire pull_request_review:submitted so composition's gov-lock
+      # exempt branch writes the required `call / composition: SUCCESS` check. An unconfigured App (no
+      # key) keeps today's behaviour. `continue-on-error` so a MINT FAILURE never kills the job before
+      # the gate posts a signal — the gate treats an empty token on a routine, App-configured PR as
+      # fail-closed (NO silent fall-through to comment-only). On a gov PR with mint failure, the new
+      # comment-state path is also skipped (silent, fallback to comment-only; operator falls back to the
+      # manual `gh pr review --comment` workaround). The token is scoped to THIS repo and auto-revoked
+      # at job end (no lingering credential).
+      - name: Mint reviewer App token (routine + governance-locked PRs)
         id: app_token
-        if: ${{ env.SKIP_REVIEW != '1' && env.GOV_LOCKED != 'true' && env.APP_KEY_PRESENT == '1' }}
+        if: ${{ env.SKIP_REVIEW != '1' && env.APP_KEY_PRESENT == '1' }}
         continue-on-error: true
         uses: actions/create-github-app-token@v1
         with:
@@ -577,24 +581,39 @@ jobs:
             echo ""
             echo "_AI review (reviewer: $REVIEWER) · verdict-gated · IPLAN-0011_"
           } > .ai-review/comment.md
-          # Submit the verdict as a review. IPLAN-0016 §2a-v3 (A3):
+          # Submit the verdict as a review. IPLAN-0016 §2a-v3 (A3) + IPLAN-0029 Pivot 2:
           #   • routine PR + App configured + token minted → a review submitted AS THE REVIEWER APP
           #     (a head-SHA-tied approve/request-changes); the App's APPROVED review is the identity the
           #     `composition` required check counts toward the merge gate;
-          #   • GOVERNANCE-LOCKED PR → advisory COMMENT only — governance PRs are human-merge anyway, and
-          #     the reviewer App must never submit a review on them (DoD);
+          #   • GOVERNANCE-LOCKED PR with App configured → advisory COMMENT + a NON-COUNTING (--comment)
+          #     review via the App's installation token (IPLAN-0029 Pivot 2) — fires
+          #     pull_request_review:submitted so composition's gov-lock exempt branch writes the required
+          #     check; comment-state ≠ APPROVED so composition's APP-APPROVED filter (composition.yml:189)
+          #     rejects it, preserving the human-merge intent (per IPLAN-0016 §2a-v3 DoD #12 amended);
+          #   • GOVERNANCE-LOCKED PR with App NOT configured → advisory COMMENT only — deadlock fallback;
           #   • App not configured yet (no key) → today's behaviour: advisory COMMENT (inert);
           #   • App configured but token EMPTY (mint failed) → return non-zero → caller fails CLOSED
           #     (NEVER fall through to comment-only, which would silently drop enforcement on a routine PR).
           # Returns non-zero ONLY when an intended COUNTING submission fails, so the caller can fail-closed.
           submit_verdict() {   # $1 = --approve | --request-changes
-            # Comment-only path: governance-locked, OR the App isn't configured yet. (Never a github-
+            # Comment-fallback + (gov-only, App-configured) App `--comment` review path: governance-locked,
+            # OR the App isn't configured yet. (Never a github-
             # actions[bot] REVIEW — the bot CANNOT approve, so a bot request_changes would stick forever;
             # the required `ai-review` CHECK is the real signal here. The App, unlike the bot, CAN approve
             # and supersede its own prior review by latest-state, so it has no stuck-PR failure mode.)
             if [ "${GOV_LOCKED:-true}" = "true" ] || [ -z "${APP_CONFIGURED:-}" ]; then
               retry gh pr comment "$PR" --body-file .ai-review/comment.md \
                 || echo "::error::could not post the verdict comment after retries — the verdict still stands via the ai-review check status (this is a visibility loss, not a changed verdict)."
+              # IPLAN-0029 Pivot 2: on gov-locked PRs (with App configured), submit a comment-state review
+              # via the App token so `pull_request_review:submitted` fires. composition's body then runs
+              # against PR HEAD + hits gov-lock exempt branch (composition.yml:172) + writes the required
+              # `call / composition: SUCCESS` check. HARD-CODED `--comment` (never `--approve`) preserves
+              # OPS-0062 "no auto-merge for gov PRs" intent via composition's APP-APPROVED-at-HEAD filter
+              # state mismatch (composition.yml:189 — state==APPROVED, ours==COMMENT).
+              if [ "${GOV_LOCKED:-true}" = "true" ] && [ -n "${APP_TOKEN:-}" ]; then
+                GH_TOKEN="$APP_TOKEN" retry gh pr review "$PR" --comment --body "_IPLAN-0029: comment-state review (NOT counting) to fire composition's pull_request_review trigger for gov-locked PR. See PR comment above for the verdict._" \
+                  || echo "::warning::IPLAN-0029 comment-state review submission failed — composition gov-lock exempt path may not fire; PR may be blocked on required-check. Re-run the ai-review job, or use the manual workaround documented in aidoc-flow-ci/docs/troubleshooting.md."
+              fi
               return 0
             fi
             # routine + App configured: a minted token is REQUIRED. An empty token means the mint step
