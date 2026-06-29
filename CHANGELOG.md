@@ -5,6 +5,75 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — ci/v1.4.3: ai-review.yml mints App token on gov-locked PRs + submits `--comment` review (gov-locked PR composition deadlock — IPLAN-0029 Pivot 2; 2026-06-29)
+
+- **`.github/workflows/ai-review.yml` — 5 edits (gov-lock branch productization of the manual workaround):**
+  - **Edit 1 (line 503):** Drop `env.GOV_LOCKED != 'true'` from the
+    `Mint reviewer App token` step's `if:`. After this, the App token
+    is also minted on gov-locked PRs (provided `SKIP_REVIEW=0` +
+    `APP_KEY_PRESENT=1`). Step renamed from "(routine PRs only)" →
+    "(routine + governance-locked PRs)".
+  - **Edit 2 (lines 595-606, new block inside `submit_verdict()`):**
+    On gov-locked PRs with App token present, submit a HARD-CODED
+    `--comment` review via `GH_TOKEN="$APP_TOKEN" gh pr review --comment`
+    — App-attributed events fire `pull_request_review:submitted`
+    (GitHub anti-recursion only blocks `GITHUB_TOKEN`, not App tokens).
+    Composition's `pull_request_review` trigger then activates → body
+    runs against PR HEAD → hits gov-lock exempt branch
+    (`composition.yml:172`) → writes the required `call / composition:
+    SUCCESS` check. Inner guard `[ -n "${APP_TOKEN:-}" ]` ensures inert
+    behavior when mint failed (`continue-on-error`) OR when App is not
+    configured.
+  - **Edits 3-5 (lines 493-504, 580-588, 591 — stale comment
+    revisions):** Pre-existing inline docstrings + sub-branch comment
+    said the App "must never review gov PRs" — those would contradict
+    Edits 1-2 if left unrevised, undermining defense-in-depth at the
+    call site (a future maintainer reading two contradicting comments
+    inside `submit_verdict()` could miss the design intent + accidentally
+    parametrize `--approve`). Edits 3/4/5 revise all three to document
+    the new dual-mode behavior + cite `composition.yml:189` as the
+    safeguard.
+- **Security model — single-factor protection at composition's filter
+  + defense-in-depth at the call site.** composition.yml:189 filters on
+  `state == APPROVED AND user.id == APP_REVIEWER_1_BOT_ID AND user.type
+  == Bot AND commit_id == HEAD_SHA`. Under Pivot 2 the App submission
+  has `state == COMMENT` (hard-coded `--comment`) — state mismatch
+  rejects the submission for the APP-APPROVED auto-merge path. Pivot 1
+  (Pass 3) had two-factor mismatch (state + user.id) because the manual
+  workaround used user PAT identity; Pivot 2 loses the user.id factor
+  by design (App submits AS THE APP) but compensates with defense-in-
+  depth at the call site (hard-coded `--comment` literal, never
+  parametrized; assertion guard `GOV_LOCKED == true AND APP_TOKEN
+  non-empty`; CHANGELOG callout). OPS-0062 "no auto-merge for gov PRs"
+  intent unchanged.
+- **App permission scope unchanged.** `pull_requests: write` only (same
+  scope that already submits `--approve` on non-gov PRs at line 608) —
+  `gh pr review --comment` uses the same API endpoint with
+  `state: COMMENT`. No new scope needed; App configuration unchanged.
+- **Consumer impact:** bump the `uses:` pin `@ci/v1.4.2` → `@ci/v1.4.3`
+  on `ai-review.yml` (no caller-shape change; `composition.yml`
+  unchanged). All future gov-locked operations PRs auto-fire the
+  comment-state review → composition fires → gov-lock exempt branch
+  writes SUCCESS check → PR mergeable. Removes the need for the manual
+  `gh pr review --comment` workaround applied 6× this session (PRs
+  #168, #171, #172, #173, #178, and #181 on operations).
+- **Cyclic dependency on consumer pin-bump PR.** Operations P3 pin-
+  bump PR itself touches `.github/workflows/ai-review.yml` → gov-locks
+  → would deadlock per the same bug it's fixing (its BASE branch still
+  runs the old `@ci/v1.4.2` ai-review.yml semantics). Manual workaround
+  applies ONE last time on P3. After P3 lands + main carries v1.4.3,
+  all future gov-locked PRs use the auto-fix. This is documented in
+  IPLAN-0029 §3 P3 + §4 Risk 6.
+- **Plan:** [IPLAN-0029](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0029_composition-workflow-run-gov-lock-fix.md)
+  (plan PR vladm3105/aidoc-flow-operations#181 merged 2026-06-29);
+  P1a DoD amendment landed at vladm3105/aidoc-flow-operations#182
+  (amends `IPLAN-0016_ai-reviewer-build.md` §2a-v3 DoD #12 at lines
+  53 + 277). This PR is P1b. Next: tag `ci/v1.4.3` (P2) → operations
+  pin bump (P3).
+- **🟡 governance PR** (touches `.github/workflows/ai-review.yml`) —
+  AI does NOT auto-merge per OPS-0062 §exceptions. Awaits founder
+  merge.
+
 ### Fixed — ci/v1.4.2: ai-review skips the heavy review on `pull_request_review` events (eliminates false-red `ai-review` check; 2026-06-29)
 
 - **`.github/workflows/ai-review.yml` R3 early-exit** — now also sets
