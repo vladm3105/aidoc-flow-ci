@@ -5,6 +5,25 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — `docs/local-pre-push.md` §7a: multi-agent automated review (consumer-side application of OPS-0065) (2026-06-30)
+
+- **`docs/local-pre-push.md`** — new §7a section "Multi-agent
+  automated review (consumer-side application of OPS-0065)" added
+  below §7 "Governance-PR additional discipline". Includes a
+  diff-class → sub-agent-set table consumers apply on the author
+  side BEFORE push/commit (matches the table in
+  `aidoc-flow-operations/CLAUDE.md` Merge governance section).
+  Plus `SKIP_LOCAL_AI_REVIEW=1` usage discipline + parallel-
+  dispatch guidance + brainstorming-class agent dispatch during
+  plan/spec Pass 0 drafting.
+- **References OPS-0065** in operations DECISIONS.md as the
+  authoritative source. The CI `ai-review.yml` gate (authoritative
+  on the merge side) is unchanged; the consumer-side doc strengthens
+  the AUTHOR-side review pattern this library documents.
+- **No workflow-body changes; doc-only.** Consumer adoption is
+  organic (consumers read the canonical pattern doc; OPS-0065
+  codifies it as the company default).
+
 ### Fixed — ci/v1.4.3: ai-review.yml mints App token on gov-locked PRs + submits `--comment` review (gov-locked PR composition deadlock — IPLAN-0029 Pivot 2; 2026-06-29)
 
 - **`.github/workflows/ai-review.yml` — 5 edits (gov-lock branch productization of the manual workaround):**
