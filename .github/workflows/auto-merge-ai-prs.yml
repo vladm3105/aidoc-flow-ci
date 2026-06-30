@@ -1,0 +1,304 @@
+# auto-merge-ai-prs — IPLAN-0030 (server-side enforcer for AI-opened PRs). OPS-0062 deferred companion.
+#
+# WHY THIS EXISTS: ai-review.yml's "Gate · comment · label · merge" step ARMS GitHub's native auto-merge
+# (`gh pr merge --auto --merge` under the reviewer App's token) on routine PRs. Most of the time native
+# auto-merge fires once all required checks are green and the PR merges with the App as commit author
+# (which lets downstream push-triggered workflows like docs-sync.yml fire — ci/v1.1.6 anti-recursion fix).
+# But the arming step can fail silently in two cases (per IPLAN-0030 §1 narrow scope cases 1+2):
+#   1. AI session ended before the arming step ran (in-session AI hit token limit / network drop / user
+#      interrupt between APPROVED submission + the gate step). Label `ai:review-passed` is set; auto-merge
+#      is NOT armed; PR sits stuck-green forever.
+#   2. The `gh pr merge --auto` call itself returned non-zero (transient HTTP 5xx / rate-limit). No retry
+#      wrapper on ai-review.yml's arm call; PR sits stuck-green.
+# Case 3 (App-token mint failed mid-run → ai-review fell back to GITHUB_TOKEN, arming SUCCEEDED but under
+# the wrong actor → downstream push workflows silently bypassed) is EXPLICITLY OUT OF SCOPE for v1 per
+# IPLAN-0030 §6 + Pass-2 C2 — the `autoMergeRequest is null` filter below excludes case 3 by design.
+#
+# DETECTION FILTER (per §2.1 step 3): state=OPEN ∧ label=ai:review-passed ∧ mergeStateStatus=CLEAN ∧
+# autoMergeRequest is null ∧ updatedAt > 2 min ago.
+#
+# RECOVERY ACTION (per §2.1 step 5 + D3): re-arm `gh pr merge --auto --merge` under the SAME reviewer App's
+# token. `--auto` preserves GitHub's required-check-green gate (idempotent re-arming is a no-op).
+# `--merge` method aligns with ai-review.yml:703 (Pass-2 C3). App identity keeps merge-commit-author
+# App-attributed → downstream push workflows fire.
+#
+# TRIGGER (per §2.2 + D2): consumers invoke this reusable from a thin caller wrapper that triggers on
+# `workflow_run: workflows: [ai-review, composition] types: [completed]` + `workflow_dispatch:` (operator
+# manual recovery). Not `check_suite.completed` — GHA anti-recursion blocks that for GHA-created suites
+# (Pass-2 C1). `workflow_run` operates orthogonally as a workflow-lifecycle event.
+#
+# TRUST GATE (per §2.1 step 2): re-checks `trust.ai_review` allowlist + tier + `auto_merge.repos`
+# membership from operations@main config (same curl pattern as ai-review.yml post-IPLAN-0022). Defends
+# against trust-config drift (Risk 9). Fails CLOSED on fetch failure.
+
+name: auto-merge-ai-prs
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        description: "PR number — caller forwards from `github.event.workflow_run.pull_requests[0].number` (workflow_run path) OR from `inputs.pr_number` (workflow_dispatch). Empty → step 1 exits clean."
+        type: string
+        required: false
+        default: ""
+      runner_labels:
+        description: 'JSON array of runner labels (matches IPLAN-0017 convention). Default ubuntu-latest. Private consumers pass `["self-hosted","aidoc","ci-ephemeral"]`.'
+        type: string
+        required: false
+        default: '"ubuntu-latest"'
+    secrets:
+      APP_REVIEWER_1_ID:
+        description: "Reviewer GitHub App ID (same App as ai-review.yml). Optional — empty falls back to GITHUB_TOKEN with `::warning::` (merge-commit author = github-actions[bot] → push-triggered consumer workflows silently bypassed)."
+        required: false
+      APP_REVIEWER_1_KEY:
+        description: "Reviewer GitHub App private key (same App as ai-review.yml)."
+        required: false
+
+permissions:
+  contents: write       # required for `gh pr merge`
+  pull-requests: write  # required for `gh pr view` + label set on failure
+  issues: write         # required for `gh api .../labels` (label-create + apply paths)
+
+# Per-PR concurrency dedup. Repo qualifier (Pass-2 m1) prevents cross-repo PR-number collisions in Phase B.
+# `run_id` fallback when `inputs.pr_number` is empty (fork PR / non-PR event) ensures each run gets a unique
+# group instead of collapsing all empty-input runs into one shared group. `cancel-in-progress: false` so
+# the audit-summary always writes (matches composition.yml convention).
+concurrency:
+  group: auto-merge-pr-${{ github.repository }}-${{ inputs.pr_number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  enforce:
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    # IPLAN-0030 Pass 6 fold (code-reviewer C1): `secrets.*` is NOT in scope for step-level `if:`
+    # expressions. Workaround: declare APP_KEY_PRESENT at job-level env (where `secrets.*` IS allowed)
+    # then gate the step on `env.APP_KEY_PRESENT == '1'`. Same pattern as ai-review.yml:155-160 + 503.
+    env:
+      APP_KEY_PRESENT: ${{ secrets.APP_REVIEWER_1_KEY != '' && '1' || '' }}
+    steps:
+      # ── Step 4: Mint reviewer App token ─────────────────────────────────────────
+      # Numbered out of step-1 order so the App token is available BEFORE step 5's re-arm. `continue-on-
+      # error: true` mirrors ai-review.yml:508 — mint failure on a configured-App PR should NOT prevent
+      # the re-arm attempt; step 5 will fall back to GITHUB_TOKEN with a `::warning::`.
+      - name: Mint reviewer App token
+        id: app_token
+        if: ${{ inputs.pr_number != '' && env.APP_KEY_PRESENT == '1' }}
+        continue-on-error: true
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_REVIEWER_1_ID }}
+          private-key: ${{ secrets.APP_REVIEWER_1_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Resolve + trust gate + state filter + re-arm
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ inputs.pr_number }}
+          APP_TOKEN: ${{ steps.app_token.outputs.token }}
+          # APP_CONFIGURED reuses job-level APP_KEY_PRESENT (per C1 fix) — single source of truth.
+          APP_CONFIGURED: ${{ env.APP_KEY_PRESENT }}
+        run: |
+          set -uo pipefail
+
+          # ── retry() helper ────────────────────────────────────────────────────────
+          # Pass 6 fold (silent-failure-hunter MAJOR-4 + security MAJOR-1): retry() now captures stdout
+          # via a TEMP FILE and only echoes it on success — avoids the prior `2>&1` capture-mode that
+          # concatenated stderr + multi-attempt stdout into one garbled blob (broke JSON parsing on any
+          # transient retry). On failure prints the FULL command (per code MINOR m1 + silent m2: no more
+          # off-by-one `n/3`-but-4-attempts; no more `$1`-only warning).
+          retry() {
+            local n=0 max=4 out_file err_file
+            out_file=$(mktemp)
+            err_file=$(mktemp)
+            while [ "$n" -lt "$max" ]; do
+              n=$((n+1))
+              if "$@" >"$out_file" 2>"$err_file"; then
+                cat "$out_file"
+                rm -f "$out_file" "$err_file"
+                return 0
+              fi
+              [ "$n" -lt "$max" ] && { echo "::warning::retry $n/$max for: $* (stderr: $(head -1 "$err_file" 2>/dev/null || echo '(none)'))" >&2; sleep $((n*3)); }
+            done
+            # Last-attempt stderr available to caller via RETRY_LAST_STDERR (for failure-reason capture
+            # without re-running the command — silent-failure-hunter CRITICAL + security MINOR-3 fix).
+            RETRY_LAST_STDERR=$(head -3 "$err_file" 2>/dev/null | tr '\n' ' ' || echo "(no stderr)")
+            export RETRY_LAST_STDERR
+            rm -f "$out_file" "$err_file"
+            return 1
+          }
+
+          # Audit-summary helper. Emits a single line to $GITHUB_STEP_SUMMARY so operators can grep
+          # workflow runs to see enforcer activity (per §2.1 step 6).
+          audit() {
+            local line="PR #${PR:-?} — $*"
+            { echo "$line"; } >> "${GITHUB_STEP_SUMMARY:-/dev/null}" 2>/dev/null || true
+            echo "::notice::auto-merge-ai-prs: $line"
+          }
+
+          # ── Step 1: Resolve PR ────────────────────────────────────────────────────
+          # PR number forwarded by caller. Empty → exit clean (fork PR / non-PR event).
+          # Pass 6 fold (security MINOR-1): regex-validate PR is positive integer — defense-in-depth
+          # against workflow_dispatch operator typo / injection.
+          if [ -z "${PR:-}" ]; then
+            audit "no PR resolved from event (fork PR or non-PR workflow_run / dispatch-without-input) — exiting clean"
+            exit 0
+          fi
+          case "$PR" in
+            ''|*[!0-9]*)
+              echo "::warning::pr_number input '$PR' is not a positive integer — exiting clean (defensive guard against malformed input)"
+              audit "pr_number '$PR' not a positive integer — exiting clean"
+              exit 0
+              ;;
+          esac
+
+          # ── Step 2: Trust gate ────────────────────────────────────────────────────
+          # Re-fetch operations@main config + validate schema. Fails CLOSED on fetch / parse / schema
+          # failure (do not auto-merge on missing or malformed trust gate).
+          # Pass 6 fold (silent MAJOR M4): retry() now isolates stdout cleanly — no more `2>&1` mixing.
+          CONFIG_URL="https://raw.githubusercontent.com/vladm3105/aidoc-flow-operations/main/.github/ai-review/config.json"
+          if ! CONFIG=$(retry curl -fsSL "$CONFIG_URL"); then
+            echo "::warning::trust-config fetch failed after retries: ${RETRY_LAST_STDERR:-(no stderr)}; fail-closed — operator manual merge required"
+            audit "trust-config fetch FAILED — fail-closed"
+            exit 0
+          fi
+          # Pass 6 fold (silent MAJOR M5): schema-validate once. Distinguishes "config malformed" from
+          # "PR genuinely not allowlisted" downstream — emits explicit `::warning::` on schema failure
+          # so operator can fix the config instead of seeing silent no-ops.
+          if ! echo "$CONFIG" | jq -e '
+              (.trust.ai_review | type == "array") and
+              (.auto_merge.repos | type == "array")
+            ' >/dev/null 2>&1; then
+            CONFIG_PARSE_ERR=$(echo "$CONFIG" | jq -e '.' 2>&1 | head -3 || echo "(jq error)")
+            echo "::warning::operations@main config failed schema validation (expected .trust.ai_review + .auto_merge.repos as arrays); fail-closed. jq output: $CONFIG_PARSE_ERR"
+            audit "config schema invalid — fail-closed"
+            exit 0
+          fi
+
+          # PR metadata (author + draft state)
+          if ! PR_META=$(retry gh pr view "$PR" --json author,isDraft,state); then
+            echo "::warning::could not fetch PR metadata for #$PR after retries: ${RETRY_LAST_STDERR:-(no stderr)} — exiting clean"
+            audit "PR metadata fetch FAILED — exiting clean"
+            exit 0
+          fi
+          AUTHOR=$(echo "$PR_META" | jq -r '.author.login // ""')
+          IS_DRAFT=$(echo "$PR_META" | jq -r '.isDraft // false')
+          PR_STATE=$(echo "$PR_META" | jq -r '.state // ""')
+
+          # Draft PRs are never auto-merged (matches ai-review.yml behavior)
+          if [ "$IS_DRAFT" = "true" ]; then
+            audit "PR is DRAFT — exiting clean (drafts are never auto-merged)"
+            exit 0
+          fi
+
+          # Trust author allowlist
+          if ! echo "$CONFIG" | jq -e --arg a "$AUTHOR" '.trust.ai_review | index($a)' >/dev/null 2>&1; then
+            audit "author '$AUTHOR' NOT in trust.ai_review allowlist — exiting clean"
+            exit 0
+          fi
+
+          # auto_merge.repos allowlist. Pass 6 fold (silent MINOR m1): repo-not-allowlisted on an
+          # INSTALLED enforcer is almost certainly misconfig (consumer wired the workflow but forgot the
+          # operations-side allowlist entry), not "working as designed" — escalate to `::warning::`.
+          if ! echo "$CONFIG" | jq -e --arg r "$GH_REPO" '.auto_merge.repos | index($r)' >/dev/null 2>&1; then
+            echo "::warning::repo '$GH_REPO' not in auto_merge.repos allowlist in operations@main config — enforcer is installed but disabled. Add the repo to .github/ai-review/config.json in operations to enable."
+            audit "repo not in auto_merge.repos allowlist — enforcer disabled for this repo (misconfig)"
+            exit 0
+          fi
+
+          # ── Step 3: State filter ──────────────────────────────────────────────────
+          if ! STATE=$(retry gh pr view "$PR" --json state,mergeStateStatus,labels,updatedAt,autoMergeRequest); then
+            echo "::warning::could not fetch PR state for #$PR after retries: ${RETRY_LAST_STDERR:-(no stderr)} — exiting clean"
+            audit "PR state fetch FAILED — exiting clean"
+            exit 0
+          fi
+          MERGE_STATE=$(echo "$STATE" | jq -r '.mergeStateStatus // ""')
+          HAS_LABEL=$(echo "$STATE" | jq -r '(.labels // []) | map(.name) | index("ai:review-passed") // empty')
+          AUTO_MERGE=$(echo "$STATE" | jq -r '.autoMergeRequest // empty')
+          UPDATED_AT=$(echo "$STATE" | jq -r '.updatedAt // ""')
+
+          if [ "$PR_STATE" != "OPEN" ]; then
+            audit "PR state=$PR_STATE (not OPEN) — exiting clean"
+            exit 0
+          fi
+          if [ -z "${HAS_LABEL:-}" ]; then
+            audit "PR missing ai:review-passed label — exiting clean (ai-review hasn't approved)"
+            exit 0
+          fi
+          if [ "$MERGE_STATE" != "CLEAN" ]; then
+            audit "mergeStateStatus=$MERGE_STATE (not CLEAN) — exiting clean (waiting on checks / conflict / gov-lock)"
+            exit 0
+          fi
+          if [ -n "${AUTO_MERGE:-}" ]; then
+            audit "autoMergeRequest already set (PR is armed — likely by ai-review's primary arming) — exiting clean (idempotent no-op)"
+            exit 0
+          fi
+          if [ -z "$UPDATED_AT" ]; then
+            audit "updatedAt missing — exiting clean (safety: don't act on incomplete data)"
+            exit 0
+          fi
+          # Pass 6 fold (silent MAJOR M2 + code MINOR m2): date parse failure now emits `::warning::`
+          # instead of silently masquerading as "in-session arming may still be in flight". Operator can
+          # spot runner-date / API-format drift from the warning grep.
+          NOW_EPOCH=$(date -u +%s)
+          if ! UPDATED_EPOCH=$(date -u -d "$UPDATED_AT" +%s 2>/dev/null); then
+            echo "::warning::could not parse updatedAt='$UPDATED_AT' (runner date(1) incompatibility or GitHub API format drift) — exiting clean; PR will retry on next event"
+            audit "updatedAt PARSE FAILED for '$UPDATED_AT' — exiting clean"
+            exit 0
+          fi
+          AGE=$((NOW_EPOCH - UPDATED_EPOCH))
+          if [ "$AGE" -lt 120 ]; then
+            audit "PR updatedAt $UPDATED_AT (age=${AGE}s < 120s threshold) — exiting clean (in-session arming may still be in flight)"
+            exit 0
+          fi
+
+          # ── Step 5: Re-arm `gh pr merge --auto --merge` ──────────────────────────
+          # PR is stuck: green + ai:review-passed + trusted + allowlisted + not-armed + >2 min old.
+          # Pass 6 fold (silent CRITICAL + security MINOR-3): no more re-running `gh pr merge` to capture
+          # stderr — retry() already exposed RETRY_LAST_STDERR. Eliminates the false-positive-on-late-
+          # success race + saves an API call.
+          if [ -n "${APP_TOKEN:-}" ]; then
+            TOKEN_KIND="App"
+            MERGE_TOKEN="$APP_TOKEN"
+          elif [ -n "${APP_CONFIGURED:-}" ]; then
+            # App configured but mint failed (continue-on-error). Fall back to GITHUB_TOKEN with warning.
+            # Operator sees the App-vs-default-token degradation (case-3-class silent-bypass of push-
+            # triggered consumer workflows on the eventual merge commit).
+            echo "::warning::App token mint FAILED on a configured-App PR — falling back to GITHUB_TOKEN; merge will be attributed to github-actions[bot] + push-triggered consumer workflows on this merge commit will be silently bypassed (per ci/v1.1.6 anti-recursion class). Operator: investigate App installation health."
+            TOKEN_KIND="GITHUB_TOKEN (fallback — App mint failed)"
+            MERGE_TOKEN="$GH_TOKEN"
+          else
+            # App not configured at all. Inert path; expected for consumers without the reviewer App.
+            TOKEN_KIND="GITHUB_TOKEN (App not configured)"
+            MERGE_TOKEN="$GH_TOKEN"
+          fi
+
+          # Re-arm. retry() captures stderr cleanly + exposes it via RETRY_LAST_STDERR on failure.
+          if GH_TOKEN="$MERGE_TOKEN" retry gh pr merge "$PR" --auto --merge; then
+            audit "stuck → re-armed via $TOKEN_KIND (gh pr merge --auto --merge); native auto-merge will fire on the next required-check evaluation"
+            exit 0
+          fi
+
+          # Re-arm failed. `::warning::` (not `::error::`) so the job stays GREEN.
+          MERGE_FAIL_REASON="${RETRY_LAST_STDERR:-(no stderr captured)}"
+          echo "::warning::auto-merge re-arming FAILED after retries; PR stuck-green needs operator action. Last stderr: $MERGE_FAIL_REASON"
+          audit "stuck → re-arm FAILED via $TOKEN_KIND; PR stays open; label ai:enforcer-failed applied (if provisionable)"
+
+          # Pass 6 fold (code M1 + silent M3 + security MINOR-4): create-if-missing for the
+          # `ai:enforcer-failed` label, then apply. Capture stderr + warn on label-apply failure so the
+          # operator-grep signal doesn't degrade silently. (Operator-grep is the durable visibility
+          # mechanism per §2.1 step 5 + §4 Risk 5 — losing it defeats the design.)
+          gh api -X POST "repos/$GH_REPO/labels" \
+            -f name="ai:enforcer-failed" \
+            -f color="d73a4a" \
+            -f description="auto-merge-ai-prs enforcer re-arm failed; PR is stuck-green awaiting operator action" \
+            >/dev/null 2>&1 || true  # 422 if label exists; safe-fail
+          if ! LABEL_OUT=$(gh api -X POST "repos/$GH_REPO/issues/$PR/labels" -f "labels[]=ai:enforcer-failed" 2>&1); then
+            echo "::warning::could not apply ai:enforcer-failed label (API response: $(echo "$LABEL_OUT" | head -1)) — operator-grep visibility degraded; rely on the workflow-run warning above for this fire"
+          fi
+
+          # Exit 0 deliberately — the warning + label are the signal; failing the job would create a
+          # required-check failure on subsequent workflow_run-triggered consumers if they came to depend
+          # on this workflow's success. Out of scope to require this workflow; it's defense-in-depth.
+          exit 0
