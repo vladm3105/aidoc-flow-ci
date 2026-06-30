@@ -5,6 +5,75 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — ci/v1.5.0: NEW reusable `auto-merge-ai-prs.yml` server-side enforcer (IPLAN-0030 P1; OPS-0062 deferred companion) (2026-06-30)
+
+- **`.github/workflows/auto-merge-ai-prs.yml`** (NEW, ~165 lines) —
+  reusable workflow that re-arms `gh pr merge --auto --merge` on PRs
+  that are green + `ai:review-passed` + in `auto_merge.repos` allowlist
+  but where auto-merge was NEVER ARMED (the `autoMergeRequest is null`
+  filter; cases 1+2 per IPLAN-0030 §1 narrow scope). Triggered per-
+  consumer by `workflow_run` (chains off ai-review + composition
+  completion) + `workflow_dispatch` (operator manual recovery). Mints
+  the existing reviewer App's installation token (same identity that
+  `ai-review.yml:703` uses) so merge-commit-author stays App-attributed
+  → preserves push-triggered consumer-workflow firing (ci/v1.1.6
+  anti-recursion fix).
+- **Inputs/secrets contract:**
+  - `inputs.pr_number` (string, optional, default "") — forwarded by
+    caller's `with:` block from `github.event.workflow_run.pull_requests[0].number`
+    on workflow_run path OR from `inputs.pr_number` on workflow_dispatch.
+  - `inputs.runner_labels` (string, optional, default `'"ubuntu-latest"'`)
+    — matches IPLAN-0017 convention (ai-review.yml + composition.yml
+    use the same shape). Private consumers pass
+    `'["self-hosted","aidoc","ci-ephemeral"]'`.
+  - `secrets.APP_REVIEWER_1_ID` + `secrets.APP_REVIEWER_1_KEY`
+    (optional) — same App as ai-review.yml. Optional → degrades to
+    GITHUB_TOKEN fallback with `::warning::` (case-3-class silent-bypass
+    of push-triggered consumer workflows on the eventual merge commit).
+- **Detection filter (step 3):** `state=OPEN ∧ label=ai:review-passed
+  ∧ mergeStateStatus=CLEAN ∧ updatedAt > 2 min ∧ autoMergeRequest is
+  null`. The `autoMergeRequest is null` clause is the load-bearing
+  guard that case 3 (already-armed-under-GITHUB_TOKEN silent-bypass)
+  is excluded per Pass-2 C2 narrow scope. Gov-locked PRs are excluded
+  naturally (mergeStateStatus never CLEAN when composition is absent
+  or gov-exempt branch fires).
+- **Re-arm method = `--merge`** (NOT `--squash`) — matches
+  `ai-review.yml:703`'s primary arming method per Pass-2 C3 alignment.
+  HARD-CODED in the workflow body (never parametrized) — defense-in-
+  depth against re-arm-with-different-method cli/cli ambiguity.
+- **Trust gate (step 2):** re-fetches `operations@main` config (same
+  curl pattern as ai-review.yml post-IPLAN-0022); checks
+  `trust.ai_review` allowlist + tier + `auto_merge.repos` membership.
+  Defends against trust-config drift (Risk 9). Fails CLOSED on fetch
+  failure.
+- **Concurrency:** per-repo + per-PR group with `run_id` fallback for
+  empty-pr-number cases (fork PRs) — prevents cross-repo collision in
+  Phase B + prevents fork-PR runs from collapsing into one shared
+  group (Pass-2 m1 fix).
+- **Trigger pivot rationale:** `check_suite.completed` is NOT used
+  because GitHub Actions anti-recursion blocks the event for GHA-
+  created check suites (Pass-2 C1 finding). `workflow_run` operates
+  orthogonally as a workflow-lifecycle event + has empirical precedent
+  on operations/composition.yml:24-30.
+- **Out of scope for v1** (per IPLAN-0030 §6): case 3 (silent-bypass
+  recovery; would need disable-then-rearm with race-condition guards),
+  case 4 (self-resolving native auto-merge race), cron belt-and-
+  suspenders, audit-only mode, PR comments on successful re-arms.
+- **Consumer adoption** (Phase A pilot: operations only; Phase B: 6
+  other allowlisted consumers): each consumer adds a thin caller
+  `.github/workflows/auto-merge-ai-prs.yml` (~20 lines) with
+  `on: workflow_run: workflows: [ai-review, composition] types:
+  [completed]` + `workflow_dispatch` + `uses: vladm3105/aidoc-flow-ci/
+  .github/workflows/auto-merge-ai-prs.yml@ci/v1.5.0` + a `with:`
+  ternary that forwards `pr_number` from whichever event fired.
+- **Plan:** [IPLAN-0030](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0030_auto-merge-ai-prs-enforcer.md)
+  (plan PR vladm3105/aidoc-flow-operations#190 merged 2026-06-30T12:41Z).
+- **Next steps:** 🔴 founder tags `ci/v1.5.0` on aidoc-flow-ci after
+  this PR merges (P2); then AI ships P3 (operations Phase A pilot
+  caller); then P4 empirical validation; then P5 Phase B rollout.
+- **🟡 governance PR** (NEW reusable workflow file). AI does NOT
+  auto-merge per OPS-0062 §exceptions.
+
 ### Changed — `docs/local-pre-push.md` §7a: multi-agent automated review (consumer-side application of OPS-0065) (2026-06-30)
 
 - **`docs/local-pre-push.md`** — new §7a section "Multi-agent
