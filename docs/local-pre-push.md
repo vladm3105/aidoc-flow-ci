@@ -132,6 +132,56 @@ adversarial review (dead-refs, supersession completeness, internal
 consistency across all surfaces) is still required for governance
 changes.
 
+## 7a. Multi-agent automated review (consumer-side application of OPS-0065)
+
+The `ai-review.yml` gate is the merge-side substantive review. The
+author-side substantive review is **rule-driven sub-agent dispatch
+BEFORE push/commit**, matched to what the diff touches. Consumers
+default to dispatching the appropriate sub-agents in parallel — don't
+cherry-pick to one agent class alone:
+
+| Diff touches | Dispatch sub-agents (author-side, before push) |
+|---|---|
+| `.github/workflows/*.yml` | `code-reviewer` + `pr-review-toolkit:silent-failure-hunter` (error handling) + `security-auditor` (when secrets/permissions/event triggers touched). For NEW event triggers, additionally web-search GitHub Actions docs for delivery semantics + anti-recursion. |
+| Plan files (`ops/iplans/IPLAN-NNNN_*.md` or consumer equivalent) | verified-planning Pass 2+ fresh-context `code-reviewer` agent per the consumer's verified-planning skill |
+| Governance docs (`CLAUDE.md`, `ops/DECISIONS.md`, supersession surfaces) | `code-reviewer` per Rule 2 (above) + `documentation-specialist` for clarity / cross-reference accuracy |
+| HANDOFF / CHANGELOG / READMEs | `documentation-specialist` for clarity, completeness, internal-consistency |
+| Python scripts (`scripts/*.py`) | `code-reviewer` + `test-engineer` (test coverage) + `security-auditor` (secret handling / external API) |
+| Configuration JSON (`.github/ai-review/config.json`, etc.) | `code-reviewer` for schema/value correctness |
+| Cross-repo coordinated changes | architecture-class agent (`system-architect`, `general-purpose` for cross-repo grep) BEFORE drafting + `code-reviewer` BEFORE push |
+
+**Also use brainstorming-class agents (`general-purpose`,
+`system-architect`, web-search) during plan/spec DRAFTING (Pass 0)** —
+not just at Pass 2+ review. The Pass 2 reviewer is the last line of
+defense; dispatching system-architect or general-purpose during Pass 0
+catches load-bearing architectural assumptions BEFORE they become a
+Pivot.
+
+**`SKIP_LOCAL_AI_REVIEW=1` usage discipline:**
+
+- Only acceptable cases: (a) genuinely mechanical content (e.g.,
+  version-pin string bump with NO accompanying logic edits); (b)
+  AI-side review has ALREADY been done via a dispatched agent (the
+  pre-push hook's AI step is then redundant — name the agent +
+  verdict in the commit-message audit-trail line); (c) explicit
+  founder OK with `Self-review skipped per founder OK <reason>` per
+  Rule 2.
+- Stop using `SKIP_LOCAL_AI_REVIEW=1` indiscriminately. Dispatching
+  the appropriate sub-agents first satisfies the "review already
+  done" exception cleanly + provides a deeper review than the
+  pre-push hook's single-pass.
+
+**Parallel dispatch:** when multiple agents apply to the same diff,
+dispatch them IN PARALLEL (one Agent tool call per agent, batched in
+a single message). Don't serialize.
+
+**This is the consumer-side application of OPS-0065** (operations
+governance decision; see [aidoc-flow-operations/ops/DECISIONS.md
+OPS-0065](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/DECISIONS.md)
+for full context + rationale). The CI `ai-review.yml` gate
+(authoritative + mandatory on the merge side) is unchanged; OPS-0065
+strengthens the AUTHOR-side review.
+
 ## 8. Future enhancement — ship as an install template
 
 Today consumers copy the script manually from operations. Future:
