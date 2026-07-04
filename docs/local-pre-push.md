@@ -182,6 +182,31 @@ for full context + rationale). The CI `ai-review.yml` gate
 (authoritative + mandatory on the merge side) is unchanged; OPS-0065
 strengthens the AUTHOR-side review.
 
+**OPS-0067 productization (2026-07-04):** the multi-agent review
+pattern is now productized in `aidoc-flow-operations`:
+
+- **Standing prompt templates:** `aidoc-flow-operations/.claude/agents/
+  review-prompts/` — parameterized skeletons per diff class
+  (`workflow-yaml.md` / `governance-docs.md` / `docs.md` / `scripts.md`
+  / `cross-repo.md` / `adversarial-judge.md` + `INDEX.md`).
+- **Wrapper tooling:** `aidoc-flow-operations/scripts/multi-agent-
+  review.sh` (bash dispatch + collate) +
+  `aidoc-flow-operations/.claude/workflows/multi-agent-review.js`
+  (Workflow-tool orchestration).
+- **Verdict schema:** `aidoc-flow-operations/.claude/agents/review-
+  prompts/verdict-schema.json` — aligned with the ecosystem CI schema
+  at `templates/ai-review/verdict.schema.json`.
+- **Empirical default:** 3-agent parallel dispatch + single fold cycle
+  for ≤300-line diffs. Re-dispatch only on NEW load-bearing surfaces
+  or structural pivots. Cap at 3 cycles per OPS-0066 circuit-breaker.
+- **Pass-N+1 adversarial judge:** `adversarial-judge.md` template for
+  re-verifying whether Pass-N findings were addressed by the fold. Cap
+  at 1 judge dispatch per fold cycle.
+
+**Aidoc-flow standard scope** — the pattern applies to ALL repos in
+the aidoc-flow workspace, not just CI consumers. This library repo
+inherits the standard via this §7a.
+
 ## 8. Future enhancement — ship as an install template
 
 Today consumers copy the script manually from operations. Future:
