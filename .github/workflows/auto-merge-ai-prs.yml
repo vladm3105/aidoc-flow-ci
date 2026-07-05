@@ -70,6 +70,14 @@ concurrency:
 jobs:
   enforce:
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    # Bounded wait: if the self-hosted runner pool is drained/offline, GHA's default
+    # 6h queue timeout would silently hang the job. The reusable's actual work is
+    # trust-gate curl + gh pr view + optional gh pr merge — all ≤5s each; 10 min is
+    # a generous cap that catches runner-unavailability as an error rather than a
+    # silent QUEUED-forever. Caller (thin `uses:` job) cannot set this per GHA
+    # constraint on reusable-caller jobs — must live at the reusable level.
+    # Origin: silent-failure-hunter finding on operations PR #203 (IPLAN-0030 P3).
+    timeout-minutes: 10
     # IPLAN-0030 Pass 6 fold (code-reviewer C1): `secrets.*` is NOT in scope for step-level `if:`
     # expressions. Workaround: declare APP_KEY_PRESENT at job-level env (where `secrets.*` IS allowed)
     # then gate the step on `env.APP_KEY_PRESENT == '1'`. Same pattern as ai-review.yml:155-160 + 503.
