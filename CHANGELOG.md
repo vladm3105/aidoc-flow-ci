@@ -5,6 +5,23 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — ci/v1.5.1: `timeout-minutes: 10` on `auto-merge-ai-prs.yml` enforce job (2026-07-05)
+
+- **`.github/workflows/auto-merge-ai-prs.yml`** — added
+  `timeout-minutes: 10` on the `enforce:` job. If the self-hosted
+  runner pool is drained or offline, GHA's default 6h queue timeout
+  would silently hang the job; the reusable's actual work is ≤5s per
+  step so 10 min is a generous cap that surfaces runner-unavailability
+  as an error rather than an infinite QUEUED. Caller (thin `uses:`
+  job) cannot set this per GHA constraint on reusable-caller jobs.
+- **Origin:** silent-failure-hunter MEDIUM finding on operations
+  PR #203 (IPLAN-0030 P3 caller). Not fixable at caller level;
+  requires the reusable-side fix shipped here.
+- **Consumer action:** consumers pinning `@ci/v1.5.0` can bump to
+  `@ci/v1.5.1` at their next convenient PR. No behavior change beyond
+  the timeout — the reusable's contract (inputs, outputs, secrets,
+  permissions) is unchanged.
+
 ### Added — ci/v1.5.0: NEW reusable `auto-merge-ai-prs.yml` server-side enforcer (IPLAN-0030 P1; OPS-0062 deferred companion) (2026-06-30)
 
 - **`.github/workflows/auto-merge-ai-prs.yml`** (NEW, ~165 lines) —
