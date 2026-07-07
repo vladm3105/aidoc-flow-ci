@@ -17,7 +17,7 @@ Every workspace repo belongs to exactly one tier. Tier drives every
 per-repo requirement below.
 
 | Tier | Repos (2026-07-07) | Signal |
-|---|---|---|
+| --- | --- | --- |
 | **Governance** | `aidoc-flow-framework`, `aidoc-flow-iplan-standard` | Public spec/schema repo; human-merge only |
 | **Product code** | `iplan-runner`, `aidoc-flow-engramory`, `aidoc-flow-ci` | Public runtime/library repo |
 | **Ops-private** | `aidoc-flow-operations`, `aidoc-flow-business`, `aidoc-flow-iplanic` | Private operations/docs repo |
@@ -34,7 +34,7 @@ declared before any settings apply (see §11 Rollout).
 All non-paused repos protect `main`. Tier drives the profile.
 
 | Setting | Governance | Product code | Ops-private | Umbrella | Bootstrap |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | Required PR before merge | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Required approving reviews | 1 human | 0 | 0 | 0 | 0 |
 | Dismiss stale reviews on push | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -73,7 +73,7 @@ visibility + license tier — settings that are unavailable on private
 repos without Advanced Security are marked N/A.
 
 | Setting | Governance (public) | Product code (public) | Ops-private (private) | Umbrella (private) | Bootstrap (any) |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | Secret scanning | ✅ | ✅ | N/A (no Advanced Security) | N/A | ✅ if public else N/A |
 | Secret scanning push protection | ✅ | ✅ | N/A | N/A | ✅ if public else N/A |
 | Dependabot security updates | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -93,7 +93,7 @@ related knobs. These control what workflows can do with the default
 are allowed.
 
 | Setting | All tiers (default) | Rationale |
-|---|---|---|
+| --- | --- | --- |
 | Actions permissions | Allow local + explicit-allowlist third-party | Blocks unreviewed action-from-anywhere |
 | Fork pull request workflows from outside collaborators | Require approval for first-time contributors | Prevents unlimited-fork abuse |
 | Send write tokens to workflows from fork PRs | ❌ Disabled | Fork PRs never get write tokens |
@@ -116,7 +116,7 @@ shapes.
 ### 5.1 State labels (ai-review state machine — required)
 
 | Label | Emitted by | Semantics |
-|---|---|---|
+| --- | --- | --- |
 | `ai:review-passed` | `ai-review.yml` | verdict = APPROVED; auto-merge armed |
 | `ai:review-changes` | `ai-review.yml` | verdict = CHANGES_REQUESTED; blocks merge |
 | `ai:human-review-required` | `ai-review.yml` trust job | Fork PR or non-allowlisted author |
@@ -136,7 +136,7 @@ agents-and-skills; dispatch = governance-docs review) and `agents`
 per OPS-0065.
 
 | Label | Path glob | OPS-0065 diff class(es) |
-|---|---|---|
+| --- | --- | --- |
 | `governance` | `CLAUDE.md`, `ops/DECISIONS.md`, `.claude/agents/*.md`, `.claude/skills/*.md`, `.github/ai-review/**` | governance-docs-root + agents-and-skills + ai-review-config |
 | `docs` | `docs/**`, `README.md`, `CHANGELOG.md`, `ops/HANDOFF.md` | docs |
 | `workflows` | `.github/workflows/**` | workflow-yaml |
@@ -163,7 +163,7 @@ Every non-paused repo ships `.github/dependabot.yml`. Ecosystems declared
 based on repo content:
 
 | Ecosystem | When applicable | Schedule | Group |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `github-actions` | Every repo | weekly | `github-actions` |
 | `pip` | Any Python code | weekly | `python-runtime` (patch+minor) |
 | `npm` | Any Node/JS code | weekly | `javascript-runtime` (patch+minor) |
@@ -236,7 +236,7 @@ Repo-level `Settings → General → Pull Requests` block. Uniform across
 all tiers.
 
 | Setting | All tiers |
-|---|---|
+| --- | --- |
 | Allow merge commits | ❌ Disabled |
 | Allow squash merging | ✅ Enabled (default) |
 | Allow rebase merging | ❌ Disabled |
@@ -349,7 +349,7 @@ coordinated-merge-window pattern from
 ## 12. Compliance evidence — where each rule's audit-trail lives
 
 | Requirement | Evidence location |
-|---|---|
+| --- | --- |
 | Workflow adoption | [`WORKFLOWS.md`](WORKFLOWS.md) §2 matrix |
 | CI activation (reviewer App install, allowlist) | `operations/docs/REPO_ONBOARDING.md` Steps 1-4 |
 | Branch protection | GitHub API — verify via `bash install/apply-standards.sh --check` (PR-B) |
