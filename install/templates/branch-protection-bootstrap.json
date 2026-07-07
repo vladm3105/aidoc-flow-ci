@@ -1,0 +1,25 @@
+{
+  "_comment": "Branch protection for BOOTSTRAP tier per REPO_STANDARDS.md §2. Tier repos: aidoc-flow-interlog (new repos pending CI adoption). Only `Lint / format / security hooks` is required — ai-review + composition are OPT-IN per aidoc-flow-operations/docs/REPO_ONBOARDING.md until the repo joins the CI-consumer set. Once a bootstrap repo adopts ai-review, migrate it to the product-code branch-protection profile.",
+  "_apply_note": "PR-C2 MUST strip ALL `_`-prefix keys before POST/PUT/PATCH. Use `jq 'del(.._comment, .._apply_note, .._docs, .._endpoint, .._umbrella_note)'` or equivalent. GitHub REST endpoints strictly validate unknown fields.",
+  "required_status_checks": {
+    "strict": false,
+    "contexts": [
+      "Lint / format / security hooks"
+    ]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "dismiss_stale_reviews": true,
+    "require_code_owner_reviews": false,
+    "required_approving_review_count": 0,
+    "require_last_push_approval": false
+  },
+  "restrictions": null,
+  "required_signatures": false,
+  "required_linear_history": false,
+  "allow_force_pushes": false,
+  "allow_deletions": false,
+  "required_conversation_resolution": false,
+  "lock_branch": false,
+  "allow_fork_syncing": true
+}

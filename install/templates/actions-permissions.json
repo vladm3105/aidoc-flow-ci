@@ -1,0 +1,45 @@
+{
+  "_comment": "MULTI-ENDPOINT SPEC — NOT a single API payload. Consumed by `install/apply-standards.sh --apply` (PR-C2), which MUST iterate the top-level sections (`general`, `selected_actions`, `workflow`, `access`, `_fork_pr_settings`) and dispatch each to its own `_endpoint` URL. A naive `gh api PUT ... --input @actions-permissions.json` will 422 — the top-level section keys are NOT GitHub API fields.",
+  "_apply_note": "Before POST/PUT of any inner section, PR-C2 MUST strip ALL `_`-prefix keys (this file has many). Use `jq 'del(.._comment, .._apply_note, .._docs, .._endpoint, .._purpose, .._conditional, .._note)'` or equivalent. GitHub REST endpoints strictly validate unknown fields.",
+  "_docs": "https://docs.github.com/en/rest/actions/permissions",
+
+  "general": {
+    "_endpoint": "PUT /repos/{owner}/{repo}/actions/permissions",
+    "_purpose": "top-level allowed_actions + enabled + selected_actions",
+    "enabled": true,
+    "allowed_actions": "selected"
+  },
+
+  "selected_actions": {
+    "_endpoint": "PUT /repos/{owner}/{repo}/actions/permissions/selected-actions",
+    "_purpose": "which third-party actions the repo may run",
+    "github_owned_allowed": true,
+    "verified_allowed": true,
+    "patterns_allowed": [
+      "vladm3105/aidoc-flow-ci/*",
+      "actions/*",
+      "github/*"
+    ]
+  },
+
+  "workflow": {
+    "_endpoint": "PUT /repos/{owner}/{repo}/actions/permissions/workflow",
+    "_purpose": "default GITHUB_TOKEN permissions + auto-PR-approval",
+    "default_workflow_permissions": "read",
+    "can_approve_pull_request_reviews": true
+  },
+
+  "access": {
+    "_endpoint": "PUT /repos/{owner}/{repo}/actions/permissions/access",
+    "_purpose": "how forks can invoke workflows",
+    "_conditional": "APPLY ONLY IF repo visibility != public. GitHub 422s this endpoint on public repos ('Access policy only applies to internal and private repositories'). PR-C2 MUST check visibility (via `gh repo view --json isPrivate` or the passed `--visibility` flag) and SKIP this section on public repos. Verified empirically 2026-07-07 on vladm3105/aidoc-flow-ci.",
+    "access_level": "none"
+  },
+
+  "_fork_pr_settings": {
+    "_note": "The two fork-PR toggles below (write tokens + secrets) are configured via the repo-level Settings > Actions > General > Fork pull request workflows block. GitHub does NOT expose these via public REST API as of 2026-07 — apply-standards.sh will emit a WARNING pointing to Settings UI for these two. Tracked as v2 (whenever an API endpoint appears).",
+    "send_write_tokens_from_fork_prs": false,
+    "send_secrets_and_variables_from_fork_prs": false,
+    "fork_pr_workflows_require_approval_for_first_time_contributors": true
+  }
+}

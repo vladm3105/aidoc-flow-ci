@@ -1,0 +1,14 @@
+{
+  "_comment": "Repo Settings → General → Pull Requests block per REPO_STANDARDS.md §9. Uniform across all tiers. Consumed by `install/apply-standards.sh --apply` (PR-C2) via `gh api PATCH /repos/{owner}/{repo}`. Rebase-merge is DISABLED — verdicts anchor to PR HEAD SHA (see canon §9 rationale). Squash-only keeps main linear + one-to-one with reviewed HEAD.",
+  "_apply_note": "PR-C2 MUST strip ALL `_`-prefix keys before POST/PUT/PATCH. Use `jq 'del(.._comment, .._apply_note, .._docs, .._endpoint, .._umbrella_note)'` or equivalent. GitHub REST endpoints strictly validate unknown fields.",
+  "_endpoint": "PATCH /repos/{owner}/{repo}",
+  "_docs": "https://docs.github.com/en/rest/repos/repos#update-a-repository",
+  "allow_merge_commit": false,
+  "allow_squash_merge": true,
+  "allow_rebase_merge": false,
+  "delete_branch_on_merge": true,
+  "allow_auto_merge": true,
+  "allow_update_branch": true,
+  "squash_merge_commit_title": "PR_TITLE",
+  "squash_merge_commit_message": "PR_BODY"
+}

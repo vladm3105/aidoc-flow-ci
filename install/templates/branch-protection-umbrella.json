@@ -1,0 +1,21 @@
+{
+  "_comment": "Branch protection for UMBRELLA tier per REPO_STANDARDS.md §2. Tier repo: aidoc-flow (multi-repo umbrella). NO required status checks (submodule-pointer PRs have no code CI to run). Signed commits REQUIRED — AI commits are unsigned so all AI merges MUST use `gh pr merge --admin` (OPS-0062 governance layer). CODEOWNERS review required. `enforce_admins: false` because --admin merge IS the intentional bypass path.",
+  "_apply_note": "PR-C2 MUST strip ALL `_`-prefix keys before POST/PUT/PATCH. Use `jq 'del(.._comment, .._apply_note, .._docs, .._endpoint, .._umbrella_note)'` or equivalent. GitHub REST endpoints strictly validate unknown fields.",
+  "required_status_checks": null,
+  "enforce_admins": false,
+  "required_pull_request_reviews": {
+    "dismiss_stale_reviews": true,
+    "require_code_owner_reviews": true,
+    "required_approving_review_count": 0,
+    "require_last_push_approval": false,
+    "_note": "GitHub empirical quirk: with `required_approving_review_count=0`, CODEOWNERS enforcement may not bind (no approving-review slot to attach). Canon §2 umbrella row spec (0 + CODEOWNERS ✅) intentionally accepts this — human merges use --admin per OPS-0062 and the CODEOWNERS block is signal rather than a hard gate. Track v2 for either raising the count or verifying enforcement on a throwaway branch."
+  },
+  "restrictions": null,
+  "required_signatures": true,
+  "required_linear_history": false,
+  "allow_force_pushes": false,
+  "allow_deletions": false,
+  "required_conversation_resolution": false,
+  "lock_branch": false,
+  "allow_fork_syncing": true
+}
