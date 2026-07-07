@@ -5,6 +5,84 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — apply-standards.sh `--apply` + check-standards-drift.sh (PR-C2 of PLAN-001) (2026-07-07)
+
+- **`install/apply-standards.sh`** — `--apply` mode implemented.
+  Mutates a target repo's server-side settings from PR-C1's canon
+  templates. Preconditions (fail-fast, exit 2):
+  - `--repo <owner/repo>` required, tightly validated (owner:
+    `[A-Za-z0-9][A-Za-z0-9-]{0,38}`, repo:
+    `[A-Za-z0-9._][A-Za-z0-9._-]{0,99}`, no `..`).
+  - `--tier <name>` required, one of `governance|product|ops|umbrella|
+    bootstrap`.
+  - `gh` CLI in PATH + authenticated.
+  - `jq` in PATH (used to strip `_`-prefix metadata from canon
+    templates per PR-C1 contract).
+  - Interactive confirmation unless `--yes`. Non-TTY invocations
+    require `--yes` (fail-fast, not silent-decline).
+  - `--apply` refuses `CI_TAG=main` (mutable canon = supply-chain
+    risk) unless `--allow-main-canon` is explicitly passed.
+- **Apply order** (safest → highest blast radius, per PLAN-001 §6 risk
+  mitigation): labels → repo-settings → actions-permissions →
+  branch-protection.
+- **Backup** — before any mutation, `--apply` snapshots the current
+  server state to `install/backups/<sanitized-repo>-<UTC-ts>-<pid>.json`
+  (labels [paginated] + repo settings + ALL 4 actions-permissions
+  sub-endpoints + branch-protection on the target's actual default
+  branch). Files written with `umask 077` (mode 600). Written to
+  `install/backups/` which is .gitignored. Backup captures raw GET
+  responses which do NOT round-trip via naive PUT (GET vs PUT shape
+  mismatch on `restrictions` etc.); documented in confirmation
+  banner as a REFERENCE for manual/UI restore.
+- **Per-section skip flags** — `--skip-labels`, `--skip-repo-settings`,
+  `--skip-actions`, `--skip-branch-protection` for granular application.
+- **Actions permissions handling** — iterates the 4-endpoint MULTI-
+  ENDPOINT SPEC from `actions-permissions.json`. `_endpoint` validated
+  (must be `PUT /repos/{owner}/{repo}/...`) and post-substitution path
+  is enforced to stay repo-scoped (prevents hostile canon pivoting to
+  `/orgs/...`). `access` endpoint skipped only on visibility=public
+  (verified endpoint returns 422 there); applied on private + internal.
+  Fork-PR toggles emit an explicit SECURITY WARNING naming the
+  consequence (write tokens + secrets exposure) — no REST endpoint
+  as of 2026-07; founder resolves in Settings UI.
+- **Default-branch discovery** — apply + drift-check use the target's
+  actual `default_branch` via `gh api repos/${REPO}`; no hardcoded
+  `main`.
+- **Exit codes**: `0` success, `1` drift (--check only), `2` usage
+  error (preconditions), `3` canon fetch failed, `4` mutation or
+  backup error (partial state possible — check backup file), `5`
+  cancelled by user.
+- **`sync/check-standards-drift.sh`** (NEW) — warning-only companion
+  to `sync/check-drift.sh`. Compares live server-side state against
+  canon templates for the specified tier via `gh api`. Emits
+  `::warning::` per drift; ALWAYS exits 0 (never blocks CI, mirrors
+  IPLAN-0017 §3.1b drift-warning contract). Checks: branch-protection
+  key subsets (enforce_admins, signatures, force-push, deletion,
+  contexts set-equality) on the target's default_branch;
+  repo-settings (merge/cleanup toggles); actions-permissions across
+  ALL 4 sub-endpoints (general.allowed_actions,
+  workflow.default_workflow_permissions,
+  selected_actions.{github_owned,verified}_allowed,
+  access.access_level on private/internal); canon-label presence.
+  Cannot-check paths (API failure, token scope, canon fetch) emit
+  explicit `::warning::` + increment a separate fetch-error counter;
+  the final summary reports both `$DRIFT drift, $FETCH_ERRORS
+  fetch/scope error(s)` so CI operators cannot mistake "silent skip"
+  for "green".
+- **Backward compatibility** — PR-B2's `--check` / `--dry-run` /
+  `--report` behavior unchanged; smoke tests re-verified. File-surface
+  checks (CODEOWNERS, PR template, dependabot.yml, .gitignore,
+  .gitattributes) still local-checkout; `--apply` is server-side only.
+  Content-surface FILES ship via normal PR flow per PLAN-001 §5.4.
+- **`.gitignore`** — `install/backups/` added; backup files contain
+  private-repo metadata that must not enter git.
+- **Origin:** PLAN-001 §5.3 (`plans/PLAN-001_repo-standards-canon.md`).
+  Closes out PLAN-001's canonical enforcement layer. Per-repo rollout
+  PRs (T-C coordinated-merge-window pattern) follow, out-of-plan.
+  Automated `--rollback` deferred to a follow-up (backup shape is
+  currently reference-only; the raw GET responses don't round-trip
+  via naive PUT).
+
 ### Added — Server-side canon templates (PR-C1 of PLAN-001) (2026-07-07)
 
 - **`install/templates/branch-protection-governance.json`** (NEW) —
