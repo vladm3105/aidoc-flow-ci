@@ -39,7 +39,7 @@ All non-paused repos protect `main`. Tier drives the profile.
 | Required approving reviews | 1 human | 0 | 0 | 0 | 0 |
 | Dismiss stale reviews on push | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Require review from CODEOWNERS | ✅ | ⏸ v2 | ⏸ v2 | ✅ | ⏸ v2 |
-| Required status checks (baseline) | `call / ai-review`, `call / composition`, `Lint / format / security hooks` + tier-specific | `call / ai-review`, `call / composition`, `Lint / format / security hooks`, `Secret scan (gitleaks)` + tier-specific | `call / ai-review`, `call / composition`, `Lint / format / security hooks`, `Secret scan (gitleaks)` + tier-specific | (no required checks — submodule-pointer only) | `Lint / format / security hooks` + tier-specific |
+| Required status checks (baseline) | `call / ai-review`, `call / composition`, `call / verify`, `Lint / format / security hooks` + tier-specific | `call / ai-review`, `call / composition`, `call / verify`, `Lint / format / security hooks`, `Secret scan (gitleaks)` + tier-specific | `call / ai-review`, `call / composition`, `call / verify`, `Lint / format / security hooks`, `Secret scan (gitleaks)` + tier-specific | (no required checks — submodule-pointer only; `call / verify` runs advisory) | `Lint / format / security hooks` + tier-specific (`call / verify` deferred to CI adoption per §14.3) |
 | Require branches up-to-date before merge | ⏸ (adds re-run round-trips; deferred) | ⏸ | ⏸ | ⏸ | ⏸ |
 | Require signed commits | ⏸ v2 | ⏸ v2 | ⏸ v2 | ✅ (unsigned AI commits blocked; `--admin` per OPS-0062) | ⏸ v2 |
 | Include administrators | ✅ | ✅ | ✅ | ⏸ (`--admin` merge is the intentional bypass) | ✅ |
@@ -361,6 +361,7 @@ coordinated-merge-window pattern from
 | PR template | Presence of `.github/pull_request_template.md` + `--check` |
 | Merge/cleanup | GitHub API — `--check` |
 | `.gitignore` / `.gitattributes` | Presence + `--check` compares against baseline |
+| Self-review mechanical enforcement (§14) | Presence of `scripts/pre_push_check.sh` + `.pre-commit-config.yaml` block with canon marker; `.github/workflows/audit-trail-check.yml` caller (except bootstrap/paused); OPS-0069 phrase in every push commit range |
 
 ## 13. Cross-references
 
@@ -387,6 +388,95 @@ coordinated-merge-window pattern from
   - OPS-0068 (reviewer App install permissions)
   - OPS-0069 (mandatory pre-push audit trail)
 
-## 14. Change log
+## 14. Self-review mechanical enforcement
+
+Every non-paused repo ships an author-side pre-push hook that verifies
+the OPS-0069 audit-trail phrase in every push. The check is
+belt-and-suspendered by a CI reusable that re-verifies the phrase on
+every PR at merge time.
+
+### 14.1 Local hook
+
+**Canonical script:** `install/templates/pre_push_check.sh` (this repo).
+Consumer install path: `scripts/pre_push_check.sh`. Wired via
+`.pre-commit-config.yaml` with
+`default_install_hook_types: [pre-commit, pre-push]`; canonical fragment
+in `install/templates/pre-commit-hook-block.yaml`.
+
+**Scope (5 checks):**
+
+1. `markdownlint` on changed `.md` files (skipped if not installed).
+2. `yamllint` on changed `.yml`/`.yaml` files (skipped if not installed).
+3. `actionlint` on changed `.github/workflows/*.yml` (skipped if not
+   installed).
+4. `shellcheck` on changed `.sh` files (skipped if not installed).
+5. OPS-0069 audit-trail phrase check (`Multi-agent self-review per
+   OPS-0065` OR `Self-review skipped per founder OK`) in
+   `@{upstream}..HEAD` (or `origin/main..HEAD` on first push).
+
+**No env-var runtime opt-out** — matches OPS-0069's removal of
+`SKIP_LOCAL_AI_REVIEW`. Only bypass path: `git push --no-verify` (git
+primitive; caught by §14.2 CI check).
+
+**Exemption logic (local hook implements 2 of 3):**
+
+- ALL commits in range authored by `dependabot[bot]`, `renovate[bot]`,
+  or `github-actions[bot]` → check SKIPS (parity with CI; bots rarely
+  push via the local hook path).
+- ALL commits in range have subject line starting with `Revert "` →
+  check SKIPS (mixed ranges still require the phrase).
+- Two-signal `skip-audit-trail` label + `[skip-audit-trail]` body
+  marker → **CI-side only** (git has no PR-label context at push time).
+
+**Repo-specific extras** (e.g., verified-planning `check_plan.py`,
+operations classify-parity) live in a consumer wrapper
+`scripts/pre_push_check_<repo>.sh` that sources canon + adds its own
+checks. Wrapper preserves the canon's `set -uo pipefail` + rc-accumulator
+pattern. See PLAN-002 §4.8 for the operations wrapper reference.
+
+### 14.2 CI belt-and-suspenders
+
+**Reusable workflow:** `.github/workflows/audit-trail-check.yml` (this
+repo). Same `workflow_call` pattern as `ai-review.yml` / `composition.yml`.
+Consumer callers use `jobs.call:` → check-name renders as `call / verify`.
+
+**Availability:** ships in **PLAN-002 PR-U3** (not yet available in this
+release; §14.1 local hook ships in PR-U1). Consumers wire callers +
+required-status-check entries only after PR-U3 lands. Full rollout via
+per-repo Wave PRs per §5.5 of PLAN-002.
+
+**Range:** `${{ github.event.pull_request.base.sha }}..${{
+github.event.pull_request.head.sha }}` on `pull_request` events. Reusable
+uses `fetch-depth: 0` (prevents fork-PR false-pass with default depth-1
+checkout).
+
+**Push events NOT covered** by the reusable (direct pushes to protected
+branches require `--admin` and are governed by OPS-0062; local hook is
+the enforcement point for author-side pre-push).
+
+**Exemption logic** (bot-authored + mechanical commits):
+
+- ALL commits in range authored by `dependabot[bot]`, `renovate[bot]`,
+  or `github-actions[bot]` → check SKIPS (with `::notice::`).
+- Commit message starts with `Revert "` → individual commit exempt.
+- Two-signal override: `skip-audit-trail` PR label AND `[skip-audit-trail]`
+  in commit body → check SKIPS.
+- Otherwise: at least one non-exempt commit must carry an OPS-0069 phrase.
+
+### 14.3 Tier applicability
+
+| Tier | Local hook | CI reusable | Required-check `call / verify` in `contexts` |
+| --- | --- | --- | --- |
+| Governance | ✅ | ✅ | ✅ |
+| Product code | ✅ | ✅ | ✅ |
+| Ops-private | ✅ | ✅ | ✅ |
+| Umbrella | ✅ | ✅ (advisory) | ❌ — umbrella has `required_status_checks: null` by design (§2); do not add |
+| Bootstrap | ✅ | ❌ — pending CI adoption (§4.5 of PLAN-002); caller file omitted from `.github/workflows/` | ❌ |
+| Paused | ❌ | ❌ | ❌ |
+
+## 15. Change log
 
 - 2026-07-07 — Initial canon codified per PLAN-001 §5.1.
+- 2026-07-08 — §14 added (self-review mechanical enforcement); §2 amended
+  to add `call / verify` to non-paused non-bootstrap non-umbrella tier
+  `contexts`; §12 amended with new compliance row. Per PLAN-002 PR-U1.

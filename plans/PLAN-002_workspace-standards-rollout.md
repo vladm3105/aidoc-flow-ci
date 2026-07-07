@@ -217,14 +217,17 @@ branch-protection contexts (F5 blast-radius per PLAN-001 §5.4).
 
 ### 4.6 Bot / mechanical-commit exemption (H5 + local-hook parity)
 
-Both surfaces (local hook + CI check) share the same exemption logic
-implemented in the canon script. The check is skipped (not failed) when:
+Both surfaces (local hook + CI check) share exemption semantics; local
+hook implements 2 of 3 (label exemption needs PR context which the git
+push boundary lacks — CI-side only). The check is skipped (not failed)
+when:
 
 - Every commit in the checked range is authored by a bot in the exemption
-  list, OR
+  list (dependabot / renovate / github-actions), OR
 - Every commit in the range starts with `Revert "` (git revert), OR
-- The `skip-audit-trail` label is set on the PR AND the commit body has
-  `[skip-audit-trail]` (two-signal override).
+- **CI-side only:** the `skip-audit-trail` label is set on the PR AND
+  the commit body has `[skip-audit-trail]` (two-signal override; local
+  hook cannot see PR labels so this branch is a CI-only escape).
 
 Otherwise, at least one commit in the range must carry the OPS-0069 phrase.
 
@@ -282,7 +285,7 @@ Split into 4 focused PRs (each ≤3 or ≤4 surfaces per OPS-0061 Rule 1;
 larger PRs bundled with atomic-suite founder OK per PLAN-001 §5.2/§5.3
 precedent).
 
-### 5.1 PR-U1 — canon script + REPO_STANDARDS.md §15 + stale-doc cleanup
+### 5.1 PR-U1 — canon script + REPO_STANDARDS.md §14 + stale-doc cleanup
 
 **Purpose:** ship the canon `pre_push_check.sh` template + document the
 mechanical layer + fix stale docs contradicted by OPS-0069.
@@ -299,9 +302,9 @@ mechanical layer + fix stale docs contradicted by OPS-0069.
   `pre_push_check.sh` hook.
 - `docs/REPO_STANDARDS.md` — three amendments in ONE PR (H6 fix, bundled
   per PLAN-001 §5.2 atomic-suite precedent):
-  - §15 (NEW) — self-review mechanical enforcement rule. Tier
+  - §14 (NEW) — self-review mechanical enforcement rule. Tier
     applicability: all non-paused (bootstrap adopts hook only; CI check
-    pending per §4.5).
+    pending per §4.5). Change log (previously §14) moves to §15.
   - §2 (edit) — add `call / verify` to each tier's required
     `contexts` array **except: (a) bootstrap tier (advisory-only until
     CI adoption per §4.5); (b) umbrella tier (canon umbrella JSON has
@@ -320,7 +323,7 @@ mechanical layer + fix stale docs contradicted by OPS-0069.
   + mechanical linter pass; bash-only, no CLI dependency").
 - `CHANGELOG.md` — [Unreleased] entry.
 
-**5 surfaces** — bundled as atomic doc-suite per PLAN-001 §5.1 precedent
+**6 surfaces** — bundled as atomic doc-suite per PLAN-001 §5.1 precedent
 (REPO_STANDARDS.md canon PR was 3 surfaces). Founder OK required for
 bundle beyond Rule 1 cap.
 
