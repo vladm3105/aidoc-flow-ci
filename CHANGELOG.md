@@ -5,6 +5,33 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — Content-surface templates (PR-B1 of PLAN-001) (2026-07-07)
+
+- **`install/templates/CODEOWNERS.template`** (NEW) — canonical
+  CODEOWNERS shape per REPO_STANDARDS.md §7. Single-owner phase
+  (`@vladm3105`); v2 fans out per-domain reviewers.
+- **`install/templates/pull_request_template.md`** (NEW) — canonical
+  PR template per REPO_STANDARDS.md §8. Sections: Summary, Files
+  touched (Rule 1 self-check), Multi-agent self-review
+  (OPS-0065/0069 reminder that audit-trail phrase belongs in COMMIT
+  message not PR body), Cross-references, Test plan.
+- **`install/templates/dependabot.yml`** (NEW) — canonical
+  multi-ecosystem shape per REPO_STANDARDS.md §6.
+  `github-actions` + `pip` + `npm` + `docker` + `gitsubmodule`
+  (umbrella only), weekly Monday cadence, grouped patch/minor.
+- **`install/templates/.gitignore.template`** (NEW) — workspace
+  baseline per REPO_STANDARDS.md §10.1. `.claude/`, `.review/`,
+  `tmp/`, `.env*` (with `.env.example` allow-listed), Python cache,
+  Node, OS/editor artifacts.
+- **`install/templates/.gitattributes.template`** (NEW) —
+  workspace baseline per REPO_STANDARDS.md §10.2. Enforces LF line
+  endings + binary marker for common non-text file types.
+- **Origin:** PLAN-001 §5.2 (`plans/PLAN-001_repo-standards-canon.md`).
+  Bundled as atomic template-suite per §5.2 "atomic template-suite
+  adoption" bundle option (founder OK). `install/apply-standards.sh`
+  ships in PR-B2. Server-side settings templates + drift check ship
+  in PR-C.
+
 ### Added — Repo standards canon (PR-A of PLAN-001) (2026-07-07)
 
 - **`docs/REPO_STANDARDS.md`** (NEW) — the static-settings rulebook for
