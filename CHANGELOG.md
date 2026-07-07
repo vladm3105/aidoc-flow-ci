@@ -5,6 +5,29 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — Repo standards canon (PR-A of PLAN-001) (2026-07-07)
+
+- **`docs/REPO_STANDARDS.md`** (NEW) — the static-settings rulebook for
+  every workspace repo. Companion to `WORKFLOWS.md` (workflow-side) and
+  `aidoc-flow-operations/docs/REPO_ONBOARDING.md` (CI activation).
+  Contents:
+  - **6-tier taxonomy** — governance / product code / ops-private /
+    umbrella / bootstrap / paused. Tier drives per-repo profile.
+  - **Per-tier profiles** for: branch protection, GitHub security
+    settings, Actions permissions, labels, dependabot, CODEOWNERS,
+    PR template, merge/cleanup settings, `.gitignore` /
+    `.gitattributes` baselines.
+  - **Canonical label taxonomy** — 4 required state labels + 8
+    diff-class labels aligned with OPS-0065 diff-class dispatch table.
+  - **Rollout order** — via `operations/docs/CROSS_REPO_PLAYBOOKS.md`
+    §T-C coordinated-merge-window pattern.
+  - **Compliance-evidence table** — where each rule's audit-trail
+    lives.
+- **`docs/README.md`** — index entry.
+- **Origin:** PLAN-001 §5.1 (`plans/PLAN-001_repo-standards-canon.md`).
+  PR-B (templates + `apply-standards.sh`) + PR-C (mechanical
+  enforcement + drift check) follow.
+
 ### Changed — Registry audit against actual repo state (2026-07-07)
 
 - **`docs/WORKFLOWS.md`** — audited the per-repo applicability matrix
