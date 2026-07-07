@@ -1,2 +1,6 @@
 *.tmp
 .DS_Store
+
+# apply-standards.sh --apply backups — full API responses per repo/tier.
+# Private-repo metadata; keep out of git.
+install/backups/
