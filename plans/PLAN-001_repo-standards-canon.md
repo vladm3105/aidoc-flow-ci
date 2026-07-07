@@ -7,8 +7,12 @@ check repos labeling rules/strategy; check dependabot setting. The goal is
 create unified rules for all repos (including new repos) using best practices
 and our own experience to prevent security issues, redundant settings. Use
 flow-ci as main repo for this documents, scripts, config files"
-**Status:** Draft — gap analysis complete + 3-PR sequencing agreed with
-founder 2026-07-07. Awaiting PR-A drafting.
+**Status:** Phases 1–5 SHIPPED 2026-07-07 (PRs #55, #56, #57, #58, #60).
+Rollout scope (§5.4) SUPERSEDED by `plans/PLAN-002_workspace-standards-rollout.md`
+— unified with self-review mechanical enforcement per founder direction
+2026-07-07 ("revise PLAN-001 and PLAN-002 together"). This document remains
+as historical record of the canon design; consult PLAN-002 for the
+remaining per-tier rollout + self-review layer.
 
 ## 1. Purpose
 
