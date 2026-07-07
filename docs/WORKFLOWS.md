@@ -38,22 +38,82 @@ Rows = workspace repos. Columns = the 11 workflows. Cell values:
 - **⏸ skip** — skippable with rationale (see § "3. Skip guidance" below)
 - **N/A** — genuinely not applicable (no matching surface)
 
+**Cell values (matrix legend):**
+
+- **✅** — adopted (using the reusable at a pinned `@ci/vX.Y.Z` tag)
+- **⚠️ GAP** — should adopt but missing (actionable follow-up)
+- **🕳 custom** — local equivalent workflow shipped (not calling the reusable); consider migrating to the reusable for consistency
+- **⏸ skip** — deliberately skipped with rationale
+- **N/A** — not applicable (no matching surface)
+
+Actual state audited 2026-07-07 via `gh api repos/*/contents/.github/workflows`
+against every workspace repo.
+
 | Repo (visibility) | ai-review | composition | auto-merge | pre-commit | codeql | secret-scan | markdown-lint | links | labeler | docs-sync | doc-maintainer |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `aidoc-flow-operations` (private) | ✅ | ✅ | ✅ | ✅ | ⏸ pending | ✅ | ✅ | ✅ | ⏸ pending | N/A (superseded) | ✅ pending |
-| `aidoc-flow-framework` (public) | ✅ | ✅ | ⏸ (spec/governance tier — human-merge only) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | ⏸ per-need |
-| `aidoc-flow-business` (private) | ✅ | ✅ | ✅ | ✅ | N/A (docs-only) | ✅ | ✅ | ✅ | ⏸ pending | ⏸ per-need | ⏸ per-need |
-| `aidoc-flow-iplanic` (private) | ✅ | ✅ | ✅ | ✅ | ⏸ pending | ✅ | ✅ | ✅ | ⏸ pending | ⏸ per-need | ⏸ per-need |
-| `iplan-runner` (public) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏸ per-need | ⏸ per-need |
-| `aidoc-flow-engramory` (public) | ✅ | ✅ | ✅ | ✅ | ⏸ pending (Python) | ✅ | ✅ | ✅ | ⏸ pending | ⏸ per-need | ⏸ per-need |
-| `aidoc-flow` (umbrella; private) | ⏸ (submodule pointer PRs only) | ⏸ (same) | ⏸ (downstream of ai-review skip — no `ai:review-passed` label emitted; umbrella uses `gh pr merge --admin` per OPS-0062) | ✅ | N/A | ✅ | ✅ | ✅ | N/A | N/A | N/A |
-| `aidoc-flow-iplan-standard` (private) | ✅ pending | ✅ pending | ⏸ (schema-tier — human-merge) | ✅ | N/A (docs-only) | ✅ | ✅ | ✅ | ⏸ pending | ⏸ per-need | ⏸ per-need |
+| `aidoc-flow-operations` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (scripts/*.py + .github/scripts/*.py present) | 🕳 custom (`security.yml` — bare gitleaks) | 🕳 custom (`docs-lint.yml`) | ✅ | ⚠️ GAP | ✅ | ✅ |
+| `aidoc-flow-framework` (public) | ✅ | ✅ | ⏸ (spec/governance tier — human-merge only) | ✅ | ✅ | ⚠️ GAP | ⚠️ GAP (pre-commit local markdownlint may cover) | ⚠️ GAP | ✅ | N/A | ⏸ per-need |
+| `aidoc-flow-business` (private) | ✅ | ✅ | ✅ | ✅ | N/A (docs-only) | ⚠️ GAP | ⚠️ GAP | ✅ | ⚠️ GAP | ⏸ per-need | ⏸ per-need |
+| `aidoc-flow-iplanic` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (runtime Python) | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⏸ per-need | ⏸ per-need |
+| `iplan-runner` (public) | ✅ | **⚠️ GAP (missing composition.yml — ai-review verdict not authoritatively gated)** | ✅ | ✅ | ✅ | ⚠️ GAP (repo's `security.yml` is `pip-audit` dependency-audit, not gitleaks — orthogonal concern) | ⚠️ GAP | ⚠️ GAP | ✅ | ⏸ per-need | ⏸ per-need |
+| `aidoc-flow-engramory` (public) | ✅ | ✅ | ✅ | **⚠️ GAP** (only `ci.yml` — no pre-commit reusable) | ⚠️ GAP (Python maturing) | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⏸ per-need | ⏸ per-need |
+| `aidoc-flow` (umbrella; private) | ⏸ (submodule pointer PRs only) | ⏸ (same) | ⏸ (downstream of ai-review skip — no `ai:review-passed` label emitted; umbrella uses `gh pr merge --admin` per OPS-0062) | ⚠️ GAP (has 4 site-flavor workflows: `nightly-live.yml` / `post-deploy.yml` / `pr-checks.yml` / `release.yml` — no `pre-commit.yml`) | N/A | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | N/A | N/A | N/A |
+| `aidoc-flow-iplan-standard` (private) | ⚠️ GAP (planned) | ⚠️ GAP (planned) | ⏸ (schema-tier — human-merge) | ⚠️ GAP | N/A (docs-only) | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⏸ per-need | ⏸ per-need |
+| `aidoc-flow-interlog` (private; new 2026-07-06) | ⚠️ GAP (planned; charter/discovery) | ⚠️ GAP (planned) | ⚠️ GAP (planned) | ⚠️ GAP | ⚠️ GAP (Python-planned) | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⏸ per-need | ⏸ per-need |
 | `aidoc-flow-ci` (public — this repo) | ⏸ (self-referencing) | ⏸ (self-referencing) | ⏸ (spec/governance tier) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | N/A |
 | `aidoc-flow-knowledge-rag` (paused) | — | — | — | — | — | — | — | — | — | — | — |
 | `aidoc-flow-site` (paused) | — | — | — | — | — | — | — | — | — | — | — |
 
 **Paused repos** (`knowledge-rag`, `aidoc-flow-site` per founder direction
 2026-07-04) — no adoption changes until unpaused.
+
+### 2.1 Gap summary — actionable follow-up
+
+Aggregated ⚠️ GAP cells above (paused repos + N/A excluded). Each row is a
+potential single-PR consumer adoption; ordering is by adoption-sequence
+step (§4) so `pre-commit` → `secret-scan` → `markdown-lint` etc.:
+
+- **Critical gap:** `iplan-runner` MISSING `composition.yml`. The
+  ai-review verdict is not authoritatively enforced without it — a
+  reviewer-App approval is announced but not composed as a required
+  check for merge.
+- **Critical gap:** `aidoc-flow-engramory` MISSING `pre-commit.yml`. Only
+  ships `ci.yml` locally; pre-commit hygiene not applied in CI.
+- **Missing on ALL non-`aidoc-flow-ci` active repos** except operations
+  (custom gitleaks-based `security.yml`): `secret-scan.yml`. Gitleaks
+  secret scanning is high-value + trivial cost — should adopt.
+  (iplan-runner ships `security.yml` too but it is `pip-audit`
+  dependency-audit — a separate concern from secret-scan; no reusable
+  `pip-audit.yml` exists in this library yet.)
+- **Missing on most repos**: `markdown-lint.yml`. Operations has a
+  local `docs-lint.yml`; framework's pre-commit stack has markdownlint;
+  everyone else has nothing.
+- **Missing on most repos**: `links.yml`. Adopted today by operations +
+  business (plus aidoc-flow-ci itself, which ships the reusable).
+  Blocking `links.yml (offline)` is a doc-quality floor.
+- **Missing on most repos**: `labeler.yml`. Only framework + iplan-runner
+  + aidoc-flow-ci adopt. Path-based labels reinforce OPS-0065 diff-class
+  visibility — should adopt.
+- **Missing on repos with Python code**: `codeql.yml`. Operations
+  (`scripts/*.py`), iplanic (runtime Python), engramory (Python maturing),
+  interlog (Python planned).
+- **Migration candidate: custom → reusable**: operations
+  `security.yml` (gitleaks) + `docs-lint.yml` — could migrate to
+  `secret-scan.yml` + `markdown-lint.yml` reusables for consistency +
+  drift detection. iplan-runner `security.yml` is `pip-audit` — separate
+  category (no reusable target yet; potential future
+  `pip-audit.yml` addition).
+
+### 2.2 Bootstrap-tier repos
+
+- `aidoc-flow-interlog` (created 2026-07-06 per GitHub `created_at`;
+  project memory noted 2026-07-07 which was the update timestamp) is
+  bootstrap-tier — no CI adopted yet. First CI PR should follow §4
+  adoption sequencing.
+- `aidoc-flow-iplan-standard` currently ships only `conformance.yml` (a
+  local workflow, not the reusable). ai-review + composition + pre-commit
+  + all doc-quality workflows planned per its Phase D onboarding (per
+  operations `docs/REPO_ONBOARDING.md`).
 
 ## 3. Skip guidance — legitimate reasons per workflow
 
@@ -185,6 +245,18 @@ warning is the operator's opportunity to reconcile intent.
 ## 7. Change log
 
 - 2026-07-06 — Initial registry codified.
+- 2026-07-07 — Registry audited against actual repo state via
+  `gh api repos/*/contents/.github/workflows` across every workspace
+  repo. Cell values expanded from `✅ / ⏸ / N/A` to `✅ / ⚠️ GAP /
+  🕳 custom / ⏸ / N/A`. Prior version conflated "should adopt" and
+  "actually adopted" — the audit surfaced 2 critical gaps
+  (iplan-runner missing `composition.yml`; engramory missing
+  `pre-commit.yml`), 4 near-universal gaps (`secret-scan`,
+  `markdown-lint`, `links`, `labeler` missing from most repos), 3
+  custom-vs-reusable migration candidates (operations
+  `security.yml` + `docs-lint.yml`; iplan-runner `security.yml`),
+  and 1 new bootstrap-tier repo (`aidoc-flow-interlog`). §2.1 added
+  as actionable follow-up. §2.2 flags bootstrap-tier repos.
 
 ## 8. Cross-references
 
