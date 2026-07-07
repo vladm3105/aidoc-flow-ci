@@ -24,6 +24,7 @@ This `docs/` tree covers reference + design topics.
 | [`runners.md`](runners.md) | How to register self-hosted runner pools with the right labels; reference image (`aidoc-flow-runner:latest`) provisioning; per-origin cost/latency/CLI/fork-safety tradeoffs; scaling + adding new origins |
 | [`architecture.md`](architecture.md) | How the pieces fit together: reusable-workflow model; the 11 shared workflows; trust + verdict flow (ai-review + composition); per-repo policy surfaces; versioning + tag scheme |
 | [`WORKFLOWS.md`](WORKFLOWS.md) | **Workflow registry** — canonical enumeration of all 11 reusable workflows, per-repo applicability matrix, per-workflow skip-guidance, adoption sequencing for new repos, current pin state. Source-of-truth for CI-library capabilities. |
+| [`REPO_STANDARDS.md`](REPO_STANDARDS.md) | **Repo standards canon** — the static-settings rulebook for every workspace repo. 6-tier taxonomy (governance / product / ops-private / umbrella / bootstrap / paused) drives per-tier requirements for branch protection, GitHub security settings, labels, dependabot, CODEOWNERS, PR template, Actions permissions, merge/cleanup settings, `.gitignore`/`.gitattributes`. Companion to `WORKFLOWS.md` (workflow-side compliance) + `aidoc-flow-operations/docs/REPO_ONBOARDING.md` (CI activation). Per PLAN-001. |
 
 ## Planned (drafted on demand, not preemptively)
 
