@@ -5,6 +5,52 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — Server-side canon templates (PR-C1 of PLAN-001) (2026-07-07)
+
+- **`install/templates/branch-protection-governance.json`** (NEW) —
+  1-human approving review + CODEOWNERS + status checks: ai-review,
+  composition, hooks (canon §2, governance profile).
+- **`install/templates/branch-protection-product.json`** (NEW) —
+  0-approving reviews (ai-review + composition ARE the gate) + status
+  checks: ai-review, composition, hooks, secret-scan.
+- **`install/templates/branch-protection-ops.json`** (NEW) — same
+  profile as product, tier-specific note re: private (no fork risk).
+- **`install/templates/branch-protection-umbrella.json`** (NEW) — no
+  required status checks (submodule-pointer only) + `required_signatures:
+  true` + `enforce_admins: false` (`--admin` merge IS the intended bypass
+  per OPS-0062).
+- **`install/templates/branch-protection-bootstrap.json`** (NEW) — only
+  `Lint / format / security hooks` required; ai-review + composition
+  opt-in per REPO_ONBOARDING.md until bootstrap repo joins CI-consumer
+  set (then migrate to product profile).
+- **`install/templates/actions-permissions.json`** (NEW) — canon §4.
+  `default_workflow_permissions: read` + selected-actions allowlist
+  (`vladm3105/aidoc-flow-ci/*`, `actions/*`, `github/*`) + fork-PR
+  workflows require approval for first-time contributors. Multi-endpoint
+  spec (general / selected-actions / workflow / access). Two fork-PR
+  toggles (write tokens + secrets) live in Settings UI — not yet REST-
+  exposed by GitHub; documented as v2.
+- **`install/templates/repo-settings.json`** (NEW) — canon §9. Squash-
+  only + delete-on-merge + auto-merge enabled + squash-title=PR_TITLE +
+  squash-message=PR_BODY. Rebase-merge DISABLED (verdicts anchor to PR
+  HEAD SHA — canon §9 rationale).
+- **`install/templates/labels.json`** — extended to canon §5.1 + §5.2
+  taxonomy. 4 required state labels + `ai:autofix-applied` + 8 canonical
+  diff-class labels (`governance`, `docs`, `workflows`, `scripts`,
+  `agents`, `tests`, `config`, `plans`) aligned with OPS-0065 `diff-
+  class-map.json` + 2 area labels (`dependencies`, `security`). Dropped
+  pre-canon labels from the template: `area: ci`, `area: governance`,
+  `area: deps`, `area: tests` (superseded by canon §5.2 no-prefix
+  `workflows`, `governance`, `config`, `tests` respectively). Consumer
+  repos migrating from pre-canon retain their old labels — apply-
+  standards.sh --apply never deletes labels; migration is manual per
+  repo.
+- **Consumed by:** `install/apply-standards.sh --apply` (PR-C2). This
+  PR ships the templates (read-only, no code); PR-C2 ships the mutation
+  code.
+- **Origin:** PLAN-001 §5.3 (`plans/PLAN-001_repo-standards-canon.md`).
+  Bundled as atomic enforcement suite per §5.3 (founder OK).
+
 ### Added — apply-standards.sh check/dry-run/report (PR-B2 of PLAN-001) (2026-07-07)
 
 - **`install/apply-standards.sh`** (NEW) — compares a consumer repo's

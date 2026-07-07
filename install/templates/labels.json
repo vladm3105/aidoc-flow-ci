@@ -2,46 +2,78 @@
   {
     "name": "ai:review-passed",
     "color": "0e8a16",
-    "description": "AI reviewer verdict: passed"
+    "description": "AI reviewer verdict: APPROVED (canon §5.1 required state label)"
   },
   {
     "name": "ai:review-changes",
     "color": "d93f0b",
-    "description": "AI reviewer verdict: changes requested"
+    "description": "AI reviewer verdict: CHANGES_REQUESTED (canon §5.1 required state label)"
   },
   {
     "name": "ai:human-review-required",
     "color": "fbca04",
-    "description": "Human review required (untrusted author / governance)"
+    "description": "Fork PR or non-allowlisted author (canon §5.1 required state label)"
   },
   {
     "name": "skip-ai-review",
     "color": "5319e7",
-    "description": "Skip ai-review on subsequent pushes"
+    "description": "Operator override to re-fire ai-review (canon §5.1 required state label)"
   },
   {
     "name": "ai:autofix-applied",
     "color": "1d76db",
-    "description": "AI autofix applied (IPLAN-0014)"
+    "description": "AI autofix applied (IPLAN-0014 operational label; not canon §5.1 required — optional but recommended for repos consuming ai-review with autofix)"
   },
+
   {
-    "name": "area: ci",
-    "color": "5319e7",
-    "description": "PR touches CI workflows or CI configs (.github/workflows/, .pre-commit-config.yaml, etc.)"
-  },
-  {
-    "name": "area: governance",
+    "name": "governance",
     "color": "8b6914",
-    "description": "PR touches governance docs (CLAUDE.md, DECISIONS.md, IPLAN-*.md, governance/) or a decision"
+    "description": "PR touches CLAUDE.md, ops/DECISIONS.md, .claude/agents/, .claude/skills/, or .github/ai-review/ (canon §5.2 diff-class: governance-docs-root + agents-and-skills + ai-review-config)"
   },
   {
-    "name": "area: deps",
+    "name": "docs",
+    "color": "0075ca",
+    "description": "PR touches docs/, README.md, CHANGELOG.md, or ops/HANDOFF.md (canon §5.2 diff-class: docs)"
+  },
+  {
+    "name": "workflows",
+    "color": "5319e7",
+    "description": "PR touches .github/workflows/ (canon §5.2 diff-class: workflow-yaml)"
+  },
+  {
+    "name": "scripts",
+    "color": "c5def5",
+    "description": "PR touches scripts/ (canon §5.2 diff-class: scripts)"
+  },
+  {
+    "name": "agents",
+    "color": "d4c5f9",
+    "description": "PR touches .claude/agents/, .claude/skills/, or .claude/workflows/ (canon §5.2 diff-class: agents-and-skills + workflow-js)"
+  },
+  {
+    "name": "tests",
+    "color": "bfd4f2",
+    "description": "PR touches tests/ (canon §5.2 diff-class: tests)"
+  },
+  {
+    "name": "config",
+    "color": "fef2c0",
+    "description": "PR touches Dockerfile, pyproject.toml, requirements*.txt, package*.json, uv.lock, or .pre-commit-config.yaml (canon §5.2 diff-class: deps-config)"
+  },
+  {
+    "name": "plans",
+    "color": "e99695",
+    "description": "PR touches ops/iplans/IPLAN-*.md or plans/PLAN-*.md (canon §5.2 diff-class: plans / verified-planning)"
+  },
+
+  {
+    "name": "dependencies",
     "color": "0366d6",
-    "description": "PR touches dependency manifests (pyproject.toml, requirements*.txt, package.json, etc.)"
+    "description": "Dependabot PR (canon §5.3 area label)"
   },
   {
-    "name": "area: tests",
-    "color": "bfe5bf",
-    "description": "PR touches tests (tests/, test/, *_test.go, *.test.ts, etc.)"
+    "name": "security",
+    "color": "b60205",
+    "description": "Security-tagged issue or PR (canon §5.3 area label)"
   }
 ]
