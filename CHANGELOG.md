@@ -5,6 +5,29 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — Workflow registry doc (2026-07-06)
+
+- **`docs/WORKFLOWS.md`** (NEW) — canonical enumeration of all 11
+  reusable workflows shipped by this library. Source-of-truth for
+  CI-library capabilities. Includes:
+  - Complete catalog (11 workflows) with purpose, runtime, origin.
+  - Per-repo applicability matrix — rows = workspace repos, columns =
+    workflows, cell values = ✅ adopt / ⏸ skip (with rationale) /
+    N/A. Covers 9 active repos + 2 paused per founder direction.
+  - Per-workflow skip guidance (when NOT to adopt).
+  - Adoption sequencing for new workspace repos (9-step order).
+  - Current pin state + drift detection.
+- **`docs/README.md`** — index entry added for the new registry doc.
+- **`docs/architecture.md`** — corrected stale "9 shared workflows"
+  count to 11 (had gone stale as auto-merge-ai-prs.yml + pre-commit.yml
+  landed post-original-doc); pointer to WORKFLOWS.md for the per-repo
+  applicability matrix. Also corrected stale "the 7 shared workflows"
+  cross-reference in `docs/README.md` index row (the earlier 7→9
+  correction in `ci/v1.4.0` had not propagated to the index).
+- **Origin:** founder direction 2026-07-06 — every workflow should
+  appear in a full list; some apply per-repo, some are skippable;
+  the list should be complete. Registry is that authoritative list.
+
 ### Fixed — ci/v1.5.1: `timeout-minutes: 10` on `auto-merge-ai-prs.yml` enforce job (2026-07-05)
 
 - **`.github/workflows/auto-merge-ai-prs.yml`** — added

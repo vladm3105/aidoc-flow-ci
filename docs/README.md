@@ -19,12 +19,11 @@ This `docs/` tree covers reference + design topics.
 | [`troubleshooting.md`](troubleshooting.md) | Common issues + fixes (composition race; skip-ai-review carry-forward; runner-not-found; fabricated SHA pins; `gh: not found`; label install errors; Azure SWA quota; lychee bot-hostile hosts; v1.0.0 public-CLI gap; MD024; CHANGELOG rebase conflicts) |
 | [`multi-project-guide.md`](multi-project-guide.md) | aidoc-flow-ci as company-wide CI library — three-layer architecture (library / project-governance / consumer); onboarding flow for new company projects; per-project decision boundaries |
 | [`local-pre-push.md`](local-pre-push.md) | Canonical pre-push self-check pattern for consumers — local AI review via `claude` CLI mirrors CI's `ai-review.yml` gate to reduce iteration count; CI remains authoritative; reference implementation + hardening lessons + adoption prerequisites |
-|---|---|
-| [`../LABELS.md`](../LABELS.md) | PR + runner label conventions (three namespaces: state, area, runner; separator rules; routing rule by visibility; processes for adding labels / runner origins) |
 | [`security.md`](security.md) | Threat model, trust boundaries, fork-PR handling, secrets model, `pull_request_target` rationale, SHA-pinning, layered secret-scan defense |
 | [`overrides.md`](overrides.md) | The 3 override modes (parameter / full replacement / custom workflow) with concrete examples per mode; what you cannot do; conflict resolution; examples in the wild |
 | [`runners.md`](runners.md) | How to register self-hosted runner pools with the right labels; reference image (`aidoc-flow-runner:latest`) provisioning; per-origin cost/latency/CLI/fork-safety tradeoffs; scaling + adding new origins |
-| [`architecture.md`](architecture.md) | How the pieces fit together: reusable-workflow model; the 7 shared workflows; trust + verdict flow (ai-review + composition); per-repo policy surfaces; versioning + tag scheme |
+| [`architecture.md`](architecture.md) | How the pieces fit together: reusable-workflow model; the 11 shared workflows; trust + verdict flow (ai-review + composition); per-repo policy surfaces; versioning + tag scheme |
+| [`WORKFLOWS.md`](WORKFLOWS.md) | **Workflow registry** — canonical enumeration of all 11 reusable workflows, per-repo applicability matrix, per-workflow skip-guidance, adoption sequencing for new repos, current pin state. Source-of-truth for CI-library capabilities. |
 
 ## Planned (drafted on demand, not preemptively)
 
