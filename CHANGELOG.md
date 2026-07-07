@@ -5,6 +5,31 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — Registry audit against actual repo state (2026-07-07)
+
+- **`docs/WORKFLOWS.md`** — audited the per-repo applicability matrix
+  against actual `.github/workflows/` state via
+  `gh api repos/vladm3105/*/contents/.github/workflows` across every
+  workspace repo. Prior version conflated "should adopt" and "actually
+  adopted" (both marked ✅). New cell taxonomy: `✅ / ⚠️ GAP /
+  🕳 custom / ⏸ / N/A`.
+- **Findings surfaced by the audit:**
+  - **Critical gap #1:** `iplan-runner` is missing `composition.yml`
+    — ai-review verdict announced but not composed as a required
+    check. Should adopt.
+  - **Critical gap #2:** `aidoc-flow-engramory` is missing
+    `pre-commit.yml` — hygiene not enforced in CI. Should adopt.
+  - **Near-universal gaps:** `secret-scan.yml`, `markdown-lint.yml`,
+    `links.yml`, `labeler.yml` missing from most repos.
+  - **Custom → reusable migration candidates:** operations
+    `security.yml` + `docs-lint.yml`; iplan-runner `security.yml` —
+    could migrate to reusables for consistency + drift detection.
+  - **Bootstrap-tier:** `aidoc-flow-interlog` (created 2026-07-06)
+    added to matrix with all-GAP row; first CI PR pending.
+- Registry §2.1 added as actionable gap summary; §2.2 flags
+  bootstrap-tier repos.
+- **CHANGELOG.md** — this entry.
+
 ### Added — Workflow registry doc (2026-07-06)
 
 - **`docs/WORKFLOWS.md`** (NEW) — canonical enumeration of all 11
