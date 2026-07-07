@@ -17,7 +17,7 @@ set -uo pipefail
 
 # The pinned tag the consumer is using — read from the first workflow
 # file's `uses:` line.
-PIN=$(grep -hoE '@ci/v[0-9]+\.[0-9]+\.[0-9]+' .github/workflows/*.yml 2>/dev/null | sort -u | head -1)
+PIN=$(grep -hoE '@ci/v[0-9]+\.[0-9]+\.[0-9]+' .github/workflows/*.yml 2>/dev/null | sort -Vu | tail -1)
 if [ -z "$PIN" ]; then
   echo "drift-check: no aidoc-flow-ci uses: pin found in .github/workflows/; nothing to check"
   exit 0

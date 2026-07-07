@@ -5,6 +5,43 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — apply-standards.sh check/dry-run/report (PR-B2 of PLAN-001) (2026-07-07)
+
+- **`install/apply-standards.sh`** (NEW) — compares a consumer repo's
+  content-surface files against the canon templates shipped in PR-B1.
+  Three non-mutating modes:
+  - `--check` — drift check, exit 1 on any drift or MISSING, quiet on green.
+  - `--dry-run` (default) — preview what `--apply` would do.
+  - `--report` — emit JSON compliance report (`{repo, ci_tag, summary,
+    surfaces}`) for machine consumption (e.g., rollup dashboards).
+  - `--apply` — RESERVED; errors "reserved for PR-C". Server-side
+    mutations require F5 blast-radius per REPO_ONBOARDING.md.
+- **Surfaces checked in PR-B2:** `.github/CODEOWNERS`,
+  `.github/pull_request_template.md`, `.github/dependabot.yml`
+  (exact-match); `.gitignore`, `.gitattributes` (subset — canon lines
+  must all be present, consumer extensions preserved).
+- **Canon fetch pattern:** reuses `sync/check-drift.sh` approach —
+  reads the pinned `@ci/vX.Y.Z` tag from the consumer's workflow
+  files, fetches canon templates from
+  `raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/templates/`.
+  Override via `--ci-tag <tag>` or `CI_TAG=` env var.
+- **Labels + server-side settings** (branch protection, security config,
+  Actions permissions, extended labels aligned to OPS-0065 diff-class
+  taxonomy) — deferred to PR-C.
+- **Origin:** PLAN-001 §5.2 (`plans/PLAN-001_repo-standards-canon.md`).
+  PR-B1 (content-surface templates) already merged. PR-C (server-side
+  templates + `--apply` mode + `sync/check-standards-drift.sh` warning-
+  only drift check) follows.
+
+### Fixed — `sync/check-drift.sh` picked lowest semver pin, not highest (2026-07-07)
+
+- Mixed-pin repos (mid-migration between two `@ci/vX.Y.Z` values)
+  produced a false canon-fetch failure because `sort -u | head -1` is
+  ASCII-lexicographic and picked the OLDER pin. Fixed to `sort -Vu |
+  tail -1` (highest semver). Same bug fixed in `install/apply-
+  standards.sh` before ship (bundled into PR-B2 to keep the fix
+  atomic across both consumer entry points).
+
 ### Added — Content-surface templates (PR-B1 of PLAN-001) (2026-07-07)
 
 - **`install/templates/CODEOWNERS.template`** (NEW) — canonical
