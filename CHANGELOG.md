@@ -5,6 +5,45 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — Drop italic separator row from CLAUDE.md canon template + extend parser to accept both italic forms (2026-07-08)
+
+Per ai-review MEDIUM finding on operations Wave 2a `#218` 2026-07-08:
+the italic `| _(repo-specific rows below — same table, optional)_ | |`
+separator row inside the parseable `## Per-repo governance` table
+parses correctly per §4.5 `INFO_SEPARATOR_RE` but reduces
+machine-readability for downstream tooling that expects every table
+row to carry real Surface/Path data. Update the canon template to omit
+the separator row + call out the pattern in the prose above the table.
+Also extend the parser regex to accept both underscore-italic (`_..._`)
+and asterisk-italic (`*...*`) forms — GFM markdown allows either
+interchangeably; the pre-fix parser only matched `_..._`, which
+silently DRIFTed framework `#273` (which uses `*...*`).
+
+- **`install/templates/CLAUDE.md.template`** — dropped the italic
+  separator row from the example table. Additional-row examples now
+  appear directly below the required 6 rows. Prose after the table
+  updated to say "every row in the table must carry real Surface/Path
+  data — do NOT insert an italic separator row" so downstream Wave
+  authors don't reintroduce the pattern.
+- **`install/parse-governance-table.py`** — `INFO_SEPARATOR_RE`
+  extended to accept `*...*` asterisk-italic form alongside `_..._`
+  underscore-italic (both are valid GFM markdown italics; consumers
+  may pick either interchangeably). This silently unblocks framework
+  `#273` which had `errors: [1] missing-cell: empty` on its
+  `*(...)* ` separator row.
+
+**3 surfaces** (template + parser + this CHANGELOG entry). OPS-0061
+Rule 1 compliant.
+
+Post-fix parser status on all 4 Wave-adopted repos: `--check` exit 0.
+- aidoc-flow-ci CLAUDE.md: 6/6 required + 0 additional + 0 errors.
+- framework #273: 6/6 required + 3 additional + 0 errors (previously 1
+  error on the `*...*` separator; silently resolved by parser fix).
+- iplan-standard #16: 6/6 required + 1 additional + 0 errors.
+- operations #218: 6/6 required + 1 additional + 0 errors.
+
+Multi-agent self-review per OPS-0065 (code-reviewer + documentation-specialist parallel dispatch): approved after 1 fold cycle addressing 1 MEDIUM finding — code-reviewer flagged the "framework parses OK" claim as factually wrong; framework was actually DRIFTing due to `*...*` vs `_..._` regex gap. Extended parser to accept both forms + updated CHANGELOG accurately + verified parser green on all 4 Wave-adopted repos.
+
 ### Changed — PLAN-003 PR-V4 status flip to SHIPPED + rollout playbook doc (2026-07-08)
 
 Closes the PLAN-003 canon-layer shipment. Per-repo Wave 1-5 rollouts

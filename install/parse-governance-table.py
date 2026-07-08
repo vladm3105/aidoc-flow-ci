@@ -69,9 +69,11 @@ NOT_ADOPTED_RE = re.compile(r"^\s*not\s+adopted\s+(—|--)\s*", re.IGNORECASE)
 # Informational separator row (introducing additional-rows region) —
 # matched only when the PATH cell is empty/em-dash. This prevents an
 # italicized real row like `| _Live regional HANDOFF_ | regions/eu/HANDOFF.md |`
-# from being silently swallowed.
+# from being silently swallowed. Accepts both underscore-italic
+# (`_..._`) and asterisk-italic (`*...*`) forms per GFM markdown, which
+# consumers may pick either of interchangeably.
 INFO_SEPARATOR_RE = re.compile(
-    r"^(_.*_|additional\s+rows\s+below.*|\(.*repo-specific.*\))\s*$",
+    r"^(_.*_|\*.*\*|additional\s+rows\s+below.*|\(.*repo-specific.*\))\s*$",
     re.IGNORECASE,
 )
 
