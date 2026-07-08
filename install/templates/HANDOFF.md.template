@@ -1,0 +1,48 @@
+# HANDOFF — <REPO_FRIENDLY_NAME>
+
+Live cross-session resume point. Read at session start; refresh at
+milestones and before context compaction. **Every session's changes
+land here — do not stack stale state, collapse resolved items into
+one-line entries.**
+
+## Current state (<ISO_DATE>)
+
+<One paragraph — what the repo is actively working on right now, who's
+touching it, what's blocking. If empty, say so: "No active work; ready
+for new intake.">
+
+## Open threads
+
+<Bulleted list of in-flight items that a resuming session must pick up.
+Include: initiative/plan reference, blocker, next concrete action.>
+
+- <e.g. "PLAN-XXX PR-YYY — awaiting review comments on X">
+- <e.g. "Dependabot #NN — merge conflict; @dependabot rebase pending">
+
+## Next-session start-here
+
+<3-5 sentences telling the next session exactly where to look first.
+Point at plans/PLAN files, HANDOFF sections, or DECISIONS entries by
+name. This should be enough for a cold-start session to pick up
+without reading the entire repo history.>
+
+## Recent decisions
+
+<Link, don't duplicate. Cite the DECISIONS.md entries touched in the
+current or most recent milestone (last 1-2 weeks). Old entries stay
+in DECISIONS.md; only pointers here.>
+
+- <DECISION_ID> — <one-line summary> (`<DECISIONS_PATH>#<anchor>`)
+
+---
+
+**Maintenance protocol:**
+
+- Update `Current state` on every commit that changes what the repo is
+  doing.
+- Move resolved `Open threads` to `Recent decisions` (with the
+  DECISION-ID) or to git commit history.
+- Prune `Recent decisions` — anything older than 4 weeks belongs only
+  in `DECISIONS.md`.
+- Never `git rm HANDOFF.md` — the file itself is the durable
+  cross-session anchor; the content evolves.

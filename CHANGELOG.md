@@ -5,6 +5,87 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — PLAN-003 PR-V1 canon templates + Wave 0 self-adoption (2026-07-08)
+
+- **`install/templates/CLAUDE.md.template`** (NEW) — canonical `CLAUDE.md`
+  shape per PLAN-003 §4.2 with placeholder markers
+  (`<REPO_FRIENDLY_NAME>`, `<REPO_PURPOSE_ONE_LINER>`, etc.). Ships
+  the 5 required sections: `## What this repo is`, `## Where things
+  are`, `## Per-repo governance`, `## GitHub operations`,
+  `## Workspace standards`.
+- **`install/templates/HANDOFF.md.template`** (NEW) — minimal live-
+  resume-point skeleton with `## Current state`, `## Open threads`,
+  `## Next-session start-here`, `## Recent decisions` + maintenance
+  protocol.
+- **`install/templates/DECISIONS.md.template`** (NEW) — minimal
+  append-only decision log with `## <PREFIX>-NNNN: <title>
+  (<ISO_DATE>)` format + `**Context**` / `**Decision**` /
+  `**Consequences**` / `**Origin**` sub-headers.
+- **`install/templates/ROADMAP.md.template`** (NEW) — minimal roadmap
+  with `## Current phase`, `## Next phase`, `## Deferred / parked`
+  + maintenance protocol.
+- **`install/templates/plans-README.md.template`** (NEW) — content
+  for consumer `plans/README.md` explaining per-repo plan naming
+  convention (PLAN-NNNN default + IPLAN/TPLAN/DPLAN/MPLAN/RPLAN/
+  CPLAN/SPLAN scoped prefixes) + verified-planning skill contract.
+- **`docs/REPO_STANDARDS.md`** §16 (NEW section) — codifies the
+  project governance file canon: 6 required surfaces + additional-
+  row pattern + "Not adopted — <rationale>" cell format + template
+  references. Includes 6 sub-sections: 16.1 required surfaces, 16.2
+  additional rows, 16.3 CLAUDE.md template, 16.4 `--check-governance`
+  mode (ships in PR-V2), 16.5 additional file templates, 16.6
+  rollout waves.
+- **`CLAUDE.md`** (NEW at repo root) — aidoc-flow-ci Wave 0
+  self-adoption. This repo previously had NO CLAUDE.md; created from
+  the shipped template with canon-source content.
+- **`HANDOFF.md`** (NEW at repo root) — aidoc-flow-ci Wave 0
+  self-adoption. Live resume point with PLAN-003 PR-V1 state +
+  PR-V2/V3/V4 open threads + per-repo Wave 1-5 sequencing.
+- **`DECISIONS.md`** (NEW at repo root) — aidoc-flow-ci Wave 0
+  self-adoption. Backfilled with 3 initial CI-NNNN entries: CI-0001
+  (flexible-canonical Option B), CI-0002 (PR-V1 11-surface bundle),
+  CI-0003 (3-cycle review discipline).
+- **`ROADMAP.md`** (NEW at repo root) — aidoc-flow-ci Wave 0
+  self-adoption. Current phase = PLAN-003 rollout; next phase =
+  canon evolution + label sync; deferred items enumerated with
+  rationale.
+
+**11-surface bundle** (5 canon templates + 4 self-adoption files +
+REPO_STANDARDS §16 + this CHANGELOG entry). Above OPS-0061 Rule 1
+≤3 default; authorized per §5.1 pre-PR-V1 gate item #1 (explicit
+founder OK 2026-07-08 — "merge PLAN-003 PR-V1 if green") + PLAN-002
+§5.4 canon-home dogfood precedent.
+
+**Deviations from PLAN-003 §5.1 sketch** (Pass-7-fold notes):
+
+- DECISIONS.md initial entries ship as CI-0001/0002/0003 covering
+  flexible-canonical adoption + PR-V1 11-surface bundle + 3-cycle
+  review discipline (PR-V1-native, load-bearing for canon-source),
+  in place of the PLAN-002-backfill sketch (`CI-DEC-001/002/003`
+  covering PLAN-001 canon establishment / PLAN-002 unification /
+  §14 audit-trail). PR-V1-native content is richer for Wave 0 +
+  captures decisions actually made by this PR; PLAN-002 history
+  remains recoverable from git commit log + PLAN-002 documents.
+- DECISIONS.md.template ships 4 sub-headers (`**Context** /
+  **Decision** / **Consequences** / **Origin**`) — 1 more than
+  PLAN-003 §5.1's 3-sub-header sketch. Added `**Origin**` because
+  future readers need it to judge whether the rationale still
+  holds (per verified-planning "why" discipline). Enhancement, not
+  regression.
+
+Multi-agent self-review per OPS-0065 (code-reviewer + documentation-
+specialist, fresh-context adversarial parallel dispatch): approved
+after 1 fold cycle addressing 4 HIGH (broken `../aidoc-flow-operations/`
+paths across template + self-adoption + plans-README; dead
+`scripts/check-standards-drift.sh` ref; self-contradiction with own
+`../<repo>/` convention; bold-paragraph section-refs not resolvable to
+H2s) + 3 MEDIUM (DECISIONS-vs-sketch divergence, template sub-header
+extension, section-refs point at prose) + 5 LOW findings. Also
+building on 2 prior fold cycles across PLAN-003 Passes 2-6
+(document-level review): final Pass 6 verdict APPROVED with 1
+non-blocking MEDIUM advisory (engramory ADR-as-DECISIONS surface,
+Wave 3 resolves inline).
+
 ### Added — aidoc-flow-ci Wave 0 self-adoption (PR-U4 of PLAN-002) (2026-07-08)
 
 - **`scripts/pre_push_check.sh`** (NEW) — canon self-review script

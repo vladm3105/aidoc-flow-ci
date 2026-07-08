@@ -496,3 +496,115 @@ exactly the failure mode this workflow prevents.
 - 2026-07-08 — §14 added (self-review mechanical enforcement); §2 amended
   to add `call / verify` to non-paused non-bootstrap non-umbrella tier
   `contexts`; §12 amended with new compliance row. Per PLAN-002 PR-U1.
+- 2026-07-08 — §16 added (project governance file canon). Per PLAN-003
+  PR-V1.
+
+## 16. Project governance file canon
+
+Every non-paused, non-bootstrap workspace repo declares its **project
+governance files** — the 6 durable surfaces used for cross-session
+continuity — in its `CLAUDE.md` under a canonical `## Per-repo
+governance` H2 section. This canon does NOT dictate ONE path per file
+kind; each repo picks + declares its own paths. Canon enforces
+**presence + declaration + consistency**, not a fixed path.
+
+Full design + parser contract lives in `plans/PLAN-003_project-
+governance-canon.md`. Rules below are the durable summary consumers
+must follow.
+
+### 16.1 Required surfaces (6)
+
+Every non-paused, non-bootstrap repo declares these 6 surfaces:
+
+| Surface | Purpose |
+| --- | --- |
+| Live HANDOFF | Cross-session resume point. Read at session start; refresh at milestones. |
+| TODO / backlog | Durable backlog of unresolved work items too small for a plan. |
+| Decisions log | ISO-stamped append-only record of load-bearing decisions. |
+| Plans | Per-initiative plans directory. |
+| Changelog | Release-history record. |
+| Roadmap | Forward-looking phase view. |
+
+A surface may be **intentionally omitted** by declaring `Not adopted —
+<one-line rationale>` in its table cell. The rationale must be
+durable — not "TODO adopt later" — and must justify why the surface
+isn't needed for this repo (e.g., business `Changelog | Not adopted —
+DECISIONS.md + git commit log serve as changelog per policy`).
+
+### 16.2 Additional rows (repo-specific)
+
+A repo with multiple surfaces of the same conceptual kind (e.g.
+framework's dual DECISIONS log at `plans/DECISIONS.md` + nested
+`framework/governance/DECISIONS.md`; framework's per-package CHANGELOGs
+at `platforms/*/CHANGELOG.md`; engramory's dual ROADMAP) declares
+each as an ADDITIONAL row below the required 6 in the same table
+shape. Additional rows are read + verified by the parser but not
+counted toward required-row completeness.
+
+Multi-value cells (comma-separated paths in one row) are NOT
+accepted — one row per surface preserves the distinct label + rationale.
+
+**Wrong (rejected by parser):**
+
+```
+| Live HANDOFF | HANDOFF.md, ops/HANDOFF.md |
+```
+
+**Right (additional row per §16.2):**
+
+```
+| Live HANDOFF | HANDOFF.md |
+| _(additional rows below — optional)_ | |
+| Ops-side HANDOFF | ops/HANDOFF.md |
+```
+
+**Parser precedence when a repo has a required row with a non-standard
+label AND an additional row with the canonical token:** required rows
+come FIRST in the table (in the canonical 6-row order); additional
+rows sit below the "additional-rows" divider (or simply below the
+required 6). The parser reads top-down and matches the FIRST row whose
+label contains the canonical token as the required row; subsequent
+same-token matches are additional-rows. Consumers keep the required 6
+in canonical order at the top to avoid ambiguity.
+
+### 16.3 CLAUDE.md canonical template
+
+Consumers author their `CLAUDE.md` from
+`install/templates/CLAUDE.md.template` (per this repo's install
+tooling). The template ships with placeholder markers
+(`<REPO_FRIENDLY_NAME>`, `<REPO_PURPOSE_ONE_LINER>`, etc.) that
+consumers substitute per repo. Existing consumers retrofit the
+`## Per-repo governance` section; the parser accepts variance in
+heading tail (`— this repo owns its own continuity` suffix) and
+row-label form (`Plans (IPLANs)`, `Live HANDOFF`, etc. via
+canonical-token substring match).
+
+### 16.4 Consistency check (`--check-governance`)
+
+`install/apply-standards.sh --check-governance` mode (ships in PLAN-003
+PR-V2) reads each consumer's `CLAUDE.md` `## Per-repo governance`
+table, parses declared paths, and verifies each declared path exists
+on disk (or the cell is a valid "Not adopted —" line). Governance-canon
+compliance is warning-only in `--check` mode (same discipline as the
+other REPO_STANDARDS rules); consumers CAN opt out or delay but the
+warning surfaces the drift.
+
+### 16.5 Additional file templates
+
+`install/templates/` also ships minimal skeletons for the 4 governance
+files consumers may need to create:
+
+- `HANDOFF.md.template`
+- `DECISIONS.md.template`
+- `ROADMAP.md.template`
+- `plans-README.md.template`
+
+Consumers unpack the templates only when creating a fresh governance
+surface; existing surfaces stay in place.
+
+### 16.6 Rollout waves
+
+Per PLAN-003 §5.5. Wave 0 = canon-home (aidoc-flow-ci) self-adopts in
+PR-V1 (bundled with canon shipment). Waves 1-4 = one PR per
+non-paused repo. Wave 5 = umbrella. Waves execute sequentially; within
+a wave, alphabetical order is fine.
