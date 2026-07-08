@@ -5,6 +5,69 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — aidoc-flow-ci Wave 0 self-adoption (PR-U4 of PLAN-002) (2026-07-08)
+
+- **`scripts/pre_push_check.sh`** (NEW) — canon self-review script
+  installed on aidoc-flow-ci itself (byte-copy from
+  `install/templates/pre_push_check.sh`; `chmod +x`).
+- **`.pre-commit-config.yaml`** (NEW) — canon fragment installed
+  verbatim (has the `# CANON: aidoc-flow-ci pre_push_check` marker at
+  line 1 so future `install.sh` re-runs no-op).
+- **`.github/CODEOWNERS`** (NEW) — canon shape per REPO_STANDARDS.md
+  §7 (single-owner phase; all patterns route to `@vladm3105`).
+- **`.github/pull_request_template.md`** (NEW) — canon PR template
+  per REPO_STANDARDS.md §8 (Summary + Files-touched Rule 1
+  self-check + Multi-agent self-review + Cross-refs + tier-guarded
+  test plan).
+- **`.github/dependabot.yml`** (NEW) — canon shape per
+  REPO_STANDARDS.md §6, full canon (all 5 ecosystems). Dependabot
+  silently skips ecosystems with no matching manifests
+  (aidoc-flow-ci has only `github-actions`), so keeping the full
+  canon costs nothing and preserves exact-match parity for
+  `apply-standards.sh --check`.
+- **`.gitignore`** (edit) — merged canon baseline lines from
+  `install/templates/.gitignore.template` (subset semantics per
+  apply-standards.sh subset_check).
+- **`.gitattributes`** (NEW) — canon baseline installed.
+- **`.github/workflows/audit-trail.yml`** (NEW) — consumer caller of
+  PR-U3's `audit-trail-check.yml` reusable, pinned at `ci/v1.6.0`.
+  First self-CI wired on aidoc-flow-ci — check-name renders as
+  `call / verify` (matches `call / ai-review` + `call / composition`
+  convention). Adds mechanical OPS-0069 audit-trail enforcement to
+  every PR on this repo. Server-side integration (adding
+  `call / verify` to branch-protection `contexts` on `main`) is a
+  follow-up founder-run `apply-standards.sh --apply` step per
+  REPO_STANDARDS.md §14.3.
+- **`.github/workflows/standards-drift.yml`** (NEW) — weekly
+  `schedule: cron` self-drift-check running
+  `bash sync/check-standards-drift.sh --tier product`. Canon home
+  self-drift-checks — satisfies PLAN-002 §7 success criterion #4
+  (F1 fold from documentation-specialist review). Warning-only per
+  canon §3.1b (script always exits 0).
+- **Resolves the bootstrap paradox** (PLAN-002 §4.7 M4 fix): every
+  subsequent PR on aidoc-flow-ci (Wave 1–5 rollout PRs included)
+  flows through the same self-review gate.
+- **Post-merge negative-test evidence** — the PLAN-002 §5.4 M7 fold
+  negative test (commit-without-phrase → local hook rejects; `--no-
+  verify` → CI check fails; add phrase → both pass) will be executed
+  on a scratch branch AFTER this PR merges (self-CI caller only
+  becomes active post-merge). Result attached as a comment on this
+  PR body.
+- **Multi-agent self-review per OPS-0065 (documentation-specialist):**
+  APPROVED verdict cycle 1 (all 6 exact-match surfaces byte-identical
+  to canon; .gitignore proper superset; caller wired correctly at
+  ci/v1.6.0 tag; bootstrap-paradox chain fully closed). 4
+  non-blocking follow-ups — all folded: F1 (standards-drift.yml
+  weekly cron caller added — canon home self-drift-check); F2 (plan
+  text §5.4 corrected — filename `audit-trail.yml` not
+  `audit-trail-check.yml` to avoid same-repo collision with the
+  PR-U3 reusable); F3 (plan text §5.4 corrected — ship FULL canon
+  dependabot.yml, not trimmed, because `exact_match_check` would
+  otherwise leave consumers permanently DRIFT); F4 (plan text §5.4
+  corrected — `.gitattributes` NEW, not edit).
+- **Origin:** PLAN-002 §5.4 PR-U4. Wave 1 (governance tier —
+  framework + iplan-standard) follows.
+
 ### Changed — install.sh default `CI_TAG` bumped to `ci/v1.6.0` (post-release-cut) (2026-07-08)
 
 - **`install/install.sh`** — default `CI_TAG` bumped from `main` →

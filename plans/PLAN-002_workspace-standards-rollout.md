@@ -416,16 +416,24 @@ other consumers.
   via PR-U2 install.sh semantics (idempotent).
 - `.github/CODEOWNERS` (NEW from canon template) — per PLAN-001 §5.4.
 - `.github/pull_request_template.md` (NEW from canon template).
-- `.github/dependabot.yml` (NEW from canon template; trim ecosystems to
-  actually-present ones).
-- `.gitignore` (edit) — merge canon baseline lines.
-- `.gitattributes` (edit) — merge canon baseline lines.
-- `.github/workflows/audit-trail-check.yml` (NEW) — caller of PR-U3
-  reusable, pinned at `ci/v1.6.0`.
+- `.github/dependabot.yml` (NEW from canon template; **ship FULL canon,
+  all 5 ecosystems**. Dependabot silently skips ecosystems with no
+  matching manifests; trimming would create permanent DRIFT status
+  because `install/apply-standards.sh` uses `exact_match_check` on
+  this surface — F3 fold).
+- `.gitignore` (edit) — merge canon baseline lines (subset semantics).
+- `.gitattributes` (NEW — was absent pre-PR-U4; F4 fold).
+- `.github/workflows/audit-trail.yml` (NEW; **not** `audit-trail-check.yml`
+  — that filename is occupied by PR-U3's reusable in this same repo;
+  F2 fold). Consumer caller of PR-U3 reusable, pinned at `ci/v1.6.0`.
+- `.github/workflows/standards-drift.yml` (NEW; F1 fold — Wave 0 canon
+  home should self-drift-check). Weekly `schedule: cron` caller
+  running `bash sync/check-standards-drift.sh --tier product`;
+  warning-only per canon §3.1b (never blocks).
 - `CHANGELOG.md` — [Unreleased] entry documenting the self-adoption
   bundle + negative-test result (see below).
 
-**9 surfaces** — bundled as atomic self-adoption suite per PLAN-001
+**10 surfaces** — bundled as atomic self-adoption suite per PLAN-001
 §5.4 precedent. Founder OK required.
 
 **In-PR validation (M7 fix — canon-home is the test bed):** PR-U4
