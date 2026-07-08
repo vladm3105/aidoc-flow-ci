@@ -4,3 +4,25 @@
 # apply-standards.sh --apply backups — full API responses per repo/tier.
 # Private-repo metadata; keep out of git.
 install/backups/
+
+# --- aidoc-flow-ci canon baseline (PLAN-002 §10.1) ---
+.claude/
+.review/
+tmp/
+scratch/
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+node_modules/
+.vscode/
+.idea/
+Thumbs.db

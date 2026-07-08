@@ -1,0 +1,27 @@
+# audit-trail-check consumer caller for aidoc-flow-ci itself.
+#
+# Self-adoption per PLAN-002 §5.4 (Wave 0). aidoc-flow-ci is the canon
+# home + a product-code tier consumer of its own reusables. This caller
+# invokes the PR-U3 reusable so every PR on aidoc-flow-ci gets the same
+# OPS-0069 audit-trail gate the workspace repos will get during Wave
+# 1-5 rollout.
+#
+# Check-name renders as `call / verify` per aidoc-flow-ci naming
+# convention (matches `call / ai-review` + `call / composition`). Add
+# to branch-protection `contexts` on aidoc-flow-ci main via a follow-up
+# `apply-standards.sh --apply` run (F5 blast-radius — founder-manual).
+
+name: audit-trail
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  call:
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/audit-trail-check.yml@ci/v1.6.0
+    with:
+      runner_labels: '"ubuntu-latest"'
+    permissions:
+      contents: read
+      pull-requests: read
