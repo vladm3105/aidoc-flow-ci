@@ -31,12 +31,10 @@ while [ $# -gt 0 ]; do
 done
 case "$VISIBILITY" in public|private) ;; *) echo "--visibility must be public|private" >&2; exit 1 ;; esac
 
-# M4 fold: default CI_TAG bumped from ci/v1.0.6 to main so consumers
-# fetching install.sh from HEAD get the PR-U2 canon (block-style
-# pre-commit fragment + pre_push_check.sh template) which don't exist at
-# older tags. Release-cut checklist: at ci/v1.6.0 tag time, bump this
-# default to `ci/v1.6.0` (frozen) and add a stability note.
-CI_TAG="${CI_TAG:-main}"
+# Default pinned to the current stable release tag. Bumped on each
+# release cut so consumers who don't set CI_TAG explicitly get a frozen
+# tag (not the moving `main`).
+CI_TAG="${CI_TAG:-ci/v1.6.0}"
 TEMPLATE_BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/templates"
 
 echo "==> bootstrapping $TARGET_REPO (visibility=$VISIBILITY, tag=$CI_TAG)"
