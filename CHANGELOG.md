@@ -5,6 +5,32 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — Parser extract_path handles §N + #anchor section-suffix (2026-07-08)
+
+Per business Wave 2b review: `docs/STARTUP_STRATEGY.md §8` cell in
+business's original `## Per-repo governance` table couldn't be resolved
+by `extract_path()` — the trailing `§8` section-anchor suffix defeated
+the extraction (§8 got treated as part of the path, so the check failed).
+Business worked around by moving the §8 note into the Roadmap "Not
+adopted" rationale (per PR `#40`). This PR adds parser-side handling so
+future consumers can cite section-anchors inline without the workaround.
+
+- **`install/parse-governance-table.py`** — `extract_path()` extended to
+  strip trailing section-anchor suffixes: `§N` (e.g. `§8`) and
+  `#anchor` (markdown-style, e.g. `#phased-roadmap`). Detection is
+  space-delimited (`\s+[§#]\S`) so it does not match paths that happen
+  to contain `§` or `#` characters mid-path. Applied BEFORE the
+  parenthesized-annotation strip so `` `docs/foo.md` §8 (Phased Roadmap) ``
+  correctly resolves to `docs/foo.md`.
+
+**2 surfaces** (parser + this CHANGELOG entry). OPS-0061 Rule 1 compliant.
+
+Unit-tested on 6 cases: bare `§N`; `§N` + parenthesized annotation;
+parenthesized-only (regression check); `#anchor`; plain trailing slash;
+Not-adopted cell. All pass. Verified on all 9 workspace consumer
+CLAUDE.md files — no regression on Wave 0/1/2 adopters (6 consumers
+green + 3 pending Wave 3/4).
+
 ### Changed — Drop italic separator row from CLAUDE.md canon template + extend parser to accept both italic forms (2026-07-08)
 
 Per ai-review MEDIUM finding on operations Wave 2a `#218` 2026-07-08:

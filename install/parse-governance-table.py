@@ -155,13 +155,23 @@ def match_canonical_token(surface_label: str) -> str | None:
 
 
 def extract_path(path_cell: str) -> str:
-    """Strip surrounding backticks + parenthesized annotation from a path cell.
+    """Strip surrounding backticks + trailing annotations from a path cell.
 
-    Per §4.5: consumers may write `` `docs/HANDOFF.md` (protocol in ...)
-    ``; strip both surrounding backticks and the trailing parenthesized
-    annotation before existence check.
+    Per §4.5: consumers may write `` `docs/HANDOFF.md` (protocol in ...) ``,
+    `` `docs/STARTUP_STRATEGY.md` §8 ``, or `` `docs/spec.md` #anchor ``;
+    strip surrounding backticks, trailing parenthesized annotation, and
+    trailing section-anchor suffixes (§N, #anchor) before existence
+    check.
     """
     cell = path_cell.strip()
+
+    # Strip trailing section-anchor suffix (§N, e.g. `docs/foo.md §8`) or
+    # markdown anchor (#anchor, e.g. `docs/foo.md #section`) — these are
+    # display-only pointers into a file; the path itself is what exists.
+    # Business's `docs/STARTUP_STRATEGY.md §8` case.
+    section_anchor_match = re.search(r"\s+[§#]\S", cell)
+    if section_anchor_match:
+        cell = cell[: section_anchor_match.start()].strip()
 
     # Strip parenthesized annotation like `(protocol in ...)` — take
     # everything before the first `(` that follows the primary path.
