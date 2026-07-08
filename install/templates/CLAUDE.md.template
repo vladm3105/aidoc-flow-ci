@@ -29,14 +29,17 @@ surfaces for **this** repo:
 | Plans | <path or "Not adopted — <rationale>"> |
 | Changelog | <path or "Not adopted — <rationale>"> |
 | Roadmap | <path or "Not adopted — <rationale>"> |
-| _(repo-specific rows below — same table, optional)_ | |
 | <e.g. "Governance decisions"> | <e.g. `governance/DECISIONS.md`> |
 | <e.g. "Per-package CHANGELOGs"> | <e.g. `platforms/<name>/CHANGELOG.md`> |
 
-**Required rows** = the 6 above. **Additional rows** are permitted below
-the required set when a repo has multiple surfaces of the same conceptual
-kind (e.g. dual DECISIONS log, per-package CHANGELOGs, dual ROADMAP with
-strategy/roadmap split, per-team HANDOFF).
+**Required rows** = the 6 above. **Additional rows** (like the two
+example rows below the required 6) are permitted when a repo has
+multiple surfaces of the same conceptual kind (e.g. dual DECISIONS log,
+per-package CHANGELOGs, dual ROADMAP with strategy/roadmap split,
+per-team HANDOFF). Every row in the table must carry real Surface/Path
+data — do NOT insert an italic separator row inside the table (parses
+as an informational row per §4.5 `INFO_SEPARATOR_RE` but reduces
+machine-readability for downstream tooling).
 
 **"Not adopted — <rationale>"** cells are accepted when a repo has
 DELIBERATELY declined the surface (e.g. business declines separate
