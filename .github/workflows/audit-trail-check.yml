@@ -1,0 +1,209 @@
+# audit-trail-check.yml — reusable OPS-0069 audit-trail phrase gate.
+#
+# Companion to the author-side local pre-push hook shipped in PR-U1
+# (`install/templates/pre_push_check.sh`). This CI reusable is the
+# belt-and-suspenders that catches the `git push --no-verify` bypass:
+# every PR at merge time must carry the OPS-0069 phrase in at least
+# one non-exempt commit's message body.
+#
+# CANONICAL check-name: `call / verify` (renders as reusable's `verify`
+# job under the consumer's standard `jobs.call:` block, matching
+# `call / ai-review` + `call / composition` naming convention).
+#
+# Consumer caller:
+#
+#   name: audit-trail
+#   on:
+#     pull_request:
+#       types: [opened, synchronize, reopened]
+#   jobs:
+#     call:
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/audit-trail-check.yml@ci/v1.6.0
+#       with:
+#         runner_labels: '"ubuntu-latest"'   # or '"runner-self"' for PRIVATE
+#       permissions:
+#         contents: read
+#         pull-requests: read
+#
+# Push-events NOT covered by this reusable (per PLAN-002 §4.3 range
+# logic). Direct pushes to protected branches require --admin bypass +
+# are governed by OPS-0062; the local pre-push hook is the enforcement
+# point for the direct-push case.
+#
+# Exemption logic (CI-side; some deviations from local-hook exemptions
+# by design — see comments):
+#   1. PR opened by a trusted BOT — verified via GitHub's authoritative
+#      `pull_request.user.type == 'Bot'` + `.user.login` allowlist
+#      (dependabot / renovate / github-actions). CI CANNOT use commit
+#      `%an` here — that's attacker-spoofable on fork PRs. Local hook
+#      uses `%an` because it enforces author DISCIPLINE not
+#      AUTHORIZATION; CI must trust only GitHub-verified identity.
+#   2. Revert-only range — NOT exempted CI-side. The subject prefix
+#      `Revert "` is trivially spoofable + unverifiable at the gate.
+#      Local hook keeps this exemption for developer convenience;
+#      CI requires the phrase on every revert commit (cheap, verifiable).
+#   3. Two-signal override (CI-side only; local hook cannot see PR
+#      labels): PR has `skip-audit-trail` label AND at least one commit
+#      body contains `[skip-audit-trail]` → SKIPS.
+# Otherwise: at least one non-exempt commit in the range must carry
+# `Multi-agent self-review per OPS-0065` OR `Self-review skipped per
+# founder OK` in its message body.
+#
+# fetch-depth: 0 is LOAD-BEARING — default depth-1 checkout on a
+# fork PR yields `base_sha` unreachable → `git log base_sha..head_sha`
+# returns empty → check falsely PASSES. `0` fetches the full history so
+# the range is walkable.
+
+name: audit-trail-check
+
+on:
+  workflow_call:
+    inputs:
+      runner_labels:
+        description: 'JSON array (or single string) of runner labels. Default "ubuntu-latest" (cheap; lightweight job; safe for both PRIVATE + PUBLIC consumers since this job only reads PR metadata + commit messages). PRIVATE consumers per OPS-0049 may prefer "runner-self".'
+        type: string
+        default: '"ubuntu-latest"'
+
+jobs:
+  verify:
+    name: verify
+    # F4-sec fold: fail-closed on non-PR events. Reusable is scoped to
+    # `pull_request` (and `pull_request_target` if a consumer knowingly
+    # wires it); other events lack the base_sha/head_sha data + would
+    # silently degrade to the empty-range fail-open path.
+    if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: "Checkout with full history (fetch-depth 0 — fork-PR false-pass guard)"
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: OPS-0069 audit-trail phrase check
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          # F1-sec fold: GitHub-authoritative PR-opener identity. Commit
+          # `%an` is attacker-spoofable on fork PRs; user.type/login are
+          # set by GitHub and cannot be forged.
+          PR_USER_TYPE:  ${{ github.event.pull_request.user.type }}
+          PR_USER_LOGIN: ${{ github.event.pull_request.user.login }}
+        run: |
+          # F5-sec fold: set -e added. Any unexpected git failure now
+          # halts loudly. Explicit `|| { … fail … }` used for expected
+          # failure branches.
+          set -euo pipefail
+
+          # Fetch the base ref explicitly so `git log base_sha..head_sha`
+          # can walk the range. With fetch-depth: 0 the initial checkout
+          # already has full history, but fork PRs' base is on the base
+          # repo (not the fork remote) — fetch it explicitly.
+          git fetch --no-tags origin "$BASE_SHA" 2>/dev/null || true
+
+          # F3-sec fold (extends code-review M1): fail LOUD if either
+          # ref is unreachable after fetch. Silent PASS on unreachable
+          # BASE_SHA was the load-bearing failure mode this workflow
+          # exists to prevent. Mirrors composition.yml's fail-closed
+          # pattern.
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "::error::audit-trail: BASE_SHA ${BASE_SHA} unreachable after fetch — check cannot run. (fetch-depth: 0 required in caller checkout.)"
+            exit 1
+          fi
+          if ! git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null; then
+            echo "::error::audit-trail: HEAD_SHA ${HEAD_SHA} unreachable — check cannot run."
+            exit 1
+          fi
+
+          RANGE="${BASE_SHA}..${HEAD_SHA}"
+          echo "audit-trail: range=$RANGE"
+
+          # --- F1-sec fold: Exemption 1 — PR opened by trusted BOT ---
+          # Verified via GitHub's authoritative `pull_request.user.type`
+          # + `.user.login`. Commit `%an` is NOT used (attacker-spoofable
+          # on forks). Local pre-push hook uses %an by design — it
+          # enforces author discipline, not authorization; CI must trust
+          # only GitHub-verified identity.
+          if [ "$PR_USER_TYPE" = "Bot" ]; then
+            case "$PR_USER_LOGIN" in
+              "dependabot[bot]"|"renovate[bot]"|"github-actions[bot]")
+                echo "::notice::audit-trail: PR opened by trusted bot ($PR_USER_LOGIN, type=Bot) — SKIPPED per PLAN-002 §4.6 (CI-side identity check)."
+                exit 0
+                ;;
+            esac
+          fi
+
+          # --- F2-sec fold: revert exemption REMOVED CI-side ---
+          # Local pre-push hook still exempts revert-only ranges for
+          # developer convenience, but subject prefix `Revert "` is
+          # trivially spoofable + unverifiable at the gate. CI requires
+          # the phrase on revert commits too — cheap, verifiable.
+
+          # --- Exemption 3: two-signal override (label + body marker) ---
+          # F6-sec fold: jq for exact label array membership (no
+          # substring false-positive on skip-audit-trail-later etc.).
+          has_label=0
+          if command -v jq >/dev/null 2>&1; then
+            if echo "$PR_LABELS" | jq -e 'index("skip-audit-trail") != null' >/dev/null 2>&1; then
+              has_label=1
+            fi
+          else
+            # Fallback: stricter regex requiring closing quote.
+            if echo "$PR_LABELS" | grep -qE '(^|,)"skip-audit-trail"(,|])'; then
+              has_label=1
+            fi
+          fi
+          has_body_marker=0
+          if git log --format=%B "$RANGE" 2>/dev/null | grep -qF '[skip-audit-trail]'; then
+            has_body_marker=1
+          fi
+          if [ "$has_label" = 1 ] && [ "$has_body_marker" = 1 ]; then
+            echo "::notice::audit-trail: two-signal override (skip-audit-trail label + body marker) — SKIPPED per PLAN-002 §4.6."
+            exit 0
+          fi
+          if [ "$has_label" = 1 ] && [ "$has_body_marker" = 0 ]; then
+            echo "::warning::audit-trail: skip-audit-trail label present but no [skip-audit-trail] marker in commit body — two-signal override requires BOTH signals."
+          fi
+          if [ "$has_label" = 0 ] && [ "$has_body_marker" = 1 ]; then
+            echo "::warning::audit-trail: [skip-audit-trail] marker present in commit body but no skip-audit-trail label — two-signal override requires BOTH signals."
+          fi
+
+          # --- OPS-0069 audit-trail phrase check ---
+          # F3-sec fold: fail-closed on empty range. A PR with 0 commits
+          # should not merge; treating "no commits" as "nothing to check
+          # → pass" is fail-open on the load-bearing gate.
+          commit_count=$(git rev-list --count "$RANGE" 2>/dev/null || echo 0)
+          if [ "$commit_count" -eq 0 ]; then
+            echo "::error::audit-trail: PR range ($RANGE) has 0 commits — a PR with no commits should not merge."
+            exit 1
+          fi
+          push_msgs="$(git log --format=%B "$RANGE")"
+          audit_ok=0
+          for phrase in "Multi-agent self-review per OPS-0065" \
+                        "Self-review skipped per founder OK"; do
+            if echo "$push_msgs" | grep -qF "$phrase"; then
+              audit_ok=1
+              break
+            fi
+          done
+          if [ "$audit_ok" -ne 1 ]; then
+            echo "::error::audit-trail: no OPS-0069 phrase found in any commit in the PR range ($RANGE)."
+            echo ""
+            echo "Every PR MUST carry one of these phrases in a commit message body:"
+            echo "  - Multi-agent self-review per OPS-0065 (<agents>): <verdict summary>"
+            echo "  - Self-review skipped per founder OK <reason>"
+            echo ""
+            echo "Options to unblock this PR:"
+            echo "  (1) Amend a commit body with the phrase (git commit --amend, then git push --force-with-lease)."
+            echo "  (2) Add both signals for a two-signal override:"
+            echo "        - Apply the 'skip-audit-trail' label to this PR."
+            echo "        - Include '[skip-audit-trail]' in a commit body."
+            echo ""
+            echo "See https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/DECISIONS.md → OPS-0069."
+            exit 1
+          fi
+          echo "✅ audit-trail: OPS-0069 phrase present in range."

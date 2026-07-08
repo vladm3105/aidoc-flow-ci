@@ -5,6 +5,90 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — CI reusable `audit-trail-check.yml` + `skip-audit-trail` canon label + WORKFLOWS.md registry (PR-U3 of PLAN-002) (2026-07-08)
+
+- **`.github/workflows/audit-trail-check.yml`** (NEW reusable) —
+  belt-and-suspenders CI check that mirrors the PR-U1 local pre-push
+  hook's OPS-0069 audit-trail phrase check. `workflow_call` reusable
+  same pattern as `ai-review.yml` / `composition.yml`. Consumer callers
+  use `jobs.call:` → canonical check-name = **`call / verify`** (matches
+  `call / ai-review` + `call / composition` convention).
+- **Range:** `${{ github.event.pull_request.base.sha
+  }}..${{ github.event.pull_request.head.sha }}` on `pull_request`
+  events. **`fetch-depth: 0`** on checkout — LOAD-BEARING: default
+  depth-1 checkout on fork PRs yields `base_sha` unreachable →
+  `git log base_sha..head_sha` returns empty → check falsely PASSES.
+  Fixed in canon per PLAN-002 §4.3 M6 fold.
+- **Exemption logic** (identical to local hook per PLAN-002 §4.6 to
+  avoid gate mismatch):
+  1. ALL commits authored by `dependabot[bot]` / `renovate[bot]` /
+     `github-actions[bot]` → SKIPS (with `::notice::`).
+  2. ALL commits with subject starting with `Revert "` → SKIPS.
+  3. **CI-side-only two-signal override:** PR has `skip-audit-trail`
+     label AND at least one commit body contains `[skip-audit-trail]`
+     → SKIPS. Half-signal (only label or only body marker) emits a
+     `::warning::` to flag the operator's intent.
+- **Push events NOT covered** — direct pushes to protected branches
+  require `--admin` bypass and are governed by OPS-0062; local
+  pre-push hook is the enforcement point for direct-push case.
+- **`install/templates/labels.json`** (edit) — new `skip-audit-trail`
+  label (`color: d876e3`) added per PLAN-002 §5.3 M4 fold. Applied to
+  consumer repos via `install.sh` during initial bootstrap.
+- **`docs/WORKFLOWS.md`** — three sub-section updates in one PR (M5
+  precedent from PR-U2):
+  - §1 catalog: new row 12 for `audit-trail-check.yml`.
+  - §2 per-repo matrix: new `audit-trail` column with per-repo Wave
+    assignment aligned to PLAN-002 §5.5 (Wave 0 aidoc-flow-ci
+    self-adoption via PR-U4; Wave 1 governance; Wave 2 ops-private;
+    Wave 3 product; Wave 4 bootstrap = local hook only; Wave 5
+    umbrella = advisory only).
+  - §3 skip guidance: new §3.10 documenting bootstrap + paused + umbrella
+    carveouts.
+- **Tag pin:** ships as MINOR bump `ci/v1.6.0` per PLAN-002 §5.3
+  (additive reusable; current tip is `ci/v1.5.1`).
+- **Multi-agent self-review per OPS-0065 (code-reviewer + security-
+  auditor in parallel):** REVISIONS-NEEDED cycle 1, 10 findings
+  (2 code-M + 1 sec-CRITICAL + 1 sec-HIGH + 2 sec-MED + 3 sec-LOW +
+  1 defense-in-depth). All BLOCKING findings folded:
+  - **code-M1** (fail-loud `git cat-file -e` guard on unreachable
+    `BASE_SHA`/`HEAD_SHA` after fetch — closes silent-PASS gap;
+    mirrors composition.yml fail-closed pattern).
+  - **code-M2** (WORKFLOWS.md §2 stale prose "11 workflows" → "12
+    workflows").
+  - **sec-F1 CRITICAL** — commit-author-spoofing bot-exemption
+    BYPASS. `git log --format=%an` is attacker-controllable on fork
+    PRs (attacker sets `git config user.name='dependabot[bot]'` →
+    check SKIPS without phrase). **FIX**: bot exemption now uses
+    GitHub-authoritative `pull_request.user.type == 'Bot'` +
+    `pull_request.user.login` allowlist (dependabot / renovate /
+    github-actions). Local hook keeps `%an` by design (author
+    discipline, not authorization). Intentional CI/local divergence
+    documented in REPO_STANDARDS.md §14.2 + PLAN-002 §4.6.
+  - **sec-F2 HIGH** — revert-exemption BYPASS via subject spoofing.
+    `Revert "` prefix is trivially spoofable + unverifiable. **FIX**:
+    revert exemption REMOVED CI-side. Local hook keeps it for
+    developer convenience.
+  - **sec-F3 MEDIUM** — silent PASS on empty commit range. **FIX**:
+    fail-closed via `git rev-list --count "$RANGE" == 0` → exit 1
+    (PR with 0 commits shouldn't merge).
+  - **sec-F4 MEDIUM** — silent PASS on non-PR events. **FIX**:
+    job-level `if: github.event_name == 'pull_request' ||
+    'pull_request_target'` guard.
+  - **sec-F5** — `set -euo pipefail` (was `-uo pipefail`) so
+    unexpected git failures halt loudly.
+  - **sec-F6** — `jq -e 'index("skip-audit-trail") != null'` for
+    exact label array membership (no substring false-positive on
+    labels like `skip-audit-trail-later`); regex fallback if jq
+    absent.
+  - **sec-F7** — obviated by F1 fix (author strings no longer printed
+    to logs).
+  - **sec-F8 (D-i-D, DEFERRED)** — signature verification `git log
+    --format=%G?` for bot-exempted commits. F1's `user.type == 'Bot'`
+    check is the primary protection; commit-signature enforcement can
+    add later as belt-and-suspenders.
+- **Origin:** PLAN-002 §5.3 PR-U3. PR-U4 (aidoc-flow-ci self-adoption)
+  + Wave 0–5 rollout follow.
+
 ### Changed — install.sh + apply-standards.sh coverage for self-review canon (PR-U2 of PLAN-002) (2026-07-08)
 
 - **`install/install.sh`** — extended to install the PR-U1 canon

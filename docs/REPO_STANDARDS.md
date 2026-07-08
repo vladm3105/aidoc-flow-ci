@@ -454,14 +454,30 @@ checkout).
 branches require `--admin` and are governed by OPS-0062; local hook is
 the enforcement point for author-side pre-push).
 
-**Exemption logic** (bot-authored + mechanical commits):
+**Exemption logic** (CI-side identity-verified; some divergence from
+local hook by design):
 
-- ALL commits in range authored by `dependabot[bot]`, `renovate[bot]`,
-  or `github-actions[bot]` → check SKIPS (with `::notice::`).
-- Commit message starts with `Revert "` → individual commit exempt.
-- Two-signal override: `skip-audit-trail` PR label AND `[skip-audit-trail]`
-  in commit body → check SKIPS.
+- **CI exemption 1 — PR opened by trusted bot:** verified via GitHub's
+  authoritative `pull_request.user.type == 'Bot'` +
+  `pull_request.user.login` allowlist (`dependabot[bot]`,
+  `renovate[bot]`, `github-actions[bot]`). Commit `%an` is NOT used
+  CI-side — attacker-spoofable on fork PRs. Local hook uses `%an`
+  because it enforces author discipline, not authorization.
+- **CI exemption 2 — revert-only: NOT exempted CI-side.** Subject
+  prefix `Revert "` is trivially spoofable + unverifiable at the gate;
+  CI requires the phrase on revert commits too. Local hook keeps this
+  exemption for developer convenience.
+- **CI exemption 3 — two-signal override:** `skip-audit-trail` PR label
+  AND `[skip-audit-trail]` in commit body → check SKIPS. Label
+  membership checked via `jq -e 'index("skip-audit-trail") != null'`
+  (exact match; no substring false-positive).
 - Otherwise: at least one non-exempt commit must carry an OPS-0069 phrase.
+
+**Fail-closed on infrastructure failures:** unreachable `BASE_SHA` /
+`HEAD_SHA` after fetch, or empty commit range (`git rev-list --count`
+= 0), or unsupported event (not `pull_request` / `pull_request_target`)
+→ `::error::` + exit 1. Silent PASS on the load-bearing gate is
+exactly the failure mode this workflow prevents.
 
 ### 14.3 Tier applicability
 
