@@ -16,22 +16,24 @@ rollout.
 
 **In flight:**
 
-- **PLAN-003 PR-V1** — canon templates + Wave 0 self-adoption bundle
-  (11 surfaces). This PR ships the canon + demonstrates it works by
-  aidoc-flow-ci adopting its own canon in the same commit.
-- **PLAN-003 PR-V2** — `install/apply-standards.sh --check-governance`
-  parser mode. Reads consumer `CLAUDE.md` for `## Per-repo
-  governance` table, verifies declared paths exist.
-- **PLAN-003 PR-V3** — operations `docs/CROSS_REPO_PLAYBOOKS.md` §T-D
-  wave-scheduling entry + `OPS-0070` decision ratifying PLAN-003.
-- **PLAN-003 PR-V4** — this repo's PLAN-003 status flip to SHIPPED +
-  `docs/PLAYBOOK_governance-canon-rollout.md`.
 - **Per-repo Wave 1-5 rollouts** — one PR per non-paused repo per
-  PLAN-003 §5.5. Sequential; within-wave alphabetical.
+  PLAN-003 §5.5. Sequential; within-wave alphabetical. Wave 1 first
+  = framework + iplan-standard.
 
 **Recently landed:**
 
-- 2026-07-08 — PLAN-003 plan document merged (PR #72).
+- 2026-07-08 — PLAN-003 canon layer SHIPPED. PR-V4 (this PR): status
+  flip DRAFT → SHIPPED + `docs/PLAYBOOK_governance-canon-rollout.md`
+  companion doc + inline HANDOFF/ROADMAP updates.
+- 2026-07-08 — PR-V3 (operations #217): CROSS_REPO_PLAYBOOKS §T-D +
+  `OPS-0070` ratification.
+- 2026-07-08 — PR-V2 (this repo #74): `install/parse-governance-table.py`
+  parser + `governance_check` in `install/apply-standards.sh` +
+  `install/install.sh` CLAUDE.md bootstrap.
+- 2026-07-08 — PR-V1 (this repo #73): 5 canon templates + REPO_STANDARDS
+  §16 + Wave 0 self-adoption bundle (11 surfaces under explicit founder
+  OK).
+- 2026-07-08 — PLAN-003 plan document merged (this repo #72).
 - 2026-07-08 — PLAN-002 workspace CI + governance-workflow canon
   rollout SHIPPED (7 waves completed; ci/v1.6.0 tagged; 5 consumer
   PRs merged in this session — business #39 + iplanic #232 remain

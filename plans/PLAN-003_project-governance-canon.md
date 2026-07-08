@@ -1,6 +1,6 @@
 # PLAN-003 — Project governance file canon + unified CLAUDE.md template
 
-**Status:** DRAFT — 2026-07-08
+**Status:** SHIPPED — 2026-07-08 (canon + parser + ratification landed via PR-V1/V2/V3/V4; per-repo Waves 1-5 pending)
 **Depends on:** PLAN-002 (workspace standards rollout) — canon already ships
 `REPO_STANDARDS.md` §§1–14 + `apply-standards.sh --check` machinery this
 plan extends.
@@ -727,6 +727,27 @@ does not start until Wave N is FULLY green (all PRs in the wave merged
 - **Next:** Pass 4 fresh-context independent review before opening
   the plan PR (per verified-planning skill discipline: ≥2 passes,
   ≥1 independent, final states zero findings).
+- 2026-07-08 — Passes 4/5/6 completed (OPS-0066 cycle 3 = final).
+  Plan PR opened + merged (aidoc-flow-ci #72).
+- 2026-07-08 — PR-V1 merged (aidoc-flow-ci #73): canon templates
+  (`install/templates/*.template`) + `REPO_STANDARDS.md` §16 + Wave 0
+  self-adoption bundle. 11 surfaces under explicit founder OK per §5.1
+  gate item #1. Multi-agent review: 4 HIGH + 3 MED + 5 LOW folded.
+- 2026-07-08 — PR-V2 merged (aidoc-flow-ci #74): `--check-governance`
+  parser mode (`install/parse-governance-table.py` + `governance_check`
+  in `install/apply-standards.sh` + `install/install.sh` CLAUDE.md
+  bootstrap step). Multi-agent review: 4 HIGH + 7 MED + 3 LOW folded
+  (including the template-parser self-inconsistency and path-traversal
+  sandbox items).
+- 2026-07-08 — PR-V3 merged (aidoc-flow-operations #217):
+  CROSS_REPO_PLAYBOOKS §T-D operational playbook + `OPS-0070`
+  ratification. Multi-agent review: 1 CRITICAL + 2 HIGH + 6 MED + 2
+  LOW folded.
+- 2026-07-08 — PR-V4 (this PR): status flip DRAFT → SHIPPED + this
+  audit-trail entry + `docs/PLAYBOOK_governance-canon-rollout.md`
+  canon-source-side summary.
+- **SHIPPED** (canon layer). Per-repo Waves 1-5 rollout PRs execute
+  next per §5.5 / operations §T-D.
 
 ## Claim ledger
 
