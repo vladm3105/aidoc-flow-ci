@@ -349,10 +349,14 @@ bundle beyond Rule 1 cap.
   - Existing `pre-push`-stage hook from other sources: coexists side-by-
     side (canon hook appended; other hooks preserved). Consumers can
     reorder manually if execution-order matters.
-- `install/apply-standards.sh` (edit) — add `scripts/pre_push_check.sh` +
-  `.pre-commit-config.yaml` to the `exact_match_check` / subset-check
-  list for `--check` / `--dry-run` / `--report` modes. Extend `--apply`
-  to install the hook when missing.
+- `install/apply-standards.sh` (edit) — add `scripts/pre_push_check.sh`
+  (exact-match) + `.pre-commit-config.yaml` (subset — canon fragment
+  lines present) to the drift matrix for `--check` / `--dry-run` /
+  `--report` modes. `--apply` stays **server-side-only** (labels +
+  repo-settings + actions-permissions + branch-protection via
+  `gh api`); file installation is `install.sh`'s job (initial adoption
+  path); per-repo file drift is corrected via per-repo compliance PR
+  (§5.5 Wave 0–5 rollout).
 - `CHANGELOG.md` — [Unreleased] entry.
 
 **3 surfaces** — Rule 1 compliant.

@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# aidoc-flow-ci install.sh — bootstrap a consumer repo with default callers,
-# default .github/ai-review/config.json, and canonical labels. Idempotent;
-# safe to re-run; preserves existing files (local override always wins).
+# aidoc-flow-ci install.sh — bootstrap a consumer repo with default
+# callers, canonical labels, self-review canon (scripts/pre_push_check.sh
+# + .pre-commit-config.yaml merge), and .github/ai-review/config.json.
+# Idempotent; safe to re-run; preserves existing files (local override
+# always wins); .pre-commit-config.yaml merges canon block via CANON
+# marker per PLAN-002 §5.2 (M5 fix).
 #
 # Templates are fetched via raw GitHub URLs (the pinned CI_TAG) — works in
 # both process-substitution mode (`bash <(curl …)`) AND local-clone mode.
@@ -11,7 +14,7 @@
 #
 # Usage:
 #   bash install.sh <owner/repo> [--visibility public|private]
-#   CI_TAG=ci/v1.0.6 bash install.sh <owner/repo> --visibility private
+#   CI_TAG=ci/v1.6.0 bash install.sh <owner/repo> --visibility private
 #
 # Requires: gh (authenticated for write on the target repo) + curl + git.
 
@@ -28,7 +31,12 @@ while [ $# -gt 0 ]; do
 done
 case "$VISIBILITY" in public|private) ;; *) echo "--visibility must be public|private" >&2; exit 1 ;; esac
 
-CI_TAG="${CI_TAG:-ci/v1.0.6}"
+# M4 fold: default CI_TAG bumped from ci/v1.0.6 to main so consumers
+# fetching install.sh from HEAD get the PR-U2 canon (block-style
+# pre-commit fragment + pre_push_check.sh template) which don't exist at
+# older tags. Release-cut checklist: at ci/v1.6.0 tag time, bump this
+# default to `ci/v1.6.0` (frozen) and add a stability note.
+CI_TAG="${CI_TAG:-main}"
 TEMPLATE_BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/templates"
 
 echo "==> bootstrapping $TARGET_REPO (visibility=$VISIBILITY, tag=$CI_TAG)"
@@ -67,6 +75,127 @@ else
   fetch_template "config.json.template" ".github/ai-review/config.json" || exit 1
   echo "  add       .github/ai-review/config.json"
 fi
+
+# --- PLAN-002 PR-U2: self-review canon (pre_push_check.sh + pre-commit wiring) ---
+
+# scripts/pre_push_check.sh — exact-match canon. Preserve if already
+# present (consumer may have added local edits pre-canon-adoption).
+# L2 fold: script-branded error if `scripts` exists as a file.
+if [ -e scripts ] && [ ! -d scripts ]; then
+  echo "  FAIL: 'scripts' exists in the consumer repo but is not a directory — cannot install canon script" >&2
+  exit 1
+fi
+mkdir -p scripts
+if [ -f "scripts/pre_push_check.sh" ]; then
+  echo "  preserve  scripts/pre_push_check.sh (already exists — inspect for canon parity via apply-standards.sh --check)"
+  # L3 fold: advise on executable bit.
+  if [ ! -x scripts/pre_push_check.sh ]; then
+    echo "  WARN      existing scripts/pre_push_check.sh is not executable — 'chmod +x scripts/pre_push_check.sh' recommended (pre-commit's language: script needs it)"
+  fi
+else
+  fetch_template "pre_push_check.sh" "scripts/pre_push_check.sh" || exit 1
+  chmod +x scripts/pre_push_check.sh
+  echo "  add       scripts/pre_push_check.sh"
+fi
+
+# .pre-commit-config.yaml — merge canon hook block idempotently.
+# Idempotency key: canonical marker `# CANON: aidoc-flow-ci pre_push_check`.
+# If present → no-op. If absent → merge (append hook block; upgrade
+# default_install_hook_types root key from [pre-commit] → [pre-commit,
+# pre-push] if consumer had only [pre-commit]).
+PRECOMMIT_TMP=$(mktemp)
+fetch_template "pre-commit-hook-block.yaml" "$PRECOMMIT_TMP" || { rm -f "$PRECOMMIT_TMP"; exit 1; }
+if [ ! -f ".pre-commit-config.yaml" ]; then
+  # Consumer has no pre-commit config — install canon fragment verbatim.
+  # (Canon fragment carries the marker at line 1 → subsequent re-runs no-op.)
+  cp "$PRECOMMIT_TMP" .pre-commit-config.yaml
+  echo "  add       .pre-commit-config.yaml (from canon fragment)"
+elif grep -qF "# CANON: aidoc-flow-ci pre_push_check" .pre-commit-config.yaml; then
+  echo "  preserve  .pre-commit-config.yaml (canon marker present — no-op)"
+else
+  # M2 fold: fail-fast on missing YAML library BEFORE entering merge, so
+  # the operator gets an actionable message instead of a generic FAIL.
+  # M1 fold: prefer ruamel.yaml (round-trip preserves consumer comments);
+  # fall back to PyYAML with explicit WARN about comment stripping.
+  yaml_lib=""
+  if python3 -c 'import ruamel.yaml' 2>/dev/null; then
+    yaml_lib="ruamel"
+  elif python3 -c 'import yaml' 2>/dev/null; then
+    yaml_lib="pyyaml"
+    echo "  WARN      ruamel.yaml unavailable — falling back to PyYAML which STRIPS consumer comments from .pre-commit-config.yaml. Install ruamel.yaml (pip install ruamel.yaml) to preserve comments." >&2
+  else
+    echo "  FAIL: neither ruamel.yaml nor PyYAML available — 'pip install ruamel.yaml' (preferred) or 'pip install pyyaml' and re-run install.sh" >&2
+    rm -f "$PRECOMMIT_TMP"
+    exit 1
+  fi
+
+  # M3 fold: put tempfile on the target filesystem so `mv` is atomic
+  # rename(2), not cross-fs copy+unlink (which would leave a truncated
+  # .pre-commit-config.yaml on SIGINT mid-mv).
+  MERGE_TMP=$(mktemp ./.pre-commit-config.yaml.tmp.XXXXXX)
+  if python3 - "$PRECOMMIT_TMP" "$MERGE_TMP" "$yaml_lib" <<'PYEOF' ; then
+import sys
+
+canon_path, out_path, yaml_lib = sys.argv[1], sys.argv[2], sys.argv[3]
+
+if yaml_lib == "ruamel":
+    from ruamel.yaml import YAML
+    ry = YAML(typ='rt')
+    ry.preserve_quotes = True
+    load = lambda p: ry.load(open(p))
+    dump = lambda obj, f: ry.dump(obj, f)
+else:
+    import yaml
+    load = lambda p: yaml.safe_load(open(p))
+    dump = lambda obj, f: yaml.safe_dump(obj, f, default_flow_style=False, sort_keys=False)
+
+try:
+    consumer = load('.pre-commit-config.yaml') or {}
+except Exception as e:
+    print(f"  FAIL  .pre-commit-config.yaml parse error: {e}", file=sys.stderr)
+    sys.exit(1)
+try:
+    canon = load(canon_path) or {}
+except Exception as e:
+    print(f"  FAIL  canon fragment parse error: {e}", file=sys.stderr)
+    sys.exit(1)
+
+# Root-key upgrade: default_install_hook_types must include pre-push.
+# L1 fold: preserve consumer intent — if scalar (invalid but real), coerce
+# to a single-element list rather than resetting to canonical default.
+consumer_hooks = consumer.get('default_install_hook_types', ['pre-commit'])
+if isinstance(consumer_hooks, str):
+    consumer_hooks = [consumer_hooks]
+elif not isinstance(consumer_hooks, list):
+    consumer_hooks = ['pre-commit']
+canon_hooks = canon.get('default_install_hook_types', ['pre-commit', 'pre-push'])
+for h in canon_hooks:
+    if h not in consumer_hooks:
+        consumer_hooks.append(h)
+consumer['default_install_hook_types'] = consumer_hooks
+
+# Append canon repos-block entries (which are hooks). Preserve existing.
+consumer_repos = consumer.setdefault('repos', [])
+for canon_repo in canon.get('repos', []):
+    # De-dup by structural equality. Canon uses `repo: local` + a
+    # single hook id `aidoc-flow-pre-push` — check for exact match.
+    if canon_repo not in consumer_repos:
+        consumer_repos.append(canon_repo)
+
+with open(out_path, 'w') as f:
+    # Preserve the canon marker line at top so future re-runs no-op.
+    f.write("# CANON: aidoc-flow-ci pre_push_check (idempotency marker per PLAN-002 §5.2)\n")
+    dump(consumer, f)
+PYEOF
+    mv "$MERGE_TMP" .pre-commit-config.yaml
+    echo "  merge     .pre-commit-config.yaml (canon block appended; default_install_hook_types upgraded if needed; ${yaml_lib}-backed)"
+  else
+    rm -f "$MERGE_TMP" "$PRECOMMIT_TMP"
+    echo "  FAIL      .pre-commit-config.yaml merge failed — inspect manually" >&2
+    exit 1
+  fi
+fi
+rm -f "$PRECOMMIT_TMP"
 
 # Canonical labels — idempotent + fail-loud. Prefetch existing labels so
 # we don't conflate "already exists" with real failures (auth / permission

@@ -5,6 +5,65 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — install.sh + apply-standards.sh coverage for self-review canon (PR-U2 of PLAN-002) (2026-07-08)
+
+- **`install/install.sh`** — extended to install the PR-U1 canon
+  surfaces during initial consumer bootstrap:
+  - `scripts/pre_push_check.sh` — fetch from canon templates + `chmod
+    +x`; preserve if consumer already has one (advises drift check).
+  - `.pre-commit-config.yaml` — idempotent merge per PLAN-002 §5.2 M5
+    fix:
+    - No existing file → `cp` canon fragment verbatim.
+    - Existing file with `# CANON: aidoc-flow-ci pre_push_check`
+      marker → no-op.
+    - Existing file without marker → Python `yaml.safe_load` merge:
+      `default_install_hook_types` root key upgraded (adds `pre-push`
+      if consumer had only `[pre-commit]`); canon `repos` entries
+      appended (dedup by structural equality); marker comment written
+      at top so future re-runs no-op.
+- **`install/apply-standards.sh`** — 2 new surfaces added to the
+  `--check` / `--dry-run` / `--report` drift matrix:
+  - `scripts/pre_push_check.sh` — `exact_match_check` (canon-owned
+    script; consumer variations = drift).
+  - `.pre-commit-config.yaml` — `subset_check` (canon fragment lines
+    must all be present; consumer extensions preserved).
+  - Both new surfaces added to `emit_human` + `emit_json` path arrays.
+  - `subset_check` grep gains `--` end-of-options guard so canon lines
+    starting with `-` (e.g., `- pre-commit`, `- pre-push`) don't
+    misparse as grep flags.
+- **`install/templates/pre-commit-hook-block.yaml`** (edit) — canon
+  fragment reformatted from inline to block-style YAML (`[pre-commit,
+  pre-push]` → separate `-` items) so `subset_check` line-by-line
+  comparison matches the `yaml.safe_dump` block output produced by
+  `install.sh` merge.
+- **`--apply` scope decision (small plan clarification):** file-surface
+  installation stays in `install.sh` (initial adoption path); `--apply`
+  mode remains server-side-only (labels + repo-settings + actions-
+  permissions + branch-protection via `gh api`). Per-repo file drift is
+  corrected via per-repo compliance PR (Wave 0–5 rollout per PLAN-002
+  §5.5). PLAN-002 §5.2 wording adjusted to match.
+- **Release-cut coupling:** `install.sh` default `CI_TAG` bumped from
+  `ci/v1.0.6` → `main` (new canon templates live only on `main` until
+  the next tag cut). At `ci/v1.6.0` release-cut, bump the default to
+  `ci/v1.6.0` (frozen).
+- **Multi-agent self-review per OPS-0065 (code-reviewer):** REVISIONS-
+  NEEDED cycle 1, 7 findings — ALL folded. M1 (comment preservation:
+  ruamel.yaml preferred with round-trip; PyYAML fallback prints WARN
+  about comment stripping); M2 (fail-fast yaml-lib pre-check before
+  entering merge — actionable pip-install hint); M3 (`mktemp
+  ./.pre-commit-config.yaml.tmp.XXXXXX` in target directory so `mv` is
+  atomic rename(2), not cross-fs copy+unlink); M4 (`CI_TAG` default
+  bumped `ci/v1.0.6` → `main` to unstick the block-style-template
+  coupling; usage example updated to `ci/v1.6.0`); L1 (scalar
+  `default_install_hook_types` preserved as list element rather than
+  reset — `commit-msg` scalar becomes `[commit-msg, pre-commit,
+  pre-push]`); L2 (script-branded error if `scripts` exists as a file);
+  L3 (WARN if existing `scripts/pre_push_check.sh` isn't executable —
+  pre-commit's `language: script` needs `+x`).
+- **Origin:** PLAN-002 §5.2 PR-U2. PR-U3 (CI reusable
+  `audit-trail-check.yml` + `skip-audit-trail` label + `WORKFLOWS.md`
+  registry) + PR-U4 (aidoc-flow-ci self-adoption) follow.
+
 ### Added — Self-review canon script + REPO_STANDARDS.md §14 (PR-U1 of PLAN-002) (2026-07-08)
 
 - **`install/templates/pre_push_check.sh`** (NEW) — canonical bash pre-push
