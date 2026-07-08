@@ -1,0 +1,52 @@
+# DECISIONS — <REPO_FRIENDLY_NAME>
+
+Durable, ISO-stamped, **append-only** record of load-bearing decisions
+for this repo. Each entry documents why the choice was made so a future
+session can judge whether the reason still holds.
+
+**Not for**: routine work log (that's `git log`), transient plan state
+(that's `plans/PLAN-*.md`), or general TODOs (that's `TODO.md` or the
+plans backlog).
+
+**For**: architectural choices, workspace-standard adoptions, locked
+decisions, supersessions, opt-outs from workspace canon, changes to
+governance surfaces, and any decision the next-session author needs to
+know to avoid relitigating.
+
+**ID format**: `<PREFIX>-NNNN` where `<PREFIX>` is the per-repo
+convention (`OPS-` for aidoc-flow-operations, `CI-` for aidoc-flow-ci,
+`FW-` for aidoc-flow-framework, etc.) and `NNNN` is a 4-digit
+monotonically increasing sequence. Never reuse a retired ID.
+
+---
+
+## <PREFIX>-0001: <Title> (<ISO_DATE>)
+
+**Context**
+
+<What was the situation that required a decision? What options were
+considered? Which constraints were binding?>
+
+**Decision**
+
+<What was decided, in one paragraph. State the choice as a durable
+rule the reader can apply, not a narration of the meeting.>
+
+**Consequences**
+
+<What follows from the decision — enforcement mechanism, downstream
+work required, opt-outs, review cadence. If the decision supersedes a
+prior entry, cite the ID here + link back to it.>
+
+**Origin**
+
+<Founder direction / prior incident / external constraint that drove
+the decision. This is what future sessions read to judge whether the
+reason still holds.>
+
+---
+
+<!-- Append new entries above this line; append-only. Never rewrite
+history; if a decision is reversed, add a NEW entry citing the reversal
+and update the superseded entry's "Consequences" section to reference
+the reversal ID. -->

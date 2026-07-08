@@ -1,0 +1,116 @@
+# CLAUDE.md — <REPO_FRIENDLY_NAME>
+
+Persistent context for <REPO_PURPOSE_ONE_LINER>. Auto-loaded every session.
+Keep it short and current.
+
+## What this repo is
+
+<Consumer authors this — 1-2 paragraphs describing the repo's purpose,
+its place in the aidoc-flow workspace, and the primary artifacts it
+owns. Link to the deeper docs (README, PROJECT_GUIDE, strategy) rather
+than duplicating them here.>
+
+## Where things are
+
+<Consumer authors this — repo-specific paths for the primary source
+directories, docs, tests, tooling. Keep it a scan-list, not prose.>
+
+## Per-repo governance — this repo owns its own continuity
+
+The `aidoc-flow` workspace is **multi-repo**. Each repo governs its own
+activity tracking; cross-session continuity is per-repo. The durable
+surfaces for **this** repo:
+
+| Surface | Path (in this repo) |
+| --- | --- |
+| Live HANDOFF | <path or "Not adopted — <rationale>"> |
+| TODO / backlog | <path or "Not adopted — <rationale>"> |
+| Decisions log | <path or "Not adopted — <rationale>"> |
+| Plans | <path or "Not adopted — <rationale>"> |
+| Changelog | <path or "Not adopted — <rationale>"> |
+| Roadmap | <path or "Not adopted — <rationale>"> |
+| additional rows below (optional) | — |
+| <e.g. "Governance decisions"> | <e.g. `governance/DECISIONS.md`> |
+| <e.g. "Per-package CHANGELOGs"> | <e.g. `platforms/<name>/CHANGELOG.md`> |
+
+**Required rows** = the 6 above. **Additional rows** are permitted below
+the required set when a repo has multiple surfaces of the same conceptual
+kind (e.g. dual DECISIONS log, per-package CHANGELOGs, dual ROADMAP with
+strategy/roadmap split, per-team HANDOFF).
+
+**"Not adopted — <rationale>"** cells are accepted when a repo has
+DELIBERATELY declined the surface (e.g. business declines separate
+CHANGELOG because `DECISIONS.md` + git log serve). The rationale must
+be durable (not "TODO adopt later"). Any cell starting with
+`Not adopted [—-]` followed by 1+ words counts as an intentional
+omission and is not path-verified.
+
+Never in `tmp/` (transient — nothing there survives a session).
+Never in the umbrella `aidoc-flow/` (holds no dev; state belongs in
+the owning submodule).
+
+Cross-repo coordination captured here references siblings by path
+(`../<repo>/`), never relocates their state.
+
+## GitHub operations
+
+Use the **GitHub CLI (`gh`)** as the default for all GitHub operations —
+PRs, issues, reviews, releases, repo queries — not the GitHub MCP
+servers (`github-tt`, `github-vl`) or raw API calls. If `gh` is
+unauthenticated, run `gh auth login` rather than falling back to
+MCP/API.
+
+## Workspace standards (aidoc-flow canon — read the canonical rules directly)
+
+Every workspace-standard rule below states (a) a one-sentence summary of
+what it says + (b) the canonical file path to READ for the full rule.
+Prose "OPS-NNNN" mentions alone do NOT auto-load into Claude Code
+context — the file path does. When in doubt, open the linked path.
+
+- **OPS-0061 governance PR discipline** — ≤3 doc surfaces per governance
+  PR + mandatory adversarial pre-push self-review on diff.
+  → `../operations/CLAUDE.md` § "Governance PR discipline".
+- **OPS-0062 AI-agent auto-merge default** — auto-watch + auto-merge
+  green PRs the AI opens; 10-attempt cap; carve-outs for
+  🟡/🔴/governance/cross-repo/spec.
+  → `../operations/CLAUDE.md` § "AI agent auto-merge default".
+- **OPS-0065 multi-agent automated review** — before every push, dispatch
+  the diff-class-matched sub-agents in parallel; the canonical diff-class →
+  agents table + prompt templates live upstream.
+  → `../operations/CLAUDE.md` — search `OPS-0065` (text landmark, lives
+  under `## Autonomy tiers`)
+  + `../operations/.claude/agents/review-prompts/INDEX.md`.
+- **OPS-0066 3-cycle circuit-breaker** — cap review→fix→re-review loops
+  at 3 cycles; escalate to founder if not converged.
+  → `../operations/CLAUDE.md` — search `OPS-0066` (text landmark, lives
+  under `## Autonomy tiers`).
+- **OPS-0067 aidoc-flow-standard scope** — multi-agent review applies to
+  ALL non-paused workspace repos.
+  → `../operations/CLAUDE.md` — search `OPS-0067` (text landmark, lives
+  under `## Autonomy tiers`).
+- **OPS-0069 mandatory pre-push audit-trail phrase** — every push must
+  carry either `Multi-agent self-review per OPS-0065 (<agents>): <verdict>`
+  or `Self-review skipped per founder OK <reason>` in a commit message.
+  Enforced locally by `scripts/pre_push_check.sh` + in CI by
+  `.github/workflows/audit-trail.yml` → `call / verify`.
+  → `../operations/CLAUDE.md` — search `OPS-0069` (text landmark, lives
+  under `## Autonomy tiers`).
+- **REPO_STANDARDS canonical rulebook** — the CI + governance-workflow
+  canon (CODEOWNERS, dependabot, standards-drift, pre-push,
+  audit-trail, governance file canon per §16).
+  → `../aidoc-flow-ci/docs/REPO_STANDARDS.md`.
+
+## Repo-specific rules (author these — not covered by canon)
+
+<Consumer authors any rules that ARE specific to this repo — e.g.
+framework's GATE-SPEC-E005 version-bump rule, operations' locked
+business decisions, iplan-standard's schema versioning policy,
+engramory's evaluation-harness discipline. Keep to what a session
+resuming here needs to know that isn't derivable from code + git.>
+
+## Session handoff
+
+Sessions run in ephemeral containers — **only committed + pushed work
+survives**. Start each session by reading the HANDOFF file declared in
+the governance table above; refresh it at milestones and before any
+context compaction. Commit messages must not contain model identifiers.

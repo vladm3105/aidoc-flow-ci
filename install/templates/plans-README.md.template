@@ -1,0 +1,63 @@
+# plans/ — <REPO_FRIENDLY_NAME>
+
+Per-initiative plans that live in the owning repo's `plans/` directory
+per the aidoc-flow workspace convention. Never centralize plans in the
+umbrella `aidoc-flow/` (holds no dev); never keep them in `tmp/`
+(transient — nothing there survives a session).
+
+## Naming convention
+
+`PLAN-NNNN_<descriptive-slug>.md` where `NNNN` is a 4-digit
+monotonically increasing sequence local to this repo. Never reuse a
+retired ID. The slug is kebab-case, descriptive but short (≤5 words).
+
+**Alternate prefixes** for scoped plan types (per aidoc-flow-ci
+`docs/REPO_STANDARDS.md`):
+
+| Prefix | Scope |
+| --- | --- |
+| `PLAN-NNNN` | Feature / roadmap plan (default) |
+| `IPLAN-NNNN` | Implementation plan (session-execution) |
+| `TPLAN-NNNN` | Test plan |
+| `DPLAN-NNNN` | Deployment plan |
+| `MPLAN-NNNN` | Migration plan |
+| `RPLAN-NNNN` | Rollback plan |
+| `CPLAN-NNNN` | Capacity plan |
+| `SPLAN-NNNN` | Security plan |
+
+Small bug fixes / work items don't need a plan — commit + PR body suffices.
+
+## Structure
+
+Every plan follows the `verified-planning` skill's contract per
+`../.claude/skills/verified-planning/` (if adopted by this repo) or
+`../operations/.claude/skills/verified-planning/`:
+
+1. **Purpose** — what problem the plan solves.
+2. **Design constraints** — locked decisions, non-goals.
+3. **Deliverable shape** — PR breakdown (respecting OPS-0061 Rule 1
+   ≤3 doc surfaces per governance PR).
+4. **Risks** — with mitigations.
+5. **Success criteria** — what "done" looks like, measurable.
+6. **Cross-references** — sibling plans, canon docs, prior decisions.
+7. **Claim ledger** — every load-bearing file-path cited as
+   `<path>:<line>` verified against disk.
+8. **Review log** — ≥2 passes, ≥1 independent fresh-context review,
+   final pass states zero findings.
+
+The `check_plan.py` gate enforces sections 7 + 8; run it before
+declaring a plan ready.
+
+## Cross-repo plan references
+
+Plans in this repo may cite files in sibling repos via `../<repo>/<path>`
+form. The verified-planning `check_plan.py` gate accepts cross-repo
+citations via `--root <umbrella-dir>` — typically `--root ..`
+(the aidoc-flow umbrella).
+
+## Backlog
+
+Larger backlog items that aren't ready for a plan yet live in
+`<PREFIX>-TODO.md` (per this repo's DECISIONS convention). Small +
+speculative items don't need durable capture; if the team surfaces them
+again they get a plan then.

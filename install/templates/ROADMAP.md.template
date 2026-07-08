@@ -1,0 +1,54 @@
+# ROADMAP — <REPO_FRIENDLY_NAME>
+
+Forward-looking view of the current phase, the next phase, and what's
+been deferred. **Sized to the problem** — this is a scan-list for
+resuming sessions, not a project management artifact.
+
+Sequenced by phase, not by month. Update in place when a phase closes;
+never grow open-ended lists — deferred items belong in the plans/
+backlog or `<PREFIX>-TODO.md`.
+
+---
+
+## Current phase — <phase-name>
+
+<One-paragraph description of what this phase delivers + the target
+outcome (not a deadline; outcomes are what get shipped).>
+
+**In flight:**
+- <PLAN-XXX / PR-YYY> — <one-line status>
+
+**Recently landed** (last 1-2 milestones, keep short):
+- <ISO_DATE> — <PLAN-XXX / PR-YYY>: <one-line summary>
+
+---
+
+## Next phase — <phase-name>
+
+<One-paragraph description of the next phase and what triggers its
+start (typically closing the current phase's plans).>
+
+**Planned initiatives:**
+- <PLAN-XXX (draft)> — <one-line summary>
+
+---
+
+## Deferred / parked
+
+<Items considered and consciously postponed — one line each with the
+reason. Anything WITHOUT a reason should be in the plans/ backlog, not
+here.>
+
+- <initiative> — deferred: <reason>
+
+---
+
+**Maintenance protocol:**
+
+- When a phase closes, promote "Next phase" to "Current phase"; move
+  landed items to git commit history (or DECISIONS.md if the phase
+  outcome was itself a load-bearing decision) and prune stale
+  references.
+- Do NOT accumulate — a roadmap that grows longer every quarter is a
+  backlog in disguise.
+- Cross-reference plans by ID + path (e.g., `plans/PLAN-XXX_slug.md`).
