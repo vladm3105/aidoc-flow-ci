@@ -102,7 +102,7 @@ jobs:
       # fixes that. Token: scoped read-only PAT (AI_REVIEW_TOKEN, cross-repo PRIVATE) →
       # GITHUB_TOKEN (sufficient when operations reviews its own PRs).
       - name: Checkout trust allowlist (operations@main)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: vladm3105/aidoc-flow-operations
           ref: main
