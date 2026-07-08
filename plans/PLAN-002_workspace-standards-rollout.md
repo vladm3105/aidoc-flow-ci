@@ -217,17 +217,29 @@ branch-protection contexts (F5 blast-radius per PLAN-001 §5.4).
 
 ### 4.6 Bot / mechanical-commit exemption (H5 + local-hook parity)
 
-Both surfaces (local hook + CI check) share exemption semantics; local
-hook implements 2 of 3 (label exemption needs PR context which the git
-push boundary lacks — CI-side only). The check is skipped (not failed)
-when:
+Local hook and CI reusable have INTENTIONALLY DIVERGENT exemption
+semantics, driven by PR-U3 security review (F1 CRITICAL: commit
+metadata is attacker-spoofable on fork PRs; F2 HIGH: subject prefix
+is unverifiable):
 
-- Every commit in the checked range is authored by a bot in the exemption
-  list (dependabot / renovate / github-actions), OR
-- Every commit in the range starts with `Revert "` (git revert), OR
-- **CI-side only:** the `skip-audit-trail` label is set on the PR AND
-  the commit body has `[skip-audit-trail]` (two-signal override; local
-  hook cannot see PR labels so this branch is a CI-only escape).
+- **Local hook** (author discipline, not authorization):
+  - Bot-authored range (dependabot / renovate / github-actions) checked
+    via `git log --format=%an` → SKIPS. Safe locally because the local
+    hook trusts the developer's own git config.
+  - Revert-only range (all subjects start with `Revert "`) → SKIPS.
+    Developer convenience.
+- **CI reusable** (authorization gate; must not trust attacker input):
+  - Bot exemption uses GitHub-authoritative
+    `pull_request.user.type == 'Bot'` + `pull_request.user.login`
+    allowlist (dependabot / renovate / github-actions). Commit `%an`
+    NEVER referenced — attacker on a fork PR can trivially set author
+    to `dependabot[bot]` and bypass an %an-based check.
+  - Revert-only exemption REMOVED CI-side. Subject prefix `Revert "`
+    is trivially spoofable + unverifiable at the gate; the phrase is
+    cheap to add to a revert commit.
+  - **Two-signal override (CI-side only):** `skip-audit-trail` PR
+    label AND `[skip-audit-trail]` in commit body → SKIPS. Local hook
+    cannot see PR labels so this branch is a CI-only escape.
 
 Otherwise, at least one commit in the range must carry the OPS-0069 phrase.
 

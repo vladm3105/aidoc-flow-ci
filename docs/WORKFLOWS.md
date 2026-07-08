@@ -10,7 +10,7 @@ if a workflow doesn't appear here, it doesn't exist in the library.
 > covers how a new company project onboards. [`overrides.md`](overrides.md)
 > covers the 3 override modes. This doc is the workflow-catalog layer.
 
-## 1. Complete workflow catalog (11 reusables)
+## 1. Complete workflow catalog (12 reusables)
 
 Every workflow ships as `workflow_call` at
 `vladm3105/aidoc-flow-ci/.github/workflows/<name>.yml@ci/vX.Y.Z`.
@@ -29,10 +29,11 @@ Pin at a released tag; never `@main` in a consumer.
 | 9 | `labeler.yml` | Path-based PR labeling. Reads consumer's `.github/labeler.yml` (v5+ format: `changed-files: any-glob-to-any-file:`) and applies labels. Labels must pre-exist. | ~10 s | Framework `labeler.yml` pattern |
 | 10 | `docs-sync.yml` | Mechanical post-merge doc fixer. Runs deterministic transformations (version-reference propagation, structural bump propagation) + commits + opens PR if changes are made. | ~30-60 s | IPLAN-0018 (operations 2026-06-25) |
 | 11 | `doc-maintainer.yml` | AI-driven post-merge doc-of-record maintainer. **Supersedes** `docs-sync.yml` at the end of Phase 3 (`ci/v2.0.0`). Uses Claude Code sub-agent dispatch to catch semantic drift `docs-sync.yml`'s deterministic transformations miss. | ~2-5 min | IPLAN-0025 (operations 2026-06-28) |
+| 12 | `audit-trail-check.yml` | OPS-0069 audit-trail phrase gate. Belt-and-suspenders CI check for the local pre-push hook (REPO_STANDARDS.md §14): verifies every non-exempt PR carries `Multi-agent self-review per OPS-0065` OR `Self-review skipped per founder OK` in some commit body. Exemptions: bot-authored range (dependabot/renovate/github-actions), revert-only range, two-signal `skip-audit-trail` label + body marker. Check-name renders as `call / verify`. `fetch-depth: 0` prevents fork-PR false-pass. | ~10-30 s | PLAN-002 PR-U3 (2026-07-08) |
 
 ## 2. Per-repo applicability matrix
 
-Rows = workspace repos. Columns = the 11 workflows. Cell values:
+Rows = workspace repos. Columns = the 12 workflows. Cell values:
 
 - **✅** — should adopt / adopted
 - **⏸ skip** — skippable with rationale (see § "3. Skip guidance" below)
@@ -49,20 +50,20 @@ Rows = workspace repos. Columns = the 11 workflows. Cell values:
 Actual state audited 2026-07-07 via `gh api repos/*/contents/.github/workflows`
 against every workspace repo.
 
-| Repo (visibility) | ai-review | composition | auto-merge | pre-commit | codeql | secret-scan | markdown-lint | links | labeler | docs-sync | doc-maintainer |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| `aidoc-flow-operations` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (scripts/*.py + .github/scripts/*.py present) | 🕳 custom (`security.yml` — bare gitleaks) | 🕳 custom (`docs-lint.yml`) | ✅ | ⚠️ GAP | ✅ | ✅ |
-| `aidoc-flow-framework` (public) | ✅ | ✅ | ⏸ (spec/governance tier — human-merge only) | ✅ | ✅ | ⚠️ GAP | ⚠️ GAP (pre-commit local markdownlint may cover) | ⚠️ GAP | ✅ | N/A | ⏸ per-need |
-| `aidoc-flow-business` (private) | ✅ | ✅ | ✅ | ✅ | N/A (docs-only) | ⚠️ GAP | ⚠️ GAP | ✅ | ⚠️ GAP | ⏸ per-need | ⏸ per-need |
-| `aidoc-flow-iplanic` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (runtime Python) | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⏸ per-need | ⏸ per-need |
-| `iplan-runner` (public) | ✅ | **⚠️ GAP (missing composition.yml — ai-review verdict not authoritatively gated)** | ✅ | ✅ | ✅ | ⚠️ GAP (repo's `security.yml` is `pip-audit` dependency-audit, not gitleaks — orthogonal concern) | ⚠️ GAP | ⚠️ GAP | ✅ | ⏸ per-need | ⏸ per-need |
-| `aidoc-flow-engramory` (public) | ✅ | ✅ | ✅ | **⚠️ GAP** (only `ci.yml` — no pre-commit reusable) | ⚠️ GAP (Python maturing) | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⏸ per-need | ⏸ per-need |
-| `aidoc-flow` (umbrella; private) | ⏸ (submodule pointer PRs only) | ⏸ (same) | ⏸ (downstream of ai-review skip — no `ai:review-passed` label emitted; umbrella uses `gh pr merge --admin` per OPS-0062) | ⚠️ GAP (has 4 site-flavor workflows: `nightly-live.yml` / `post-deploy.yml` / `pr-checks.yml` / `release.yml` — no `pre-commit.yml`) | N/A | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | N/A | N/A | N/A |
-| `aidoc-flow-iplan-standard` (private) | ⚠️ GAP (planned) | ⚠️ GAP (planned) | ⏸ (schema-tier — human-merge) | ⚠️ GAP | N/A (docs-only) | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⏸ per-need | ⏸ per-need |
-| `aidoc-flow-interlog` (private; new 2026-07-06) | ⚠️ GAP (planned; charter/discovery) | ⚠️ GAP (planned) | ⚠️ GAP (planned) | ⚠️ GAP | ⚠️ GAP (Python-planned) | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⏸ per-need | ⏸ per-need |
-| `aidoc-flow-ci` (public — this repo) | ⏸ (self-referencing) | ⏸ (self-referencing) | ⏸ (spec/governance tier) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | N/A |
-| `aidoc-flow-knowledge-rag` (paused) | — | — | — | — | — | — | — | — | — | — | — |
-| `aidoc-flow-site` (paused) | — | — | — | — | — | — | — | — | — | — | — |
+| Repo (visibility) | ai-review | composition | auto-merge | pre-commit | codeql | secret-scan | markdown-lint | links | labeler | docs-sync | doc-maintainer | audit-trail |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `aidoc-flow-operations` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (scripts/*.py + .github/scripts/*.py present) | 🕳 custom (`security.yml` — bare gitleaks) | 🕳 custom (`docs-lint.yml`) | ✅ | ⚠️ GAP | ✅ | ✅ | ⚠️ GAP (Wave 2 rollout) |
+| `aidoc-flow-framework` (public) | ✅ | ✅ | ⏸ (spec/governance tier — human-merge only) | ✅ | ✅ | ⚠️ GAP | ⚠️ GAP (pre-commit local markdownlint may cover) | ⚠️ GAP | ✅ | N/A | ⏸ per-need | ⚠️ GAP (Wave 1 rollout) |
+| `aidoc-flow-business` (private) | ✅ | ✅ | ✅ | ✅ | N/A (docs-only) | ⚠️ GAP | ⚠️ GAP | ✅ | ⚠️ GAP | ⏸ per-need | ⏸ per-need | ⚠️ GAP (Wave 2 rollout) |
+| `aidoc-flow-iplanic` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (runtime Python) | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⏸ per-need | ⏸ per-need | ⚠️ GAP (Wave 2 rollout) |
+| `iplan-runner` (public) | ✅ | **⚠️ GAP (missing composition.yml — ai-review verdict not authoritatively gated)** | ✅ | ✅ | ✅ | ⚠️ GAP (repo's `security.yml` is `pip-audit` dependency-audit, not gitleaks — orthogonal concern) | ⚠️ GAP | ⚠️ GAP | ✅ | ⏸ per-need | ⏸ per-need | ⚠️ GAP (Wave 3 rollout) |
+| `aidoc-flow-engramory` (public) | ✅ | ✅ | ✅ | **⚠️ GAP** (only `ci.yml` — no pre-commit reusable) | ⚠️ GAP (Python maturing) | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⏸ per-need | ⏸ per-need | ⚠️ GAP (Wave 3 rollout) |
+| `aidoc-flow` (umbrella; private) | ⏸ (submodule pointer PRs only) | ⏸ (same) | ⏸ (downstream of ai-review skip — no `ai:review-passed` label emitted; umbrella uses `gh pr merge --admin` per OPS-0062) | ⚠️ GAP (has 4 site-flavor workflows: `nightly-live.yml` / `post-deploy.yml` / `pr-checks.yml` / `release.yml` — no `pre-commit.yml`) | N/A | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | N/A | N/A | N/A | ⚠️ GAP (Wave 5 rollout; advisory only per REPO_STANDARDS.md §14.3 — umbrella has `required_status_checks: null`) |
+| `aidoc-flow-iplan-standard` (private) | ⚠️ GAP (planned) | ⚠️ GAP (planned) | ⏸ (schema-tier — human-merge) | ⚠️ GAP | N/A (docs-only) | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⏸ per-need | ⏸ per-need | ⚠️ GAP (Wave 1 rollout) |
+| `aidoc-flow-interlog` (private; new 2026-07-06) | ⚠️ GAP (planned; charter/discovery) | ⚠️ GAP (planned) | ⚠️ GAP (planned) | ⚠️ GAP | ⚠️ GAP (Python-planned) | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⏸ per-need | ⏸ per-need | ⏸ (bootstrap-tier — local hook only per REPO_STANDARDS.md §14.3; CI caller pending CI adoption) |
+| `aidoc-flow-ci` (public — this repo) | ⏸ (self-referencing) | ⏸ (self-referencing) | ⏸ (spec/governance tier) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | N/A | ⚠️ GAP (Wave 0 self-adoption via PR-U4) |
+| `aidoc-flow-knowledge-rag` (paused) | — | — | — | — | — | — | — | — | — | — | — | — |
+| `aidoc-flow-site` (paused) | — | — | — | — | — | — | — | — | — | — | — | — |
 
 **Paused repos** (`knowledge-rag`, `aidoc-flow-site` per founder direction
 2026-07-04) — no adoption changes until unpaused.
@@ -191,6 +192,26 @@ canonical skip patterns:
 - **Skip on:** repos where the maintenance burden isn't yet a real problem
   (small repos, low PR volume). Adopt when doc-of-record drift becomes a
   recurring theme in review cycles.
+
+### 3.10 `audit-trail-check.yml`
+
+- **Skip on: bootstrap tier** (`aidoc-flow-interlog`) — local pre-push
+  hook enforces OPS-0069 authoritatively; CI belt-and-suspenders adopts
+  only when the repo joins the ai-review consumer set (per
+  `REPO_STANDARDS.md` §14.3).
+- **Skip on: paused repos** (`aidoc-flow-knowledge-rag`,
+  `aidoc-flow-site`) — no adoption changes until unpaused.
+- **Advisory-only on: umbrella tier** (`aidoc-flow`) — canon
+  branch-protection has `required_status_checks: null` by design;
+  workflow is installed but the check is NOT added to the (nonexistent)
+  contexts array. `--admin` merges route around it anyway (OPS-0062
+  governance layer). Local hook is the load-bearing enforcement point
+  for umbrella submodule-pointer PRs.
+- **Adopt everywhere else** (governance / product / ops-private tiers).
+  Pin at `ci/v1.6.0` (first release including this reusable) per PLAN-002
+  §5.3. Ensure the `skip-audit-trail` canon label is present in the
+  consumer repo (added to `install/templates/labels.json` in PR-U3;
+  `install/install.sh` creates it during initial bootstrap).
 
 ## 4. Adoption sequencing for a new workspace repo
 

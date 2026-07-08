@@ -75,5 +75,10 @@
     "name": "security",
     "color": "b60205",
     "description": "Security-tagged issue or PR (canon §5.3 area label)"
+  },
+  {
+    "name": "skip-audit-trail",
+    "color": "d876e3",
+    "description": "Two-signal override for the OPS-0069 audit-trail CI check (must be paired with '[skip-audit-trail]' in a commit body per REPO_STANDARDS.md §14.2 / PLAN-002 §4.6)"
   }
 ]
