@@ -11,12 +11,16 @@
 # raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/templates/.
 # Same pattern as sync/check-drift.sh.
 #
-# Surfaces checked in this PR (PR-B1 shipped these templates):
-#   1. .github/CODEOWNERS                     — exact-match
-#   2. .github/pull_request_template.md       — exact-match
-#   3. .github/dependabot.yml                 — exact-match
-#   4. .gitignore                             — subset (canon lines all present)
-#   5. .gitattributes                         — subset (canon lines all present)
+# Surfaces checked (canon templates from PR-B1 + PR-U1):
+#   1. .github/CODEOWNERS                     — exact-match  (PR-B1)
+#   2. .github/pull_request_template.md       — exact-match  (PR-B1)
+#   3. .github/dependabot.yml                 — exact-match  (PR-B1)
+#   4. scripts/pre_push_check.sh              — exact-match  (PR-U1)
+#   5. .gitignore                             — subset       (PR-B1)
+#   6. .gitattributes                         — subset       (PR-B1)
+#   7. .pre-commit-config.yaml                — subset       (PR-U1;
+#                                                canon fragment lines
+#                                                must all be present)
 #
 # Labels + server-side settings (branch protection, security,
 # actions-permissions) are applied by --apply (PR-C2).
@@ -242,7 +246,7 @@ subset_check() {
                     | while IFS= read -r line; do
                         line="${line%"${line##*[![:space:]]}"}"
                         [ -z "$line" ] && continue
-                        grep -qxF "$line" "$local_path" || echo "$line"
+                        grep -qxF -- "$line" "$local_path" || echo "$line"
                       done)
     if [ -z "$missing_lines" ]; then
       status="OK"
@@ -281,8 +285,10 @@ if [ "$MODE" != "apply" ]; then
   exact_match_check ".github/CODEOWNERS"                 "CODEOWNERS.template"
   exact_match_check ".github/pull_request_template.md"   "pull_request_template.md"
   exact_match_check ".github/dependabot.yml"             "dependabot.yml"
+  exact_match_check "scripts/pre_push_check.sh"          "pre_push_check.sh"
   subset_check      ".gitignore"                          ".gitignore.template"
   subset_check      ".gitattributes"                      ".gitattributes.template"
+  subset_check      ".pre-commit-config.yaml"             "pre-commit-hook-block.yaml"
 fi
 
 # --- report (skipped for --apply) ---
@@ -311,8 +317,10 @@ emit_human() {
     ".github/CODEOWNERS"
     ".github/pull_request_template.md"
     ".github/dependabot.yml"
+    "scripts/pre_push_check.sh"
     ".gitignore"
     ".gitattributes"
+    ".pre-commit-config.yaml"
   )
   for path in "${paths[@]}"; do
     printf '  %-40s %s\n' "$path" "${DRIFT_STATUS[$path]}"
@@ -338,8 +346,10 @@ emit_json() {
     ".github/CODEOWNERS"
     ".github/pull_request_template.md"
     ".github/dependabot.yml"
+    "scripts/pre_push_check.sh"
     ".gitignore"
     ".gitattributes"
+    ".pre-commit-config.yaml"
   )
   local repo_field
   repo_field=$(json_escape "${REPO_LABEL:-<local-checkout>}")

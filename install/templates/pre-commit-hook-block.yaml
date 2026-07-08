@@ -17,15 +17,18 @@
 # WRAPPER instead — wrapper sources canon + adds its own checks. See
 # PLAN-002 §4.8 for the operations wrapper reference design.
 
-default_install_hook_types: [pre-commit, pre-push]
+default_install_hook_types:
+- pre-commit
+- pre-push
 
 repos:
-  - repo: local
-    hooks:
-      - id: aidoc-flow-pre-push
-        name: aidoc-flow canon pre-push validation + OPS-0069 audit-trail check
-        entry: scripts/pre_push_check.sh
-        language: script
-        stages: [pre-push]
-        pass_filenames: false
-        always_run: true
+- repo: local
+  hooks:
+  - id: aidoc-flow-pre-push
+    name: aidoc-flow canon pre-push validation + OPS-0069 audit-trail check
+    entry: scripts/pre_push_check.sh
+    language: script
+    stages:
+    - pre-push
+    pass_filenames: false
+    always_run: true
