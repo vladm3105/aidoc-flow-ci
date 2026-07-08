@@ -74,6 +74,39 @@ else
   echo "  add       .github/ai-review/config.json"
 fi
 
+# --- PLAN-003 PR-V2: CLAUDE.md canon template bootstrap ---
+# If consumer has no CLAUDE.md, install the canon template with all
+# placeholders present (consumer MUST fill placeholders before commit).
+# If consumer has a CLAUDE.md, verify presence of the 5 required
+# sections (per PLAN-003 §4.3) + the Per-repo governance table anchor
+# (per §4.5). Print a merge suggestion; do NOT auto-modify existing
+# CLAUDE.md — too risky given the file's session-level importance.
+if [ -f "CLAUDE.md" ]; then
+  echo "  preserve  CLAUDE.md (already exists)"
+  # Verify canonical section presence per §4.3 + §4.5. All 5 required
+  # anchors: H1 title + 4 H2 sections.
+  MISSING_SECTIONS=()
+  grep -qE "^# CLAUDE\.md" CLAUDE.md || MISSING_SECTIONS+=("# CLAUDE.md — <REPO_FRIENDLY_NAME>")
+  grep -qE "^## What this (repo|project) is" CLAUDE.md || MISSING_SECTIONS+=("## What this repo is")
+  grep -qE "^## Per-repo governance(\s+[—-].*)?\s*$" CLAUDE.md || MISSING_SECTIONS+=("## Per-repo governance (with optional em-dash tail)")
+  grep -qE "^## GitHub operations" CLAUDE.md || MISSING_SECTIONS+=("## GitHub operations")
+  grep -qE "^## Workspace standards" CLAUDE.md || MISSING_SECTIONS+=("## Workspace standards (aidoc-flow canon — read the canonical rules directly)")
+  if [ "${#MISSING_SECTIONS[@]}" -gt 0 ]; then
+    echo "  WARN      CLAUDE.md is missing the following canonical sections (per PLAN-003 §4.3):"
+    for section in "${MISSING_SECTIONS[@]}"; do
+      echo "              - $section"
+    done
+    echo "            fetch template + merge manually:"
+    echo "              curl -fsSL ${TEMPLATE_BASE}/CLAUDE.md.template"
+    echo "            do NOT auto-overwrite — existing CLAUDE.md has session-level"
+    echo "            content that must be preserved. See PLAN-003 §5.4c for the"
+    echo "            per-repo rewrite scope + Wave rollout guidance."
+  fi
+else
+  fetch_template "CLAUDE.md.template" "CLAUDE.md" || exit 1
+  echo "  add       CLAUDE.md (template with placeholders — FILL BEFORE COMMIT: <REPO_FRIENDLY_NAME>, <REPO_PURPOSE_ONE_LINER>, table cells, etc.)"
+fi
+
 # --- PLAN-002 PR-U2: self-review canon (pre_push_check.sh + pre-commit wiring) ---
 
 # scripts/pre_push_check.sh — exact-match canon. Preserve if already

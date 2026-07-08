@@ -5,6 +5,62 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — PLAN-003 PR-V2 --check-governance parser mode (2026-07-08)
+
+- **`install/parse-governance-table.py`** (NEW, ~250 lines, stdlib-only)
+  — Python parser implementing the PLAN-003 §4.5 governance-table
+  contract:
+  - Anchor regex accepts both bare `## Per-repo governance` and the
+    em-dash tail form used by 7 existing workspace consumers.
+  - GFM pipe-table with case-insensitive Surface/Path column headers;
+    both `|---|---|` and `| --- | --- |` separator forms accepted.
+  - Required-row matching by canonical-token substring (handoff, todo/
+    backlog, decisions, plans/iplan, changelog, roadmap) — no forced
+    label rename.
+  - "Not adopted [—-] <rationale>" prefix detected BEFORE any path
+    extraction (per §4.5 F#7 fold).
+  - Path cells strip surrounding backticks + parenthesized annotation
+    before existence check.
+  - Additional rows below required 6 verified for existence but not
+    counted toward required-row completeness.
+  - Multi-value cells rejected (one row per surface per §4.5 F#6 fold).
+  - Emits structured JSON per §4.5 diagnostic format.
+- **`install/apply-standards.sh`** (MODIFIED) — new `governance_check`
+  function extends the drift matrix with a pseudo-path
+  `CLAUDE.md#per-repo-governance`. Fires automatically in `--check`,
+  `--dry-run`, `--report` modes (skipped for `--apply` per existing
+  content-vs-server-side separation). Uses local `parse-governance-
+  table.py` when present; falls back to fetching from `raw.
+  githubusercontent.com` at the pinned CI_TAG when apply-standards.sh
+  itself is invoked via curl-pipe-bash. Emits parser errors under a
+  `governance` DRIFT_MODE in emit_human + emit_json.
+- **`install/install.sh`** (MODIFIED) — new CLAUDE.md bootstrap step:
+  - If consumer has no CLAUDE.md → install the canon template + tell
+    the operator to fill placeholders BEFORE commit.
+  - If consumer has CLAUDE.md → verify 5 required sections
+    (`## What this repo is`, `## Per-repo governance` with em-dash tail
+    accepted, `## GitHub operations`, `## Workspace standards`) + print
+    merge suggestion. Does NOT auto-modify existing CLAUDE.md
+    (session-level content preservation).
+
+**Real-world validation** — parser tested against all 9 non-paused
+workspace consumer CLAUDE.md files. Surfaced Wave-rollout gaps
+matching PLAN-003 §5.5 expectations exactly:
+- aidoc-flow-ci: green (Wave 0 already self-adopted).
+- operations, business, framework, iplanic, iplan-runner, engramory:
+  drift matching each repo's §5.4c scope.
+- iplan-standard: missing `## Per-repo governance` section entirely
+  (biggest scope; Wave 1).
+- interlog: has section anchor + prose but no canonical table
+  (Wave 4 must convert prose to table).
+
+**3 surfaces** (parser + apply-standards + install.sh) + CHANGELOG.
+Rule 1 compliant.
+
+Multi-agent self-review per OPS-0065 (code-reviewer + test-engineer + security-auditor parallel dispatch): approved after 1 fold cycle addressing 4 HIGH (template line 32 self-inconsistent with own parser → fixed to `_(repo-specific rows below — same table, optional)_`; path-traversal via absolute + `..` paths → sandbox with `relative_to` + PermissionError-safe; fenced-code-block anchor false positive → fenced-code state tracked; multi-value cell not explicitly rejected → distinct `multi-value-cell` error) + 7 MEDIUM (italic-label swallowed as informational → tightened INFO_SEPARATOR_RE to require empty path cell; "Not adopted --" without rationale → `\w`-based rationale check; parser stderr corrupts JSON → separated fd; install.sh 4-vs-5 section count → added H1 title check; 3-column separator not detected → generalized SEP_ROW_RE to N-column; PermissionError crashes parser → OSError-safe exists; parser diagnostic error phrasing) + 3 LOW (DRIFT_CANONICAL sentinel; observations).
+
+**Real-world post-fold validation** — parser tested against a synthesized malicious CLAUDE.md declaring `/etc/passwd` + `../../../etc/hosts`: both rejected with `path-escape` errors, no filesystem existence leaked. Shipped template validated against own parser: 6/6 required rows + 2 additional rows verified, 0 errors. All 9 workspace consumer parses unchanged from pre-fold baseline.
+
 ### Added — PLAN-003 PR-V1 canon templates + Wave 0 self-adoption (2026-07-08)
 
 - **`install/templates/CLAUDE.md.template`** (NEW) — canonical `CLAUDE.md`

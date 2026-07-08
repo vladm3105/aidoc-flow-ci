@@ -11,7 +11,7 @@
 # raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/templates/.
 # Same pattern as sync/check-drift.sh.
 #
-# Surfaces checked (canon templates from PR-B1 + PR-U1):
+# Surfaces checked (canon templates from PR-B1 + PR-U1 + PR-V2):
 #   1. .github/CODEOWNERS                     — exact-match  (PR-B1)
 #   2. .github/pull_request_template.md       — exact-match  (PR-B1)
 #   3. .github/dependabot.yml                 — exact-match  (PR-B1)
@@ -21,6 +21,12 @@
 #   7. .pre-commit-config.yaml                — subset       (PR-U1;
 #                                                canon fragment lines
 #                                                must all be present)
+#   8. CLAUDE.md#per-repo-governance          — governance   (PR-V2;
+#                                                § Per-repo governance
+#                                                table parsed per
+#                                                PLAN-003 §4.5 contract;
+#                                                required-row completeness
+#                                                + declared-path existence)
 #
 # Labels + server-side settings (branch protection, security,
 # actions-permissions) are applied by --apply (PR-C2).
@@ -261,6 +267,91 @@ subset_check() {
   DRIFT_MISSING_LINES["$local_path"]="$missing_lines"
 }
 
+governance_check() {
+  # PLAN-003 PR-V2: parse CLAUDE.md § Per-repo governance table via
+  # parse-governance-table.py (co-located parser); verify each declared
+  # path exists on disk (or is a valid "Not adopted — <rationale>" cell).
+  # Records status under the pseudo-path "CLAUDE.md#per-repo-governance"
+  # in the DRIFT_* arrays so emit_human + emit_json surface it alongside
+  # the exact/subset check results.
+  local local_path="CLAUDE.md#per-repo-governance"
+  local status parse_output errors_count
+  DRIFT_TEMPLATE["$local_path"]="CLAUDE.md.template"
+  DRIFT_MODE["$local_path"]="governance"
+  # Governance mode does not do canonical-file diff (no tmpfile created).
+  # emit_human branches on DRIFT_MODE first, so the empty canonical
+  # never reaches the `diff -u` else-branch; cleanup_tmpfiles' `[ -n ]`
+  # guard skips it (per code-reviewer F#7 fold 2026-07-08).
+  DRIFT_CANONICAL["$local_path"]=""
+
+  if [ ! -f "CLAUDE.md" ]; then
+    DRIFT_STATUS["$local_path"]="MISSING"
+    DRIFT_MISSING_LINES["$local_path"]="CLAUDE.md not found at repo root"
+    return
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    DRIFT_STATUS["$local_path"]="OK"  # cannot check without python3; do not block
+    DRIFT_MISSING_LINES["$local_path"]="governance check skipped: python3 not available"
+    return
+  fi
+
+  local parser
+  parser="$(dirname "${BASH_SOURCE[0]}")/parse-governance-table.py"
+  if [ ! -f "$parser" ]; then
+    # apply-standards.sh may be invoked via curl-pipe-bash from CI;
+    # parser co-located at same URL. Fetch to a tmpfile in that case.
+    parser=$(mktemp --suffix=.py)
+    APPLY_TMPFILES+=("$parser")
+    curl -fsSL "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/parse-governance-table.py" \
+      -o "$parser" 2>/dev/null || {
+      DRIFT_STATUS["$local_path"]="OK"
+      DRIFT_MISSING_LINES["$local_path"]="governance check skipped: parser fetch failed"
+      return
+    }
+  fi
+
+  # stderr NOT merged into stdout: any parser stderr write (Python
+  # warnings, argparse errors) would corrupt the JSON parse otherwise
+  # (per code-reviewer F#4 fold 2026-07-08).
+  local parse_stderr_tmp
+  parse_stderr_tmp=$(mktemp)
+  APPLY_TMPFILES+=("$parse_stderr_tmp")
+  parse_output=$(python3 "$parser" "CLAUDE.md" --repo-root "." 2>"$parse_stderr_tmp") || true
+  # Surface parser stderr to the shell's stderr for the operator; DO
+  # NOT include it in the JSON parse.
+  [ -s "$parse_stderr_tmp" ] && cat "$parse_stderr_tmp" >&2
+  errors_count=$(printf '%s' "$parse_output" | python3 -c "
+import sys, json
+try:
+    d = json.loads(sys.stdin.read())
+    print(len(d.get('errors', [])))
+except Exception:
+    print(-1)
+" 2>/dev/null || echo -1)
+
+  if [ "$errors_count" = "0" ]; then
+    status="OK"
+    DRIFT_MISSING_LINES["$local_path"]=""
+  elif [ "$errors_count" = "-1" ]; then
+    status="DRIFT"
+    DRIFT_MISSING_LINES["$local_path"]="parse-governance-table.py error: $parse_output"
+  else
+    status="DRIFT"
+    # Extract error list for reporting.
+    DRIFT_MISSING_LINES["$local_path"]=$(printf '%s' "$parse_output" | python3 -c "
+import sys, json
+try:
+    d = json.loads(sys.stdin.read())
+    for e in d.get('errors', []):
+        print(f'  - {e}')
+except Exception as ex:
+    print(f'  - parser-output-error: {ex}')
+" 2>/dev/null)
+  fi
+  DRIFT_STATUS["$local_path"]="$status"
+}
+
 # --- run checks (skipped for --apply — it operates on server-side only) ---
 declare -A DRIFT_STATUS DRIFT_TEMPLATE DRIFT_CANONICAL DRIFT_MODE DRIFT_MISSING_LINES
 # L1-code: track apply-mode tmpfiles separately so cleanup_tmpfiles
@@ -289,6 +380,7 @@ if [ "$MODE" != "apply" ]; then
   subset_check      ".gitignore"                          ".gitignore.template"
   subset_check      ".gitattributes"                      ".gitattributes.template"
   subset_check      ".pre-commit-config.yaml"             "pre-commit-hook-block.yaml"
+  governance_check
 fi
 
 # --- report (skipped for --apply) ---
@@ -321,6 +413,7 @@ emit_human() {
     ".gitignore"
     ".gitattributes"
     ".pre-commit-config.yaml"
+    "CLAUDE.md#per-repo-governance"
   )
   for path in "${paths[@]}"; do
     printf '  %-40s %s\n' "$path" "${DRIFT_STATUS[$path]}"
@@ -333,6 +426,11 @@ emit_human() {
         # subset check.
         [ "$MODE" = "dry-run" ] && echo "    would append missing canon lines to $path:"
         printf '%s\n' "${DRIFT_MISSING_LINES[$path]}" | sed 's/^/      /'
+      elif [ "${DRIFT_MODE[$path]}" = "governance" ]; then
+        # PLAN-003 §16 governance-canon check — show parser errors.
+        # Each error already has a `- ` prefix from the parser output.
+        [ "$MODE" = "dry-run" ] && echo "    governance-table errors (fix per PLAN-003 §4.5):"
+        printf '%s\n' "${DRIFT_MISSING_LINES[$path]}" | sed 's/^/    /'
       else
         [ "$MODE" = "dry-run" ] && echo "    would replace $path with ${TEMPLATE_BASE}/${DRIFT_TEMPLATE[$path]}"
         diff -u "$path" "${DRIFT_CANONICAL[$path]}" 2>/dev/null | head -20 | sed 's/^/    /' || true
@@ -350,6 +448,7 @@ emit_json() {
     ".gitignore"
     ".gitattributes"
     ".pre-commit-config.yaml"
+    "CLAUDE.md#per-repo-governance"
   )
   local repo_field
   repo_field=$(json_escape "${REPO_LABEL:-<local-checkout>}")

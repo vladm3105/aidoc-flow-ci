@@ -29,7 +29,7 @@ surfaces for **this** repo:
 | Plans | <path or "Not adopted — <rationale>"> |
 | Changelog | <path or "Not adopted — <rationale>"> |
 | Roadmap | <path or "Not adopted — <rationale>"> |
-| additional rows below (optional) | — |
+| _(repo-specific rows below — same table, optional)_ | |
 | <e.g. "Governance decisions"> | <e.g. `governance/DECISIONS.md`> |
 | <e.g. "Per-package CHANGELOGs"> | <e.g. `platforms/<name>/CHANGELOG.md`> |
 
