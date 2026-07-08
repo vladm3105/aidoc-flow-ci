@@ -5,6 +5,49 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — Self-review canon script + REPO_STANDARDS.md §14 (PR-U1 of PLAN-002) (2026-07-08)
+
+- **`install/templates/pre_push_check.sh`** (NEW) — canonical bash pre-push
+  script per PLAN-002 §4.1. Runs 5 checks: `markdownlint`, `yamllint`,
+  `actionlint`, `shellcheck` (all skipped-with-notice if absent) +
+  OPS-0069 audit-trail phrase check (mandatory). Preserves reference-
+  impl defensive patterns: `set -uo pipefail` (rc accumulator +
+  non-fatal per-check failures); `git rev-parse --verify --quiet
+  @{upstream}` upstream detection; fallback to `origin/main..HEAD` on
+  first push; detailed error message with recovery steps. NO env-var
+  opt-out (matches OPS-0069 removal of `SKIP_LOCAL_AI_REVIEW`).
+- **`install/templates/pre-commit-hook-block.yaml`** (NEW) — canonical
+  `.pre-commit-config.yaml` fragment for consumer wiring per PLAN-002
+  §4.2. Sets `default_install_hook_types: [pre-commit, pre-push]` +
+  local hook block invoking `scripts/pre_push_check.sh`. Idempotency
+  marker `# CANON: aidoc-flow-ci pre_push_check` for merge safety per
+  PLAN-002 §5.2 M5 fix.
+- **`docs/REPO_STANDARDS.md`** — three amendments (atomic doc suite per
+  PLAN-002 §5.1):
+  - §14 (NEW) — self-review mechanical enforcement. §14.1 local hook
+    scope + wiring; §14.2 CI belt-and-suspenders (`call / verify`
+    reusable; range `base_sha..head_sha`; `fetch-depth: 0`; exemption
+    logic for bot commits + `Revert "` + two-signal
+    `skip-audit-trail`); §14.3 per-tier applicability matrix.
+  - §2 (edit) — `call / verify` added to required `contexts` for
+    governance, product-code, and ops-private tiers. Umbrella excepted
+    (canon `required_status_checks: null` preserved; runs advisory);
+    bootstrap excepted (deferred to CI adoption per §14.3).
+  - §12 (edit) — new compliance-evidence row for self-review mechanical
+    enforcement.
+- **`docs/local-pre-push.md`** — full rewrite (PR-U1 H8 fix). Drops the
+  pre-OPS-0069 `SKIP_LOCAL_AI_REVIEW` env-var pattern and the `claude`
+  CLI local-single-pass model. New §1-9 documents the 5-check canon +
+  optional consumer wrapper for repo-specific extras + prerequisites +
+  invocation + failure modes + CI belt-and-suspenders + cross-refs.
+- **`docs/README.md`** — index entry for `local-pre-push.md` updated
+  from `claude` CLI wording to bash-only canon description (H8 fix —
+  index-summary parity with the local-pre-push.md rewrite).
+- **Origin:** PLAN-002 §5.1 PR-U1 (`plans/PLAN-002_workspace-standards-
+  rollout.md`). PR-U2 (installer + apply-standards.sh coverage) +
+  PR-U3 (CI `audit-trail-check.yml` reusable + labels + WORKFLOWS.md) +
+  PR-U4 (aidoc-flow-ci self-adoption) follow.
+
 ### Added — apply-standards.sh `--apply` + check-standards-drift.sh (PR-C2 of PLAN-001) (2026-07-07)
 
 - **`install/apply-standards.sh`** — `--apply` mode implemented.

@@ -1,224 +1,187 @@
 # Local pre-push self-check (canonical pattern for `aidoc-flow-ci` consumers)
 
-Every consumer repo should ship a local pre-push enforcement script that
-catches issues **before** they consume CI runner cycles. This doc
-describes the canonical pattern + the reference implementation +
-what consumers should do.
+Every consumer repo ships a local pre-push validation script that catches
+mechanical issues before they consume CI runner cycles AND enforces the
+OPS-0069 audit-trail phrase in every push. The check is belt-and-
+suspendered by the CI reusable `audit-trail-check.yml`.
+
+**This doc supersedes** the pre-OPS-0069 `claude`-CLI-based pattern
+(local single-pass ai-review-mirroring) that was removed 2026-07-06 per
+OPS-0069 in favor of mandatory sub-agent dispatch + audit-trail
+verification.
 
 For the per-project architecture (library / governance / consumer), see
 [`multi-project-guide.md`](multi-project-guide.md). For CI security
-model, see [`security.md`](security.md).
+model, see [`security.md`](security.md). For the full canon rule, see
+[`REPO_STANDARDS.md`](REPO_STANDARDS.md) §14.
 
-## 1. Why local enforcement
+## 1. What the local hook does
 
-The CI `ai-review.yml` gate is **mandatory + authoritative** — every PR
-that merges must pass it. But the gate is **long-running** (claude CLI
-call on the diff = ~3-5 min/run) and self-hosted runner pools are
-typically small (2-4 concurrent slots). When iteration cycles compound
-(push → CR → fix → push → CR → fix), the CI queue saturates and
-session throughput collapses.
+The canon `pre_push_check.sh` runs 5 checks on the changed files vs.
+`origin/main`:
 
-**Local pre-push enforcement catches the same issues earlier**, with
-zero CI cost (uses operator's `claude` subscription quota).
+1. `markdownlint` on changed `.md` files (skipped-with-notice if not
+   installed).
+2. `yamllint` on changed `.yml`/`.yaml` files (skipped-with-notice if
+   not installed).
+3. `actionlint` on changed `.github/workflows/*.yml` files
+   (skipped-with-notice if not installed).
+4. `shellcheck` on changed `.sh` files (skipped-with-notice if not
+   installed).
+5. **OPS-0069 audit-trail phrase check** — mandatory, always runs.
+   Scans commit messages in the push range for one of:
+   - `Multi-agent self-review per OPS-0065` (standard case; commit body
+     must also name the agents + verdict).
+   - `Self-review skipped per founder OK <reason>` (override; requires
+     founder authorization in-session).
 
-| Mode | Cost | Latency | Authority |
-|---|---|---|---|
-| **Local pre-push self-review** | $0 (subscription quota) | 1-3 min (blocks the push) | Advisory; PUSH is blocked but CI is still the merge gate |
-| **CI `ai-review.yml` gate** | CI runner-minutes | 3-5 min per fire + queue latency | **Authoritative** — required for merge |
+Each linter is SKIPPED-with-notice if absent; a missing local tool must
+not block a push (CI enforces linters authoritatively). The audit-trail
+check has NO local skip path — the ONLY bypass is `git push --no-verify`
+(git primitive; caught by the CI reusable `call / verify` on the
+resulting PR).
 
-The local pass is a **mirror, not a replacement**. CI remains mandatory.
+**No env-var runtime opt-out.** The pre-OPS-0069 `SKIP_LOCAL_AI_REVIEW=1`
+toggle was removed 2026-07-06 because it duplicated the deeper sub-agent
+dispatch that is now mandatory.
 
-## 2. The pattern
+## 2. Canonical pattern
 
-A consumer repo's `scripts/pre_push_check.sh` should:
+**Canon script location:** `install/templates/pre_push_check.sh` (this
+repo, in the `install/templates/` directory).
 
-1. **Run mechanical linters** on the changed files only (fast): markdownlint, yamllint, actionlint, shellcheck, etc.
-2. **Run AI self-review** on the diff vs `origin/main` via local `claude` CLI:
-   - System prompt: `.github/ai-review/review-prompt.md` (same rubric the CI gate uses; future per [IPLAN-0022](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0022_source-of-truth-migration.md) — moves to `aidoc-flow-ci/ai-review/`)
-   - User prompt: the diff + instruction to emit `VERDICT: APPROVED` or `VERDICT: CHANGES_REQUESTED` on first line
-   - First-line anchored regex parses the verdict; `CHANGES_REQUESTED` → exit 1 (blocks push)
-3. **Wire as a pre-commit pre-push hook** (via `.pre-commit-config.yaml` with `default_install_hook_types: [pre-commit, pre-push]`).
+**Consumer install path:** `scripts/pre_push_check.sh`.
+
+**Wiring:** via `.pre-commit-config.yaml` with
+`default_install_hook_types: [pre-commit, pre-push]` — matches the
+`pre-commit` toolchain the workspace already uses for repo hygiene.
+Canonical fragment: `install/templates/pre-commit-hook-block.yaml`.
+
+Consumers install both surfaces via `bash install/install.sh` (see
+[`../install/README.md`](../install/README.md)).
 
 ## 3. Reference implementation
 
-[`aidoc-flow-operations/scripts/pre_push_check.sh`](https://github.com/vladm3105/aidoc-flow-operations/blob/main/scripts/pre_push_check.sh)
-is the canonical reference (shipped 2026-06-25 in operations PR #137).
-Other consumers should mirror its structure.
+The canon script is `install/templates/pre_push_check.sh`. Consumers get
+a byte-identical copy at `scripts/pre_push_check.sh` via `install.sh`.
 
-Key shape (excerpt):
+Key features preserved from the operations reference implementation
+(2026-07-06 tip):
+
+- `set -uo pipefail` (NOT `-e`) — the rc-accumulator pattern below
+  depends on per-check failures being non-fatal so all checks run.
+- Defensive upstream-detection: `git rev-parse --verify --quiet
+  @{upstream}` before using it in the commit range. Falls back to
+  `origin/main..HEAD` on the very first push before upstream is set.
+- Commit-range scoping: `@{upstream}..HEAD` (or fallback) — not
+  `<merge-base>..HEAD` — because the merge-base range does NOT advance
+  between pushes. Once a phrase-bearing commit was anywhere in the
+  merge-base range, subsequent pushes of never-reviewed commits also
+  passed. Broken; do not revert.
+- Non-fatal per-check failures accumulate into `rc`; script exits with
+  the accumulated `rc` so the operator sees ALL failures per push.
+
+## 4. Consumer wrapper (optional; for repo-specific extras)
+
+Repos with domain-specific checks not in the canon (e.g., verified-
+planning `check_plan.py`, operations classify-parity) ship a thin
+wrapper `scripts/pre_push_check_<repo>.sh` that:
+
+1. Sources the canon script FIRST (audit-trail is the load-bearing
+   check; deferring it under repo-only checks would let mechanical
+   linting errors mask a missing phrase).
+2. Runs the repo-specific extras AFTER, accumulating into `rc`.
+3. Points `.pre-commit-config.yaml` at the WRAPPER (not the canon).
+
+Reference: `aidoc-flow-operations/scripts/pre_push_check_ops.sh` (added
+as part of the Wave 2 rollout per PLAN-002 §5.5).
+
+## 5. Prerequisites
+
+- **bash 4+.** macOS default is 3.2; install a newer bash (`brew install
+  bash`) if you're a founder using the hook locally on macOS.
+- **`pre-commit`** (the `pre-commit.com` toolchain): `pip install
+  pre-commit` + `pre-commit install` in the consumer repo.
+- **Optional linters** (installed for local pre-lint; canon script skips
+  each individually if absent):
+  - `markdownlint-cli2` (`npm install -g markdownlint-cli2`)
+  - `yamllint` (`pip install yamllint`)
+  - `actionlint` (`brew install actionlint` or download binary)
+  - `shellcheck` (`brew install shellcheck` or apt/yum)
+
+The audit-trail phrase check requires only `git` + `grep` (in every
+POSIX-ish env). No CLI dependency, no network calls.
+
+## 6. Invocation
 
 ```bash
-# AI self-review (mirror of CI's ai-review gate; uses local claude CLI subscription auth)
-if [ "${SKIP_LOCAL_AI_REVIEW:-0}" = "1" ]; then
-  echo "ℹ️  AI self-review SKIPPED via SKIP_LOCAL_AI_REVIEW=1 (CI will still enforce)."
-elif have claude && [ -f ".github/ai-review/review-prompt.md" ]; then
-  DIFF=$(git diff "$BASE"...HEAD 2>/dev/null | head -c 100000)
-  if [ -n "$DIFF" ]; then
-    PROMPT="Review the diff below per the rubric in your system prompt.
-Output FIRST LINE EXACTLY one of: 'VERDICT: APPROVED' or 'VERDICT: CHANGES_REQUESTED'.
-Then a bulleted list of load-bearing findings if any. Under 600 words.
-
-DIFF:
-\`\`\`diff
-${DIFF}
-\`\`\`"
-    VERDICT=$(timeout 300 claude --print \
-      --append-system-prompt-file ".github/ai-review/review-prompt.md" "$PROMPT" 2>&1)
-    claude_rc=$?
-    FIRST_LINE=$(echo "$VERDICT" | head -1)
-    if [ "$claude_rc" -eq 124 ]; then
-      echo "::warning::AI self-review timed out — CI will still enforce."
-    elif [ "$claude_rc" -ne 0 ]; then
-      echo "::warning::claude exit $claude_rc — CI will still enforce."
-    elif echo "$FIRST_LINE" | grep -qE '^VERDICT:[[:space:]]*CHANGES_REQUESTED'; then
-      echo "::error::AI self-review: CHANGES REQUESTED"
-      echo "$VERDICT"
-      rc=1
-    elif echo "$FIRST_LINE" | grep -qE '^VERDICT:[[:space:]]*APPROVED'; then
-      echo "  ✅ AI self-review: APPROVED"
-    else
-      echo "::warning::verdict line unrecognized — CI will still enforce."
-    fi
-  fi
-fi
+# Runs automatically when pre-commit is installed + you `git push`.
+# Run by hand:
+bash scripts/pre_push_check.sh
 ```
 
-## 4. Hardening principles (lessons from the reference implementation)
+## 7. Failure modes + recovery
 
-The reference implementation went through a pre-push self-review cycle
-itself + hardened against these failure modes:
+### 7.1 Missing OPS-0069 audit-trail phrase
 
-| Risk | Mitigation |
-|---|---|
-| Hung claude call (network/auth) blocks push indefinitely | `timeout 300` wrapper; on exit 124 → warn-and-pass |
-| Prose mentioning "CHANGES_REQUESTED" in passing false-blocks | First-line regex anchor: `^VERDICT:[[:space:]]*CHANGES_REQUESTED` |
-| Model drift produces unrecognized verdict line | Fallback to warn-and-pass (don't permanently break pushes) |
-| Diff too large for prompt | Truncate at ~100KB head; CI gets full diff |
-| Operator needs to bypass (rare; mechanical-only changes) | `SKIP_LOCAL_AI_REVIEW=1` env var with audit-trail commit-message line |
-| Diff contains triple-backticks that close the code fence early | Future hardening: pass diff via tmpfile + `--add-dir`; current risk is low |
+Hook prints the exact phrase to append, plus recovery options:
 
-## 5. Prerequisites for a consumer to adopt
+1. Dispatch the OPS-0065 diff-class-matched sub-agents (Claude Code
+   `Agent()` / Codex agents / etc.); fold findings; `git commit --amend`
+   to add the `Multi-agent self-review per OPS-0065 (<agents>): <verdict>`
+   line to HEAD's commit message body.
+2. Get founder authorization in-session AND `git commit --amend` to add
+   `Self-review skipped per founder OK <reason>`.
 
-| Prerequisite | How |
-|---|---|
-| `claude` CLI installed locally | `curl -fsSL https://claude.ai/install.sh \| sh` |
-| `claude` authenticated | `claude` (interactive login) OR `CLAUDE_CODE_OAUTH_TOKEN` env var |
-| `.github/ai-review/review-prompt.md` present | Per [IPLAN-0022](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0022_source-of-truth-migration.md), this will move to `aidoc-flow-ci/ai-review/` (consumer fetches via reusable workflow). Until then, copy from operations. |
-| `scripts/pre_push_check.sh` present + executable | Copy from operations reference implementation |
-| Pre-commit hooks wired | `pre-commit install --install-hooks` (sets up pre-commit + pre-push automatically per `default_install_hook_types: [pre-commit, pre-push]`) |
+See `aidoc-flow-operations/ops/DECISIONS.md` OPS-0069 for the full rule.
 
-## 6. CI gate relationship — what's STILL mandatory
+### 7.2 Linter failure
 
-Local pre-push does NOT change CI behavior. After local enforcement
-lands:
+Hook prints the linter output. Fix per the linter's guidance; re-push.
+If the linter is unavailable locally but you want to push anyway, CI
+will catch it — but the hook still enforces the audit-trail phrase.
 
-- `ai-review.yml` reusable workflow still fires on every push (per
-  `pull_request_target` trigger)
-- `composition.yml` still gates the merge
-- Required-check branch protection still applies
-- The CI verdict is still the authoritative `pre_merge` gate per
-  `aidoc-flow-operations/CLAUDE.md` §"Merge governance"
+### 7.3 Emergency bypass
 
-**Local enforcement reduces iteration count; it does not replace CI.**
+`git push --no-verify` bypasses the hook entirely (git primitive). This
+does NOT bypass the CI `call / verify` reusable on the resulting PR —
+the CI check is authoritative for the PR merge boundary. Use only when
+audit-trail is present in the pushed commits but a local tool is
+misbehaving.
 
-## 7. Governance-PR additional discipline
+## 8. CI belt-and-suspenders
 
-For PRs touching `ops/DECISIONS.md`, `IPLAN-*.md`, `CLAUDE.md`,
-`.github/ai-review/`, or supersession-related surfaces (per consumer's
-own CLAUDE.md "Governance PR discipline" Rule 2), additionally
-dispatch a **broader `code-reviewer` agent pass** on the full diff.
-The pre-push hook's AI step is a fast first-line filter; deeper
-adversarial review (dead-refs, supersession completeness, internal
-consistency across all surfaces) is still required for governance
-changes.
+*(Ships in PLAN-002 PR-U3 — not yet available in this release; see §9
+cross-refs.)*
 
-## 7a. Multi-agent automated review (consumer-side application of OPS-0065)
+The CI reusable `.github/workflows/audit-trail-check.yml` re-verifies
+the audit-trail phrase on every PR at merge time. Consumer callers use
+the standard `jobs.call:` pattern; check-name renders as `call / verify`
+and is a required status check per `REPO_STANDARDS.md` §2 (non-paused
+non-bootstrap non-umbrella tiers).
 
-The `ai-review.yml` gate is the merge-side substantive review. The
-author-side substantive review is **rule-driven sub-agent dispatch
-BEFORE push/commit**, matched to what the diff touches. Consumers
-default to dispatching the appropriate sub-agents in parallel — don't
-cherry-pick to one agent class alone:
+Range: `${{ github.event.pull_request.base.sha }}..${{
+github.event.pull_request.head.sha }}` on `pull_request` events. Uses
+`fetch-depth: 0` to avoid the default-checkout depth-1 fork-PR
+false-pass.
 
-| Diff touches | Dispatch sub-agents (author-side, before push) |
-|---|---|
-| `.github/workflows/*.yml` | `code-reviewer` + `pr-review-toolkit:silent-failure-hunter` (error handling) + `security-auditor` (when secrets/permissions/event triggers touched). For NEW event triggers, additionally web-search GitHub Actions docs for delivery semantics + anti-recursion. |
-| Plan files (`ops/iplans/IPLAN-NNNN_*.md` or consumer equivalent) | verified-planning Pass 2+ fresh-context `code-reviewer` agent per the consumer's verified-planning skill |
-| Governance docs (`CLAUDE.md`, `ops/DECISIONS.md`, supersession surfaces) | `code-reviewer` per Rule 2 (above) + `documentation-specialist` for clarity / cross-reference accuracy |
-| HANDOFF / CHANGELOG / READMEs | `documentation-specialist` for clarity, completeness, internal-consistency |
-| Python scripts (`scripts/*.py`) | `code-reviewer` + `test-engineer` (test coverage) + `security-auditor` (secret handling / external API) |
-| Configuration JSON (`.github/ai-review/config.json`, etc.) | `code-reviewer` for schema/value correctness |
-| Cross-repo coordinated changes | architecture-class agent (`system-architect`, `general-purpose` for cross-repo grep) BEFORE drafting + `code-reviewer` BEFORE push |
+**Exemption logic** (identical to the local hook's exemptions to avoid
+gate mismatch):
 
-**Also use brainstorming-class agents (`general-purpose`,
-`system-architect`, web-search) during plan/spec DRAFTING (Pass 0)** —
-not just at Pass 2+ review. The Pass 2 reviewer is the last line of
-defense; dispatching system-architect or general-purpose during Pass 0
-catches load-bearing architectural assumptions BEFORE they become a
-Pivot.
+- ALL commits in range authored by `dependabot[bot]`, `renovate[bot]`,
+  or `github-actions[bot]` → check SKIPS (with `::notice::`).
+- Commit message starting with `Revert "` → commit exempt.
+- Two-signal override: `skip-audit-trail` PR label AND
+  `[skip-audit-trail]` in commit body → check SKIPS.
 
-**`SKIP_LOCAL_AI_REVIEW=1` usage discipline:**
+## 9. Cross-references
 
-- Only acceptable cases: (a) genuinely mechanical content (e.g.,
-  version-pin string bump with NO accompanying logic edits); (b)
-  AI-side review has ALREADY been done via a dispatched agent (the
-  pre-push hook's AI step is then redundant — name the agent +
-  verdict in the commit-message audit-trail line); (c) explicit
-  founder OK with `Self-review skipped per founder OK <reason>` per
-  Rule 2.
-- Stop using `SKIP_LOCAL_AI_REVIEW=1` indiscriminately. Dispatching
-  the appropriate sub-agents first satisfies the "review already
-  done" exception cleanly + provides a deeper review than the
-  pre-push hook's single-pass.
-
-**Parallel dispatch:** when multiple agents apply to the same diff,
-dispatch them IN PARALLEL (one Agent tool call per agent, batched in
-a single message). Don't serialize.
-
-**This is the consumer-side application of OPS-0065** (operations
-governance decision; see [aidoc-flow-operations/ops/DECISIONS.md
-OPS-0065](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/DECISIONS.md)
-for full context + rationale). The CI `ai-review.yml` gate
-(authoritative + mandatory on the merge side) is unchanged; OPS-0065
-strengthens the AUTHOR-side review.
-
-**OPS-0067 productization (2026-07-04):** the multi-agent review
-pattern is now productized in `aidoc-flow-operations`:
-
-- **Standing prompt templates:** `aidoc-flow-operations/.claude/agents/
-  review-prompts/` — parameterized skeletons per diff class
-  (`workflow-yaml.md` / `governance-docs.md` / `docs.md` / `scripts.md`
-  / `cross-repo.md` / `adversarial-judge.md` + `INDEX.md`).
-- **Wrapper tooling:** `aidoc-flow-operations/scripts/multi-agent-
-  review.sh` (bash dispatch + collate) +
-  `aidoc-flow-operations/.claude/workflows/multi-agent-review.js`
-  (Workflow-tool orchestration).
-- **Verdict schema:** `aidoc-flow-operations/.claude/agents/review-
-  prompts/verdict-schema.json` — aligned with the ecosystem CI schema
-  at `templates/ai-review/verdict.schema.json`.
-- **Empirical default:** 3-agent parallel dispatch + single fold cycle
-  for ≤300-line diffs. Re-dispatch only on NEW load-bearing surfaces
-  or structural pivots. Cap at 3 cycles per OPS-0066 circuit-breaker.
-- **Pass-N+1 adversarial judge:** `adversarial-judge.md` template for
-  re-verifying whether Pass-N findings were addressed by the fold. Cap
-  at 1 judge dispatch per fold cycle.
-
-**Aidoc-flow standard scope** — the pattern applies to ALL repos in
-the aidoc-flow workspace, not just CI consumers. This library repo
-inherits the standard via this §7a.
-
-## 8. Future enhancement — ship as an install template
-
-Today consumers copy the script manually from operations. Future:
-ship `install/templates/scripts/pre_push_check.sh` on aidoc-flow-ci;
-`install.sh` drops it into new consumer repos as part of the standard
-bootstrap. Tracked as a follow-up; not blocking.
-
-## 9. References
-
-- [`architecture.md`](architecture.md) — per-project CI architecture
-- [`multi-project-guide.md`](multi-project-guide.md) — library / governance / consumer split
-- [`security.md`](security.md) — CI security model + trust gate
-- Reference implementation: [`aidoc-flow-operations/scripts/pre_push_check.sh`](https://github.com/vladm3105/aidoc-flow-operations/blob/main/scripts/pre_push_check.sh)
-- Operations PR #137 (the activation): [aidoc-flow-operations#137](https://github.com/vladm3105/aidoc-flow-operations/pull/137)
-- Governance PR discipline (Rule 1 + Rule 2): see consumer's own CLAUDE.md "Governance PR discipline" section
+- [`REPO_STANDARDS.md`](REPO_STANDARDS.md) §14 — canonical rule.
+- [`WORKFLOWS.md`](WORKFLOWS.md) §1 — `audit-trail-check.yml` registry
+  row (added by PLAN-002 PR-U3).
+- `aidoc-flow-operations/ops/DECISIONS.md`:
+  - OPS-0065 — multi-agent automated review (sub-agent dispatch table).
+  - OPS-0066 — 3-cycle circuit-breaker on review/fix loops.
+  - OPS-0069 — mandatory pre-push audit-trail (no env-var escape hatch).
+- `plans/PLAN-002_workspace-standards-rollout.md` — the unified plan
+  driving this canon.
