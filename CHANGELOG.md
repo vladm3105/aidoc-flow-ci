@@ -5,6 +5,16 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — install.sh default `CI_TAG` bumped to `ci/v1.6.0` (post-release-cut) (2026-07-08)
+
+- **`install/install.sh`** — default `CI_TAG` bumped from `main` →
+  `ci/v1.6.0` (the tag cut immediately after PR-U3 merged). Fulfills
+  the release-cut checklist bullet added in PR-U2 CHANGELOG. Consumers
+  who don't set `CI_TAG` explicitly now get a frozen tag instead of the
+  moving `main` ref. Comment updated to describe the general release-
+  cut cadence (bump on each tag) rather than the one-time M4 fold
+  history.
+
 ### Added — CI reusable `audit-trail-check.yml` + `skip-audit-trail` canon label + WORKFLOWS.md registry (PR-U3 of PLAN-002) (2026-07-08)
 
 - **`.github/workflows/audit-trail-check.yml`** (NEW reusable) —
