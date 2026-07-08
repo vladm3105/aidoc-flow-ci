@@ -6,34 +6,20 @@ context compaction.
 
 ## Current state (2026-07-08)
 
-**PLAN-003 PR-V1** in flight — this repo self-adopts the project-governance
-file canon it just canonized. All 4 self-adoption files (this HANDOFF,
-DECISIONS.md, ROADMAP.md, CLAUDE.md) are new + backfilled from PLAN-001
-/ PLAN-002 / PLAN-003 history. PR-V1 flips to "shipped" via PR-V4's
-status update.
-
-Next milestone: **PLAN-003 PR-V2** — `install/apply-standards.sh
---check-governance` mode implementation. Then PR-V3 (operations
-CROSS_REPO_PLAYBOOKS §T-D), PR-V4 (aidoc-flow-ci PLAN-003 completion
-doc). Then per-repo Wave 1-5 rollout.
+**PLAN-003 canon layer SHIPPED** — canon templates + parser +
+ratification landed via PR-V1 (this repo #73), PR-V2 (this repo #74),
+PR-V3 (operations #217), PR-V4 (this PR). Per-repo Wave 1-5 rollouts
+proceed next per PLAN-003 §5.5 / operations `docs/CROSS_REPO_PLAYBOOKS.md`
+§T-D.
 
 ## Open threads
 
-- **PLAN-003 PR-V2** — draft the `--check-governance` parser + wire
-  it into the existing drift-matrix per REPO_STANDARDS §16.4.
-  Blocked on: nothing; ready when a session picks it up.
-- **PLAN-003 PR-V3** — new `OPS-0070` on operations ratifying PLAN-003
-  canon + CROSS_REPO_PLAYBOOKS §T-D wave-scheduling entry.
-  Blocked on: PR-V2 merged (`--check-governance` is what the wave
-  playbook tells consumers to run).
-- **PLAN-003 PR-V4** — aidoc-flow-ci PLAN-003 status flip to SHIPPED +
-  `docs/PLAYBOOK_governance-canon-rollout.md`.
-  Blocked on: PR-V2 + PR-V3.
 - **Per-repo rollout waves 1-5** — one PR per non-paused repo per
   PLAN-003 §5.5. Wave 1 = framework, iplan-standard. Wave 2 = operations,
   business, iplanic. Wave 3 = iplan-runner, engramory. Wave 4 = interlog.
-  Wave 5 = umbrella. Sequential; within-wave alphabetical.
-  Blocked on: PR-V2 (parser is what wave PRs are tested against).
+  Wave 5 = umbrella. Sequential; within-wave alphabetical. Validation
+  gate: `bash install/apply-standards.sh --check` zero drift on every
+  wave repo before advancing.
 - **Deferred `auto-merge-ai-prs.yml` GHA workflow** — HANDOFF backlog
   from operations. Server-side enforcer for the OPS-0062 AI-agent
   auto-merge default (covers cases where the AI session ends mid-merge
@@ -42,14 +28,16 @@ doc). Then per-repo Wave 1-5 rollout.
 
 ## Next-session start-here
 
-1. Read `plans/PLAN-003_project-governance-canon.md` end-to-end —
-   §4.5 parser contract + §5.2 PR-V2 scope define the immediate work.
-2. Read `docs/REPO_STANDARDS.md` §16 for the durable canon consumers
+1. Read `docs/PLAYBOOK_governance-canon-rollout.md` for the canon-source-
+   side rollout summary; defer to `../operations/docs/CROSS_REPO_PLAYBOOKS.md`
+   §T-D for authoritative per-wave scope.
+2. Read `plans/PLAN-003_project-governance-canon.md` §5.5 + §5.4c for
+   per-repo wave scope details.
+3. Read `docs/REPO_STANDARDS.md` §16 for the durable canon consumers
    follow.
-3. Check `ROADMAP.md` for the phase sequence.
-4. If picking up PR-V2: read `install/apply-standards.sh` to
-   understand the existing `--check` mode's drift-matrix architecture;
-   the new `--check-governance` mode extends it.
+4. If picking up Wave 1: framework retrofit + iplan-standard biggest
+   scope (all 4 governance files NEW). Each Wave PR ≤3 surfaces per
+   OPS-0061 Rule 1; bundle only with explicit founder OK.
 
 ## Recent decisions
 
@@ -63,6 +51,14 @@ doc). Then per-repo Wave 1-5 rollout.
 - **CI-0003** — Cap review/fix loops at 3 cycles per OPS-0066; PLAN-003
   Pass 4 → Pass 5 → Pass 6 hit exactly the 3-cycle limit. Pass 6
   APPROVED; canon-worthy.
+- PR-V1 (this repo #73) 2026-07-08 — canon templates + Wave 0
+  self-adoption.
+- PR-V2 (this repo #74) 2026-07-08 — governance-table parser +
+  install.sh bootstrap.
+- PR-V3 (operations #217) 2026-07-08 — CROSS_REPO_PLAYBOOKS §T-D +
+  OPS-0070 ratification.
+- PR-V4 (this PR) 2026-07-08 — PLAN-003 status flip to SHIPPED +
+  rollout playbook doc + HANDOFF/ROADMAP inline updates.
 
 ---
 

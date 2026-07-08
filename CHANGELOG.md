@@ -5,6 +5,40 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — PLAN-003 PR-V4 status flip to SHIPPED + rollout playbook doc (2026-07-08)
+
+Closes the PLAN-003 canon-layer shipment. Per-repo Wave 1-5 rollouts
+proceed next per PLAN-003 §5.5 / operations `docs/CROSS_REPO_PLAYBOOKS.md`
+§T-D.
+
+- **`plans/PLAN-003_project-governance-canon.md`** — status flipped
+  DRAFT → SHIPPED; §9 audit-trail extended with PR-V1/V2/V3/V4 merge
+  records (with per-PR fold summaries) + explicit Wave 1-5 next-step
+  note.
+- **`docs/PLAYBOOK_governance-canon-rollout.md`** (NEW) — canon-source-
+  side companion doc mirroring PR-V3's §T-D content. Summary + explicit
+  link-back to operations §T-D (authoritative). Serves AI agents +
+  operators who enter the workspace via `aidoc-flow-ci/` first and
+  don't cross-load `../operations/docs/CROSS_REPO_PLAYBOOKS.md`
+  automatically.
+- **`HANDOFF.md`** — inline doc-currency update per project rule: post-
+  shipment `## Current state` collapsed to "PLAN-003 canon layer
+  SHIPPED"; PR-V1/V2/V3/V4 items moved from Open threads to Recent
+  decisions; Next-session start-here re-pointed at the playbook doc +
+  Wave 1 pickup pointer.
+- **`ROADMAP.md`** — inline doc-currency update per project rule:
+  PR-V1/V2/V3/V4 moved from `In flight` to `Recently landed`; only
+  "Per-repo Wave 1-5 rollouts" remains in flight.
+
+**5 surfaces** — above OPS-0061 Rule 1 ≤3 default; expanded from 3 to 5
+after multi-agent review surfaced HANDOFF + ROADMAP staleness (project-
+rule "keep docs of record per PR" doc-currency requirement propagates
+the status flip inline). Bundle authorized under the doc-currency-rule
+reconciliation clause of OPS-0061 (each PR's affected docs update
+in-PR — not a separate doc-refresh PR).
+
+Multi-agent self-review per OPS-0065 (documentation-specialist + code-reviewer parallel dispatch): approved after 1 fold cycle addressing 1 CRITICAL (CHANGELOG TBD placeholder → filled) + 3 HIGH (stale HANDOFF post-shipment → rewritten inline; stale ROADMAP post-shipment → rewritten inline; PR-V2 fold-count format inconsistency with PR-V3 → dropped fabricated CRITICAL label to match PR #74 body) + 5 MEDIUM (this PR placeholder observation deferred to post-open fixup; Wave summary column "Delivery mode" → "Scope summary" to match operations §T-D; Wave 3 engramory scope wording aligned to operations §T-D; first §T-D mention anchor added; parallel-dispatch claim scoped accurately) + 2 LOW (canon-plan cleanup deferred; observations)
+
 ### Added — PLAN-003 PR-V2 --check-governance parser mode (2026-07-08)
 
 - **`install/parse-governance-table.py`** (NEW, ~250 lines, stdlib-only)
