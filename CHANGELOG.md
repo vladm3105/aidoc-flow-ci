@@ -38,9 +38,30 @@ Pre-prod hardening toward the company-default CI standard (per
   OPS-NNNN delegation table); PLAN-002 → SHIPPED; this CHANGELOG dedup +
   staging header; `plans/FRAMEWORK-TODO.md` (FT-1..FT-4).
 
-PRs #82 (plan) + #83/#84/#85/#86/#87/#88/#89/#90 (A1–A6). The correctness /
-security / de-brand / update-path slices (PLAN-004 B–E) land before the
-`ci/v1.7.0` tag cut.
+PRs #82 (plan) + #83/#84/#85/#86/#87/#88/#89/#90 (A1–A6).
+
+### Fixed / Changed — PLAN-004 B (correctness) + C (security) + D1 (2026-07-09)
+
+- **B (correctness):** `doc-maintainer.yml` schedule bug — reconcile split into
+  its own job so cron no longer fires the whole LLM pipeline (#92, + the dedup→cfg
+  fall-through); `composition.yml` PR-author resolved via gh-api on the
+  workflow_run path (the abbreviated payload omits `.user`) + empty-author
+  fail-closed (#93); per-file fork-safety — labeler→`pull_request_target`,
+  codeql/secret-scan keep `pull_request` + skip SARIF upload on forks (#94);
+  `timeout-minutes` on 12 reusables + apply-standards label `%3A`-encode +
+  audit-trail-check fetch diagnostics + troubleshooting §16-18 (#95).
+- **C (security):** SHA-pin `checkout` + `create-github-app-token` + npm pin +
+  `curl|bash` disposition + `standards-drift` zero default permissions (#96);
+  env-var indirection for consumer-input shell interpolation (#97); **BL-3
+  auto-merge composition-armed gate** — requires an App-APPROVED-at-HEAD review
+  (mirrors composition + skip-ai-review carry-forward) before re-arming, closing
+  the hand-applied-label bypass (#98).
+- **D1 (BL-2):** parameterize the hardcoded operations trust root via
+  `trust_config_repo`/`trust_config_ref` inputs on ai-review + auto-merge
+  (defaults byte-identical) so external adopters point at their own config repo
+  (#99).
+
+Remaining before the tag cuts: D2 (de-brand templates) + E (`install.sh --update`).
 
 ### Added — REPO_STANDARDS §17 auto-merge canon + canonical caller templates (2026-07-08)
 
