@@ -103,3 +103,12 @@ jobs:
         uses: github/codeql-action/analyze@21eb7f7842f33eafc83782b56fff2a2c43e9696f # v4.36.1
         with:
           category: /language:${{ matrix.language }}
+          # Fork PRs get a read-only GITHUB_TOKEN (security-events: write is
+          # downgraded on `pull_request` from a fork), so the SARIF upload to
+          # code-scanning would fail and red the check. Skip ONLY the upload on
+          # fork PRs — the analysis still runs (findings in the job log); push +
+          # weekly cron + same-repo PRs upload normally. (PLAN-004 B3 / Pass-4
+          # M7: kept on `pull_request`, not `pull_request_target` — the latter
+          # would analyze the base ref and duplicate the push/cron coverage
+          # while green-lighting an unanalyzed fork diff.)
+          upload: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) && 'never' || 'always' }}

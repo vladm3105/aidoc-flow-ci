@@ -14,14 +14,24 @@
 name: labeler
 
 on:
-  pull_request:
+  # pull_request_target (NOT pull_request): labeler needs `pull-requests: write`
+  # to apply labels, but `pull_request` downgrades GITHUB_TOKEN to read-only on
+  # fork PRs, so labeling fails. pull_request_target runs with the base repo's
+  # write token. SAFE here because the labeler reusable is JUST actions/labeler
+  # — it reads the base's `.github/labeler.yml` + the PR's changed-file list via
+  # the API; it does NOT check out or execute PR code. (PLAN-004 B3.)
+  pull_request_target:
 
 permissions:
   contents: read
   pull-requests: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Key on the PR number, not github.ref: under pull_request_target github.ref
+  # is the BASE branch (identical for every open PR), so a ref-keyed group with
+  # cancel-in-progress would cancel OTHER PRs' in-flight labeler runs → PRs
+  # randomly left unlabeled. (PLAN-004 B3 review.)
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:

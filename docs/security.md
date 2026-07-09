@@ -202,6 +202,22 @@ not about changing the security model. Existing consumers that have
 a flow dependent on the old trigger can still locally re-add it
 (local always wins per `docs/overrides.md`).
 
+### Fork-safety of the other write-permission workflows (labeler / codeql / secret-scan)
+
+Three more workflows need write on fork PRs but resolve it differently
+(PLAN-004 B3):
+
+| Workflow | Trigger | Fork-PR handling |
+|---|---|---|
+| `labeler` | **`pull_request_target`** | Needs `pull-requests: write` to apply labels. The reusable is JUST `actions/labeler` — it reads the base's `.github/labeler.yml` + the PR's changed-file list via the API and **never checks out PR code**, so `pull_request_target`'s elevated context can't run fork code. Same safe pattern as `ai-review`. |
+| `codeql` | `pull_request` | MUST analyze the PR's code, so it stays on `pull_request` (read-only token). On a **fork** PR the analysis runs but the SARIF upload to code-scanning is **skipped** (`upload: never`) — the upload needs `security-events: write`, which forks don't get; findings are in the job log only. Push + weekly cron + same-repo PRs upload normally. (Not `pull_request_target`: that would analyze the trusted BASE ref, duplicating push/cron coverage while green-lighting an unanalyzed fork diff.) |
+| `secret-scan` | `pull_request` | MUST scan the PR's code, so it stays on `pull_request`. The gitleaks scan runs and **still fails the job on a real leak** (the load-bearing gate); on a **fork** PR the SARIF upload is skipped (same `security-events: write` downgrade). Not `pull_request_target` — granting fork PRs write while checking out their code would defeat the safety boundary. |
+
+The common rule: a workflow that must **execute/scan PR code** stays on
+`pull_request` and degrades gracefully on forks (skip only the privileged
+upload); a workflow that only reads **metadata** can safely use
+`pull_request_target` for full write.
+
 ## 6. SHA-pinning external Actions
 
 Every `uses:` line in the shared workflows pins to a **40-char SHA**
