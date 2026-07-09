@@ -7,10 +7,14 @@ canon** library. Auto-loaded every session. Keep it short and current.
 
 The **canonical source** for the CI + governance-workflow rules the
 aidoc-flow workspace shares. Ships reusable workflows (`ai-review`,
-`composition`, `audit-trail-check`, `standards-drift`, etc.),
-canonical config templates (CODEOWNERS, dependabot, branch protection),
-canonical scripts (`pre_push_check.sh`, `apply-standards.sh`), and
-per-language + per-tier rulebooks in `docs/REPO_STANDARDS.md`.
+`composition`, `audit-trail-check`, `standards-drift`, `secret-scan`,
+etc.), canonical config templates (CODEOWNERS, dependabot, branch
+protection), canonical scripts (`pre_push_check.sh`, `apply-standards.sh`,
+`parse-governance-table.py`), governance-file templates
+(`CLAUDE.md.template`, `HANDOFF.md.template`, `DECISIONS.md.template`,
+`ROADMAP.md.template`, `plans-README.md.template`), the ai-review rubric
++ verdict schema at `ai-review/`, and per-language + per-tier rulebooks
+in `docs/REPO_STANDARDS.md`.
 
 Semver-tagged (`ci/vX.Y.Z`); consumers pin via `uses:
 vladm3105/aidoc-flow-ci/.github/workflows/<file>.yml@ci/vX.Y.Z`.
@@ -19,6 +23,26 @@ vladm3105/aidoc-flow-ci/.github/workflows/<file>.yml@ci/vX.Y.Z`.
 customers. Its consumers are the sibling aidoc-flow repos
 (operations, business, framework, iplanic, iplan-runner,
 iplan-standard, engramory, interlog, umbrella).
+
+**Canonical-source disambiguation (workspace has TWO canonical repos —
+do not confuse):**
+
+- **`aidoc-flow-ci` (this repo)** = CI reusable workflows + config
+  templates + canonical scripts + governance-file templates + ai-review
+  rubric + REPO_STANDARDS static-settings + workflow-adoption + tier
+  rulebook. When a consumer
+  cites a canonical CI/workflow/template/script source, point here.
+- **`aidoc-flow-operations`** = OPS-NNNN durable business decisions
+  (governance-PR discipline, auto-merge default, multi-agent review
+  dispatch, circuit-breaker, aidoc-flow-standard scope, audit-trail
+  phrase, project-governance-canon ratification), multi-agent review
+  prompt templates at `.claude/agents/review-prompts/` (per OPS-0067),
+  cross-repo playbooks (T-C, T-C', T-D), autonomy-tiers table, AI-
+  employees team registry. When a consumer cites an OPS-NNNN business
+  decision or multi-agent review prompt template, point at operations.
+
+Full disambiguation table + rule of thumb in `docs/REPO_STANDARDS.md`
+§0 "Canonical source authority".
 
 ## Where things are
 

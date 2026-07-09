@@ -11,6 +11,48 @@ adoption side lives in `WORKFLOWS.md`; the activation checklist for a new
 repo lives in `REPO_ONBOARDING.md`. All three docs together are the
 complete rulebook.
 
+## 0. Canonical source authority (disambiguation)
+
+The aidoc-flow workspace has **two** repos that consumers cite as
+"canonical source" — one for **CI + governance-workflow canon**, and
+one for **OPS-NNNN business decisions + multi-agent review prompt
+templates**. These are DISTINCT concerns; do not confuse them:
+
+| Concern | Canonical source | Read here |
+| --- | --- | --- |
+| CI reusable workflows (ai-review, composition, audit-trail-check, standards-drift, secret-scan, etc.) | **`aidoc-flow-ci`** | `.github/workflows/*.yml` (this repo) |
+| Config templates (CODEOWNERS, dependabot, branch protection, PR template) | **`aidoc-flow-ci`** | `install/templates/*` (this repo) |
+| Canonical scripts (`pre_push_check.sh`, `apply-standards.sh`, `parse-governance-table.py`) | **`aidoc-flow-ci`** | `scripts/pre_push_check.sh` + `install/apply-standards.sh` + `install/parse-governance-table.py` (this repo) |
+| Governance-file templates (`CLAUDE.md.template`, `HANDOFF.md.template`, `DECISIONS.md.template`, `ROADMAP.md.template`, `plans-README.md.template`) | **`aidoc-flow-ci`** | `install/templates/` (this repo) |
+| AI-review rubric + verdict schema | **`aidoc-flow-ci`** | `ai-review/` (this repo) |
+| Static-settings + workflow-adoption + tier rules | **`aidoc-flow-ci`** | THIS FILE (`docs/REPO_STANDARDS.md`) |
+| OPS-NNNN durable business decisions (governance-PR discipline, auto-merge default, multi-agent review dispatch, circuit-breaker, aidoc-flow-standard scope, audit-trail phrase, project-governance-canon ratification) | **`aidoc-flow-operations`** | `ops/DECISIONS.md` |
+| Multi-agent review prompt templates | **`aidoc-flow-operations`** | `.claude/agents/review-prompts/` (per OPS-0067) |
+| Cross-repo playbooks (T-C, T-C', T-D) | **`aidoc-flow-operations`** | `docs/CROSS_REPO_PLAYBOOKS.md` |
+| Autonomy tiers table + AI-employees team registry | **`aidoc-flow-operations`** | `CLAUDE.md` |
+
+**Rule of thumb for consumer docs:** when a consumer's `CLAUDE.md`
+(or DECISIONS entry, or CHANGELOG entry) needs to cite a canonical
+source, ask: is this about CI, workflows, templates, scripts, static
+settings, or governance-file shape? → `aidoc-flow-ci`. Is it about an
+OPS-NNNN business decision, multi-agent review prompt templates,
+cross-repo playbooks, autonomy tiers, or AI-employees registry? →
+`aidoc-flow-operations`.
+
+**Historical note:** `IPLAN-0014_public-ci-actions-and-autofix.md`
+(lines 13, 18, 57) authored BEFORE `aidoc-flow-ci` was created uses
+"canonical template in operations" for CI concerns; that reflects the
+pre-2026-06 layout where `operations/templates/` was the temporary home.
+`IPLAN-0017-CHARTER_aidoc-flow-ci.md` is the migration doc that MOVED
+those templates to `aidoc-flow-ci` — its "port operations Stage-1
+designs as canonical defaults" language (line 171) reflects that
+transition, not a pre-`aidoc-flow-ci` canon assignment. For the
+AI-review rubric specifically, `operations/templates/ai-review/` was
+the pre-2026-06 vendoring source; per IPLAN-0022 it now lives at
+`aidoc-flow-ci/ai-review/`, with the reusable `ai-review.yml`
+fetching it at the consumer's pinned tag. Historical text is not
+back-annotated — read it in its temporal context.
+
 ## 1. Tier taxonomy (6 tiers)
 
 Every workspace repo belongs to exactly one tier. Tier drives every

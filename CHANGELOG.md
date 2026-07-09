@@ -5,6 +5,46 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — Canonical source authority disambiguation (REPO_STANDARDS §0 + CLAUDE.md) (2026-07-08)
+
+Per founder direction 2026-07-08: the aidoc-flow workspace has TWO
+canonical repos — `aidoc-flow-ci` for CI/canon-workflow/template/script
+concerns + `aidoc-flow-operations` for OPS-NNNN business decisions +
+multi-agent-review prompt templates + cross-repo playbooks. To avoid
+future confusion (consumers citing operations when they should cite
+aidoc-flow-ci or vice versa), add an explicit disambiguation table +
+rule-of-thumb.
+
+Changes:
+
+- **`docs/REPO_STANDARDS.md`** — new §0 "Canonical source authority
+  (disambiguation)" section at the top of the rulebook (before §1
+  tier taxonomy). Includes:
+  - A 10-row table splitting concerns between aidoc-flow-ci vs.
+    aidoc-flow-operations by concern (CI reusable workflows, config
+    templates, scripts, governance-file templates, ai-review rubric,
+    static-settings rulebook vs. OPS-NNNN decisions, prompt templates,
+    cross-repo playbooks, autonomy tiers table).
+  - A rule-of-thumb for consumer docs (CI/workflow → aidoc-flow-ci;
+    OPS-NNNN business decisions → operations).
+  - A historical note explaining pre-2026-06 references to
+    "operations canonical templates" (in IPLAN-0014, IPLAN-0017-CHARTER)
+    reflect the pre-aidoc-flow-ci layout.
+- **`CLAUDE.md`** — expanded `## What this repo is` to explicitly
+  enumerate the surfaces this repo ships as canonical, plus a
+  disambiguation callout pointing at REPO_STANDARDS §0 for the
+  full split.
+
+**2 surfaces** (REPO_STANDARDS + CLAUDE.md) + CHANGELOG. OPS-0061
+Rule 1 compliant.
+
+Effect: consumer PR authors, DECISIONS entries, CHANGELOG entries,
+and generated content (via ai-review + rubric fetches) get an
+unambiguous canonical-source pointer for both concerns. No consumer-
+side changes required.
+
+Multi-agent self-review per OPS-0065 (code-reviewer + documentation-specialist parallel dispatch): approved after 1 fold cycle addressing 1 MEDIUM (IPLAN-0017-CHARTER attribution loose — CHARTER is the migration doc, not pre-aidoc-flow-ci; historical note rewritten to distinguish IPLAN-0014 canonical-in-operations from IPLAN-0017-CHARTER migration language; IPLAN-0022 ai-review-vendoring source also called out per code-reviewer) + 6 LOW (scripts/ + install/ path imprecision — expanded to per-script explicit paths; slash-notation in template list — expanded to comma-separated; CLAUDE.md static-settings scope drift — expanded to match §0 row 6; historical note attribution — reworded with line-specific citations; rule-of-thumb omissions — added autonomy tiers + AI-employees registry to operations clause; TBD → filled)
+
 ### Changed — ai-review rubric: repo-aware doc-coverage + hash-count discipline (2026-07-08)
 
 Two false-positive classes observed on business `#41` and iplanic `#234`:
