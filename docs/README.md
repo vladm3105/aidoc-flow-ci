@@ -5,7 +5,7 @@ docs cover consumer-facing intro, install, and release notes:
 
 | Doc | Scope |
 | --- | --- |
-| [`../README.md`](../README.md) | Consumer-facing intro: what ships, how to install, override modes, v1.0.0 known limitations |
+| [`../README.md`](../README.md) | Consumer-facing intro: what ships, how to install, override modes, drift detection |
 | [`../install/README.md`](../install/README.md) | `install/install.sh` usage + next steps |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | Release notes per `ci/vX.Y.Z` tag |
 
@@ -22,28 +22,23 @@ This `docs/` tree covers reference + design topics.
 | [`security.md`](security.md) | Threat model, trust boundaries, fork-PR handling, secrets model, `pull_request_target` rationale, SHA-pinning, layered secret-scan defense |
 | [`overrides.md`](overrides.md) | The 3 override modes (parameter / full replacement / custom workflow) with concrete examples per mode; what you cannot do; conflict resolution; examples in the wild |
 | [`runners.md`](runners.md) | How to register self-hosted runner pools with the right labels; reference image (`aidoc-flow-runner:latest`) provisioning; per-origin cost/latency/CLI/fork-safety tradeoffs; scaling + adding new origins |
-| [`architecture.md`](architecture.md) | How the pieces fit together: reusable-workflow model; the 11 shared workflows; trust + verdict flow (ai-review + composition); per-repo policy surfaces; versioning + tag scheme |
-| [`WORKFLOWS.md`](WORKFLOWS.md) | **Workflow registry** — canonical enumeration of all 11 reusable workflows, per-repo applicability matrix, per-workflow skip-guidance, adoption sequencing for new repos, current pin state. Source-of-truth for CI-library capabilities. |
+| [`architecture.md`](architecture.md) | How the pieces fit together: reusable-workflow model; the 12 shared workflows; trust + verdict flow (ai-review + composition); per-repo policy surfaces; versioning + tag scheme |
+| [`WORKFLOWS.md`](WORKFLOWS.md) | **Workflow registry** — canonical enumeration of all 12 reusable workflows, per-repo applicability matrix, per-workflow skip-guidance, adoption sequencing for new repos, current pin state. Source-of-truth for CI-library capabilities. |
 | [`REPO_STANDARDS.md`](REPO_STANDARDS.md) | **Repo standards canon** — the static-settings rulebook for every workspace repo. 6-tier taxonomy (governance / product / ops-private / umbrella / bootstrap / paused) drives per-tier requirements for branch protection, GitHub security settings, labels, dependabot, CODEOWNERS, PR template, Actions permissions, merge/cleanup settings, `.gitignore`/`.gitattributes`. Companion to `WORKFLOWS.md` (workflow-side compliance) + `aidoc-flow-operations/docs/REPO_ONBOARDING.md` (CI activation). Per PLAN-001. |
 
 ## Planned (drafted on demand, not preemptively)
 
-These topics will get their own focused docs as concrete needs surface
-(typically: a real consumer question, an incident, or a new release
-that motivates the page). Drafting all 5 preemptively risks
-documenting hypothetical patterns instead of real usage.
-
-| Planned doc | Scope | Trigger |
-| --- | --- | --- |
-| `docs/architecture.md` | How `ai-review.yml` + `composition.yml` work together; trust gate; job dependencies; reusable-workflow pattern | First consumer asks "how does this work end-to-end" |
-| `docs/runners.md` | How to register a self-hosted runner pool with the right labels; reference image (`aidoc-flow-runner:latest`) provisioning; per-origin cost / visibility tradeoffs | Founder onboards a second self-hosted pool, OR a new origin (Azure / AWS / Fargate) joins |
-| `docs/overrides.md` | The 3 override modes (parameter / full replacement / custom workflow) — concrete examples per mode | First consumer asks how to customize for their case |
-| `docs/security.md` | Trust gate semantics; fork-PR handling; secret model; `pull_request_target` vs `pull_request` choice; threat model | Security review by a consumer, OR an incident |
-| `docs/migration.md` | v1.0.0 → v1.0.1 migration; v1.0.X → v1.1.0 (when MINOR ships) | When v1.0.1 ships |
+New docs get drafted as concrete needs surface (a real consumer
+question, an incident, or a release that motivates the page) rather
+than preemptively — so we document real usage, not hypothetical
+patterns. All previously-listed planned docs (`architecture`, `runners`,
+`overrides`, `security`) now exist under "Available now". No docs are
+currently queued; a per-release migration guide will be added if/when a
+MAJOR (`ci/v2.0.0`) ships with breaking changes.
 
 ## How to contribute a new doc
 
-1. Pick a topic from "Planned" or propose a new one
+1. Propose a topic (a real need, not a hypothetical)
 2. Create `docs/<topic>.md` (one topic per file; short focused docs
    beat omnibus docs)
 3. Add a row to "Available now" above
