@@ -5,6 +5,48 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — ai-review rubric: repo-aware doc-coverage + hash-count discipline (2026-07-08)
+
+Two false-positive classes observed on business `#41` and iplanic `#234`:
+
+1. **Business "missing CHANGELOG" false-positive** — the rubric's
+   Doc-coverage rule required CHANGELOG updates on every substantive
+   workflow change, but business has NO `CHANGELOG.md` at root by
+   explicit policy (its own CLAUDE.md declares DECISIONS + git commits
+   as the changelog). The rule shipped as workspace canon but was
+   written FOR operations only.
+2. **Iplanic "SHA256 is 63 chars" false-positive** — pure Claude
+   counting error. The actual value is 64 chars (verified via Python);
+   business's Secret scan already passed with the identical checksum.
+
+Rubric changes:
+
+- **`ai-review/review-prompt.md` §"Workspace-canon BLOCK rules"** —
+  renamed from `Repo-specific BLOCK rules (operations — docs/governance)`
+  to reflect the workspace-canon scope. Added an intro paragraph
+  clarifying that path-based rules are gated on the consumer
+  actually having the file (so consumers like business that
+  self-declare no-CHANGELOG policy are exempt).
+- **`ai-review/review-prompt.md` §"Doc-coverage rule"** — added a
+  **precondition**: rule DOES NOT APPLY if consumer has no
+  `CHANGELOG.md` at repo root. Explicit "do NOT flag
+  missing-CHANGELOG" + "do NOT synthesize should-add-CHANGELOG
+  recommendation" instructions.
+- **`ai-review/review-prompt.md` §"Verification discipline for length
+  / count / checksum claims"** (NEW section) — instructs the reviewer
+  to recount before flagging quantitative claims about hash lengths,
+  character counts, etc. Lists well-known constants (SHA-256 = 64
+  hex, SHA-1 = 40, MD5 = 32, UUID = 36/32) to anchor the counting.
+  If uncertain after recounting → `low` advisory, not `medium` block.
+
+**2 surfaces** (rubric + this CHANGELOG entry). Rule 1 compliant.
+
+Rollout: effective immediately — consumers fetch the rubric from
+`aidoc-flow-ci@<pinned-tag>` per IPLAN-0022, so this fix propagates
+once consumers re-run ai-review or bump their pin.
+
+Multi-agent self-review per OPS-0065 (code-reviewer + documentation-specialist parallel dispatch): approved after 1 fold cycle addressing 3 MEDIUM (precondition needs explicit "verify by listing the file" language — both agents; anti-hallucination clause inverted trust ordering ≤2-char diffs defer to constant per docs-specialist; TBD → filled) + 3 LOW (Always-required line scope clarified per both agents; DECISIONS-substitute clause dropped per code-reviewer + docs-specialist; verification scope broadened to non-hash quantitative claims; "substantive" qualifier added to CHANGELOG rationale). No load-bearing risk observed for CHANGELOG-having repos.
+
 ### Changed — Parser extract_path handles §N + #anchor section-suffix (2026-07-08)
 
 Per business Wave 2b review: `docs/STARTUP_STRATEGY.md §8` cell in
