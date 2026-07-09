@@ -25,14 +25,22 @@ Pre-prod hardening toward the company-default CI standard (per
   normalized to `@ci/v1.7.0`.
 - **Docs**: README + install/README rewritten to reality; `LABELS.md`
   16-label parity; NEW `docs/REVIEWER_APP_ONBOARDING.md` +
-  `docs/BRANCH_PROTECTION.md`; `multi-project-guide` §8 + PLAYBOOK fixes.
+  `docs/BRANCH_PROTECTION.md`; `multi-project-guide` §8 + PLAYBOOK fixes;
+  `overrides.md` drift-check claim corrected (`diff`-based, param overrides
+  ARE flagged) + stale examples reframed; `docs/README.md` 11→12 workflows
+  + stale "Planned" section gutted; `local-pre-push.md` §8 (dropped "not yet
+  available" + corrected the CI-gate exemption logic — it diverges from the
+  local hook for spoof-resistance); `runners.md` external-adopter callout
+  (`runner-self`/reference image are operations infra; adopters use
+  `ubuntu-latest` or build their own) + `ci/v1.0.1`→`ci/v1.0.2` JIT-install
+  consistency.
 - **Governance**: HANDOFF refreshed; `DECISIONS.md` CI-0004 (workflow →
   OPS-NNNN delegation table); PLAN-002 → SHIPPED; this CHANGELOG dedup +
   staging header; `plans/FRAMEWORK-TODO.md` (FT-1..FT-4).
 
-PRs #82 (plan) + #83/#84/#85/#86/#87 + this. The correctness / security /
-de-brand / update-path slices (PLAN-004 B–E) land before the `ci/v1.7.0`
-tag cut.
+PRs #82 (plan) + #83/#84/#85/#86/#87/#88/#89/#90 (A1–A6). The correctness /
+security / de-brand / update-path slices (PLAN-004 B–E) land before the
+`ci/v1.7.0` tag cut.
 
 ### Added — REPO_STANDARDS §17 auto-merge canon + canonical caller templates (2026-07-08)
 
