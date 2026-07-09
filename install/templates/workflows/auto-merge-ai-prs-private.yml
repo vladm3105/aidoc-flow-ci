@@ -1,0 +1,32 @@
+# Caller for vladm3105/aidoc-flow-ci/.github/workflows/auto-merge-ai-prs.yml.
+# PRIVATE consumer variant — uses self-hosted ci-ephemeral runners.
+# Pinned at @ci/v1.5.1 per IPLAN-0030 P3 rollout.
+#
+# See the -public.yml sibling for narrative on trigger architecture +
+# App-token requirements. The only difference is runner_labels.
+name: auto-merge-ai-prs
+
+on:
+  workflow_run:
+    workflows: ["ai-review", "composition"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to attempt re-arm on (positive integer required)"
+        type: string
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  call:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/auto-merge-ai-prs.yml@ci/v1.5.1
+    with:
+      pr_number: ${{ github.event.workflow_run.pull_requests[0].number || inputs.pr_number || '' }}
+      runner_labels: '["self-hosted", "aidoc", "ci-ephemeral"]'
+    secrets: inherit  # pragma: allowlist secret
