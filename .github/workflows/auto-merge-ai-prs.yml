@@ -92,7 +92,7 @@ jobs:
         id: app_token
         if: ${{ inputs.pr_number != '' && env.APP_KEY_PRESENT == '1' }}
         continue-on-error: true
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
         with:
           app-id: ${{ secrets.APP_REVIEWER_1_ID }}
           private-key: ${{ secrets.APP_REVIEWER_1_KEY }}

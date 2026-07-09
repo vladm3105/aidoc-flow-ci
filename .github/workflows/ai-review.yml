@@ -103,7 +103,7 @@ jobs:
       # fixes that. Token: scoped read-only PAT (AI_REVIEW_TOKEN, cross-repo PRIVATE) →
       # GITHUB_TOKEN (sufficient when operations reviews its own PRs).
       - name: Checkout trust allowlist (operations@main)
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: vladm3105/aidoc-flow-operations
           ref: main
@@ -377,6 +377,13 @@ jobs:
           codex --version
           echo "::endgroup::"
           echo "::group::Install claude@${CLAUDE_VERSION}"
+          # Accepted supply-chain risk (sec M1): the claude installer is fetched
+          # via `curl | bash` with no checksum gate. Mitigations: TLS + the
+          # Anthropic-owned host (claude.ai) + version-pinned (`bash -s
+          # ${CLAUDE_VERSION}`). Anthropic publishes no per-version checksum to
+          # verify against, so this is documented-and-accepted rather than
+          # checksum-gated; it runs only on ubuntu-latest (self-hosted pools
+          # pre-bake the CLI, so they never hit this path).
           curl -fsSL https://claude.ai/install.sh | bash -s "${CLAUDE_VERSION}"
           # Native installer drops binary at ~/.local/bin; not on default PATH.
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
@@ -508,7 +515,7 @@ jobs:
         id: app_token
         if: ${{ env.SKIP_REVIEW != '1' && env.APP_KEY_PRESENT == '1' }}
         continue-on-error: true
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
         with:
           app-id: ${{ secrets.APP_REVIEWER_1_ID }}
           private-key: ${{ secrets.APP_REVIEWER_1_KEY }}
