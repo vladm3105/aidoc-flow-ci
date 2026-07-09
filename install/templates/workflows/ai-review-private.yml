@@ -11,4 +11,11 @@ jobs:
       reviewer: codex
       runner_labels_routine: '"runner-self"'
       runner_labels_review: '"runner-self"'
+      # External adopters: point the trust config at YOUR ops/config repo
+      # (holds `.github/ai-review/config.json`). Defaults to
+      # vladm3105/aidoc-flow-operations@main.
+      # trust_config_repo: your-org/your-ops-repo
+      # trust_config_ref: main
+      # NOTE: this override does NOT yet reach the composition gate, which reads
+      # the consumer repo's own .github/ai-review/config.json@main (FT-6).
     secrets: inherit  # pragma: allowlist secret

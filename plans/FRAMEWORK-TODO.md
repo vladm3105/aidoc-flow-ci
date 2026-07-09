@@ -83,3 +83,43 @@ its commit range → the entries in that range), promote each inline-tagged
 `### … ci/vX.Y.Z …` to `## ci/vX.Y.Z — <date>`, and assign the untagged
 doc-only entries to the release whose commit range contains them. Verify no
 entry is dropped or duplicated (line-count + entry-count before/after).
+
+### FT-5 — `standards-drift` can't verify branch-protection / actions-permissions (needs `administration: read`)
+
+**Found:** 2026-07-09, PLAN-004 C1 review.
+**Surface:** `.github/workflows/standards-drift.yml` job grants `contents: read`;
+`sync/check-standards-drift.sh` makes `gh api` reads of `branches/*/protection`,
+`actions/permissions*`, and repo settings — which need `administration: read`
+(branch-protection needs admin). With only `contents: read` those calls
+`warn_uncheckable`-skip, so the drift check emits `::warning::cannot check …`
+instead of actually verifying those surfaces.
+**Effect:** the scheduled drift check silently does NOT catch branch-protection
+or actions-permissions drift — the exact settings PLAN-001 canon governs.
+**Pre-existing** (not introduced by C1's `permissions: {}` addition).
+**Fix sketch:** add `administration: read` (and `actions: read`) to the drift
+job's `permissions:` so those checks run instead of warn-skipping. Confirm the
+GITHUB_TOKEN can read another repo's branch protection, or document that it
+requires a PAT/App token with admin:read for cross-repo drift.
+
+### FT-6 — trust-config source inconsistency: `composition` reads `$GH_REPO@main`, ai-review/auto-merge read `trust_config_repo`
+
+**Found:** 2026-07-09, PLAN-004 D1 (trust-root parameterization).
+**Surface:** after D1, `ai-review.yml` + `auto-merge-ai-prs.yml` read the trust
+config (`.trust.ai_review` + `auto_merge.repos`) from `trust_config_repo` @
+`trust_config_ref` (default `vladm3105/aidoc-flow-operations@main`). But
+`composition.yml:156` reads `.trust.ai_review` from
+`repos/$GH_REPO/contents/.github/ai-review/config.json?ref=main` — the
+CONSUMER's own repo, hardcoded `?ref=main`.
+**Effect:** the three gates can consult DIFFERENT allowlists. For aidoc-flow
+(operations' central config vs a consumer's minimal `["vladm3105"]`) they may
+diverge, so composition could exempt/enforce an author differently than
+ai-review routed them. Not de-branded by D1 because composition has no hardcoded
+operations ref (it's already consumer-relative), and switching it to
+`trust_config_repo` is a BEHAVIOR change on a live security gate — deferred to a
+deliberate decision, not a rushed breaking PR.
+**Fix sketch:** decide the canonical trust-source model — either (a) composition
+also reads `trust_config_repo`@`trust_config_ref` (aligning all three; a
+behavior change for aidoc-flow that must be validated against the live gate), or
+(b) document that composition intentionally uses the consumer's own config and
+ai-review/auto-merge use the central one, with the reason. Reconcile + add the
+`trust_config_repo`/`trust_config_ref` inputs to composition either way.
