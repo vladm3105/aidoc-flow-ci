@@ -1,8 +1,10 @@
 # labeler.yml — reusable workflow for path-based PR labeling.
 #
 # Reads the CONSUMER repo's `.github/labeler.yml` config (path -> label
-# map in `actions/labeler` v5+ format) and applies the labels on every
-# `pull_request`. Labels must already exist in the consumer repo;
+# map in `actions/labeler` v5+ format) and applies the labels on each PR
+# event (the caller defines the trigger — the shipped caller template uses
+# `pull_request_target` for fork-safe write; see docs/security.md §5).
+# Labels must already exist in the consumer repo;
 # `install/install.sh` bootstraps the canonical set (see
 # `install/templates/labels.json` + `LABELS.md`).
 #
