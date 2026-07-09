@@ -36,6 +36,8 @@ TARGETS=(
   "install/README.md"
   "docs/multi-project-guide.md"
   "docs/PLAYBOOK_governance-canon-rollout.md"
+  "docs/REVIEWER_APP_ONBOARDING.md"
+  "docs/BRANCH_PROTECTION.md"
 )
 # Every shipped caller template pins aidoc-flow-ci reusables — keep them all at
 # the current release tag so a fresh consumer install gets a coherent pin set.

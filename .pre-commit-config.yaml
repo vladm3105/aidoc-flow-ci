@@ -39,5 +39,5 @@ repos:
     name: docs install refs match VERSION (PLAN-004 BL-4)
     entry: scripts/sync-version-refs.sh --check
     language: script
-    files: '^(VERSION|README\.md|install/README\.md|docs/(multi-project-guide|PLAYBOOK_governance-canon-rollout)\.md|install/templates/workflows/.*\.yml)$'
+    files: '^(VERSION|README\.md|install/README\.md|docs/(multi-project-guide|PLAYBOOK_governance-canon-rollout|REVIEWER_APP_ONBOARDING|BRANCH_PROTECTION)\.md|install/templates/workflows/.*\.yml)$'
     pass_filenames: false
