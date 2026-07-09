@@ -2,8 +2,8 @@
 
 This document defines the label conventions used by `aidoc-flow-ci`
 across **two distinct namespaces**: GitHub **PR labels** (applied by
-the ai-reviewer workflow) and GitHub **runner labels** (used in
-`runs-on:` to select runner pools).
+the ai-reviewer + labeler workflows) and GitHub **runner labels** (used
+in `runs-on:` to select runner pools).
 
 GitHub enforces different rules per namespace:
 
@@ -15,75 +15,101 @@ GitHub enforces different rules per namespace:
 The two namespaces therefore use different separator conventions
 intentionally. Don't try to unify them; the constraints differ.
 
-## 1. PR labels — canonical taxonomy (5)
+## PR labels — the canonical 16
 
-Applied by the reusable `ai-review.yml` workflow:
+`install/templates/labels.json` is the canonical set — **16 labels** in
+three functional groups. `install/install.sh` creates them idempotently
+on a consumer repo at bootstrap (fail-loud; prefetches existing, only
+adds missing, never removes drift). The groups:
 
-| Label | Color | Type | When applied |
+### 1. State / control labels (6)
+
+Applied by the reusable `ai-review.yml` + `audit-trail-check.yml`
+workflows (or by a human, for the two `skip-*` directives).
+
+| Label | Color | Kind | Meaning |
 |---|---|---|---|
-| `ai:review-passed` | green (`0e8a16`) | state — reviewer verdict | Reviewer App approved the PR |
-| `ai:review-changes` | red (`d93f0b`) | state — reviewer verdict | Reviewer App requested changes |
-| `ai:human-review-required` | yellow (`fbca04`) | state — trust-gate routing | Trust gate skipped the heavy reviewer (fork / non-allowlisted author / governance-locked path) |
-| `ai:autofix-applied` | blue (`1d76db`) | action — fixer record | The autofix fixer (IPLAN-0014; default-off) applied a patch on this PR |
-| `skip-ai-review` | purple (`5319e7`) | **control / directive** | Suppresses the reviewer on subsequent pushes; composition carries forward |
+| `ai:review-passed` | `0e8a16` | state (canon §5.1) | Reviewer App APPROVED the PR |
+| `ai:review-changes` | `d93f0b` | state (canon §5.1) | Reviewer App requested CHANGES |
+| `ai:human-review-required` | `fbca04` | state (canon §5.1) | Fork PR or non-allowlisted author — trust gate routed to human review |
+| `ai:autofix-applied` | `1d76db` | action (IPLAN-0014; optional) | The autofix fixer applied a patch on this PR (not a canon §5.1 required label) |
+| `skip-ai-review` | `5319e7` | **control / directive** | Human override: suppress the reviewer on subsequent pushes; `composition` carries the prior approval forward |
+| `skip-audit-trail` | `d876e3` | **control / directive** | Two-signal override for the OPS-0069 audit-trail CI check — MUST be paired with `[skip-audit-trail]` in a commit body (per REPO_STANDARDS §14.2 / PLAN-002 §4.6). One signal alone does not skip. |
 
-### Naming convention
+> **Note on `skip-ai-review` semantics.** Its behavior is
+> **suppress-and-carry-forward**: with the label present, `ai-review.yml`
+> does not re-run the heavy reviewer on subsequent pushes and
+> `composition.yml` carries the prior APPROVED verdict forward so the
+> gate stays green. Apply it **only by hand** after a clean review, for a
+> trivial follow-up that doesn't change reviewed code — auto-applying
+> would defeat the gate. (The terse `labels.json` description is being
+> reconciled to this wording.)
 
-Two sub-conventions, used intentionally to mark different label
-purposes at a glance:
+### 2. Diff-class labels (8) — auto-applied by `labeler.yml`
 
-- **`ai:<noun>`** for AI-workflow **state** or **action-happened** labels
-  (4 of the 5)
-- **`<verb>-<noun>`** (no prefix) for user-facing **control / directive**
-  labels (1: `skip-ai-review`)
+The OPS-0065 diff-class labels. The reusable `labeler.yml`
+(`actions/labeler@v6`) applies them from the file paths a PR touches,
+per the consumer's `.github/labeler.yml`. The **canonical path→label map
+and diff-class mapping live in `docs/REPO_STANDARDS.md` §5.2** — that is
+the source of truth; the table below is the label reference.
 
-Reading `ai:review-passed` vs `skip-ai-review` makes their roles
-obvious without a separate legend: colon-form is "the workflow says
-…", hyphen-form is "the user wants …".
+| Label | Color | Applied when the PR touches |
+|---|---|---|
+| `governance` | `8b6914` | `CLAUDE.md`, `ops/DECISIONS.md`, `.claude/agents/`, `.claude/skills/`, `.github/ai-review/` |
+| `docs` | `0075ca` | `docs/`, `README.md`, `CHANGELOG.md`, `ops/HANDOFF.md` |
+| `workflows` | `5319e7` | `.github/workflows/` |
+| `scripts` | `c5def5` | `scripts/` |
+| `agents` | `d4c5f9` | `.claude/agents/`, `.claude/skills/`, `.claude/workflows/` |
+| `tests` | `bfd4f2` | `tests/` |
+| `config` | `fef2c0` | `Dockerfile`, `pyproject.toml`, `requirements*.txt`, `package*.json`, `uv.lock`, `.pre-commit-config.yaml` |
+| `plans` | `e99695` | `ops/iplans/IPLAN-*.md`, `plans/PLAN-*.md` |
 
-### Canonical source-of-truth
+These are **unprefixed single words** — deliberately NOT `area:`-prefixed.
+They map 1:1 to the OPS-0065 diff classes so a reviewer dispatching
+diff-class agents can read the applied labels directly.
 
-`install/templates/labels.json` is the canonical 5-label set. It's
-the source for `install/install.sh`, which idempotently creates the
-labels on a consumer repo at bootstrap.
+### 3. Area labels (2) — canon §5.3
 
-### Adding a new PR label
+| Label | Color | Applied when |
+|---|---|---|
+| `dependencies` | `0366d6` | Dependabot PR (matches Dependabot's own convention) |
+| `security` | `b60205` | Security-tagged issue or PR |
 
-1. Edit `install/templates/labels.json` to add the new entry
-   (`{name, color, description}`).
-2. Document the label's purpose in this file (section 1's table +
-   the appropriate convention).
-3. Re-tag `aidoc-flow-ci` per `CHANGELOG.md` semver rules (a new
-   label is additive; PATCH bump).
-4. Consumers re-run `install/install.sh` to pick up the new label.
-   The install loop is idempotent + fail-loud (PR #116 fix): it
-   prefetches existing labels and only creates missing ones; real
-   failures (auth/permission/network) exit nonzero rather than
-   silently treating them as duplicates.
+### Naming conventions across the PR-label set
+
+Three forms, each marking a different label purpose at a glance:
+
+| Form | Used by | Why this form |
+|---|---|---|
+| `ai:<noun>` (colon, no space) | §1 AI **state** labels (programmatic) | Tight prefix the workflow code parses/matches; no-space avoids quoted-string label handling in shell loops |
+| `<verb>-<noun>` (hyphenated, no prefix) | §1 `skip-ai-review`, `skip-audit-trail` (human directives) | Reads like a command; not part of a namespace |
+| `<noun>` (unprefixed single word) | §2 diff-class + §3 area labels (semantic, path- or source-driven) | Maps 1:1 to an OPS-0065 diff class / a well-known area; kept short for the PR sidebar |
+
+**Do NOT mix forms:** a state label MUST use `ai:<noun>`; a diff-class
+label MUST be the bare word from §2. Consistency within each form is the
+discipline.
+
+### Canonical source-of-truth + adding a label
+
+`install/templates/labels.json` is canonical (name/color/description);
+`docs/REPO_STANDARDS.md` §5.2 owns the diff-class path map. To add one:
+
+1. Edit `install/templates/labels.json` (`{name, color, description}`).
+2. If it's a diff-class label, update `docs/REPO_STANDARDS.md` §5.2's
+   path→label map; otherwise document it in the relevant table above.
+3. PATCH-tag `aidoc-flow-ci` (a new label is additive) per `CHANGELOG.md`
+   semver rules.
+4. Consumers re-run `install/install.sh` to pick it up (idempotent +
+   fail-loud, PR #116 fix — prefetches existing, adds only missing, exits
+   nonzero on real auth/permission/network failures).
 
 ### Live drift from canonical (allowed, must be intentional)
 
-A consumer repo may have labels not in `labels.json` (e.g.,
-operations has `ai:review-escalated` + `ai:review-human-cleared`
-not in the canonical taxonomy). The `install.sh` script does NOT
-remove drifted labels — it only adds missing canonical ones.
-
-To reconcile drift on a consumer:
-
-- **If the extra labels are useful** — add them to
-  `install/templates/labels.json` and PATCH-tag a new release.
-- **If they're stale** — delete via `gh label delete <name> -R <repo>`.
-
-### `skip-ai-review` semantics
-
-- Applied **by a human** to a PR to suppress further AI review on
-  subsequent pushes (e.g., a trivial doc-only follow-up after the
-  reviewer has already approved an earlier head).
-- The reusable `composition.yml` workflow's body checks for this
-  label and carries forward the prior approval — `composition`
-  stays green even though `ai-review` skipped.
-- **Never apply automatically.** This is a deliberate human
-  override; auto-applying would defeat the gate.
+A consumer may carry labels not in `labels.json` (e.g., operations has
+`ai:review-escalated` + `ai:review-human-cleared`). `install.sh` does NOT
+remove drifted labels — only adds missing canonical ones. To reconcile:
+add useful extras to `labels.json` + PATCH-tag, or delete stale ones via
+`gh label delete <name> -R <repo>`.
 
 ## 2. Runner labels — per-origin convention
 
@@ -160,77 +186,7 @@ caller workflow (`with:` block).
    (additive — no consumer template changes needed unless the
    default routing rule changes).
 
-## 3. Area labels — auto-applied by the labeler workflow (`area: <value>`)
-
-Third PR-label namespace, applied by the reusable `labeler.yml`
-workflow (`actions/labeler@v6`) based on which file paths a PR
-touches. Consumer provides a per-repo `.github/labeler.yml` mapping
-paths to label names; the workflow applies them.
-
-Canonical area labels in `install/templates/labels.json` (added by
-`install/install.sh` to consumer repos at bootstrap):
-
-| Label | Color | Typical when applied |
-|---|---|---|
-| `area: ci` | dark-gray (`5319e7`) | PR touches `.github/workflows/`, `.github/labeler.yml`, `.pre-commit-config.yaml`, or other CI configs |
-| `area: governance` | dark-yellow (`8b6914`) | PR touches `CLAUDE.md`, `DECISIONS.md`, `IPLAN-*.md`, `governance/`, or supersedes a locked decision |
-| `area: deps` | dark-blue (`0366d6`) | PR touches `pyproject.toml`, `requirements*.txt`, `package.json`, `package-lock.json`, `Gemfile`, or other dependency manifests |
-| `area: tests` | light-blue (`bfe5bf`) | PR touches `tests/`, `test/`, or `*_test.go` / `*.test.ts` / similar test files |
-
-### Naming convention — `area: <value>` (colon + SPACE)
-
-Area labels use **colon-space** to match GitHub's built-in label
-style (`good first issue`, `help wanted`, `wontfix`) — most
-readable for human consumers reading the PR sidebar. This is
-**intentionally different** from the `ai:<value>` (colon-NO-space)
-convention used by PR-state labels in §1:
-
-| Sub-convention | Used by | Why this form |
-|---|---|---|
-| `ai:<value>` (colon-no-space) | §1 PR-state labels (programmatic, applied by ai-review workflow) | Tight prefix because the workflow code parses + matches them; no-space avoids the workflow needing to handle quoted-string label names in shell loops |
-| `area: <value>` (colon-SPACE) | §3 area labels (semantic, applied by labeler workflow based on paths) | Human-readable; matches GitHub built-in label style; the labeler workflow + actions/labeler@v6 handles quoted YAML keys natively |
-| `<verb>-<noun>` (no prefix, hyphenated) | §1 `skip-ai-review` (user-facing directive) | Reads like a command (verb-noun); no prefix because it's not part of a namespace — it's a one-off control flag |
-
-Three sub-conventions, each justified by its purpose. **Do NOT
-mix:** a state label MUST use `ai:<value>` no-space form; an area
-label MUST use `area: <value>` space form. Consistency within each
-sub-convention is the discipline.
-
-### Interaction with GitHub built-in labels
-
-GitHub auto-creates 9 default labels on every new repo (`bug`,
-`documentation`, `duplicate`, `enhancement`, `good first issue`,
-`help wanted`, `invalid`, `question`, `wontfix`). The canonical
-`area: <value>` labels are **additive** — they don't replace the
-built-ins. A consumer may use `documentation` (GitHub default) AND
-`area: ci` (aidoc-flow-ci canonical) on the same PR.
-
-Common overlaps (consumer picks one or accepts both):
-
-- `documentation` (GitHub) vs `area: docs` (NOT in canonical — we
-  defer to GitHub's built-in for the docs area)
-- `dependencies` (Dependabot convention) vs `area: deps` (canonical)
-  — both are common; consumer's labeler config picks one
-
-### Adding a new area label
-
-Same process as PR-state labels (see §1 "Adding a new PR label"):
-
-1. Edit `install/templates/labels.json` to add the `{name, color, description}` entry
-2. Document the label's purpose in §3's table above + the path mapping it expects
-3. PATCH-tag a new release per `CHANGELOG.md` semver rules
-4. Consumers re-run `install/install.sh` to pick up the new label
-
-### Per-repo `.github/labeler.yml` config
-
-The reusable `labeler.yml` workflow (when shipped) calls
-`actions/labeler@v6`, which reads `.github/labeler.yml` from the
-consumer repo. The config is per-repo because path layouts differ
-across consumers. A starter config will be shipped at
-`install/templates/labeler.yml` for consumers to adopt verbatim or
-customize.
-
-## 4. Branch + commit naming (informal)
+## 3. Branch + commit naming (informal)
 
 Conventional Commits — `<type>(<scope>):` or `<type>:`:
 
@@ -246,33 +202,23 @@ Conventional Commits — `<type>(<scope>):` or `<type>:`:
 Branch naming follows from commit type: `feat/...`, `fix/...`,
 `docs/...`, etc.
 
-## 5. Future label categories (anticipated, not yet adopted)
+## 4. References
 
-If `aidoc-flow-ci` ever needs additional label categories:
-
-- **`ci:<directive>`** for CI-control labels beyond `skip-ai-review`
-  (e.g., `ci:skip-lint` — currently no use case)
-- **`area:<area>`** for area / component labels (consumer-local;
-  not canonical)
-- **`priority:<level>`** for priority labels — GitHub-conventional;
-  consumer-local
-
-These are NOT in the canonical taxonomy today. Add them only with
-a documented use case + PATCH bump per the "Adding a new PR label"
-process above.
-
-## 6. References
-
-- `install/templates/labels.json` — canonical 5-label taxonomy
+- `install/templates/labels.json` — canonical 16-label taxonomy
+  (name/color/description).
+- `docs/REPO_STANDARDS.md` §5.2 — diff-class label path→label map
+  (source of truth for §2 above); §5.3 — area labels.
 - `install/install.sh` — idempotent install + fail-loud creation
-  (handles drift between canonical and existing labels)
-- `.github/workflows/ai-review.yml` — applies the 5 labels per
-  workflow state
+  (handles drift between canonical and existing labels).
+- `.github/workflows/ai-review.yml` — applies the §1 state labels.
+- `.github/workflows/labeler.yml` — applies the §2 diff-class labels.
 - `.github/workflows/composition.yml` — checks `skip-ai-review`
-  for carry-forward semantics
+  for carry-forward semantics.
+- `.github/workflows/audit-trail-check.yml` — honors `skip-audit-trail`
+  (two-signal).
 - Operations governance:
   `aidoc-flow-operations/ops/iplans/IPLAN-0017_unified-ci-flows.md`
   §3.1c (runner-label convention) + §3.3 (PR-label taxonomy);
   `ops/DECISIONS.md` `OPS-0049` (no GitHub-hosted minutes for
-  private repos)
+  private repos).
 - GitHub docs: [About self-hosted runners — security](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners#self-hosted-runner-security)
