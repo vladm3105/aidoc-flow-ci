@@ -50,7 +50,7 @@ label names when talking about a specific image / pool. Example:
 | Label | Origin | What's installed |
 |---|---|---|
 | `runner-self` | Our self-hosted pool | gh + `codex`/`claude` CLI pre-baked + authenticated |
-| `ubuntu-latest` | GitHub-hosted | gh CLI pre-installed; reviewer CLI install at workflow start (`ci/v1.0.1`+) |
+| `ubuntu-latest` | GitHub-hosted | gh CLI pre-installed; reviewer CLI installed at workflow start (`ci/v1.0.2`+) |
 | *(future)* `runner-azure`, `runner-aws`, `runner-fargate` | Other origins (reserved namespace) | Per-provider |
 
 **Constraint** (per [`../LABELS.md`](../LABELS.md) §2): GitHub
@@ -60,9 +60,29 @@ custom names.
 
 ## 2. Reference image — `aidoc-flow-runner:latest`
 
+> **External adopters — this is aidoc-flow-operations infrastructure.**
+> The `runner-self` label, the `aidoc-flow-runner:latest` image, and the
+> `scripts/ci-runner/` build live in `aidoc-flow-operations` and resolve
+> only to the aidoc-flow workspace's own self-hosted pool. A different
+> company/org adopting this CI standard does NOT have access to them. You
+> have two paths:
+>
+> 1. **Use `ubuntu-latest` (recommended default for adopters).** The
+>    reviewer CLI is installed just-in-time at workflow start (`ci/v1.0.2`+),
+>    so no self-hosted infra is needed. Works for public repos and private
+>    repos that have GitHub-hosted Actions minutes. (You still set the
+>    reviewer-auth secret — the JIT-installed CLI needs it to authenticate;
+>    see [`REVIEWER_APP_ONBOARDING.md`](REVIEWER_APP_ONBOARDING.md).)
+> 2. **Build your own self-hosted image** only if you need self-hosted
+>    (e.g., private repos with no GitHub-hosted minutes). Use the
+>    operations `Dockerfile` below as a **template** — it shows exactly
+>    what to bake in (see the table) — build + register your own pool with
+>    your **own** label, and point the caller `runner_labels_*` inputs at
+>    it. Do not expect `runner-self` to resolve outside aidoc-flow.
+
 The reference self-hosted runner image lives in
 [`aidoc-flow-operations/scripts/ci-runner/`](https://github.com/vladm3105/aidoc-flow-operations/tree/main/scripts/ci-runner)
-(`Dockerfile` + `build-image.sh`). It atop
+(`Dockerfile` + `build-image.sh`). It builds atop
 [`ghcr.io/actions/actions-runner:latest`](https://github.com/actions/runner)
 with the following baked in:
 
@@ -121,11 +141,14 @@ registered correctly. Check the runner's labels via
 | Origin | Cost | Latency | CLI availability | Fork-PR safety |
 |---|---|---|---|---|
 | `runner-self` | Fixed (your infrastructure) | Low (warm container; ephemeral spawn ~5-10s) | Pre-baked (gh + codex + claude) | **Trust gate required** for PUBLIC repos (untrusted PR code on self-hosted is GitHub's documented anti-pattern) |
-| `ubuntu-latest` (GitHub-hosted) | Free for PUBLIC; metered for PRIVATE (per OPS-0049 this account has zero GitHub-hosted minutes for PRIVATE) | High (~30-60s VM cold-start) | gh pre-installed; reviewer CLI installed by workflow at start (`ci/v1.0.1`+) | Safe by default (GitHub-isolated VMs; fork PRs sandboxed) |
+| `ubuntu-latest` (GitHub-hosted) | Free for PUBLIC; metered for PRIVATE (per OPS-0049 this account has zero GitHub-hosted minutes for PRIVATE) | High (~30-60s VM cold-start) | gh pre-installed; reviewer CLI installed by workflow at start (`ci/v1.0.2`+) | Safe by default (GitHub-isolated VMs; fork PRs sandboxed) |
 | `runner-azure`/`runner-aws`/etc. | Per-provider | Per-provider | Per-image | Same trust-gate concern as `runner-self` if shared with PUBLIC repos |
 
-**For PRIVATE consumers:** `runner-self` is the practical choice
-(no GitHub-hosted minutes; CLI pre-baked; low latency).
+**For PRIVATE consumers:** a self-hosted pool is the practical choice
+(no GitHub-hosted minutes; CLI pre-baked; low latency). Inside aidoc-flow
+that pool is `runner-self`; **external adopters** substitute their own
+self-hosted label per the §2 callout — `runner-self` resolves only to
+aidoc-flow's pool.
 
 **For PUBLIC consumers:** `ubuntu-latest` is GitHub's documented
 recommendation (no self-hosted-on-public security concern). Slower
