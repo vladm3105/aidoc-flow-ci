@@ -72,7 +72,13 @@ if [ -z "$REPO" ]; then
   exit 0
 fi
 
-# Resolve canon tag (highest semver from pinned workflows, else main).
+# Resolve ONE canon tag to compare this repo's WHOLE-REPO settings (branch
+# protection, repo settings, actions permissions) against. Unlike
+# check-drift.sh (which compares each caller against its OWN pin), the
+# settings here have no per-file pin — they are single canon files — so
+# resolving one tag is correct. Highest-semver is the deliberate frame: on a
+# repo mid-bump, compare settings against the version it is migrating TOWARD.
+# Warning-only + the resolved tag is echoed below, so the operator can judge.
 if [ -n "$CI_TAG_OVERRIDE" ]; then
   CI_TAG="$CI_TAG_OVERRIDE"
 else

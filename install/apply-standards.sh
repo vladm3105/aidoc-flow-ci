@@ -178,9 +178,12 @@ resolve_ci_tag() {
     echo "$CI_TAG_OVERRIDE"; return
   fi
   local pin
-  # sort -Vu picks the highest semver on repos mid-migration between
-  # pins (mixed @ci/v1.4.3 + @ci/v1.5.1 → prefer v1.5.1). ASCII sort
-  # would silently pick the lowest.
+  # Resolve ONE canon tag to apply/compare a coherent settings+config set
+  # from. sort -Vu picks the highest semver on repos mid-migration between
+  # pins (mixed @ci/v1.4.3 + @ci/v1.5.1 → prefer v1.5.1); ASCII sort would
+  # silently pick the lowest. This is a WHOLE-REPO tag (config files have no
+  # per-file pin) — deliberately not per-caller; per-caller workflow drift is
+  # sync/check-drift.sh's job (PLAN-004 PR-A2).
   pin=$(grep -hoE '@ci/v[0-9]+\.[0-9]+\.[0-9]+' .github/workflows/*.yml 2>/dev/null \
         | sort -Vu | tail -1)
   if [ -n "$pin" ]; then

@@ -107,7 +107,7 @@ For each consumer repo in the new project (the project's main
 repo, its sub-libraries, etc.):
 
 ```sh
-bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.0.6/install/install.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.7.0/install/install.sh) \
   <owner>/<consumer-repo> --visibility <public|private>
 ```
 
@@ -189,20 +189,23 @@ The **library** owns:
   every layer (workflow, config, asset) keep the local-wins
   philosophy intact.
 
-## 7. Current state (2026-06-25)
+## 7. Current state
 
 | Project | Status |
 |---|---|
-| **aidoc-flow** (current) | Active. Operations + framework consumers live on `@ci/v1.0.6`. Phase C (iplan-runner, business, iplanic, iplan-standard, web-site, engramory) queued for onboarding. |
+| **aidoc-flow** (current) | Active — the sibling repos consume `aidoc-flow-ci`, each pinning its own `@ci/vX.Y.Z` tag on its own cadence (see [`WORKFLOWS.md`](WORKFLOWS.md) §5 for the current per-repo pins + §2 for the adoption matrix). |
 | Future projects (trading, etc.) | Not yet started. Will adopt this onboarding flow when they begin. |
 
 ## 8. Local pre-push self-check (canonical pattern)
 
-Every consumer should ship `scripts/pre_push_check.sh` that runs
-mechanical linters + a local AI self-review via `claude` CLI on the
-diff vs `origin/main`. The local pass is a **mirror** of CI's
-`ai-review.yml` gate (same rubric); it catches issues earlier so
-CI iteration count drops. CI remains the authoritative merge gate.
+Every consumer ships `scripts/pre_push_check.sh` — the canon pre-push
+hook. It runs **mechanical linters** (markdownlint, yamllint, actionlint,
+shellcheck where present) plus the **OPS-0069 audit-trail phrase check**
+(every push must carry the multi-agent-review marker in a commit body).
+It is **not** an AI review — the local `claude`-CLI self-review was
+removed 2026-07-06; this is a fast mechanical + audit-trail gate that
+catches issues before CI. CI's `ai-review.yml` remains the authoritative
+review + merge gate.
 
 Full pattern + reference implementation + hardening principles:
 [`local-pre-push.md`](local-pre-push.md).

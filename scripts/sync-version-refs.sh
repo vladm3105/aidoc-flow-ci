@@ -27,13 +27,21 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION_FILE="$REPO_ROOT/VERSION"
 
-# Files whose install references track VERSION. PR-A1 scope: README +
-# install/README. PLAN-004 PR-A2 appends docs/multi-project-guide.md +
-# docs/PLAYBOOK_governance-canon-rollout.md.
+# Files whose install/pin references track VERSION.
+#   • docs: raw-URL install commands + CI_TAG= examples
+#   • template callers: the `uses: vladm3105/aidoc-flow-ci/…@ci/vX.Y.Z` pins
+#     (PLAN-004 PR-A2 item 17 — one release tag across every caller template)
 TARGETS=(
   "README.md"
   "install/README.md"
+  "docs/multi-project-guide.md"
+  "docs/PLAYBOOK_governance-canon-rollout.md"
 )
+# Every shipped caller template pins aidoc-flow-ci reusables — keep them all at
+# the current release tag so a fresh consumer install gets a coherent pin set.
+for _t in "$REPO_ROOT"/install/templates/workflows/*.yml; do
+  [ -e "$_t" ] && TARGETS+=("${_t#"$REPO_ROOT"/}")
+done
 
 CHECK_ONLY=0
 [ "${1:-}" = "--check" ] && CHECK_ONLY=1
@@ -60,7 +68,7 @@ fi
 sed_program() {
   cat <<SED
 s#(raw\.githubusercontent\.com/vladm3105/aidoc-flow-ci/)ci/v[0-9]+\.[0-9]+\.[0-9]+#\1${TAG}#g
-s#(vladm3105/aidoc-flow-ci/[^ ]*@)ci/v[0-9]+\.[0-9]+\.[0-9]+#\1${TAG}#g
+s#(vladm3105/aidoc-flow-ci/[^@[:space:]]*@)ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?#\1${TAG}#g
 s#(^|[^A-Za-z0-9_])(CI_TAG=)ci/v[0-9]+\.[0-9]+\.[0-9]+#\1\2${TAG}#g
 SED
 }
