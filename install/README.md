@@ -77,11 +77,11 @@ until the template ships.)
 - **Doesn't add secrets** — the founder adds `APP_REVIEWER_1_ID` /
   `APP_REVIEWER_1_KEY` + the reviewer auth token (`CLAUDE_CODE_OAUTH_TOKEN`
   / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`). See
-  `../docs/REVIEWER_APP_ONBOARDING.md` (forthcoming — ships in PLAN-004 PR-A3).
+  [`../docs/REVIEWER_APP_ONBOARDING.md`](../docs/REVIEWER_APP_ONBOARDING.md).
 - **Doesn't change branch protection** — the required checks
   (`call / ai-review`, `call / composition`, `call / verify`) must be
-  added for the gates to actually enforce. See `../docs/BRANCH_PROTECTION.md`
-  (forthcoming — ships in PLAN-004 PR-A3).
+  added for the gates to actually enforce. See
+  [`../docs/BRANCH_PROTECTION.md`](../docs/BRANCH_PROTECTION.md).
 - **Doesn't install the GitHub App** on the consumer repo (founder, per
   the F5 "only select repositories" blast-radius rule).
 - **Doesn't overwrite existing files** — preserve = local override always
