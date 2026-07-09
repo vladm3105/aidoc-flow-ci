@@ -71,9 +71,9 @@ bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v
 |---|---|---|
 | **Actions allowlist** must include `vladm3105/aidoc-flow-ci/*` | If consumer is in `selected actions` mode, the reusable workflow is blocked → `startup_failure` | [`docs/troubleshooting.md` §13](docs/troubleshooting.md) |
 | **Caller `permissions:` block** if repo-default `workflow_permissions: read` | Reusable can't elevate above caller's grant → `startup_failure` | [`docs/troubleshooting.md` §14](docs/troubleshooting.md) |
-| **Reviewer App + secrets** `APP_REVIEWER_1_ID/KEY` (+ `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) | ai-review needs the reviewer App installed + credentials | See `docs/REVIEWER_APP_ONBOARDING.md` (forthcoming — ships in PLAN-004 PR-A3) |
+| **Reviewer App + secrets** `APP_REVIEWER_1_ID/KEY` (+ `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) | ai-review needs the reviewer App installed + credentials | See [`docs/REVIEWER_APP_ONBOARDING.md`](docs/REVIEWER_APP_ONBOARDING.md) |
 | **Repo variable** `APP_REVIEWER_1_BOT_ID` (after first review) | composition matches App identity by numeric bot id | `gh variable set APP_REVIEWER_1_BOT_ID --repo <consumer> --body "<id>"` |
-| **Branch-protection required checks** | Install runs CI but nothing is enforced until the checks are required | See `docs/BRANCH_PROTECTION.md` (forthcoming — ships in PLAN-004 PR-A3) |
+| **Branch-protection required checks** | Install runs CI but nothing is enforced until the checks are required | See [`docs/BRANCH_PROTECTION.md`](docs/BRANCH_PROTECTION.md) |
 
 See [`install/README.md`](install/README.md) for exactly what the
 installer does (and does not do) + its prerequisites. For the override
