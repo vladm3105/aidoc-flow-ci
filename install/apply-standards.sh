@@ -522,7 +522,7 @@ apply_canon_stripped() {
 apply_labels() {
   [ "$SKIP_LABELS" -eq 1 ] && { echo "  labels: SKIPPED (--skip-labels)"; return 0; }
   echo "  labels: applying from labels.json..."
-  local labels_json created=0 updated=0 name color desc n
+  local labels_json created=0 updated=0 name color desc n enc
   labels_json=$(mktemp)
   APPLY_TMPFILES+=("$labels_json")
   fetch_canon "labels.json" > "$labels_json"
@@ -536,10 +536,17 @@ apply_labels() {
     name=$(jq -r ".[$i].name" "$labels_json")
     color=$(jq -r ".[$i].color" "$labels_json")
     desc=$(jq -r ".[$i].description" "$labels_json")
+    # URL-encode ':' in the label name for the PATH (ai:review-passed →
+    # ai%3Areview-passed). Without this the GET 404s on colon labels, so the
+    # label is treated as missing and re-POSTed every --apply → 422 "already
+    # exists" WARN noise. (corr M1; install.sh sidesteps this by using the
+    # `gh label` subcommands instead of raw `gh api` paths.) Form-field values
+    # (`-f name=…` / `-f new_name=…`) do NOT need this — gh encodes them.
+    enc="${name//:/%3A}"
     # Check if exists (silently — 404 is expected).
-    if gh api "repos/${REPO_LABEL}/labels/${name}" >/dev/null 2>&1; then
+    if gh api "repos/${REPO_LABEL}/labels/${enc}" >/dev/null 2>&1; then
       # Update (name+color+description).
-      if gh api -X PATCH "repos/${REPO_LABEL}/labels/${name}" \
+      if gh api -X PATCH "repos/${REPO_LABEL}/labels/${enc}" \
            -f "new_name=${name}" -f "color=${color}" -f "description=${desc}" \
            >/dev/null 2>&1; then
         updated=$((updated + 1))

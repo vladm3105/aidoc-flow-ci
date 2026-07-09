@@ -578,6 +578,59 @@ were each cycling redundantly during IPLAN-0022 PR-B/PR-C rollout;
 the label-cycle pattern works but compounded slowness on the 2-runner
 self-hosted pool. Documented here as canonical guidance for consumers.
 
+## 16. `standards-drift` / `apply-standards.sh --check` reports drift
+
+**Symptom:** the scheduled `standards-drift` workflow (or a manual
+`apply-standards.sh --check`) emits `::warning::` lines like
+`branch-protection.contexts: canon=[…] actual=[…]` or a workflow-file
+diff.
+
+**Cause:** the repo's live settings/workflows diverge from the canon at
+the resolved `ci/vX.Y.Z` tag. This is **warning-only by design** — it
+never blocks a commit or PR; it's a reconcile signal.
+
+**Fix:** decide per drift — re-align (`apply-standards.sh --apply` for
+settings, re-install the caller for a workflow), keep the divergence
+intentionally (add a comment explaining why; the warning persists as a
+documented deviation), or upstream it (PR on `aidoc-flow-ci`). See
+[`overrides.md`](overrides.md) §5. If `--check` compares against the
+WRONG tag, pin it: `CI_TAG=ci/vX.Y.Z apply-standards.sh --check`
+(otherwise it resolves the tag from the repo's own workflow pins).
+
+## 17. `call / verify` (audit-trail) fails or errors
+
+**Symptom:** the `call / verify` required check is red.
+
+- **`missing the OPS-0069 audit-trail phrase`** — the push has no commit
+  body carrying `Multi-agent self-review per OPS-0065 …` or
+  `Self-review skipped per founder OK …`. Add the phrase to a commit in
+  the range (amend + force-push, or a new commit). See
+  [`local-pre-push.md`](local-pre-push.md) §7.1.
+- **`BASE_SHA … unreachable after fetch — check cannot run`** — the
+  caller's checkout lacks history. The `audit-trail` caller MUST use
+  `fetch-depth: 0`. The error now includes the `git fetch stderr` — if it
+  shows `gh`/auth/network, that's the real cause; if it's an unknown-ref,
+  the base ref genuinely isn't fetchable (rebased/force-pushed base).
+- **To bypass intentionally** — apply the `skip-audit-trail` label AND
+  put `[skip-audit-trail]` in a commit body (two-signal; one alone won't
+  skip). See [`../LABELS.md`](../LABELS.md) §1.
+
+## 18. `install.sh` fails on `ruamel.yaml` / `pyyaml` not installed
+
+**Symptom:** `install.sh` exits with
+`FAIL: neither ruamel.yaml nor PyYAML available` while merging the canon
+block into an existing `.pre-commit-config.yaml`.
+
+**Cause:** the consumer already has a `.pre-commit-config.yaml`, so
+`install.sh` merges (not copies) the canon hook block, which needs a
+Python YAML library on the **operator's machine**.
+
+**Fix:** `pip install ruamel.yaml` (preferred — preserves the consumer's
+comments) or `pip install pyyaml` (strips comments), then re-run. Only
+required when the consumer already has a `.pre-commit-config.yaml`; a
+repo without one gets the canon fragment copied verbatim (no YAML lib
+needed). See [`../install/README.md`](../install/README.md) Prerequisites.
+
 ## Reporting new issues
 
 If you hit something not covered here:

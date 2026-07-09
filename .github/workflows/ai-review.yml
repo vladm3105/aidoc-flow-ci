@@ -92,6 +92,7 @@ jobs:
     # ai:review-* label writes don't re-trigger a wasteful round).
     if: ${{ github.event.pull_request.draft == false && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'skip-ai-review') }}
     runs-on: ${{ fromJSON(inputs.runner_labels_routine) }}
+    timeout-minutes: 10
     outputs:
       ai_review_ok: ${{ steps.trust.outputs.ai_review_ok }}
       auto_fix_ok: ${{ steps.trust.outputs.auto_fix_ok }}
@@ -152,6 +153,7 @@ jobs:
     needs: trust
     if: ${{ needs.trust.outputs.ai_review_ok == 'true' && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'skip-ai-review') }}
     runs-on: ${{ fromJSON(inputs.runner_labels_review) }}
+    timeout-minutes: 45
     # job-level env so step `if:` can branch on App-config presence (the `secrets` context is NOT
     # available in step `if:` — only in job env / `with`). '1' once the founder sets the reviewer App
     # private key (IPLAN-0016 §2a-v3 A2); empty until then → the gate stays in its pre-activation

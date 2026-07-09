@@ -60,6 +60,7 @@ jobs:
     # Private repo → ci-ephemeral self-hosted (this account has no GitHub-hosted minutes, OPS-0049);
     # public repo → GitHub-hosted. Lightweight: only `gh api` calls, no checkout of PR code.
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    timeout-minutes: 10
     steps:
       - name: Assert a counting reviewer-App approval at head
         env:

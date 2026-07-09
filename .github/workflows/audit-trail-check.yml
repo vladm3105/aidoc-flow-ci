@@ -73,6 +73,7 @@ jobs:
     # silently degrade to the empty-range fail-open path.
     if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: read
@@ -103,7 +104,11 @@ jobs:
           # can walk the range. With fetch-depth: 0 the initial checkout
           # already has full history, but fork PRs' base is on the base
           # repo (not the fork remote) — fetch it explicitly.
-          git fetch --no-tags origin "$BASE_SHA" 2>/dev/null || true
+          # Capture fetch stderr (corr M2) so the cat-file failure below can
+          # surface the REAL cause (auth, network, unknown ref) instead of the
+          # bare `|| true` swallowing it — this cost hours on the gh-not-found
+          # class of failure before.
+          fetch_err=$(git fetch --no-tags origin "$BASE_SHA" 2>&1) || true
 
           # F3-sec fold (extends code-review M1): fail LOUD if either
           # ref is unreachable after fetch. Silent PASS on unreachable
@@ -111,7 +116,7 @@ jobs:
           # exists to prevent. Mirrors composition.yml's fail-closed
           # pattern.
           if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
-            echo "::error::audit-trail: BASE_SHA ${BASE_SHA} unreachable after fetch — check cannot run. (fetch-depth: 0 required in caller checkout.)"
+            echo "::error::audit-trail: BASE_SHA ${BASE_SHA} unreachable after fetch — check cannot run. (fetch-depth: 0 required in caller checkout.) git fetch stderr: ${fetch_err:-(none)}"
             exit 1
           fi
           if ! git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null; then

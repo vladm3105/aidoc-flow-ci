@@ -70,6 +70,7 @@ jobs:
     if: ${{ github.actor != 'aidoc-flow-bot[bot]' && github.event.head_commit.author.username != 'aidoc-flow-bot[bot]' }}
     name: post-merge mechanical doc-sync
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    timeout-minutes: 20
     steps:
       - name: Checkout (full history for git rename detection)
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
