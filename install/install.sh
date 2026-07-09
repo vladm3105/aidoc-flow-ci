@@ -14,7 +14,7 @@
 #
 # Usage:
 #   bash install.sh <owner/repo> [--visibility public|private]
-#   CI_TAG=ci/v1.6.0 bash install.sh <owner/repo> --visibility private
+#   CI_TAG=ci/v1.7.0 bash install.sh <owner/repo> --visibility private
 #
 # Requires: gh (authenticated for write on the target repo) + curl + git.
 
@@ -31,12 +31,45 @@ while [ $# -gt 0 ]; do
 done
 case "$VISIBILITY" in public|private) ;; *) echo "--visibility must be public|private" >&2; exit 1 ;; esac
 
-# Default pinned to the current stable release tag. Bumped on each
-# release cut so consumers who don't set CI_TAG explicitly get a frozen
-# tag (not the moving `main`).
-CI_TAG="${CI_TAG:-ci/v1.6.0}"
+# Resolve the pinned CI tag. Precedence (PLAN-004 §4.4): CI_TAG env >
+# VERSION file (repo-local only) > hardcoded fallback. The fallback is
+# bumped on every release cut so consumers who don't set CI_TAG get a
+# frozen tag (not the moving `main`).
+#
+# VERSION is read ONLY from the script's own directory when running from a
+# checkout. In process-substitution mode (`bash <(curl …)`) $0/BASH_SOURCE
+# point at /dev/fd/N (see the header note), so no local VERSION is reachable
+# and the hardcoded fallback is authoritative — that is expected and correct.
+# The startup log below names the winning source so a stale CI_TAG env var in
+# a consumer's CI caller silently overriding VERSION is diagnosable.
+CI_TAG_FALLBACK="ci/v1.7.0"
+if [ -n "${CI_TAG:-}" ]; then
+  CI_TAG_SOURCE="CI_TAG env"
+else
+  _self="${BASH_SOURCE[0]:-$0}"
+  _script_dir=""
+  case "$_self" in
+    /dev/fd/*|/proc/*|pipe:*|"") : ;;   # process-sub: no local VERSION to read
+    *) _script_dir="$(cd "$(dirname "$_self")" 2>/dev/null && pwd || true)" ;;
+  esac
+  if [ -n "$_script_dir" ] && [ -f "$_script_dir/../VERSION" ] \
+     && _v="$(tr -d '[:space:]' < "$_script_dir/../VERSION")" \
+     && printf '%s' "$_v" | grep -qE '^ci/v[0-9]+\.[0-9]+\.[0-9]+$'; then
+    CI_TAG="$_v"
+    CI_TAG_SOURCE="VERSION file"
+  else
+    # Distinguish a malformed VERSION from an absent one so an operator who
+    # expects VERSION to win learns from the log that it was rejected.
+    if [ -n "$_script_dir" ] && [ -f "$_script_dir/../VERSION" ]; then
+      echo "==> WARN: $_script_dir/../VERSION present but not a valid ci/vX.Y.Z tag — using fallback" >&2
+    fi
+    CI_TAG="$CI_TAG_FALLBACK"
+    CI_TAG_SOURCE="hardcoded fallback"
+  fi
+fi
 TEMPLATE_BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/templates"
 
+echo "==> using CI_TAG=$CI_TAG (source: $CI_TAG_SOURCE)"
 echo "==> bootstrapping $TARGET_REPO (visibility=$VISIBILITY, tag=$CI_TAG)"
 
 # Clone the consumer to a stable user-visible location (NOT a temp dir

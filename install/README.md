@@ -1,72 +1,101 @@
 # install/
 
-One-shot bootstrap for a consumer repo. Drops default workflow callers +
-config + labels with safe defaults, then prints next steps for the
-founder. Preserves any existing files (local override always wins).
+One-shot bootstrap for a consumer repo. Clones the consumer, drops the
+default workflow callers + config + governance-canon scaffolding + labels
+with safe defaults, then prints next steps for the founder. Preserves any
+existing files (local override always wins).
+
+## Prerequisites
+
+Install these on the **operator's machine** before running (not on CI
+runners):
+
+| Tool | Why |
+|---|---|
+| **`bash` ≥ 4.0** | The canon `scripts/pre_push_check.sh` this installs uses `mapfile` (bash 4+). macOS ships bash 3.2 — `brew install bash`, or skip installing the pre-push hook. |
+| **`gh`** (authenticated, write on the target repo) | clones the consumer + creates labels |
+| **`git`** + **`curl`** | clone + template fetch |
+| **`python3`** | **always** — used for canonical-label creation (stdlib only) and, when present, the `.pre-commit-config.yaml` merge |
+| **`ruamel.yaml`** \| **`pyyaml`** (one of) | only when the consumer **already has** a `.pre-commit-config.yaml` to merge into (ruamel preferred — it preserves the consumer's comments; PyYAML strips them) |
 
 ## Run it
 
 ```bash
-# Latest pinned tag (ci/v1.0.6) — adjust as new tags ship:
-bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.0.6/install/install.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.7.0/install/install.sh) \
   vladm3105/<consumer-repo> --visibility private
 
-# Or override the tag:
-CI_TAG=ci/v1.0.6 bash install.sh vladm3105/<consumer-repo> --visibility public
+# Or override the tag explicitly:
+CI_TAG=ci/v1.7.0 bash install.sh vladm3105/<consumer-repo> --visibility public
 ```
+
+The pinned tag is resolved as **`CI_TAG` env > repo-root `VERSION` file
+(when run from a checkout) > hardcoded fallback**; `install.sh` prints
+which source it used at startup. In `curl`-piped mode there is no local
+`VERSION`, so the hardcoded fallback (bumped every release cut) is
+authoritative — pass `CI_TAG=` to pin a specific tag.
 
 ## What it does
 
-1. Clones the consumer repo to `$PWD/aidoc-flow-ci-bootstrap-$$/consumer`
-   (stable; not auto-deleted — you need to inspect + commit after exit).
-2. Drops `.github/workflows/ai-review.yml` + `composition.yml` (per-visibility
-   templates from `templates/workflows/`). Preserves any existing local files.
-3. Drops `.github/ai-review/config.json` (the per-repo policy). Preserves
-   existing.
-4. Creates the canonical labels on the consumer repo via `gh label create`:
-   5 state/control labels (`ai:review-passed` / `ai:review-changes` /
-   `ai:human-review-required` / `skip-ai-review` / `ai:autofix-applied`)
-   plus 4 area labels added in `ci/v1.0.1` (`area: ci` / `area: governance`
-   / `area: deps` / `area: tests`). Idempotent + fail-loud (per-PR-#116
-   fix: prefetches existing labels, exits nonzero on real failures).
-5. (Optional) consumers can also drop the 5 additional caller templates
-   shipped in `ci/v1.0.1` (`labeler.yml` / `codeql.yml` /
-   `markdown-lint.yml` / `links.yml` / `secret-scan.yml`) — these are NOT
-   bootstrapped automatically; consumer chooses which to adopt.
+1. **Clones** the consumer repo to `$PWD/aidoc-flow-ci-bootstrap-$$/consumer`
+   (stable; not auto-deleted — inspect + commit after the script exits).
+2. **Drops the default callers** `.github/workflows/ai-review.yml` +
+   `composition.yml` (per-visibility templates). Preserves any existing
+   local files.
+3. **Drops `.github/ai-review/config.json`** (the per-repo policy).
+   Preserves existing.
+4. **Governance-canon bootstrap (PLAN-003):** if the consumer has no
+   `CLAUDE.md`, installs the canon template (with placeholders to fill
+   before commit). If it has one, checks for the 5 required canonical
+   sections and prints a manual-merge suggestion — it never auto-edits an
+   existing `CLAUDE.md`.
+5. **Self-review canon (PLAN-002):** installs `scripts/pre_push_check.sh`
+   (preserves an existing one) and **merges** the canon hook block into
+   `.pre-commit-config.yaml` idempotently (via a `# CANON:` marker). The
+   merge needs `ruamel.yaml` or `pyyaml` (see Prerequisites) and upgrades
+   `default_install_hook_types` to include `pre-push`.
+6. **Creates the 16 canonical labels** via `gh label create` (idempotent +
+   fail-loud — prefetches existing labels, exits nonzero on real
+   failures): 5 state/control (`ai:review-passed`, `ai:review-changes`,
+   `ai:human-review-required`, `skip-ai-review`, `ai:autofix-applied`),
+   8 diff-class (`governance`, `docs`, `workflows`, `scripts`, `agents`,
+   `tests`, `config`, `plans`), plus `dependencies`, `security`, and
+   `skip-audit-trail`.
+7. **Prints founder next steps** (secrets, branch protection — see below).
+
+The additional caller templates that ship in `install/templates/workflows/`
+(`labeler.yml`, `codeql.yml`, `markdown-lint.yml`, `links.yml`,
+`secret-scan.yml`, `pre-commit.yml`, `docs-sync.yml`, `doc-maintainer.yml`,
+`auto-merge-ai-prs.yml`) are **not** bootstrapped automatically — the consumer
+chooses which to adopt per
+[`../docs/WORKFLOWS.md`](../docs/WORKFLOWS.md) §4 adoption sequencing.
+(`audit-trail-check.yml` has no distributed caller template yet — adopt it by
+hand-authoring a caller from this repo's own `.github/workflows/audit-trail.yml`
+until the template ships.)
 
 ## What it does NOT do
 
-- Doesn't add secrets (consumer adds `APP_REVIEWER_1_ID` / `APP_REVIEWER_1_KEY`
-  manually — these are founder actions).
-- Doesn't change branch protection (founder).
-- Doesn't install the GitHub App on the consumer repo (founder per F5
-  "Only select repositories" blast-radius rule).
-- Doesn't overwrite existing workflow files (preserve = local override always
-  wins).
+- **Doesn't add secrets** — the founder adds `APP_REVIEWER_1_ID` /
+  `APP_REVIEWER_1_KEY` + the reviewer auth token (`CLAUDE_CODE_OAUTH_TOKEN`
+  / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`). See
+  `../docs/REVIEWER_APP_ONBOARDING.md` (forthcoming — ships in PLAN-004 PR-A3).
+- **Doesn't change branch protection** — the required checks
+  (`call / ai-review`, `call / composition`, `call / verify`) must be
+  added for the gates to actually enforce. See `../docs/BRANCH_PROTECTION.md`
+  (forthcoming — ships in PLAN-004 PR-A3).
+- **Doesn't install the GitHub App** on the consumer repo (founder, per
+  the F5 "only select repositories" blast-radius rule).
+- **Doesn't overwrite existing files** — preserve = local override always
+  wins.
 
-## v1.0.6 known limitations
+## After install — per-consumer prerequisites
 
-- **ubuntu-latest CLI install validated end-to-end** on framework Phase A
-  activation (2026-06-24). Reviewer auth env vars
-  (`CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`)
-  are explicitly exported as of `ci/v1.0.5` (earlier `secrets: inherit`
-  gap fixed). Required consumer-side: ONE of
-  `CLAUDE_CODE_OAUTH_TOKEN` (claude subscription auth — preferred,
-  free under Pro/Max plans) / `ANTHROPIC_API_KEY` (claude pay-per-token)
-  / `OPENAI_API_KEY` (codex pay-per-token).
-- **Secret names hardcoded** to `APP_REVIEWER_1_ID` / `APP_REVIEWER_1_KEY` —
-  v1.0.6 doesn't parameterize. v1.1.0+ may add inputs IF consumers
-  need non-default names.
-
-### Per-consumer prerequisites (discovered during framework Phase A)
-
-After `install.sh` runs, two additional consumer-side settings are
-required for the reusable workflow to start:
+Two settings are required for the reusable workflow to start (both
+discovered during framework Phase A):
 
 | Setting | Why | Doc |
 |---|---|---|
-| **Actions allowlist** | If consumer is in `selected actions` mode (`gh api repos/<c>/actions/permissions`), `vladm3105/aidoc-flow-ci/*` must be in `patterns_allowed` or the reusable workflow returns `startup_failure` | [`../docs/troubleshooting.md` §13](../docs/troubleshooting.md#13-startup_failure--reusable-workflow-blocked-by-consumers-actions-allowlist) |
-| **Caller `permissions:` block** | If consumer's repo-default `workflow_permissions: read` (`gh api repos/<c>/actions/permissions/workflow`), the reusable's `contents: write` declaration is rejected — add an explicit `permissions:` block to the caller workflow | [`../docs/troubleshooting.md` §14](../docs/troubleshooting.md#14-startup_failure--callers-workflow_permissions-read-blocks-reusables-write) |
+| **Actions allowlist** | If the consumer is in `selected actions` mode, `vladm3105/aidoc-flow-ci/*` must be in `patterns_allowed` or the reusable returns `startup_failure` | [`../docs/troubleshooting.md` §13](../docs/troubleshooting.md) |
+| **Caller `permissions:` block** | If the consumer's repo-default `workflow_permissions: read`, the reusable's `contents: write` is rejected — add an explicit `permissions:` block to the caller | [`../docs/troubleshooting.md` §14](../docs/troubleshooting.md) |
 
-See [`../docs/troubleshooting.md`](../docs/troubleshooting.md) for the
-14-section troubleshooting guide.
+See [`../docs/troubleshooting.md`](../docs/troubleshooting.md) for the full
+troubleshooting guide.
