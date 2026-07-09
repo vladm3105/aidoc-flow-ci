@@ -73,9 +73,15 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.workflow_run.pull_requests[0].head.sha }}
           EXPECTED_ID: ${{ vars.APP_REVIEWER_1_BOT_ID }}
           IS_FORK: ${{ github.event.pull_request.head.repo.fork || github.event.workflow_run.pull_requests[0].head.repo.fork }}
-          AUTHOR: ${{ github.event.pull_request.user.login || github.event.workflow_run.actor.login }}
-          # SKIP_REVIEW resolved via gh-api below (the workflow_run payload doesn't include PR labels;
-          # gh-api is the shape-agnostic source per IPLAN-0026 §2.1 D10).
+          # AUTHOR: only the pull_request_review event carries the full PR object here. The workflow_run
+          # payload's abbreviated pull_requests[] does NOT include `.user`, and `workflow_run.actor` is the
+          # actor who triggered ai-review (e.g. the label-APPLIER on a labeled event), NOT the PR author —
+          # so the old `|| workflow_run.actor.login` fallback mis-identified the author. On the workflow_run
+          # path AUTHOR is resolved shape-agnostically via gh-api in the body (same pattern as SKIP_REVIEW).
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          # SKIP_REVIEW + AUTHOR (workflow_run path) resolved via gh-api below (the workflow_run payload
+          # doesn't include PR labels or the PR author; gh-api is the shape-agnostic source per IPLAN-0026
+          # §2.1 D10).
         run: |
           set -uo pipefail
 
@@ -116,6 +122,17 @@ jobs:
             exit 0
           fi
 
+          # AUTHOR resolution for the workflow_run path (empty from the abbreviated event payload; see the
+          # env note above). Fetch the real PR author by number — same shape-agnostic gh-api source + retry
+          # as SKIP_REVIEW. Fail-closed to empty: an empty author is not in trust.ai_review, so the trust
+          # gate below ENFORCES App-approval (the safe default — a broken read must not earn an exemption).
+          if [ -z "${AUTHOR:-}" ]; then
+            for n in 1 2 3 4; do
+              AUTHOR=$(gh api "repos/$GH_REPO/pulls/$PR" --jq '.user.login' 2>/dev/null) && [ -n "$AUTHOR" ] && break
+              [ "$n" -lt 4 ] && sleep $((n*3))
+            done
+          fi
+
           # TRUST GATE (mirror ai-review.yml). Fork / non-allowlisted authors are HUMAN-REVIEW-ONLY there —
           # the reviewer job is skipped, so the App will NEVER approve their PR. composition must NOT block
           # them (else a human-reviewed PR is permanently stuck). Read the trusted allowlist from main (a PR
@@ -146,8 +163,12 @@ jobs:
             [ "$n" -lt 7 ] && sleep $(( n*3 < 20 ? n*3 : 20 ))
           done
           if [ -n "$cfg_ok" ]; then
-            if ! jq -e --arg a "${AUTHOR:-}" '(.trust.ai_review // []) | index($a)' "$CFG" >/dev/null 2>&1; then
-              echo "::notice::author ${AUTHOR:-?} not in trust.ai_review — human-review-only; composition not enforced (pass)."
+            # Exempt (pass) ONLY a non-empty author who is not in the allowlist. An EMPTY author (the
+            # workflow_run gh-api fetch exhausted its retries) must NOT earn the exemption — it falls through
+            # to ENFORCE below, matching this file's fail-closed philosophy (a broken read never grants a
+            # pass; a trusted author's real App approval still arrives and clears the check).
+            if [ -n "${AUTHOR:-}" ] && ! jq -e --arg a "$AUTHOR" '(.trust.ai_review // []) | index($a)' "$CFG" >/dev/null 2>&1; then
+              echo "::notice::author ${AUTHOR} not in trust.ai_review — human-review-only; composition not enforced (pass)."
               exit 0
             fi
           else
