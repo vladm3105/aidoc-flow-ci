@@ -98,7 +98,17 @@ jobs:
 
       - name: Manual build
         if: ${{ inputs.build-command != '' }}
-        run: ${{ inputs.build-command }}
+        env:
+          BUILD_COMMAND: ${{ inputs.build-command }}
+        run: |
+          # env indirection (sec H4): run the consumer's build command via
+          # $BUILD_COMMAND, NOT a `run: ${{ inputs.build-command }}` source
+          # interpolation — so the value can't break out of / inject into the
+          # workflow script. The double-quoted "$BUILD_COMMAND" reaches eval as
+          # a single string; eval runs a multi-command build in one consistent
+          # shell within this step (executing an arbitrary consumer build
+          # command is this step's intended purpose).
+          eval "$BUILD_COMMAND"
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@21eb7f7842f33eafc83782b56fff2a2c43e9696f # v4.36.1

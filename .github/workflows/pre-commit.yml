@@ -74,13 +74,22 @@ jobs:
           python-version: ${{ inputs.python-version }}
 
       - name: Install pre-commit (+ optional extra deps)
+        env:
+          EXTRA_DEPS: ${{ inputs.extra-deps }}
         run: |
-          pip install pre-commit ${{ inputs.extra-deps }}
+          # env indirection (sec H4): $EXTRA_DEPS is intentionally UNQUOTED so it
+          # word-splits into extra package args; passing via env (not a source
+          # interpolation) means a value like `;whoami` becomes a literal arg to
+          # pip (which errors) rather than shell injection into the run script.
+          pip install pre-commit $EXTRA_DEPS
 
       - name: Run hooks
+        env:
+          RUN_STAGE: ${{ inputs.run-stage }}
         run: |
-          if [ -n "${{ inputs.run-stage }}" ]; then
-            pre-commit run --all-files --show-diff-on-failure --hook-stage "${{ inputs.run-stage }}"
+          # env indirection (sec H4): RUN_STAGE via env, not source interpolation.
+          if [ -n "$RUN_STAGE" ]; then
+            pre-commit run --all-files --show-diff-on-failure --hook-stage "$RUN_STAGE"
           else
             pre-commit run --all-files --show-diff-on-failure
           fi

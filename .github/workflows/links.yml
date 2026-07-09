@@ -91,6 +91,13 @@ jobs:
           fail: ${{ inputs.fail-on-error }}
           # The --offline flag in internal mode skips http(s) URLs
           # entirely; external mode hits the network.
+          #
+          # NOTE (sec H4): these `${{ inputs.* }}` values are the lychee
+          # ACTION's `args:` input — passed to the lychee CLI (a Rust binary),
+          # NOT interpolated into a shell `run:`. So they are not shell-
+          # injectable and env-var indirection does not apply here (unlike the
+          # codeql/pre-commit `run:` steps). Worst case is lychee arg confusion
+          # from a consumer's own config-controlled input.
           args: >-
             --config ${{ inputs.config-file }}
             ${{ inputs.mode == 'internal' && '--offline' || '' }}
