@@ -131,6 +131,60 @@ PLAN-003 Passes 4-6 (2026-07-08).
 
 ---
 
+## CI-0004: Workflow-policy delegation to OPS-NNNN decisions (2026-07-09)
+
+**Context**
+
+The reusable workflows this repo ships encode POLICY choices, not just
+mechanics: `ai-review.yml` + `auto-merge-ai-prs.yml` auto-merge green
+AI-opened PRs by default; `audit-trail-check.yml` requires a phrase in
+every push; the multi-agent pre-push review pattern gates commits. An
+adopter (or a future maintainer) asking "why does this workflow behave
+this way — and where do I change the policy vs. the implementation?"
+needs a trace to the authoritative decision. Those decisions are
+**OPS-NNNN business decisions in `aidoc-flow-operations`**, not
+re-decided here (per REPO_STANDARDS §0 canonical-source split). Without
+an explicit mapping the trace is a cross-repo scavenger hunt (PLAN-004
+pre-prod review, governance finding "no CI-NNNN backs the workflow
+policies").
+
+**Decision**
+
+This repo's workflow behaviors **delegate** to the OPS-NNNN decisions
+below; it implements them, it does not re-decide them. Change the
+POLICY via a new OPS-NNNN in operations; change the IMPLEMENTATION
+(the workflow YAML) here.
+
+| Workflow / behavior | Backing decision | What it decides |
+| --- | --- | --- |
+| `auto-merge-ai-prs.yml` + ai-review auto-merge arming | **OPS-0062** | AI-agent auto-merge default: auto-watch + merge on green; 10-attempt cap; 🟡/🔴 + governance + cross-repo carve-outs |
+| pre-push multi-agent review dispatch | **OPS-0065** | dispatch diff-class-matched sub-agents before every push |
+| review/fix loop cap (incl. `docs/` + plan review) | **OPS-0066** | 3-cycle circuit-breaker; STOP + surface to founder past cycle 3 (see CI-0003) |
+| scope of the aidoc-flow multi-agent-review standard | **OPS-0067** | applies to ALL non-paused workspace repos |
+| governance-PR discipline (≤3 surfaces, adversarial self-review) | **OPS-0061** | shape of every governance PR in this repo |
+| `audit-trail-check.yml` → `call / verify` | **OPS-0069** | mandatory pre-push audit-trail phrase in a commit body |
+
+**Consequences**
+
+- Adopters trace a workflow-policy question to the cited OPS-NNNN in
+  operations, not to this repo. The CLAUDE.md "Workspace standards"
+  section is the quick-reference; this entry is the durable record.
+- A CHANGELOG entry that changes a policy-driven behavior cites the
+  OPS-NNNN it implements, so the semver bump is traceable to the
+  decision.
+- If operations reverses one of these (e.g., a future OPS decision
+  disables auto-merge-by-default), the workflow change here cites the
+  reversing OPS-NNNN and this table is updated (append-only: add a new
+  CI-NNNN, annotate this one's Consequences).
+
+**Origin**
+
+PLAN-004 pre-prod review (2026-07-09) governance finding — the workflow
+policies leaned on upstream OPS-NNNN referenced in CLAUDE.md but had no
+durable DECISIONS entry composing them. Codified here.
+
+---
+
 <!-- Append new entries above this line; append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
 and update the superseded entry's "Consequences" section to reference

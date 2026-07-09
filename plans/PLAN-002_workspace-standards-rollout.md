@@ -1,6 +1,8 @@
 # PLAN-002 — Workspace standards rollout + self-review mechanical enforcement (UNIFIED)
 
-**Status:** DRAFT — 2026-07-07 EST
+**Status:** SHIPPED — canon + self-review mechanical enforcement landed
+via PR-U1/U2/U3/U4 (2026-07-08); per-tier rollout to consumers is ongoing
+per §5.5 (tracked alongside PLAN-003 §5.5 waves). Original draft 2026-07-07 EST.
 **Supersedes:** PLAN-002 (2026-07-07 first draft; found 20 substantive gaps in
 adversarial review, rewritten in place).
 **Absorbs from PLAN-001:** §5.4 per-tier rollout scope (canon templates + apply
