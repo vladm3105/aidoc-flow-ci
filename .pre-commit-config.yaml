@@ -32,3 +32,12 @@ repos:
     - pre-push
     pass_filenames: false
     always_run: true
+  # Repo-specific extra (NOT part of the consumer canon fragment): keep the
+  # docs' install references in sync with the single-source VERSION file so
+  # they cannot silently go stale across release cuts (PLAN-004 BL-4).
+  - id: sync-version-refs
+    name: docs install refs match VERSION (PLAN-004 BL-4)
+    entry: scripts/sync-version-refs.sh --check
+    language: script
+    files: '^(VERSION|README\.md|install/README\.md)$'
+    pass_filenames: false
