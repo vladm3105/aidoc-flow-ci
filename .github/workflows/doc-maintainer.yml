@@ -107,6 +107,7 @@ jobs:
     if: ${{ github.event_name == 'schedule' }}
     name: Doc-maintainer reconcile (schedule backup)
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    timeout-minutes: 10
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
@@ -152,6 +153,7 @@ jobs:
     if: ${{ github.event_name != 'schedule' && github.actor != 'aidoc-flow-bot[bot]' && github.event.head_commit.author.username != 'aidoc-flow-bot[bot]' }}
     name: AI-driven doc maintenance
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    timeout-minutes: 30
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
