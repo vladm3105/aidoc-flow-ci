@@ -61,3 +61,25 @@ subsequent pushes and carries the prior approval forward.
 "Human override: suppress the reviewer on later pushes; composition
 carries the prior approval forward" and PATCH-tag (label description
 change is additive/cosmetic).
+
+### FT-4 — CHANGELOG back-catalog (v1.1.0–v1.6.0) not cut into per-tag `##` headers
+
+**Found:** 2026-07-09, PLAN-004 PR-A4b (CHANGELOG restructure).
+**Surface:** `CHANGELOG.md` — the 18 tags in the `ci/v1.1.0` … `ci/v1.6.0`
+band (16 excluding the two `ci/v1.1.0-alpha.*` prereleases; note `ci/v1.1.4`
+was never cut — a gap the executor should expect) have their entries under
+`## Unreleased` as dated `###` sub-sections, not per-tag `## ci/vX.Y.Z`
+headers. PR-A4b did the safe parts (deduped the
+doubled `ci/v1.0.3` header; renamed `## Unreleased` → staging header for the
+genuinely-unreleased post-v1.6.0 work; added the PLAN-004 A-series entry)
+but did NOT promote the released back-catalog.
+**Why deferred (PLAN-004 §6 R5):** PLAN-004 item 10 assumed every Unreleased
+sub-section carried an inline tag — false: the ~20 top entries (2026-07-08
+work) are untagged, and the interspersed doc-only entries don't map cleanly
+to a tag. A sweep risks mislabeling release provenance. `ci/v1.0.6`↓ already
+have correct `##` headers, so this is bounded to the v1.1.0–v1.6.0 band.
+**Fix sketch:** reconcile against `git log --tags --oneline` (each tag →
+its commit range → the entries in that range), promote each inline-tagged
+`### … ci/vX.Y.Z …` to `## ci/vX.Y.Z — <date>`, and assign the untagged
+doc-only entries to the release whose commit range contains them. Verify no
+entry is dropped or duplicated (line-count + entry-count before/after).

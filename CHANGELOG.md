@@ -3,7 +3,36 @@
 Notable releases of the shared CI library. SemVer per `ci/vX.Y.Z`
 tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
-## Unreleased
+## Unreleased — targeting `ci/v1.7.0`
+
+> These entries accumulated after the `ci/v1.6.0` tag (the latest cut) and
+> are unreleased until `ci/v1.7.0` is tagged. The released back-catalog
+> below (v1.1.0 through v1.6.0) is currently documented as dated `###`
+> sub-sections rather than per-tag `##` headers — promoting it needs
+> git-log/tag reconciliation and is tracked as FRAMEWORK-TODO FT-4 (not
+> done in this PR to avoid mislabeling release provenance).
+
+### Added — PLAN-004 company-default elevation, A-series (2026-07-09)
+
+Pre-prod hardening toward the company-default CI standard (per
+`plans/PLAN-004_company-default-elevation.md`):
+
+- **VERSION single-source** (`VERSION` file) + `install.sh` tag precedence
+  (`CI_TAG` env > VERSION > hardcoded fallback) + `scripts/sync-version-refs.sh`
+  (docs + template pins tracked against VERSION; pre-commit-enforced).
+- **`sync/check-drift.sh`** per-caller pin comparison (was: highest pin
+  across all callers → mid-bump false-drift); template caller pins
+  normalized to `@ci/v1.7.0`.
+- **Docs**: README + install/README rewritten to reality; `LABELS.md`
+  16-label parity; NEW `docs/REVIEWER_APP_ONBOARDING.md` +
+  `docs/BRANCH_PROTECTION.md`; `multi-project-guide` §8 + PLAYBOOK fixes.
+- **Governance**: HANDOFF refreshed; `DECISIONS.md` CI-0004 (workflow →
+  OPS-NNNN delegation table); PLAN-002 → SHIPPED; this CHANGELOG dedup +
+  staging header; `plans/FRAMEWORK-TODO.md` (FT-1..FT-4).
+
+PRs #82 (plan) + #83/#84/#85/#86/#87 + this. The correctness / security /
+de-brand / update-path slices (PLAN-004 B–E) land before the `ci/v1.7.0`
+tag cut.
 
 ### Added — REPO_STANDARDS §17 auto-merge canon + canonical caller templates (2026-07-08)
 
@@ -2021,10 +2050,6 @@ Pure addition; no input/output changes. Consumers bump pin
 `ci/v1.0.4` exists as a misplaced annotated tag (created in error
 during PR #20 close; points at `ci/v1.0.3`'s commit). Skipping to
 v1.0.5 avoids the broken tag.
-
-## ci/v1.0.3 — 2026-06-24 — labels.json patch (`area: governance` description ≤100c)
-
-Patch release fixing a content bug in
 
 ## ci/v1.0.3 — 2026-06-24 — labels.json patch (`area: governance` description ≤100c)
 
