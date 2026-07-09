@@ -46,6 +46,16 @@ on:
         type: string
         required: false
         default: '"ubuntu-latest"'
+      trust_config_repo:
+        description: 'owner/repo holding the trust config (`trust.ai_review` + `auto_merge.repos`). Default `vladm3105/aidoc-flow-operations`; must match ai-review.yml. External adopters point at their own ops/config repo. Read from `trust_config_ref` (a trusted, non-PR-mutable ref). (PLAN-004 D1 / BL-2.)'
+        type: string
+        required: false
+        default: 'vladm3105/aidoc-flow-operations'
+      trust_config_ref:
+        description: 'Git ref of `trust_config_repo` to read the trust config from — a trusted, non-PR-writable ref. Default `main`.'
+        type: string
+        required: false
+        default: 'main'
     secrets:
       APP_REVIEWER_1_ID:
         description: "Reviewer GitHub App ID (same App as ai-review.yml). Optional — empty falls back to GITHUB_TOKEN with `::warning::` (merge-commit author = github-actions[bot] → push-triggered consumer workflows silently bypassed)."
@@ -110,6 +120,9 @@ jobs:
           # Reviewer App bot-user numeric id — the App-approval gate (BL-3) verifies an
           # APPROVED-at-HEAD review by this identity before re-arming, same as composition.yml.
           EXPECTED_ID: ${{ vars.APP_REVIEWER_1_BOT_ID }}
+          # Trust-config source (BL-2) via env indirection (per C2).
+          TRUST_CONFIG_REPO: ${{ inputs.trust_config_repo }}
+          TRUST_CONFIG_REF: ${{ inputs.trust_config_ref }}
         run: |
           set -uo pipefail
 
@@ -168,7 +181,7 @@ jobs:
           # Re-fetch operations@main config + validate schema. Fails CLOSED on fetch / parse / schema
           # failure (do not auto-merge on missing or malformed trust gate).
           # Pass 6 fold (silent MAJOR M4): retry() now isolates stdout cleanly — no more `2>&1` mixing.
-          CONFIG_URL="https://raw.githubusercontent.com/vladm3105/aidoc-flow-operations/main/.github/ai-review/config.json"
+          CONFIG_URL="https://raw.githubusercontent.com/${TRUST_CONFIG_REPO}/${TRUST_CONFIG_REF}/.github/ai-review/config.json"
           if ! CONFIG=$(retry curl -fsSL "$CONFIG_URL"); then
             echo "::warning::trust-config fetch failed after retries: ${RETRY_LAST_STDERR:-(no stderr)}; fail-closed — operator manual merge required"
             audit "trust-config fetch FAILED — fail-closed"

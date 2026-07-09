@@ -29,4 +29,8 @@ jobs:
     with:
       pr_number: ${{ github.event.workflow_run.pull_requests[0].number || inputs.pr_number || '' }}
       runner_labels: '["self-hosted", "aidoc", "ci-ephemeral"]'
+      # External adopters: MUST match ai-review.yml's trust config repo/ref.
+      # Defaults to vladm3105/aidoc-flow-operations@main.
+      # trust_config_repo: your-org/your-ops-repo
+      # trust_config_ref: main
     secrets: inherit  # pragma: allowlist secret

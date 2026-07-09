@@ -63,6 +63,14 @@ on:
         description: 'JSON array of runner labels for the heavy reviewer job. Public consumers MUST point at a runner with the reviewer CLI installed + authenticated (GitHub-hosted runners like ubuntu-latest do NOT qualify out-of-the-box — the CLI is installed at workflow start per ci/v1.0.2+); private consumers set their self-hosted reviewer label set.'
         type: string
         default: '"ubuntu-latest"'
+      trust_config_repo:
+        description: 'owner/repo holding the trust config (`.github/ai-review/config.json` with `trust.ai_review` + `auto_merge.repos`). Default `vladm3105/aidoc-flow-operations`. An external adopter points this at their OWN ops/config repo so their authors can be allowlisted; read from `trust_config_ref` (a trusted, non-PR-mutable ref), so a PR cannot tamper with the trust source. (PLAN-004 D1 / BL-2.)'
+        type: string
+        default: 'vladm3105/aidoc-flow-operations'
+      trust_config_ref:
+        description: 'Git ref of `trust_config_repo` to read the trust config from — must be a trusted, non-PR-writable ref. Default `main`.'
+        type: string
+        default: 'main'
 
 permissions:
   contents: write        # auto-merge
@@ -102,11 +110,11 @@ jobs:
       # workflow_call a bare checkout would clone the CALLER repo; pinning repository+ref
       # fixes that. Token: scoped read-only PAT (AI_REVIEW_TOKEN, cross-repo PRIVATE) →
       # GITHUB_TOKEN (sufficient when operations reviews its own PRs).
-      - name: Checkout trust allowlist (operations@main)
+      - name: Checkout trust allowlist (trust_config_repo@trust_config_ref)
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          repository: vladm3105/aidoc-flow-operations
-          ref: main
+          repository: ${{ inputs.trust_config_repo }}
+          ref: ${{ inputs.trust_config_ref }}
           token: ${{ secrets.AI_REVIEW_TOKEN || secrets.GITHUB_TOKEN }}
 
       # "We trust only ourself." Config-driven role allowlists in config.json:
@@ -278,6 +286,10 @@ jobs:
           GITHUB_WORKFLOW_REF: ${{ github.workflow_ref }}
           AI_REVIEW_TOKEN: ${{ secrets.AI_REVIEW_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Env indirection (per C2) — the trust-config source flows into the shell
+          # via env, not raw `${{ inputs.* }}` interpolation.
+          TRUST_CONFIG_REPO: ${{ inputs.trust_config_repo }}
+          TRUST_CONFIG_REF: ${{ inputs.trust_config_ref }}
         shell: bash
         run: |
           set -euo pipefail
@@ -305,7 +317,7 @@ jobs:
           # the prior actions/checkout-based fetch — no change in deployment requirements.
           mkdir -p .github/ai-review
           TOKEN="${AI_REVIEW_TOKEN:-${GITHUB_TOKEN}}"
-          config_url="https://raw.githubusercontent.com/vladm3105/aidoc-flow-operations/main/.github/ai-review/config.json"
+          config_url="https://raw.githubusercontent.com/${TRUST_CONFIG_REPO}/${TRUST_CONFIG_REF}/.github/ai-review/config.json"
           curl --fail --silent --show-error --location \
             --retry 3 --retry-delay 2 \
             -H "Authorization: Bearer ${TOKEN}" \
@@ -314,7 +326,7 @@ jobs:
             "${config_url}" || {
               # PRIVATE repo raw auth is historically finicky; fall back to the API
               # contents endpoint with `Accept: application/vnd.github.raw`.
-              api_url="https://api.github.com/repos/vladm3105/aidoc-flow-operations/contents/.github/ai-review/config.json?ref=main"
+              api_url="https://api.github.com/repos/${TRUST_CONFIG_REPO}/contents/.github/ai-review/config.json?ref=${TRUST_CONFIG_REF}"
               curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
                 -H "Authorization: Bearer ${TOKEN}" \
                 -H "Accept: application/vnd.github.raw" \
