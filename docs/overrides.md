@@ -79,9 +79,12 @@ jobs:
       paths: docs
 ```
 
-Parameter override stays inside the canonical contract — drift
-detection (`sync/check-drift.sh`) recognizes it as a known input
-override and doesn't flag it as drift.
+Parameter override keeps you on the canonical `uses:` call — the
+smallest possible deviation. Note that `sync/check-drift.sh` is
+`diff`-based: it **will** flag the changed `with:` block as a
+`::warning::` (it can't distinguish an intentional parameter override
+from accidental drift). That warning is expected and reconcilable — it
+is the signal described in §5, not an error.
 
 ### Mode 2: Full replacement (when canonical genuinely doesn't fit)
 
@@ -186,11 +189,12 @@ choose:
 
 ## 6. Examples in the wild
 
-| Repo | Mode used | Why |
-|---|---|---|
-| `aidoc-flow-operations` | Mode 2 (full replacement) for `ai-review` + `composition` | Operations is the reference repo for these workflows — its local files ARE the canonical source-of-truth pre-migration; Phase A (per [IPLAN-0017](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0017_unified-ci-flows.md) §4) migrates it to Mode 1 |
-| `aidoc-flow-framework` | (post-Phase-C) Mode 1 for `ai-review` | PUBLIC consumer; pins `runner_labels: '"ubuntu-latest"'` (the default) |
-| `aidoc-flow-business` | (post-Phase-D) Mode 1 for `ai-review` + Mode 3 for a custom `plan-gate.yml` | PRIVATE consumer; overrides `runner_labels` to `runner-self`; adds a custom plan-gate check |
+These rows are **illustrative of each mode**, not a live status board —
+for the actual current per-repo adoption, see
+[`WORKFLOWS.md`](WORKFLOWS.md) §2 (applicability matrix) + §5 (current pins).
 
-(Adoption is per [IPLAN-0017](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0017_unified-ci-flows.md)
-§4 phased rollout; the above table reflects the target shape.)
+| Repo | Mode illustrated | Why |
+|---|---|---|
+| `aidoc-flow-operations` | Mode 2 (full replacement) for `ai-review` + `composition` | Operations is the reference repo for these workflows — its local files are the historical canonical source |
+| `aidoc-flow-framework` | Mode 1 for `ai-review` | PUBLIC consumer; pins `runner_labels: '"ubuntu-latest"'` (the default) |
+| `aidoc-flow-business` | Mode 1 for `ai-review` + Mode 3 for a custom `plan-gate.yml` | PRIVATE consumer; overrides `runner_labels` to `runner-self`; adds a custom plan-gate check |

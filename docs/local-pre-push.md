@@ -151,9 +151,6 @@ misbehaving.
 
 ## 8. CI belt-and-suspenders
 
-*(Ships in PLAN-002 PR-U3 — not yet available in this release; see §9
-cross-refs.)*
-
 The CI reusable `.github/workflows/audit-trail-check.yml` re-verifies
 the audit-trail phrase on every PR at merge time. Consumer callers use
 the standard `jobs.call:` pattern; check-name renders as `call / verify`
@@ -165,14 +162,22 @@ github.event.pull_request.head.sha }}` on `pull_request` events. Uses
 `fetch-depth: 0` to avoid the default-checkout depth-1 fork-PR
 false-pass.
 
-**Exemption logic** (identical to the local hook's exemptions to avoid
-gate mismatch):
+**Exemption logic** — the CI gate deliberately **diverges** from the
+local hook on the bot + revert signals, because commit `%an` and a
+`Revert "` subject are fork-spoofable and unverifiable at the gate. It
+uses only signals it can trust:
 
-- ALL commits in range authored by `dependabot[bot]`, `renovate[bot]`,
-  or `github-actions[bot]` → check SKIPS (with `::notice::`).
-- Commit message starting with `Revert "` → commit exempt.
-- Two-signal override: `skip-audit-trail` PR label AND
-  `[skip-audit-trail]` in commit body → check SKIPS.
+- **Bot-authored PR** — the PR *author* is a Bot
+  (`pull_request.user.type == 'Bot'`) with a login in the allowlist
+  (`dependabot[bot]` / `renovate[bot]` / `github-actions[bot]`) → check
+  SKIPS. Note this keys on the **PR author**, NOT per-commit authorship
+  (unlike the local hook): a human-authored PR that happens to contain a
+  bot commit is NOT exempt CI-side.
+- **Reverts are NOT exempt CI-side.** The local hook exempts a `Revert "`
+  subject; the CI gate does not (spoofable/unverifiable at merge).
+- **Two-signal override**: `skip-audit-trail` PR label AND
+  `[skip-audit-trail]` in a commit body → check SKIPS. (This is the one
+  exemption identical to the local hook.)
 
 ## 9. Cross-references
 
