@@ -107,6 +107,9 @@ jobs:
           APP_TOKEN: ${{ steps.app_token.outputs.token }}
           # APP_CONFIGURED reuses job-level APP_KEY_PRESENT (per C1 fix) — single source of truth.
           APP_CONFIGURED: ${{ env.APP_KEY_PRESENT }}
+          # Reviewer App bot-user numeric id — the App-approval gate (BL-3) verifies an
+          # APPROVED-at-HEAD review by this identity before re-arming, same as composition.yml.
+          EXPECTED_ID: ${{ vars.APP_REVIEWER_1_BOT_ID }}
         run: |
           set -uo pipefail
 
@@ -216,7 +219,7 @@ jobs:
           fi
 
           # ── Step 3: State filter ──────────────────────────────────────────────────
-          if ! STATE=$(retry gh pr view "$PR" --json state,mergeStateStatus,labels,updatedAt,autoMergeRequest); then
+          if ! STATE=$(retry gh pr view "$PR" --json state,mergeStateStatus,labels,updatedAt,autoMergeRequest,headRefOid); then
             echo "::warning::could not fetch PR state for #$PR after retries: ${RETRY_LAST_STDERR:-(no stderr)} — exiting clean"
             audit "PR state fetch FAILED — exiting clean"
             exit 0
@@ -260,6 +263,63 @@ jobs:
             audit "PR updatedAt $UPDATED_AT (age=${AGE}s < 120s threshold) — exiting clean (in-session arming may still be in flight)"
             exit 0
           fi
+
+          # ── Step 3.5: App-approval gate (BL-3) ────────────────────────────────────
+          # Step 3 only checks the ai:review-passed LABEL + CLEAN. A label is writable by any
+          # collaborator with triage, so on a consumer where `composition` is not yet a REQUIRED
+          # check (install-order window, or INERT App), a hand-applied ai:review-passed on a
+          # CLEAN PR would let this enforcer re-arm a merge with NO reviewer-App approval. Mirror
+          # composition's own gate before re-arming: require an App-APPROVED review AT HEAD —
+          # except the same skip-ai-review carry-forward that composition honors.
+          case "${EXPECTED_ID:-}" in
+            '')
+              echo "::warning::vars.APP_REVIEWER_1_BOT_ID unset — the reviewer App is not armed on this repo, so an App-APPROVED review cannot be verified. Refusing to re-arm auto-merge: a hand-applied ai:review-passed label must not merge without App approval. Arm the App + add composition to required checks (docs/BRANCH_PROTECTION.md)."
+              audit "App not armed (APP_REVIEWER_1_BOT_ID unset) — refusing re-arm (fail-closed)"
+              exit 0
+              ;;
+            *[!0-9]*)
+              echo "::warning::vars.APP_REVIEWER_1_BOT_ID='$EXPECTED_ID' is not the App bot-user NUMERIC id — refusing to re-arm."
+              audit "App bot-id not numeric — refusing re-arm"
+              exit 0
+              ;;
+          esac
+          # skip-ai-review carry-forward: composition passes these WITHOUT an APPROVED-at-HEAD
+          # review (the App deliberately did not re-review the new head), keyed on the bare label.
+          # Mirror it so label-cycle-recovered PRs (troubleshooting §15) stay re-armable.
+          if echo "$STATE" | jq -e '(.labels // []) | map(.name) | index("skip-ai-review")' >/dev/null 2>&1; then
+            audit "skip-ai-review present — composition carries the prior approval forward; App-at-HEAD check skipped (mirrors composition.yml)."
+          else
+            HEAD_SHA=$(echo "$STATE" | jq -r '.headRefOid // ""')
+            if [ -z "$HEAD_SHA" ]; then
+              echo "::warning::could not resolve PR head SHA — refusing to re-arm (cannot verify App approval)."
+              audit "head SHA missing — refusing re-arm (fail-closed)"
+              exit 0
+            fi
+            # Same query shape as composition.yml (double-quoted expansion, --paginate). EXPECTED_ID
+            # is numeric-validated above, so its interpolation into the jq program is safe.
+            approved=0
+            if ids=$(retry gh api "repos/$GH_REPO/pulls/$PR/reviews" --paginate \
+                  -q ".[] | select(.user.id == ($EXPECTED_ID) and .user.type == \"Bot\" and .state == \"APPROVED\" and .commit_id == \"$HEAD_SHA\") | .id"); then
+              approved=$(printf '%s\n' "$ids" | grep -c . || true)
+            else
+              echo "::warning::could not fetch PR reviews after retries: ${RETRY_LAST_STDERR:-(no stderr)} — refusing to re-arm (fail-closed)."
+              audit "reviews fetch FAILED — refusing re-arm (fail-closed)"
+              exit 0
+            fi
+            if [ "${approved:-0}" -lt 1 ]; then
+              echo "::warning::no reviewer-App APPROVED review at HEAD $HEAD_SHA despite the ai:review-passed label — refusing to re-arm. The label alone is not authorization; the App's counting approval is. (Closes the hand-applied-label bypass, BL-3.)"
+              audit "no App-APPROVED review at HEAD $HEAD_SHA — refusing re-arm (BL-3 gate)"
+              exit 0
+            fi
+            audit "App-APPROVED review confirmed at HEAD $HEAD_SHA — proceeding to re-arm."
+          fi
+          # Residuals (PLAN-004 §4.2): this closes the single-label no-approval bypass. It does
+          # NOT close (a) the arm-then-push TOCTOU (native auto-merge armed at HEAD1 merges HEAD2
+          # after a push when composition is not a REQUIRED check) or (b) the double-label variant
+          # (ai:review-passed + skip-ai-review together pass via the carry-forward branch with zero
+          # App approvals — the same safe-by-intent label-trust contract composition itself grants).
+          # The complete fix for both is making `composition` a required branch-protection check
+          # (docs/BRANCH_PROTECTION.md); this gate is defense-in-depth inside that.
 
           # ── Step 5: Re-arm `gh pr merge --auto --merge` ──────────────────────────
           # PR is stuck: green + ai:review-passed + trusted + allowlisted + not-armed + >2 min old.
