@@ -22,14 +22,21 @@ a duplicate — always defer to §T-D for the load-bearing per-wave scope.
   `--report` modes) + `install/install.sh` CLAUDE.md bootstrap step.
 - **PR-V3** (operations, 2026-07-08) — CROSS_REPO_PLAYBOOKS §T-D
   operational playbook + `OPS-0070` ratification decision.
-- **PR-V4** (this repo, this PR) — status flip + this summary doc.
+- **PR-V4** (this repo) — status flip + this summary doc.
 
 ## Wave summary (see operations §T-D for full scope)
 
 Waves execute sequentially — Wave N+1 does not start until Wave N is
-FULLY green (all PRs merged + `bash install/apply-standards.sh --check`
-zero drift on every wave repo). Within a wave, alphabetical order is
-fine.
+FULLY green: all PRs merged, and zero drift on every wave repo. Run the
+drift check from each consumer's repo root:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.7.0/install/apply-standards.sh) --check
+```
+
+`apply-standards.sh` lives in `aidoc-flow-ci`, not the consumer, so it is
+fetched via `curl`; `--check` compares the consumer's files in the current
+directory against canon. Within a wave, alphabetical order is fine.
 
 | Wave | Repos | Scope summary |
 | --- | --- | --- |
@@ -60,8 +67,10 @@ per PLAN-002 §5.4 precedent + record via OPS-0069 audit-trail phrase.
 
 Before closing a wave:
 
-1. `bash install/apply-standards.sh --check` on every repo in the wave
-   (invoked from consumer repo root). Zero drift required.
+1. `bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.7.0/install/apply-standards.sh) --check`
+   on every repo in the wave (run from each consumer's repo root — the
+   script is fetched from `aidoc-flow-ci`, not present in the consumer).
+   Zero drift required.
 2. `gh pr view <n>` confirms each wave PR merged.
 3. Update the plan-owning `HANDOFF.md` (`aidoc-flow-ci/HANDOFF.md`)
    `## Current state` + `## Open threads` to reflect wave close.

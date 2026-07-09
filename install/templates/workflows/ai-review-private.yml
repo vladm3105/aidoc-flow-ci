@@ -6,7 +6,7 @@ on:
     types: [submitted]
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v1.0.6
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v1.7.0
     with:
       reviewer: codex
       runner_labels_routine: '"runner-self"'
