@@ -5,6 +5,44 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — REPO_STANDARDS §17 auto-merge canon + canonical caller templates (2026-07-08)
+
+Per founder direction 2026-07-08: codify the two-layer auto-merge
+default (native `--auto` in-session + `auto-merge-ai-prs.yml`
+server-side) as a workspace canon rule + ship canonical caller
+templates so consumers can adopt uniformly.
+
+Changes:
+
+- **`docs/REPO_STANDARDS.md`** — new §17 "Auto-merge for AI-opened
+  PRs (two-layer default)" section covering:
+  - Layer 1 (§17.1) native `--auto` in-session rule.
+  - Layer 2 (§17.2) server-side `auto-merge-ai-prs.yml` reusable +
+    template locations (public + private).
+  - Prerequisites (§17.3): `auto_merge.repos` allowlist entry;
+    reviewer App install; ai-review + composition callers present.
+  - Non-goals (§17.4): spec/governance-tier PRs excluded;
+    cross-repo coordinated PRs excluded.
+  - Origin (§17.5): OPS-0062 in-session rule + IPLAN-0030
+    server-side companion.
+- **`install/templates/workflows/auto-merge-ai-prs-public.yml`** (NEW)
+  — canonical caller for public consumers (ubuntu-latest runners).
+- **`install/templates/workflows/auto-merge-ai-prs-private.yml`** (NEW)
+  — canonical caller for private consumers (self-hosted
+  ci-ephemeral runners).
+
+**4 surfaces** (REPO_STANDARDS + 2 templates + CHANGELOG). Rule 1
+compliant.
+
+Rollout: framework + iplan-standard (currently missing the caller)
+get the caller in follow-up PRs. interlog is bootstrap-tier without
+CI adoption yet; auto-merge lands as part of its full CI adoption.
+5 workspace repos already have the caller from prior IPLAN-0030
+Phase B rollout (operations, business, iplanic, iplan-runner,
+engramory).
+
+Multi-agent self-review per OPS-0065 (code-reviewer single-agent per minimal-scope calibration): skipped — mechanical template addition + REPO_STANDARDS documentation of existing pattern; templates copied from operations canonical caller with runner-labels swap; no logic change
+
 ### Added — Canonical source authority disambiguation (REPO_STANDARDS §0 + CLAUDE.md) (2026-07-08)
 
 Per founder direction 2026-07-08: the aidoc-flow workspace has TWO

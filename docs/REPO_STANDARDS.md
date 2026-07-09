@@ -650,3 +650,83 @@ Per PLAN-003 §5.5. Wave 0 = canon-home (aidoc-flow-ci) self-adopts in
 PR-V1 (bundled with canon shipment). Waves 1-4 = one PR per
 non-paused repo. Wave 5 = umbrella. Waves execute sequentially; within
 a wave, alphabetical order is fine.
+
+## 17. Auto-merge for AI-opened PRs (two-layer default)
+
+Every non-paused, non-bootstrap workspace repo consumes both layers of
+the workspace auto-merge default so AI-opened PRs merge when green
+without human intervention.
+
+### 17.1 Layer 1 — GitHub-native `--auto` (in-session)
+
+When an AI session opens a PR, it enables GitHub-native auto-merge via
+`gh pr merge <N> --auto --squash --delete-branch`. GitHub waits for
+required checks + branch-protection to go green, then merges the PR
+without further session action. This handles the happy path where the
+session is still active when checks complete.
+
+Rule: for every PR the AI opens on any workspace repo, the session
+enables `--auto` after passing pre-push OPS-0065 self-review + running
+CI. Skip only when the PR is a 🟡/🔴 governance-tier PR requiring
+human review per OPS-0062 exceptions.
+
+### 17.2 Layer 2 — server-side `auto-merge-ai-prs.yml` (out-of-session)
+
+When the session ends before checks complete OR the `--auto` set-up
+step is skipped (e.g., session crash), the reusable
+`auto-merge-ai-prs.yml` workflow provides server-side recovery. It
+polls for stuck-green PRs (label = `ai:review-passed` +
+`mergeStateStatus = CLEAN` + `autoMergeRequest = null` +
+`updatedAt > 2 min`) and re-arms `gh pr merge --auto --merge` under
+the reviewer App's token.
+
+The reusable workflow lives at
+`vladm3105/aidoc-flow-ci/.github/workflows/auto-merge-ai-prs.yml`;
+consumers ship a thin caller from one of the canonical templates:
+
+- **Public consumer** (ubuntu-latest runners):
+  `install/templates/workflows/auto-merge-ai-prs-public.yml`
+- **Private consumer** (self-hosted ci-ephemeral runners):
+  `install/templates/workflows/auto-merge-ai-prs-private.yml`
+
+Both templates pin at `@ci/v1.5.1` (bump per this repo's release
+cadence). Consumer copies the template verbatim into its
+`.github/workflows/auto-merge-ai-prs.yml`.
+
+### 17.3 Prerequisites
+
+- **Consumer must be in the `auto_merge.repos` allowlist** at
+  `operations/.github/ai-review/config.json`. Repos not in the
+  allowlist get the label + review but a **human merges**.
+- **Reviewer App must be installed on the consumer** for the App-token
+  merge path. Without it, the reusable falls back to `GITHUB_TOKEN`
+  with a downgrade warning (workflow_run triggers won't fire from the
+  merge commit per GHA anti-recursion, but merges still succeed).
+- **ai-review + composition callers must be present** as the
+  workflow_run triggers. Bootstrap-tier repos without CI adoption
+  (interlog as of 2026-07-08) get auto-merge as part of full CI
+  adoption, not standalone.
+
+### 17.4 Non-goals
+
+- Spec / governance-tier PRs are excluded from auto-merge by
+  `ai-review.yml`'s `tier=spec` check. No consumer override.
+- Cross-repo coordinated changes (multi-submodule pointer bumps,
+  branch protection rule changes) surface for human review even
+  when green.
+
+### 17.5 Origin + cross-references
+
+OPS-0062 (AI agent auto-merge default) codified 2026-06-27; server-
+side companion codified in IPLAN-0030 (auto-merge-ai-prs enforcer).
+See:
+
+- `../operations/CLAUDE.md` — search `OPS-0062` (the AI-agent-in-session
+  auto-merge default rule).
+- `../operations/ops/DECISIONS.md` — `OPS-0062` full record.
+- `../operations/ops/iplans/IPLAN-0030_*.md` — server-side enforcer
+  design.
+- `.github/workflows/auto-merge-ai-prs.yml` (this repo) — reusable
+  implementation.
+- `install/templates/workflows/auto-merge-ai-prs-{public,private}.yml`
+  (this repo) — canonical caller templates.
