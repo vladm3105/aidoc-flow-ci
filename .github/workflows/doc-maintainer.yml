@@ -90,13 +90,66 @@ permissions:
   actions: read
 
 concurrency:
-  group: doc-maintainer-${{ github.ref }}
+  # Keyed by event so a cron reconcile never queues behind a slow push
+  # maintain run (they are now separate jobs — Pass-4 corr-M4). Two runs of
+  # the SAME event on the same ref still serialize.
+  group: doc-maintainer-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: false
 
 jobs:
+  # Schedule-only reconciler (IPLAN-0025 §2.4 reliability backup). Split into
+  # its OWN job so the cron path cannot fall through into the maintain
+  # pipeline. The prior single-job design gated the reconcile step on
+  # `schedule` but keyed every downstream step on a dedup output that is
+  # UNSET on schedule (`'' != 'true'` → true), so cron fired the whole LLM
+  # pipeline. (Pre-prod BLOCKER B1 / PLAN-004 §5.2.1.)
+  reconcile:
+    if: ${{ github.event_name == 'schedule' }}
+    name: Doc-maintainer reconcile (schedule backup)
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout (shallow — reconcile.py reads nothing from the tree; it uses gh api)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+
+      - name: Fetch reconcile script from aidoc-flow-ci
+        env:
+          CI_TAG: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          # Pinned-tag fetch so the script matches the reusable's tag exactly.
+          TAG="${CI_TAG##*@}"
+          mkdir -p .doc-maintainer-scripts
+          curl -fsSL "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${TAG}/scripts/doc-maintainer/reconcile.py" \
+            -o .doc-maintainer-scripts/reconcile.py
+          chmod +x .doc-maintainer-scripts/reconcile.py
+
+      - name: Reconcile — scan recent main commits for un-maintained SHAs
+        run: |
+          set -uo pipefail
+          # IPLAN-0025 §2.4: cron is the reliability backup for the IPLAN-0018
+          # "didn't fire" gap. Report-only in v1.4.0 alpha.1; workflow_dispatch
+          # fan-out added in v1.4.1. This job is reconciler-ONLY (no pipeline).
+          python3 .doc-maintainer-scripts/reconcile.py \
+            --gh-repo "$GH_REPO" \
+            --lookback-min 90 \
+            || { echo "::error::reconcile.py failed — failing LOUD per IPLAN-0025 D12 / Risk 12"; exit 1; }
+          echo "::notice::reconciler complete."
+
   maintain:
-    # Recursion guard #2 (belt-and-suspenders for [skip ci]).
-    if: ${{ github.actor != 'aidoc-flow-bot[bot]' && github.event.head_commit.author.username != 'aidoc-flow-bot[bot]' }}
+    # Push-triggered pipeline ONLY — the reconcile job owns the schedule path
+    # (BLOCKER B1 fix). Recursion guard #2 (belt-and-suspenders for [skip ci]).
+    if: ${{ github.event_name != 'schedule' && github.actor != 'aidoc-flow-bot[bot]' && github.event.head_commit.author.username != 'aidoc-flow-bot[bot]' }}
     name: AI-driven doc maintenance
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
     env:
@@ -137,25 +190,7 @@ jobs:
           done
           ls -la .doc-maintainer-scripts/
 
-      - name: Step 0 — Reconcile (schedule event only; per §2.4 cron + Pass-2 BLOCKER #2 fix)
-        if: ${{ github.event_name == 'schedule' }}
-        run: |
-          set -uo pipefail
-          # Per IPLAN-0025 §2.4: scheduled cron is the reliability backup for
-          # the IPLAN-0018 "didn't fire" gap. Reconciler scans recent main
-          # commits for any SHA without an associated doc-maintainer run and
-          # reports them. v1.4.0 alpha.1 ships report-only; v1.4.1 adds
-          # workflow_dispatch fan-out. Schedule-fired runs skip the rest of
-          # the pipeline (they're reconciler-only).
-          python3 .doc-maintainer-scripts/reconcile.py \
-            --gh-repo "$GH_REPO" \
-            --lookback-min 90 \
-            || { echo "::error::reconcile.py failed — failing LOUD per IPLAN-0025 D12 / Risk 12"; exit 1; }
-          echo "::notice::reconciler complete; schedule-fired run exits here (per-event-name branch)."
-          exit 0
-
       - name: Step 1 — Deterministic dedup check (skip if maintainer-bot PR exists for this SHA)
-        if: ${{ github.event_name != 'schedule' }}
         id: dedup
         run: |
           set -uo pipefail
@@ -175,10 +210,24 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: Step 2 — Resolve config + conventions + dry-run mode
-        if: ${{ steps.dedup.outputs.skip != 'true' }}
         id: cfg
+        env:
+          DEDUP_SKIP: ${{ steps.dedup.outputs.skip }}
         run: |
           set -uo pipefail
+          # cfg runs UNCONDITIONALLY and carries the dedup decision forward.
+          # It was gated `if: steps.dedup.outputs.skip != 'true'`, which left
+          # cfg's outputs UNSET when dedup skipped → every downstream gate
+          # `steps.cfg.outputs.skip != 'true'` became `'' != 'true'` = true,
+          # firing the whole pipeline (incl. the live bot-PR step, bypassing
+          # the dry-run guard) even though dedup said "already covered". Same
+          # fall-through class as the schedule bug this PR fixes. Emitting
+          # skip=true here keeps cfg.skip always DEFINED so all gates hold.
+          if [ "$DEDUP_SKIP" = "true" ]; then
+            echo "::notice::Step 2 — dedup already covered this SHA; skipping config resolution + pipeline."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ ! -f "$CONFIG_PATH" ]; then
             echo "::notice::No $CONFIG_PATH found; doc-maintainer is opt-in — exiting cleanly."
             echo "skip=true" >> "$GITHUB_OUTPUT"
