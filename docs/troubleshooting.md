@@ -556,7 +556,7 @@ the right notice (and posts a PR comment **only** for the
 | Composition stuck on `pending` on a ci/v1.3.0+ install template (no `pull_request_target`) | ✅ Yes — cycle fires ai-review on `unlabeled`; ai-review completion fires `workflow_run` → composition |
 | ai-review verdict still on a STALE commit after a rebase (HEAD CHANGED) | ✅ Yes — R3 finds no APPROVED-at-new-HEAD review; full review runs |
 | ai-review verdict carrying forward on the SAME HEAD (you want a fresh review) | ❌ Cycle alone won't do it (R3 carries forward). Use the gh-api dismissal force-fresh path above. |
-| Rebase-only commit that introduces no logical changes (previously APPROVED) | ❌ **Don't cycle** — add `skip-ai-review` label **permanently** (no remove) so ai-review skips entirely |
+| Rebase-only commit that introduces no logical changes (previously APPROVED) | ❌ **Don't cycle** — add `skip-ai-review` label **permanently** (no remove) so ai-review skips entirely. **⚠️ ci/v1.7.x+ (PLAN-005 PR-A part 2):** `skip-ai-review` now carries the prior approval forward only when HEAD's **content (git tree) is identical to an App-approved commit**. A no-op / same-base rebase (unchanged tree) still carries. A **rebase onto an *advanced* base** incorporates new upstream content → different tree → the label no longer auto-merges; get a **fresh App review at the new HEAD** (or human-merge). This is deliberate: the rebased result contains code the App never reviewed. |
 | Random "let me retry" reflex | ❌ No — wastes CI runner-minutes |
 
 ### Cost / risk

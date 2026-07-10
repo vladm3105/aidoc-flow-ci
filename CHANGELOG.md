@@ -11,6 +11,14 @@ PLAN-005 pipeline-hardening PRs (bundle into the next `ci/v1.7.x`/`v1.8.0` cut):
   computes `GOV_LOCKED` independently and refuses to re-arm unconditionally on
   gov-locked PRs (`.github/**`/`governance/**`/`templates/ai-review/**`), closing
   the `ai:review-passed`+`skip-ai-review` double-label bypass on governance paths.
+- **PR-A part 2** — **HEAD-relative `skip-ai-review` carry-forward** (D2) in
+  BOTH gates (`auto-merge-ai-prs.yml` re-arm + `composition.yml` required-check):
+  the label now carries a prior App approval forward only when HEAD's **content
+  (git tree SHA) is identical** to an App-approved commit — closing the
+  approve-benign-then-push-malicious bypass while preserving §15 label-cycle
+  recovery (approval stays at HEAD) and no-op rebases. A rebase onto an advanced
+  base changes the tree → fresh review required (troubleshooting §15).
+  **⚠️ pending a live §15 label-cycle smoke test before it merges.**
 - **PR-C** — `sync-version-refs.sh --check-published` (remote tag-existence
   guard; deadlock-free, not wired into pre-commit).
 - **PR-D** — **config-driven reviewer engine**: caller templates drop the
