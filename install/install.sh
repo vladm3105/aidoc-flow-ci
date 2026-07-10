@@ -13,10 +13,14 @@
 # PR #108 review).
 #
 # Usage:
+#   Bootstrap (one-shot; new files added, existing preserved):
 #   bash install.sh <owner/repo> [--visibility public|private]
 #                                 [--codeowner <handle>]
 #                                 [--canon-operations-url <url>]
 #                                 [--canon-ci-url <url>]
+#   Update (re-fetch canon for a repo that already adopted; PLAN-004 PR-E):
+#   bash install.sh <owner/repo> --update [--non-interactive]
+#                                 [--codeowner <handle>] [--canon-*-url <url>]
 #   CI_TAG=ci/v1.7.0 bash install.sh <owner/repo> --visibility private
 #
 # De-branding flags (PLAN-004 D2) let an external org adopt the canon
@@ -45,9 +49,17 @@ VISIBILITY="private"
 CODEOWNER_HANDLE="vladm3105"
 CANON_OPERATIONS_URL="../operations"
 CANON_CI_URL="../aidoc-flow-ci"
+# PLAN-004 PR-E: --update re-fetches the canon surfaces (from manifest.json) for
+# a consumer that already adopted, diffs each vs local, and replaces on request.
+# --non-interactive auto-replaces only `safe_to_replace` files (workflows,
+# dependabot) and keeps everything else. Default (bootstrap) is unchanged.
+MODE_UPDATE=0
+NONINTERACTIVE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --visibility) VISIBILITY="$2"; shift 2 ;;
+    --update) MODE_UPDATE=1; shift ;;
+    --non-interactive) NONINTERACTIVE=1; shift ;;
     # Strip a leading @ so `--codeowner @org` and `--codeowner org` are
     # equivalent; the templates re-add @ only where CODEOWNERS syntax needs it.
     --codeowner) : "${2:?--codeowner requires a value}"; CODEOWNER_HANDLE="${2#@}"; shift 2 ;;
@@ -118,7 +130,11 @@ fi
 TEMPLATE_BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/templates"
 
 echo "==> using CI_TAG=$CI_TAG (source: $CI_TAG_SOURCE)"
-echo "==> bootstrapping $TARGET_REPO (visibility=$VISIBILITY, tag=$CI_TAG)"
+if [ "$MODE_UPDATE" = 1 ]; then
+  echo "==> updating $TARGET_REPO against canon @ $CI_TAG (non-interactive=$NONINTERACTIVE)"
+else
+  echo "==> bootstrapping $TARGET_REPO (visibility=$VISIBILITY, tag=$CI_TAG)"
+fi
 
 # Clone the consumer to a stable user-visible location (NOT a temp dir
 # with auto-cleanup trap) — the user needs to inspect + commit after this
@@ -127,7 +143,9 @@ WORK_DIR="${WORK_DIR:-$PWD/aidoc-flow-ci-bootstrap-$$}"
 gh repo clone "$TARGET_REPO" "$WORK_DIR/consumer" -- --depth 1
 cd "$WORK_DIR/consumer"
 
-mkdir -p .github/workflows .github/ai-review
+# Bootstrap creates the canon dirs; --update only touches files the consumer
+# already has, so it must NOT litter empty dirs into the clone.
+[ "$MODE_UPDATE" = 1 ] || mkdir -p .github/workflows .github/ai-review
 
 fetch_template() {
   # $1 = source path under install/templates/; $2 = destination path
@@ -164,6 +182,133 @@ PYEOF
     exit 1
   fi
 }
+
+update_mode() {
+  # PLAN-004 PR-E. Walk install/templates/manifest.json; for every canon
+  # surface the consumer ALREADY has, re-fetch the template at $CI_TAG,
+  # substitute the de-branding placeholders, and diff vs local. On drift:
+  # interactive → prompt [k]eep/[r]eplace/[d]iff-only; --non-interactive →
+  # replace ONLY `safe_to_replace` files (workflows, dependabot), keep the
+  # rest (governance/policy: config.json, CODEOWNERS, CLAUDE.md, pre_push).
+  # Files the consumer does NOT have are skipped (bootstrap adds new files;
+  # --update never introduces surfaces the consumer didn't opt into).
+  # NOTE: labels.json (GitHub-API surface) + .pre-commit-config.yaml (canon
+  # block is MERGED, not replaced) are intentionally out of this file-diff
+  # walk — re-run `install.sh` (bootstrap) to refresh those.
+  local vis
+  # Resolve variant from the repo's ACTUAL visibility (a stale --visibility
+  # would fetch the wrong caller variant). The repo was already cloned above,
+  # so a `gh repo view` failure here is anomalous — treat it as FATAL rather
+  # than guessing, since guessing wrong could auto-replace (e.g.) a public
+  # caller with the private variant under --non-interactive.
+  local detected
+  if ! detected=$(gh repo view "$TARGET_REPO" --json isPrivate --jq '.isPrivate' 2>/dev/null); then
+    echo "  FAIL  gh repo view failed for $TARGET_REPO — cannot resolve visibility for variant selection (refusing to guess)" >&2
+    return 1
+  fi
+  case "$detected" in
+    true)  vis="private" ;;
+    false) vis="public" ;;
+    *)     echo "  FAIL  unexpected isPrivate='$detected' from gh — refusing to guess visibility" >&2; return 1 ;;
+  esac
+  echo "==> update: resolving templates for visibility=$vis"
+
+  local manifest
+  manifest=$(mktemp)
+  fetch_template "manifest.json" "$manifest" || { rm -f "$manifest"; return 1; }
+
+  # Emit "path<TAB>resolved_template<TAB>safe(0|1)" per file (variant resolved
+  # in python3, which is already a hard dependency).
+  local entries
+  entries=$(python3 - "$manifest" "$vis" <<'PYEOF'
+import sys, json
+manifest, vis = sys.argv[1], sys.argv[2]
+m = json.load(open(manifest, encoding="utf-8"))
+for f in m["files"]:
+    tmpl = f.get("visibility_variants", {}).get(vis, f["template"])
+    safe = "1" if f.get("safe_to_replace") else "0"
+    print("\t".join([f["path"], tmpl, safe]))
+PYEOF
+) || { echo "  FAIL  could not parse manifest.json" >&2; rm -f "$manifest"; return 1; }
+  rm -f "$manifest"
+
+  local replaced=0 kept=0 unchanged=0 absent=0
+  # Read all entries into an array FIRST so the loop body's stdin stays free
+  # for the interactive prompt (reading from stdin inside `while <<<` would
+  # consume the entry list).
+  local -a lines=()
+  mapfile -t lines <<< "$entries"
+  local line cpath ctmpl csafe fetched action dir tmp2
+  for line in "${lines[@]}"; do
+    [ -z "$line" ] && continue
+    IFS=$'\t' read -r cpath ctmpl csafe <<< "$line"
+    if [ ! -f "$cpath" ]; then
+      absent=$((absent + 1)); continue
+    fi
+    fetched=$(mktemp)
+    if ! curl -fsSL "${TEMPLATE_BASE}/${ctmpl}" -o "$fetched"; then
+      echo "  WARN  failed to fetch ${ctmpl} — skipping $cpath" >&2
+      rm -f "$fetched"; continue
+    fi
+    # Substitute uniformly: a template with no declared placeholders is a
+    # no-op (and still passes the fail-closed assertion). This makes the
+    # diff show what would ACTUALLY land (post-substitution content).
+    substitute_placeholders "$fetched"
+    if diff -q "$cpath" "$fetched" >/dev/null 2>&1; then
+      unchanged=$((unchanged + 1)); rm -f "$fetched"; continue
+    fi
+    echo ""
+    echo "  DRIFT  $cpath  (safe_to_replace=$csafe)"
+    # Label the canon side with the template name (not the mktemp path) so the
+    # printed diff / audit log names which canon file the drift is against.
+    diff -u --label "$cpath" --label "canon:$ctmpl" "$cpath" "$fetched" 2>/dev/null | sed 's/^/    /' | head -60 || true
+    if [ "$NONINTERACTIVE" = 1 ] || [ ! -t 0 ]; then
+      [ "$NONINTERACTIVE" != 1 ] && echo "  (no TTY — treating as --non-interactive)"
+      if [ "$csafe" = 1 ]; then action="r"; else action="k"; fi
+    else
+      printf "  [k]eep local / [r]eplace with canon / [d]iff-only (keep)? "
+      read -r action || action="k"
+    fi
+    case "$action" in
+      r|R)
+        # Atomic replace: stage a tmp beside the target (same filesystem) then
+        # rename, so a mid-write interrupt never leaves a truncated file.
+        dir=$(dirname "$cpath")
+        tmp2=$(mktemp "${dir}/.canon.XXXXXX") || { echo "  FAIL  mktemp in $dir" >&2; rm -f "$fetched"; return 1; }
+        if cp "$fetched" "$tmp2" && mv "$tmp2" "$cpath"; then
+          replaced=$((replaced + 1)); echo "  replaced  $cpath"
+        else
+          rm -f "$tmp2"; echo "  FAIL  could not replace $cpath" >&2; rm -f "$fetched"; return 1
+        fi
+        ;;
+      *)
+        kept=$((kept + 1))
+        [ "$csafe" = 0 ] && [ "$NONINTERACTIVE" = 1 ] \
+          && echo "  kept      $cpath (not safe-to-replace — review the diff above + update by hand if wanted)" \
+          || echo "  kept      $cpath"
+        ;;
+    esac
+    rm -f "$fetched"
+  done
+
+  echo ""
+  echo "==> update summary: replaced=$replaced  kept=$kept  unchanged=$unchanged  absent/not-adopted=$absent"
+  if [ "$replaced" -gt 0 ]; then
+    echo "    Inspect + commit: cd $WORK_DIR/consumer && git diff"
+  fi
+  return 0
+}
+
+if [ "$MODE_UPDATE" = 1 ]; then
+  # Call in an `if` so a `return 1` from update_mode doesn't trip `set -e`
+  # before we can report + exit with its status. NOTE: running a function in a
+  # condition disables `set -e` for its ENTIRE body — every failure path inside
+  # update_mode carries its own explicit `return 1` guard for that reason.
+  if update_mode; then update_rc=0; else update_rc=$?; fi
+  echo ""
+  echo "==> update done (rc=$update_rc). Working copy: $WORK_DIR/consumer"
+  exit "$update_rc"
+fi
 
 # Drop the default consumer-side callers. Preserve existing files.
 for wf in ai-review composition; do

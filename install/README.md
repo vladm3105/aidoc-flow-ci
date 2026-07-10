@@ -60,6 +60,22 @@ substitution, so a half-branded file is never written. Only files
 `install.sh` newly writes are substituted — an existing `config.json`,
 `CLAUDE.md`, or `.github/CODEOWNERS` is preserved untouched.
 
+### Updating an already-adopted consumer
+
+Bootstrap adds new surfaces and preserves everything. To pull a *newer*
+canon into a repo that already adopted, use `--update`:
+
+```bash
+CI_TAG=ci/vX.Y.Z bash install.sh <owner/repo> --update [--non-interactive]
+```
+
+It walks `install/templates/manifest.json`, re-fetches each surface the
+consumer already has, diffs it against canon, and (interactively) prompts
+`[k]eep / [r]eplace / [d]iff-only` per file. `--non-interactive` replaces
+only `safe_to_replace` files (the mechanical workflow files + `dependabot.yml`)
+and keeps policy/governance files (and the consumer-customized `codeql.yml`).
+Full walkthrough: [`../docs/UPDATE_GUIDE.md`](../docs/UPDATE_GUIDE.md).
+
 ## What it does
 
 1. **Clones** the consumer repo to `$PWD/aidoc-flow-ci-bootstrap-$$/consumer`

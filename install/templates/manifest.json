@@ -1,0 +1,145 @@
+{
+  "version": "1",
+  "_comment": [
+    "Canonical surface manifest for aidoc-flow-ci (PLAN-004 PR-E).",
+    "Enumerates every 1:1 template -> consumer-file mapping so install.sh",
+    "--update, apply-standards.sh, and sync/check-drift.sh can walk ONE list",
+    "instead of hardcoded per-script loops. Canon RULES stay in",
+    "docs/REPO_STANDARDS.md; this file is only the machine-readable index (per",
+    "PLAN-004 §6 R6). Two consumer surfaces are NOT 1:1 file copies and are",
+    "handled outside this walk: labels.json (created via the GitHub API by",
+    "install.sh's label step) and .pre-commit-config.yaml (canon block MERGED,",
+    "not replaced, by install.sh). Re-run install.sh to refresh those.",
+    "Fields: path=consumer path; template=default template under",
+    "install/templates/; visibility_variants=per-visibility template override;",
+    "substitute=de-branding placeholders install.sh substitutes at fetch time;",
+    "safe_to_replace=--update --non-interactive may replace without prompting;",
+    "auto_install=install.sh bootstraps it (false = optional adoption)."
+  ],
+  "files": [
+    {
+      "path": ".github/workflows/ai-review.yml",
+      "template": "workflows/ai-review-public.yml",
+      "visibility_variants": {"public": "workflows/ai-review-public.yml", "private": "workflows/ai-review-private.yml"},
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": true
+    },
+    {
+      "path": ".github/workflows/composition.yml",
+      "template": "workflows/composition-public.yml",
+      "visibility_variants": {"public": "workflows/composition-public.yml", "private": "workflows/composition-private.yml"},
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": true
+    },
+    {
+      "path": ".github/workflows/auto-merge-ai-prs.yml",
+      "template": "workflows/auto-merge-ai-prs-public.yml",
+      "visibility_variants": {"public": "workflows/auto-merge-ai-prs-public.yml", "private": "workflows/auto-merge-ai-prs-private.yml"},
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": false
+    },
+    {
+      "path": ".github/workflows/doc-maintainer.yml",
+      "template": "workflows/doc-maintainer-public.yml",
+      "visibility_variants": {"public": "workflows/doc-maintainer-public.yml", "private": "workflows/doc-maintainer-private.yml"},
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": false
+    },
+    {
+      "path": ".github/workflows/codeql.yml",
+      "template": "workflows/codeql.yml",
+      "substitute": [],
+      "safe_to_replace": false,
+      "_note": "consumer-customized (the `languages` input) — never auto-replace",
+      "auto_install": false
+    },
+    {
+      "path": ".github/workflows/docs-sync.yml",
+      "template": "workflows/docs-sync.yml",
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": false
+    },
+    {
+      "path": ".github/workflows/labeler.yml",
+      "template": "workflows/labeler.yml",
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": false
+    },
+    {
+      "path": ".github/workflows/links.yml",
+      "template": "workflows/links.yml",
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": false
+    },
+    {
+      "path": ".github/workflows/markdown-lint.yml",
+      "template": "workflows/markdown-lint.yml",
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": false
+    },
+    {
+      "path": ".github/workflows/pre-commit.yml",
+      "template": "workflows/pre-commit.yml",
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": false
+    },
+    {
+      "path": ".github/workflows/secret-scan.yml",
+      "template": "workflows/secret-scan.yml",
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": false
+    },
+    {
+      "path": ".github/dependabot.yml",
+      "template": "dependabot.yml",
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": false
+    },
+    {
+      "path": ".github/ai-review/config.json",
+      "template": "config.json.template",
+      "substitute": ["CODEOWNER_HANDLE"],
+      "safe_to_replace": false,
+      "auto_install": true
+    },
+    {
+      "path": ".github/CODEOWNERS",
+      "template": "CODEOWNERS.template",
+      "substitute": ["CODEOWNER_HANDLE"],
+      "safe_to_replace": false,
+      "auto_install": true
+    },
+    {
+      "path": ".github/pull_request_template.md",
+      "template": "pull_request_template.md",
+      "substitute": [],
+      "safe_to_replace": false,
+      "auto_install": false
+    },
+    {
+      "path": "scripts/pre_push_check.sh",
+      "template": "pre_push_check.sh",
+      "substitute": [],
+      "safe_to_replace": false,
+      "auto_install": true
+    },
+    {
+      "path": "CLAUDE.md",
+      "template": "CLAUDE.md.template",
+      "substitute": ["CANON_OPERATIONS_URL", "CANON_CI_URL"],
+      "safe_to_replace": false,
+      "auto_install": true
+    }
+  ]
+}
