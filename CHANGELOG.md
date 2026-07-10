@@ -5,7 +5,26 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-_No changes staged since `ci/v1.7.0`._
+_No changes staged since `ci/v1.7.1`._
+
+## ci/v1.7.1 — 2026-07-10
+
+> PATCH hotfix (PLAN-005 PR-B / B2). The `ai-review` caller templates shipped
+> with **no `permissions:` block**, so on any consumer under the canon `read`
+> default (`actions-permissions.json`) the reusable — which requests
+> contents/pull-requests/issues `write` — exceeded the caller grant and failed
+> at load (`startup_failure`, zero jobs): the ai-review pipeline never ran.
+
+### Fixed
+
+- **`ai-review` caller `startup_failure` on the `read` default** — added a
+  top-level `permissions:` block (contents/pull-requests/issues `write`,
+  matching the reusable's own scopes) to `ai-review-public.yml` +
+  `ai-review-private.yml`; gave the private caller the secrets/`pull_request_target`
+  header the public one already had. `actions-permissions.json` is untouched
+  (repo default stays `read` — the caller elevates without loosening it).
+  Matches the pattern the `auto-merge-ai-prs` caller already ships. Consumers
+  pick this up by re-pinning to `@ci/v1.7.1` (or `install.sh --update`).
 
 ## ci/v1.7.0 — 2026-07-10
 

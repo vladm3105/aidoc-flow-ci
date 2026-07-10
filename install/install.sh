@@ -21,7 +21,7 @@
 #   Update (re-fetch canon for a repo that already adopted; PLAN-004 PR-E):
 #   bash install.sh <owner/repo> --update [--non-interactive]
 #                                 [--codeowner <handle>] [--canon-*-url <url>]
-#   CI_TAG=ci/v1.7.0 bash install.sh <owner/repo> --visibility private
+#   CI_TAG=ci/v1.7.1 bash install.sh <owner/repo> --visibility private
 #
 # De-branding flags (PLAN-004 D2) let an external org adopt the canon
 # without vladm3105/aidoc-flow-operations hardcoded. Placeholders in the
@@ -102,7 +102,7 @@ done
 # and the hardcoded fallback is authoritative — that is expected and correct.
 # The startup log below names the winning source so a stale CI_TAG env var in
 # a consumer's CI caller silently overriding VERSION is diagnosable.
-CI_TAG_FALLBACK="ci/v1.7.0"
+CI_TAG_FALLBACK="ci/v1.7.1"
 if [ -n "${CI_TAG:-}" ]; then
   CI_TAG_SOURCE="CI_TAG env"
 else
