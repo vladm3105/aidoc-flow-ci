@@ -61,7 +61,7 @@ detectors in `sync/`, `LABELS.md` (label-namespace conventions), and
 ## Install on a new consumer repo
 
 ```sh
-bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.7.1/install/install.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.8.0/install/install.sh) \
   vladm3105/<consumer-repo> --visibility private
 ```
 

@@ -5,7 +5,19 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-PLAN-005 pipeline-hardening PRs (bundle into the next `ci/v1.7.x`/`v1.8.0` cut):
+- **PLAN-005 PR-A part 2** (HEAD-relative `skip-ai-review` carry-forward, D2) —
+  implemented + security-reviewed on PR #116, **held** pending a live §15
+  label-cycle smoke test; ships in a follow-on `ci/v1.8.1`.
+
+## ci/v1.8.0 — 2026-07-10
+
+> The **PLAN-005 ai-review pipeline-hardening** release (MINOR). Non-breaking:
+> PR-D makes the reviewer engine config-driven (callers stop hardcoding `codex`;
+> defaults fall back to `codex`, so existing behavior is preserved until a
+> consumer re-pins) and PR-G reads composition's config from the repo's default
+> branch. Consumers re-pin `@ci/v1.8.0` (or `install.sh --update`) to adopt.
+> PR-A part 2 (skip-ai-review hardening) is deliberately NOT in this cut — it is
+> held for a live §15 smoke test and follows as `v1.8.1`.
 
 - **PR-A part 1** — enforcer **governance floor**: `auto-merge-ai-prs.yml`
   computes `GOV_LOCKED` independently and refuses to re-arm unconditionally on

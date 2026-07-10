@@ -6,8 +6,16 @@ context compaction.
 
 ## Current state (2026-07-10)
 
-**PLAN-004 (company-default elevation) — SHIPPED (`ci/v1.7.0`, 2026-07-10).**
-**`ci/v1.7.1` PATCH in flight** — PLAN-005 PR-B / B2: the `ai-review` caller
+**PLAN-004 SHIPPED (`ci/v1.7.0`) + `ci/v1.7.1` PATCH (ai-review caller
+permissions). `ci/v1.8.0` (PLAN-005 pipeline-hardening) BEING CUT 2026-07-10** —
+bundles PR-A part 1 (gov floor), C (tag guard), D (config-driven reviewer), E
+(adopter docs), F (trust-boundary/D7), G (composition default-branch). PR-A
+part 2 (#116, skip-carry-forward D2) deliberately EXCLUDED — held for a live §15
+smoke test → ships as `v1.8.1`. Consumers re-pin `@ci/v1.8.0` to adopt (esp. the
+config-driven reviewer, which fixes the engine/token mismatch on broken
+consumers). See tmp/RUNBOOK + tmp/HANDOFF-NOTE for the consumer sync sweep.**
+
+_History:_ **`ci/v1.7.1` PATCH** — PLAN-005 PR-B / B2: the `ai-review` caller
 templates shipped with no `permissions:` block → `startup_failure` on consumers
 under the canon `read` default (the pipeline never ran). Fixed by adding the
 caller `permissions:` block to both variants. Consumers re-pin `@ci/v1.7.1` or

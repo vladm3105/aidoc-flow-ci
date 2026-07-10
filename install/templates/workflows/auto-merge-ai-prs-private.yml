@@ -25,7 +25,7 @@ permissions:
 jobs:
   call:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/auto-merge-ai-prs.yml@ci/v1.7.1
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/auto-merge-ai-prs.yml@ci/v1.8.0
     with:
       pr_number: ${{ github.event.workflow_run.pull_requests[0].number || inputs.pr_number || '' }}
       runner_labels: '["self-hosted", "aidoc", "ci-ephemeral"]'

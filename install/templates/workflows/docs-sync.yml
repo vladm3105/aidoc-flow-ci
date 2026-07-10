@@ -30,5 +30,5 @@ permissions:
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v1.7.1
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v1.8.0
     secrets: inherit  # pragma: allowlist secret
