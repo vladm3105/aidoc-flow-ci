@@ -11,9 +11,15 @@ context compaction.
 templates shipped with no `permissions:` block → `startup_failure` on consumers
 under the canon `read` default (the pipeline never ran). Fixed by adding the
 caller `permissions:` block to both variants. Consumers re-pin `@ci/v1.7.1` or
-`install.sh --update`. PLAN-005's other findings (B1 enforcer gov-floor, D2
-skip-carry-forward, PR-E trust-default, stale cross-refs) are being revised into
-the plan next. FT-8 is a post-elevation follow-up; FT-1..FT-6 remain.
+`install.sh --update`. **PLAN-005 REVISED to rev 2** (2026-07-10) after a
+three-agent from-scratch review: PR-B marked SHIPPED (v1.7.1); D2 redesigned
+(HEAD-relative + §15-safe — the original was both a live bypass AND broke §15
+recovery); PR-E reversed (don't flip `trust_config_repo` default — it breaks the
+enforcer schema + weakens trust); PR-C collapsed to a preventive guard; stale
+PLAN-004 cross-refs corrected; added D7 (inert gov knobs) + D8/§Release
+(propagate fixes to the ~9 consumers via `install.sh --update`). Gate: 28
+citations, 3 passes. Ready for execution (PR-A is the remaining BLOCKER). FT-8 is
+a post-elevation follow-up; FT-1..FT-6 remain.
 A 5-agent pre-prod review of this repo → SHIP-WITH-FIXES; the fix plan
 (`plans/PLAN-004_company-default-elevation.md`, merged #82) sequences A1–A6
 (docs) → B (correctness) → C (security) → D (de-brand + trust-root) → E
