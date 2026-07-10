@@ -105,6 +105,37 @@ reviewer CLI/API can't authenticate (the "App set, engine key wrong" failure):
    rest of the tier's required checks) to branch protection. See
    [`BRANCH_PROTECTION.md`](BRANCH_PROTECTION.md).
 
+## External adopters (outside the aidoc-flow workspace)
+
+By default the trust config is read from `vladm3105/aidoc-flow-operations@main`
+— a private repo you can't read. Point it at your **own** ops/config repo
+instead (the override already ships in the caller templates as commented
+`trust_config_repo:` / `trust_config_ref:` lines — uncomment them). Set it on
+**both** the `ai-review` **and** `auto-merge-ai-prs` callers so the review
+gate and the merge enforcer read the same allowlist:
+
+```yaml
+with:
+  trust_config_repo: your-org/your-ops-repo
+  trust_config_ref: main
+```
+
+That repo's `.github/ai-review/config.json` must carry:
+
+- **`.trust.ai_review`** — the login allowlist (who may be auto-reviewed).
+- **`.reviewer`** — your engine (`claude` | `codex`); see "Reviewer engine".
+- **`.auto_merge.repos`** — **required to enable the auto-merge enforcer.**
+  ⚠️ `config.json.template` ships **without** an `auto_merge.repos` key, and the
+  enforcer fail-closes (disables itself) when it's absent or not an array. If
+  you want auto-merge, add `"auto_merge": { "repos": ["your-org/your-repo"] }`
+  (the repos you allow to auto-merge) to that config.
+
+**Public-runner reviewer path is EXPERIMENTAL.** The public caller installs the
+reviewer CLI at workflow start on `ubuntu-latest` (per `ci/v1.0.2+`); that path
+is not yet verified end-to-end in CI. Treat public-runner review as
+experimental until you've confirmed a green run in your own public repo; the
+private (self-hosted, CLI-pre-baked) path is the verified one.
+
 ## Verifying it's armed
 
 - A routine PR gets an **APPROVED review by the App** (not just a
