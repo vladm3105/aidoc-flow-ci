@@ -4,9 +4,9 @@ Live cross-session resume point for the workspace CI + governance-workflow
 canon library. Read at session start; refresh at milestones and before
 context compaction.
 
-## Current state (2026-07-09)
+## Current state (2026-07-10)
 
-**PLAN-004 (company-default elevation) — ALL SLICES A–E COMPLETE (A/B/C-series + D1 + D2 + FT-7 + E). Founder-tag-cut is the only remaining step; FT-8 is a post-elevation follow-up.**
+**PLAN-004 (company-default elevation) — SHIPPED. All slices A–E merged AND `ci/v1.7.0` tag + release cut (2026-07-10). FT-8 is a post-elevation follow-up; FT-1..FT-6 remain.**
 A 5-agent pre-prod review of this repo → SHIP-WITH-FIXES; the fix plan
 (`plans/PLAN-004_company-default-elevation.md`, merged #82) sequences A1–A6
 (docs) → B (correctness) → C (security) → D (de-brand + trust-root) → E
@@ -56,9 +56,10 @@ A 5-agent pre-prod review of this repo → SHIP-WITH-FIXES; the fix plan
   (E2) to keep this PR reviewable — no broken intermediate (check-drift.sh
   still works on its hardcoded loop).
 
-⚠️ **No `ci/v1.7.0` tag exists yet** (latest is `ci/v1.6.0`). VERSION + all
-docs target it; the `curl …/ci/v1.7.0/…` install URLs won't resolve until the
-founder cuts the tag — after the remaining v1.x slices land.
+✅ **`ci/v1.7.0` tag + GitHub release cut 2026-07-10** (on `f424aa7`, the PR-E
+merge — all A–E under one cut). VERSION + docs + the `curl …/ci/v1.7.0/…`
+install URLs now resolve. Post-cut verification: run a live `install.sh
+--update` against one real consumer (e.g. interlog).
 
 Earlier canon layers SHIPPED: **PLAN-003** (governance-file canon, #73–#75 +
 follow-ups #76–#80) and **PLAN-002** (workspace standards + self-review
@@ -66,21 +67,21 @@ enforcement, PR-U1/U2/U3/U4, 2026-07-08).
 
 ## Open threads
 
-- **PLAN-004 fully implemented (A–E).** The remaining step is FOUNDER-ONLY:
-  cut the `ci/v1.7.0` tag + GitHub release (VERSION stays `ci/v1.7.0` — all A–E
-  slices landed under the first cut; the plan's per-slice `v1.8.0`/`v1.9.0`
-  numbers were aspirational — D2 + FT-7 + E are additive/byte-identical, not
-  breaking). Until the tag exists the `curl …/ci/v1.7.0/…` install URLs won't
-  resolve, so a live end-to-end `install.sh --update` run against a real
-  consumer is a POST-tag-cut verification step.
+- **PLAN-004 SHIPPED (A–E + `ci/v1.7.0` tag/release, 2026-07-10).** All A–E
+  slices landed under the one cut (VERSION = `ci/v1.7.0`; the plan's per-slice
+  `v1.8.0`/`v1.9.0` numbers were aspirational — D2 + FT-7 + E are
+  additive/byte-identical, not breaking). The `curl …/ci/v1.7.0/…` install URLs
+  now resolve. Remaining verification: a live end-to-end `install.sh --update`
+  against a real consumer (e.g. interlog).
 - **`plans/FRAMEWORK-TODO.md`** — FT-1 (branch-protection templates lag
   REPO_STANDARDS §2 on `call / verify`), FT-2 (verify `pre-commit`/`secret-scan`
   emitted context names), FT-3 (`labels.json` `skip-ai-review` description),
   FT-4 (CHANGELOG back-catalog per-tag cut), FT-5 (drift job needs
   `administration: read`), FT-6 (composition trust-source not parameterized —
   reads `$GH_REPO@main`; fails safe), FT-8 (migrate `sync/check-drift.sh` onto
-  `manifest.json` = PLAN-004 E2). Resolve FT-1..FT-6 before elevation; FT-8 is
-  post-elevation. **FT-7 (CODEOWNERS de-brand) RESOLVED 2026-07-09.**
+  `manifest.json` = PLAN-004 E2). FT-1..FT-6 + FT-8 are now open backlog (the
+  elevation shipped without them; none block adoption). **FT-7 (CODEOWNERS
+  de-brand) RESOLVED 2026-07-09.**
 - **PLAN-003 per-repo rollout waves** — one PR per non-paused repo per
   PLAN-003 §5.5 / operations `docs/CROSS_REPO_PLAYBOOKS.md` §T-D. Wave status
   is tracked there (do not hardcode a "next wave" here — it drifts). Validation
@@ -89,11 +90,10 @@ enforcement, PR-U1/U2/U3/U4, 2026-07-08).
 
 ## Next-session start-here
 
-1. **PLAN-004 is fully implemented (A–E all merged).** The next action is
-   FOUNDER-ONLY: cut the `ci/v1.7.0` tag + GitHub release. After the tag
-   exists, run a live `install.sh --update` against one real consumer as the
-   post-cut verification. Optional follow-ups: FT-8 (migrate
-   `sync/check-drift.sh` onto `manifest.json`, = E2) and the pending FT-1..FT-6.
+1. **PLAN-004 SHIPPED — A–E merged + `ci/v1.7.0` tag/release cut 2026-07-10.**
+   Next: (a) live `install.sh --update` against one real consumer (e.g.
+   interlog) as post-cut verification; (b) follow-ups FT-8 (migrate
+   `sync/check-drift.sh` onto `manifest.json`, = E2) + the pending FT-1..FT-6.
    Cap review/fix loops at 3 per OPS-0066.
 2. For PLAN-003 rollout work, read `docs/PLAYBOOK_governance-canon-rollout.md`
    then defer to operations `docs/CROSS_REPO_PLAYBOOKS.md` §T-D for

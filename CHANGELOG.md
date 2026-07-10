@@ -3,14 +3,19 @@
 Notable releases of the shared CI library. SemVer per `ci/vX.Y.Z`
 tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
-## Unreleased — targeting `ci/v1.7.0`
+## Unreleased
 
-> These entries accumulated after the `ci/v1.6.0` tag (the latest cut) and
-> are unreleased until `ci/v1.7.0` is tagged. The released back-catalog
-> below (v1.1.0 through v1.6.0) is currently documented as dated `###`
-> sub-sections rather than per-tag `##` headers — promoting it needs
-> git-log/tag reconciliation and is tracked as FRAMEWORK-TODO FT-4 (not
-> done in this PR to avoid mislabeling release provenance).
+_No changes staged since `ci/v1.7.0`._
+
+## ci/v1.7.0 — 2026-07-10
+
+> Cut 2026-07-10: the **PLAN-004 company-default elevation** (slices A–E).
+> Bundles everything that accumulated after the `ci/v1.6.0` tag. Non-breaking —
+> every slice is additive or byte-identical by default; consumers pinned at
+> `@ci/v1.6.0` keep working and pick up the changes when they bump the pin.
+> The released back-catalog below (v1.1.0 through v1.6.0) is documented as
+> dated `###` sub-sections rather than per-tag `##` headers — promoting it
+> needs git-log/tag reconciliation and is tracked as FRAMEWORK-TODO FT-4.
 
 ### Added — PLAN-004 company-default elevation, A-series (2026-07-09)
 
@@ -90,9 +95,8 @@ PRs #82 (plan) + #83/#84/#85/#86/#87/#88/#89/#90 (A1–A6).
   REPO_STANDARDS §16.8. The `sync/check-drift.sh` migration onto the manifest
   is tracked as FRAMEWORK-TODO FT-8 (E2).
 
-Remaining before the tag cuts: none (PLAN-004 slices A–E complete; then the
-founder cuts `ci/v1.7.0`). FT-8 (drift-check manifest migration) is a
-post-elevation follow-up.
+This release closes PLAN-004 slices A–E. FT-8 (drift-check manifest migration)
+is a post-elevation follow-up backlog item.
 
 ### Added — REPO_STANDARDS §17 auto-merge canon + canonical caller templates (2026-07-08)
 
