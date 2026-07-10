@@ -18,18 +18,30 @@ recovery); PR-E reversed (don't flip `trust_config_repo` default — it breaks t
 enforcer schema + weakens trust); PR-C collapsed to a preventive guard; stale
 PLAN-004 cross-refs corrected; added D7 (inert gov knobs) + D8/§Release
 (propagate fixes to the ~9 consumers via `install.sh --update`). Gate: 28
-citations, 3 passes. **PLAN-005 execution in progress:** PR-A part 1 (enforcer
-governance floor — closes the gov-path double-label bypass) MERGED #108; PR-C
-(remote tag-existence guard, `--check-published`) MERGED #109. **Remaining:**
-PR-A part 2 (D2 HEAD-relative carry-forward — needs a LIVE §15 label-cycle smoke
-test); PR-D (reviewer-engine↔token — FOUNDER DECISION: default `codex` vs
-`claude`, + which token is actually set on consumers); PR-E (external-adopter
-override docs + public-path EXPERIMENTAL disposition); PR-F (bootstrap guard +
-D7 gov-knobs wire-or-annotate decision); PR-G (`composition ?ref=main` →
-default-branch-agnostic — `.github/` gate change). Plus the §Release propagation
-sweep (`install.sh --update` to the ~9 consumers for the v1.7.1 caller fix — 🔴
-write-to-other-repos, needs the ops inbox runbook). FT-8 post-elevation;
-FT-1..FT-6 remain.
+citations, 3 passes. **PLAN-005 execution — 5 of 7 PRs done.** MERGED: PR-A part 1
+(enforcer governance floor — closes gov-path double-label bypass) #108; PR-C
+(remote tag guard `--check-published`) #109; PR-D (config-driven reviewer engine —
+founder chose config-driven; callers drop hardcoded `reviewer: codex`, reusable
+`.reviewer // "codex"` fallback + onboarding token-pairing) #111; PR-E
+(external-adopter trust-override docs + public-path EXPERIMENTAL) #112.
+**Remaining 3 + sweep:**
+- **PR-A part 2** (D2 HEAD-relative skip carry-forward) — needs a LIVE §15
+  label-cycle smoke test (plan Step 7) on a scratch PR; §15 tension resolved in
+  design (§15 keeps the approval AT HEAD, so "no review-material change since the
+  approved commit" doesn't break it).
+- **PR-F** (bootstrap/auto-merge install guard + trust-policy DECISIONS entry +
+  **D7 gov-knobs** wire-vs-annotate decision for the inert config fields
+  locked_paths/spec_paths_blocked/composition.required/etc.). Multi-surface —
+  mind OPS-0061 ≤3.
+- **PR-G** (`composition.yml:156` `?ref=main` → repo's actual default branch, so
+  master/develop consumers aren't hard-blocked; FT-6). `.github/` gate change —
+  safe (reads config from the default branch = base, not PR head) but needs a
+  careful review.
+- **§Release propagation sweep** — `install.sh --update` to the ~9 consumers for
+  the v1.7.1 caller fix + PR-D callers. 🔴 write-to-other-repos → ops inbox
+  runbook, not in-session. To flip the WORKSPACE default reviewer, set
+  `.reviewer` in operations@main config (ops-repo edit).
+FT-8 post-elevation; FT-1..FT-6 remain.
 A 5-agent pre-prod review of this repo → SHIP-WITH-FIXES; the fix plan
 (`plans/PLAN-004_company-default-elevation.md`, merged #82) sequences A1–A6
 (docs) → B (correctness) → C (security) → D (de-brand + trust-root) → E
