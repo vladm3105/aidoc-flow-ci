@@ -23,6 +23,10 @@ PLAN-005 pipeline-hardening PRs (bundle into the next `ci/v1.7.x`/`v1.8.0` cut):
   **declarative-only config-knob annotation** (a `config.json.template` `_note`
   marking the 8 fields no workflow reads, so consumers don't rely on phantom
   enforcement).
+- **PR-G** — `composition.yml` reads the trusted config from the repo's **actual
+  default branch** (was hardcoded `?ref=main`), so `master`/`develop` consumers
+  are no longer degraded to always-enforce (FT-6 `@main` half; the same
+  non-PR-mutable-base safety property holds).
 
 ## ci/v1.7.1 — 2026-07-10
 

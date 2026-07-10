@@ -103,6 +103,15 @@ requires a PAT/App token with admin:read for cross-repo drift.
 
 ### FT-6 — trust-config source inconsistency: `composition` reads `$GH_REPO@main`, ai-review/auto-merge read `trust_config_repo`
 
+**PARTIALLY RESOLVED:** 2026-07-10, PLAN-005 PR-G — the hardcoded `?ref=main` is
+fixed: `composition.yml` now reads the config from the repo's **actual default
+branch** (`gh api repos/$GH_REPO -q .default_branch`, fall back to `main`), so
+`master`/`develop` consumers aren't degraded to always-enforce. STILL OPEN: the
+*source-repo* half — composition reads the CONSUMER's own repo while
+ai-review/auto-merge read `trust_config_repo` (they can still consult different
+allowlists). The `trust_config_repo`/`trust_config_ref` inputs on composition
+(fix sketch (a) below) remain a deliberate future decision.
+
 **Found:** 2026-07-09, PLAN-004 D1 (trust-root parameterization).
 **Surface:** after D1, `ai-review.yml` + `auto-merge-ai-prs.yml` read the trust
 config (`.trust.ai_review` + `auto_merge.repos`) from `trust_config_repo` @
