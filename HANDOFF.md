@@ -6,14 +6,16 @@ context compaction.
 
 ## Current state (2026-07-10)
 
-**PLAN-004 SHIPPED (`ci/v1.7.0`) + `ci/v1.7.1` PATCH (ai-review caller
-permissions). `ci/v1.8.0` (PLAN-005 pipeline-hardening) BEING CUT 2026-07-10** —
-bundles PR-A part 1 (gov floor), C (tag guard), D (config-driven reviewer), E
-(adopter docs), F (trust-boundary/D7), G (composition default-branch). PR-A
-part 2 (#116, skip-carry-forward D2) deliberately EXCLUDED — held for a live §15
-smoke test → ships as `v1.8.1`. Consumers re-pin `@ci/v1.8.0` to adopt (esp. the
-config-driven reviewer, which fixes the engine/token mismatch on broken
-consumers). See tmp/RUNBOOK + tmp/HANDOFF-NOTE for the consumer sync sweep.**
+**PLAN-004 + PLAN-005 SHIPPED (2026-07-10). Releases: `ci/v1.7.0` (PLAN-004
+elevation), `ci/v1.7.1` (caller permissions), `ci/v1.8.0` (PLAN-005 A1/C/D/E/F/G),
+`ci/v1.8.1` BEING CUT (PLAN-005 PR-A part 2 / D2 — the last piece).** PLAN-005 is
+now 7/7 complete. #116 (D2) merged + cut as v1.8.1 per founder instruction; the
+live §15 smoke test could NOT be run pre-release (needs a working consumer with
+the App armed) → it's the first-`v1.8.1`-adopter verification. D2 is
+offline-validated (unit + real-git tree simulation) + security-reviewed (no
+BLOCKER, fails closed). **NEXT (founder/ops): consumer sync sweep → `@ci/v1.8.1`
+(latest); bump aidoc-flow-ci self-callers → v1.8.1; the §15 first-adopter check.
+See tmp/RUNBOOK + tmp/HANDOFF-NOTE.**
 
 _History:_ **`ci/v1.7.1` PATCH** — PLAN-005 PR-B / B2: the `ai-review` caller
 templates shipped with no `permissions:` block → `startup_failure` on consumers
