@@ -12,7 +12,7 @@
 # Same pattern as sync/check-drift.sh.
 #
 # Surfaces checked (canon templates from PR-B1 + PR-U1 + PR-V2):
-#   1. .github/CODEOWNERS                     — exact-match  (PR-B1)
+#   1. .github/CODEOWNERS                     — owner-normalized (FT-7)
 #   2. .github/pull_request_template.md       — exact-match  (PR-B1)
 #   3. .github/dependabot.yml                 — exact-match  (PR-B1)
 #   4. scripts/pre_push_check.sh              — exact-match  (PR-U1)
@@ -237,6 +237,54 @@ exact_match_check() {
   DRIFT_MISSING_LINES["$local_path"]=""
 }
 
+normalize_codeowners() {
+  # stdin → stdout. Replace every @owner token — including the canon's
+  # ${CODEOWNER_HANDLE} placeholder (which appears as @${CODEOWNER_HANDLE})
+  # and any consumer's substituted @handle — with a fixed @OWNER sentinel.
+  # A token is @ followed by non-whitespace, so `@a @b` → `@OWNER @OWNER`
+  # (the COUNT/position is preserved; only identity is anonymized).
+  sed -E 's/@[^[:space:]]+/@OWNER/g'
+}
+
+codeowners_check() {
+  # $1 = local path, $2 = template path. CODEOWNERS is exact-match EXCEPT the
+  # owner handles: the canon parameterizes them as @${CODEOWNER_HANDLE} (FT-7)
+  # and each consumer substitutes their own, so WHO owns is inherently
+  # consumer-specific and is NOT canon — the path-routing STRUCTURE is. So
+  # normalize every @owner on BOTH sides to a sentinel and diff that. This
+  # catches added/removed/reordered rules and extra/missing owner tokens
+  # (structure) while ignoring the handle identity, so a de-branded consumer
+  # does not read as permanent drift against the placeholder template.
+  local local_path="$1" template="$2"
+  local canonical canonical_norm local_norm status
+  canonical=$(mktemp); canonical_norm=$(mktemp); local_norm=$(mktemp)
+  # Register ALL three for cleanup BEFORE fetch_canon (which can `exit 3` on a
+  # canon-fetch failure, firing the EXIT trap before canonical_norm would
+  # otherwise be registered via DRIFT_CANONICAL below) — else it leaks.
+  APPLY_TMPFILES+=("$canonical" "$canonical_norm" "$local_norm")
+  fetch_canon "$template" > "$canonical"
+  if [ ! -f "$local_path" ]; then
+    status="MISSING"
+  else
+    normalize_codeowners < "$canonical"   > "$canonical_norm"
+    normalize_codeowners < "$local_path"  > "$local_norm"
+    if diff -q "$local_norm" "$canonical_norm" >/dev/null 2>&1; then
+      status="OK"
+    else
+      status="DRIFT"
+    fi
+  fi
+  DRIFT_STATUS["$local_path"]="$status"
+  DRIFT_TEMPLATE["$local_path"]="$template"
+  # Store the NORMALIZED canonical + local so emit_human's diff shows the
+  # structural delta (not handle noise). canonical_norm is cleaned via the
+  # DRIFT_CANONICAL sweep; local_norm + raw canonical via APPLY_TMPFILES.
+  DRIFT_CANONICAL["$local_path"]="$canonical_norm"
+  DRIFT_LOCAL_NORMALIZED["$local_path"]="$local_norm"
+  DRIFT_MODE["$local_path"]="normalized"
+  DRIFT_MISSING_LINES["$local_path"]=""
+}
+
 subset_check() {
   # $1 = local path, $2 = template path — canon lines all present in local
   local local_path="$1" template="$2"
@@ -356,7 +404,7 @@ except Exception as ex:
 }
 
 # --- run checks (skipped for --apply — it operates on server-side only) ---
-declare -A DRIFT_STATUS DRIFT_TEMPLATE DRIFT_CANONICAL DRIFT_MODE DRIFT_MISSING_LINES
+declare -A DRIFT_STATUS DRIFT_TEMPLATE DRIFT_CANONICAL DRIFT_MODE DRIFT_MISSING_LINES DRIFT_LOCAL_NORMALIZED
 # L1-code: track apply-mode tmpfiles separately so cleanup_tmpfiles
 # handles them too (previously they leaked on fetch_canon exit 3).
 APPLY_TMPFILES=()
@@ -376,7 +424,7 @@ cleanup_tmpfiles() {
 trap cleanup_tmpfiles EXIT
 
 if [ "$MODE" != "apply" ]; then
-  exact_match_check ".github/CODEOWNERS"                 "CODEOWNERS.template"
+  codeowners_check  ".github/CODEOWNERS"                 "CODEOWNERS.template"
   exact_match_check ".github/pull_request_template.md"   "pull_request_template.md"
   exact_match_check ".github/dependabot.yml"             "dependabot.yml"
   exact_match_check "scripts/pre_push_check.sh"          "pre_push_check.sh"
@@ -434,6 +482,11 @@ emit_human() {
         # Each error already has a `- ` prefix from the parser output.
         [ "$MODE" = "dry-run" ] && echo "    governance-table errors (fix per PLAN-003 §4.5):"
         printf '%s\n' "${DRIFT_MISSING_LINES[$path]}" | sed 's/^/    /'
+      elif [ "${DRIFT_MODE[$path]}" = "normalized" ]; then
+        # FT-7 CODEOWNERS structural check — diff the owner-normalized
+        # forms so the operator sees the STRUCTURAL delta, not handle noise.
+        [ "$MODE" = "dry-run" ] && echo "    would replace $path with ${TEMPLATE_BASE}/${DRIFT_TEMPLATE[$path]} (owner handles normalized to @OWNER for comparison)"
+        diff -u "${DRIFT_LOCAL_NORMALIZED[$path]}" "${DRIFT_CANONICAL[$path]}" 2>/dev/null | head -20 | sed 's/^/    /' || true
       else
         [ "$MODE" = "dry-run" ] && echo "    would replace $path with ${TEMPLATE_BASE}/${DRIFT_TEMPLATE[$path]}"
         diff -u "$path" "${DRIFT_CANONICAL[$path]}" 2>/dev/null | head -20 | sed 's/^/    /' || true
