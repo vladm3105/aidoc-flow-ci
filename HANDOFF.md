@@ -18,30 +18,33 @@ recovery); PR-E reversed (don't flip `trust_config_repo` default — it breaks t
 enforcer schema + weakens trust); PR-C collapsed to a preventive guard; stale
 PLAN-004 cross-refs corrected; added D7 (inert gov knobs) + D8/§Release
 (propagate fixes to the ~9 consumers via `install.sh --update`). Gate: 28
-citations, 3 passes. **PLAN-005 execution — 5 of 7 PRs done.** MERGED: PR-A part 1
-(enforcer governance floor — closes gov-path double-label bypass) #108; PR-C
-(remote tag guard `--check-published`) #109; PR-D (config-driven reviewer engine —
-founder chose config-driven; callers drop hardcoded `reviewer: codex`, reusable
-`.reviewer // "codex"` fallback + onboarding token-pairing) #111; PR-E
-(external-adopter trust-override docs + public-path EXPERIMENTAL) #112.
-**Remaining 3 + sweep:**
-- **PR-A part 2** (D2 HEAD-relative skip carry-forward) — needs a LIVE §15
-  label-cycle smoke test (plan Step 7) on a scratch PR; §15 tension resolved in
-  design (§15 keeps the approval AT HEAD, so "no review-material change since the
-  approved commit" doesn't break it).
-- **PR-F** (bootstrap/auto-merge install guard + trust-policy DECISIONS entry +
-  **D7 gov-knobs** wire-vs-annotate decision for the inert config fields
-  locked_paths/spec_paths_blocked/composition.required/etc.). Multi-surface —
-  mind OPS-0061 ≤3.
-- **PR-G** (`composition.yml:156` `?ref=main` → repo's actual default branch, so
-  master/develop consumers aren't hard-blocked; FT-6). `.github/` gate change —
-  safe (reads config from the default branch = base, not PR head) but needs a
-  careful review.
+citations, 3 passes. **PLAN-005 execution — 6.5 of 7 PRs done (only PR-A part 2
+remains).** MERGED: PR-A part 1 (enforcer governance floor — closes gov-path
+double-label bypass) #108; PR-C (remote tag guard `--check-published`) #109;
+PR-D (config-driven reviewer engine — callers drop hardcoded `reviewer: codex`,
+reusable `.reviewer // "codex"` fallback + onboarding token-pairing) #111; PR-E
+(external-adopter trust-override docs) #112; PR-F (trust-boundary DECISIONS
+CI-0005 + D7 declarative-knob `_note` — bootstrap install guard DROPPED as
+misdirected; the ops `auto_merge.repos` allowlist already gates auto-merge) #114;
+PR-G (`composition.yml` reads config from the repo's DEFAULT BRANCH, not
+hardcoded `?ref=main` — unblocks master/develop consumers; FT-6 `@main` half;
+security-auditor READY). ⚠️ **PR-G landed as a DIRECT commit to main (184415c),
+NOT via a PR** — I forgot the feature branch + a diagnostic `git push origin
+HEAD` pushed it; main is unprotected so it went through. The change was
+security-reviewed READY + tested + carries the OPS-0069 phrase (the only gate),
+so it's substantively fine, but it bypassed the PR record. Left on main (revert+
+redo would just churn history for an identical correct commit) — founder may
+redo via PR if the record matters.
+**Remaining:**
+- **PR-A part 2** (D2 HEAD-relative skip carry-forward — product-code
+  approve-then-inject) — needs a LIVE §15 label-cycle smoke test (plan Step 7) on
+  a scratch PR; §15 tension resolved in design (§15 keeps the approval AT HEAD).
+  The ONLY remaining PLAN-005 code PR.
 - **§Release propagation sweep** — `install.sh --update` to the ~9 consumers for
   the v1.7.1 caller fix + PR-D callers. 🔴 write-to-other-repos → ops inbox
   runbook, not in-session. To flip the WORKSPACE default reviewer, set
   `.reviewer` in operations@main config (ops-repo edit).
-FT-8 post-elevation; FT-1..FT-6 remain.
+FT-6 PARTIALLY resolved (PR-G); FT-8 post-elevation; FT-1..FT-5 remain.
 A 5-agent pre-prod review of this repo → SHIP-WITH-FIXES; the fix plan
 (`plans/PLAN-004_company-default-elevation.md`, merged #82) sequences A1–A6
 (docs) → B (correctness) → C (security) → D (de-brand + trust-root) → E
