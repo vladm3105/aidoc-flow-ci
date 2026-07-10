@@ -114,13 +114,39 @@ jobs:
             [ "$n" -lt 4 ] && sleep $((n*3))
           done
 
-          # CARRY-FORWARD: when ai-review is skipped via the `skip-ai-review` label, the App does not re-
-          # approve the new head, so there is no APPROVED-at-head review to find. Pass (carry the prior
-          # approval forward) so composition doesn't block a PR that's only iterating on OTHER checks. Same
-          # safe-by-intent contract as the gate: the label is added deliberately, never on reviewed-code change.
+          # CARRY-FORWARD (PLAN-005 PR-A part 2 / D2): skip-ai-review is ADVISORY, not authorization. It
+          # carries a PRIOR App approval forward across TRIVIAL pushes (rebase / label-cycle §15) — it must
+          # NOT pass un-reviewed code. Carry forward ONLY if the App APPROVED some commit whose CONTENT
+          # (git tree SHA) is identical to HEAD, i.e. nothing was pushed since the approval. §15 leaves the
+          # approval AT HEAD, so its tree matches → still carries. If the content changed since the last
+          # approval (approve-benign-then-push-malicious), do NOT carry — fall through to ENFORCE (require
+          # an App-APPROVED review AT HEAD). NB only a no-op / same-base rebase keeps the tree; a rebase
+          # onto an ADVANCED base changes it → NOT carried (fresh review needed; troubleshooting §15).
+          # Fail-closed: any fetch failure → no carry → ENFORCE.
           if [ "${SKIP_REVIEW:-}" = "1" ]; then
-            echo "::notice::composition carried forward — 'skip-ai-review' label present (reviewer not re-run on this push). Passing."
-            exit 0
+            asha_raw=""
+            for n in 1 2 3 4; do
+              asha_raw=$(gh api "repos/$GH_REPO/pulls/$PR/reviews" --paginate \
+                -q ".[] | select(.user.id == ($EXPECTED_ID) and .user.type == \"Bot\" and .state == \"APPROVED\") | .commit_id" 2>/dev/null) && break
+              [ "$n" -lt 4 ] && sleep $((n*3))
+            done
+            asha=$(printf '%s\n' "$asha_raw" | grep -v '^$' | tail -1)
+            carry_ok=
+            if [ -n "$asha" ]; then
+              if [ "$asha" = "${HEAD_SHA:-}" ]; then
+                carry_ok=1
+              else
+                atree=$(gh api "repos/$GH_REPO/git/commits/$asha" -q '.tree.sha' 2>/dev/null || echo "")
+                htree=$(gh api "repos/$GH_REPO/git/commits/${HEAD_SHA:-}" -q '.tree.sha' 2>/dev/null || echo "")
+                [ -n "$atree" ] && [ "$atree" = "$htree" ] && carry_ok=1
+              fi
+            fi
+            if [ -n "$carry_ok" ]; then
+              echo "::notice::composition carried forward — 'skip-ai-review' present and HEAD content == an App-approved commit's content (approval $asha; no re-review needed). Passing."
+              exit 0
+            fi
+            echo "::warning::skip-ai-review present but the content changed since the last App approval (or the App has never approved) — NOT carrying forward; enforcing the App-approval-at-HEAD requirement. skip-ai-review carries a prior approval across trivial pushes only. (PLAN-005 PR-A part 2 / D2.)"
+            # fall through to the trust gate + ENFORCE below (do NOT exit 0).
           fi
 
           # AUTHOR resolution for the workflow_run path (empty from the abbreviated event payload; see the

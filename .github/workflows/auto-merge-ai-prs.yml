@@ -325,20 +325,53 @@ jobs:
               exit 0
               ;;
           esac
-          # skip-ai-review carry-forward: composition passes these WITHOUT an APPROVED-at-HEAD
-          # review (the App deliberately did not re-review the new head), keyed on the bare label.
-          # Mirror it so label-cycle-recovered PRs (troubleshooting §15) stay re-armable.
+          # HEAD SHA is needed by BOTH branches below. Resolve once; fail closed if absent.
+          HEAD_SHA=$(echo "$STATE" | jq -r '.headRefOid // ""')
+          if [ -z "$HEAD_SHA" ]; then
+            echo "::warning::could not resolve PR head SHA — refusing to re-arm (cannot verify App approval)."
+            audit "head SHA missing — refusing re-arm (fail-closed)"
+            exit 0
+          fi
           if echo "$STATE" | jq -e '(.labels // []) | map(.name) | index("skip-ai-review")' >/dev/null 2>&1; then
-            audit "skip-ai-review present — composition carries the prior approval forward; App-at-HEAD check skipped (mirrors composition.yml)."
-          else
-            HEAD_SHA=$(echo "$STATE" | jq -r '.headRefOid // ""')
-            if [ -z "$HEAD_SHA" ]; then
-              echo "::warning::could not resolve PR head SHA — refusing to re-arm (cannot verify App approval)."
-              audit "head SHA missing — refusing re-arm (fail-closed)"
+            # skip-ai-review is ADVISORY, not authorization (PLAN-005 PR-A part 2 / D2). It carries a
+            # PRIOR App approval forward across TRIVIAL pushes (rebase / label-cycle §15 recovery) —
+            # it is NOT the right to merge un-reviewed code. Honor the carry-forward ONLY if the App
+            # APPROVED some commit whose CONTENT (git tree SHA) is identical to HEAD, i.e. nothing was
+            # pushed since the approval. This keeps §15 working (§15 leaves the approval AT HEAD → the
+            # tree matches) and identical-tree rebases, while REFUSING the approve-benign-then-push-
+            # malicious bypass (code changed since approval → trees differ → refuse). Tree-SHA equality
+            # is the exact, checkout-free, fail-closed test (stricter than a path diff: ANY content
+            # change refuses). NB only a no-op / same-base rebase keeps the tree; a rebase onto an
+            # ADVANCED base incorporates new upstream content → different tree → NOT carried (needs a
+            # fresh review — see troubleshooting §15). Every fetch failure fails closed.
+            approved_shas=$(retry gh api "repos/$GH_REPO/pulls/$PR/reviews" --paginate \
+                  -q ".[] | select(.user.id == ($EXPECTED_ID) and .user.type == \"Bot\" and .state == \"APPROVED\") | .commit_id") \
+              || { echo "::warning::skip-ai-review: could not fetch PR reviews (${RETRY_LAST_STDERR:-no stderr}) — refusing to re-arm (fail-closed)."; audit "skip-ai-review: reviews fetch FAILED — refusing re-arm"; exit 0; }
+            # Most recent APPROVED commit (reviews API is chronological ascending; tail -1 = latest).
+            approved_sha=$(printf '%s\n' "$approved_shas" | grep -v '^$' | tail -1)
+            if [ -z "$approved_sha" ]; then
+              echo "::warning::skip-ai-review present but the reviewer App has NEVER APPROVED this PR — refusing to re-arm: the label carries a PRIOR approval forward, and there is none to carry. (PLAN-005 PR-A part 2 / D2.)"
+              audit "skip-ai-review: no prior App approval — refusing re-arm (fail-closed, D2)"
               exit 0
             fi
-            # Same query shape as composition.yml (double-quoted expansion, --paginate). EXPECTED_ID
-            # is numeric-validated above, so its interpolation into the jq program is safe.
+            if [ "$approved_sha" = "$HEAD_SHA" ]; then
+              audit "skip-ai-review: App approval is AT HEAD ($HEAD_SHA) — carrying forward."
+            else
+              approved_tree=$(retry gh api "repos/$GH_REPO/git/commits/$approved_sha" -q '.tree.sha') \
+                || { echo "::warning::skip-ai-review: could not resolve approved commit tree ($approved_sha) — refusing (fail-closed)."; audit "skip-ai-review: approved-tree resolve FAILED — refusing re-arm"; exit 0; }
+              head_tree=$(retry gh api "repos/$GH_REPO/git/commits/$HEAD_SHA" -q '.tree.sha') \
+                || { echo "::warning::skip-ai-review: could not resolve HEAD tree ($HEAD_SHA) — refusing (fail-closed)."; audit "skip-ai-review: head-tree resolve FAILED — refusing re-arm"; exit 0; }
+              if [ -n "$approved_tree" ] && [ "$approved_tree" = "$head_tree" ]; then
+                audit "skip-ai-review: HEAD tree == approved tree (approval $approved_sha; no content change since) — carrying forward."
+              else
+                echo "::warning::skip-ai-review present but the content changed since the last App approval (approved $approved_sha tree=$approved_tree; HEAD $HEAD_SHA tree=$head_tree) — refusing to re-arm. skip-ai-review carries a prior approval across TRIVIAL pushes (rebase / label-cycle §15); it is NOT authorization to merge un-reviewed code. Re-review at HEAD to merge. (PLAN-005 PR-A part 2 / D2.)"
+                audit "skip-ai-review: content changed since approval $approved_sha — refusing re-arm (D2)"
+                exit 0
+              fi
+            fi
+          else
+            # App-APPROVED-at-HEAD check (BL-3, unchanged). Same query shape as composition.yml;
+            # EXPECTED_ID is numeric-validated above, so its interpolation into the jq program is safe.
             approved=0
             if ids=$(retry gh api "repos/$GH_REPO/pulls/$PR/reviews" --paginate \
                   -q ".[] | select(.user.id == ($EXPECTED_ID) and .user.type == \"Bot\" and .state == \"APPROVED\" and .commit_id == \"$HEAD_SHA\") | .id"); then
@@ -355,21 +388,18 @@ jobs:
             fi
             audit "App-APPROVED review confirmed at HEAD $HEAD_SHA — proceeding to re-arm."
           fi
-          # Residuals (PLAN-004 §4.2 + PLAN-005 PR-A). Step 3.4's governance floor now
-          # closes the double-label bypass FOR GOVERNANCE PATHS unconditionally: a
-          # gov-locked PR (.github/** | governance/** | templates/ai-review/**) never
-          # re-arms, under any label combination. What REMAINS open:
-          #   (a) arm-then-push TOCTOU — native auto-merge armed at HEAD1 merges HEAD2
-          #       after a push when composition is not a REQUIRED check.
-          #   (b) product-code approve-then-inject via the skip-ai-review carry-forward
-          #       below — an approval at HEAD1 + pushed HEAD2 + skip-ai-review carries
-          #       forward on NON-governance code with no re-review of HEAD2. Closing this
-          #       is PLAN-005 PR-A part 2 / D2 (HEAD-relative carry-forward: honor the
-          #       skip only when no review-material path changed since the approved
-          #       commit) — deferred pending a live §15 label-cycle smoke test.
-          # NOTE (corrected): making `composition` a REQUIRED check does NOT by itself
-          # close (b) — a required composition still PASSES a stale approval via its own
-          # carry-forward; the HEAD-relative check (D2) is what closes it.
+          # Residuals (PLAN-004 §4.2 + PLAN-005 PR-A). Step 3.4's governance floor closes
+          # the double-label bypass for governance paths unconditionally. The skip-ai-review
+          # branch above (PLAN-005 PR-A part 2 / D2) now closes the product-code
+          # approve-then-inject variant: an approval at HEAD1 + pushed HEAD2 + skip-ai-review
+          # is REFUSED unless HEAD2's tree is identical to an approved commit's tree (§15
+          # label-cycle / rebase). WHAT REMAINS open:
+          #   (a) arm-then-push TOCTOU — native auto-merge armed at HEAD1 by ai-review could
+          #       merge HEAD2 on the next required-check pass. Mitigated only if `composition`
+          #       is a REQUIRED check AND composition mirrors this D2 tree check (it does, as
+          #       of PR-A part 2) — a required composition then blocks HEAD2. Making
+          #       composition required is the consumer's branch-protection responsibility
+          #       (docs/BRANCH_PROTECTION.md); this enforcer's refusal covers the re-arm path.
 
           # ── Step 5: Re-arm `gh pr merge --auto --merge` ──────────────────────────
           # PR is stuck: green + ai:review-passed + trusted + allowlisted + not-armed + >2 min old.
