@@ -277,6 +277,35 @@ jobs:
             exit 0
           fi
 
+          # ── Step 3.4: Governance floor (PLAN-005 PR-A / D1) ───────────────────────
+          # The enforcer must NOT trust that ai-review + composition already blocked
+          # governance PRs: under `skip-ai-review` the ai-review floor step is itself
+          # gated off (ai-review.yml `if: env.SKIP_REVIEW != '1'`) and composition
+          # carries forward, so a governance-locked PR can reach here green. Compute the
+          # floor INDEPENDENTLY and refuse to re-arm UNCONDITIONALLY — before the
+          # skip-ai-review branch below, so no label combination bypasses it. Same globs
+          # + fail-closed logic as ai-review.yml's floor (an empty/incomplete file list
+          # locks — a transient API blip or an over-cap files listing must never open the
+          # floor). BL-3's App gate (Step 3.5) is orthogonal: it authorizes the merge;
+          # this decides governance PRs are human-merge regardless of approval.
+          GOV_CHANGED_N=""
+          for i in 1 2 3; do GOV_CHANGED_N=$(gh api "repos/$GH_REPO/pulls/$PR" -q '.changed_files' 2>/dev/null) && [ -n "$GOV_CHANGED_N" ] && break; sleep $((i*3)); done
+          GOV_FILES_TMP=$(mktemp); : > "$GOV_FILES_TMP"
+          for i in 1 2 3; do gh api --paginate "repos/$GH_REPO/pulls/$PR/files" -q '.[].filename' > "$GOV_FILES_TMP" 2>/dev/null && [ -s "$GOV_FILES_TMP" ] && break; sleep $((i*3)); done
+          GOV_LISTED_N=$(grep -c '' "$GOV_FILES_TMP" 2>/dev/null || echo 0)
+          GOV_LOCKED=false
+          [ -s "$GOV_FILES_TMP" ] || GOV_LOCKED=true
+          case "$GOV_CHANGED_N" in ''|*[!0-9]*) GOV_LOCKED=true;; *) [ "$GOV_LISTED_N" -ge "$GOV_CHANGED_N" ] || GOV_LOCKED=true;; esac
+          grep -qE '(^|/)governance/|(^|/)\.github/|(^|/)templates/ai-review/' "$GOV_FILES_TMP" && GOV_LOCKED=true
+          case "$GH_REPO" in */aidoc-flow-framework) GOV_LOCKED=true;; esac
+          rm -f "$GOV_FILES_TMP"
+          if [ "$GOV_LOCKED" = "true" ]; then
+            echo "::warning::governance-locked PR (touches .github/** | governance/** | templates/ai-review/**, OR the file list was incomplete/unreadable, OR the framework repo) — refusing to re-arm auto-merge. Governance PRs are human-merge only, regardless of labels or approval. (PLAN-005 PR-A / D1: unconditional, reached even under skip-ai-review.)"
+            audit "governance-locked (listed ${GOV_LISTED_N} / changed ${GOV_CHANGED_N:-?}) — refusing re-arm (D1 floor, unconditional)"
+            exit 0
+          fi
+          audit "governance floor clear (listed ${GOV_LISTED_N} / changed ${GOV_CHANGED_N:-?}) — proceeding to App-approval gate"
+
           # ── Step 3.5: App-approval gate (BL-3) ────────────────────────────────────
           # Step 3 only checks the ai:review-passed LABEL + CLEAN. A label is writable by any
           # collaborator with triage, so on a consumer where `composition` is not yet a REQUIRED
@@ -326,13 +355,21 @@ jobs:
             fi
             audit "App-APPROVED review confirmed at HEAD $HEAD_SHA — proceeding to re-arm."
           fi
-          # Residuals (PLAN-004 §4.2): this closes the single-label no-approval bypass. It does
-          # NOT close (a) the arm-then-push TOCTOU (native auto-merge armed at HEAD1 merges HEAD2
-          # after a push when composition is not a REQUIRED check) or (b) the double-label variant
-          # (ai:review-passed + skip-ai-review together pass via the carry-forward branch with zero
-          # App approvals — the same safe-by-intent label-trust contract composition itself grants).
-          # The complete fix for both is making `composition` a required branch-protection check
-          # (docs/BRANCH_PROTECTION.md); this gate is defense-in-depth inside that.
+          # Residuals (PLAN-004 §4.2 + PLAN-005 PR-A). Step 3.4's governance floor now
+          # closes the double-label bypass FOR GOVERNANCE PATHS unconditionally: a
+          # gov-locked PR (.github/** | governance/** | templates/ai-review/**) never
+          # re-arms, under any label combination. What REMAINS open:
+          #   (a) arm-then-push TOCTOU — native auto-merge armed at HEAD1 merges HEAD2
+          #       after a push when composition is not a REQUIRED check.
+          #   (b) product-code approve-then-inject via the skip-ai-review carry-forward
+          #       below — an approval at HEAD1 + pushed HEAD2 + skip-ai-review carries
+          #       forward on NON-governance code with no re-review of HEAD2. Closing this
+          #       is PLAN-005 PR-A part 2 / D2 (HEAD-relative carry-forward: honor the
+          #       skip only when no review-material path changed since the approved
+          #       commit) — deferred pending a live §15 label-cycle smoke test.
+          # NOTE (corrected): making `composition` a REQUIRED check does NOT by itself
+          # close (b) — a required composition still PASSES a stale approval via its own
+          # carry-forward; the HEAD-relative check (D2) is what closes it.
 
           # ── Step 5: Re-arm `gh pr merge --auto --merge` ──────────────────────────
           # PR is stuck: green + ai:review-passed + trusted + allowlisted + not-armed + >2 min old.
