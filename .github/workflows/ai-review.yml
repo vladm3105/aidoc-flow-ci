@@ -414,7 +414,12 @@ jobs:
         env:
           REVIEWER_IN: ${{ inputs.reviewer }}
         run: |
-          R="${REVIEWER_IN:-$(jq -r '.reviewer' .github/ai-review/config.json)}"
+          # Config-driven (PLAN-005 PR-D): input override > config `.reviewer` >
+          # "codex" fallback. The `// "codex"` guards a config that lacks the field
+          # (or has it null) — jq would otherwise emit the literal string "null" and
+          # the CLI-presence check below would fail. codex is the behavior-preserving
+          # fallback (it was the callers' hardcoded default pre-PR-D).
+          R="${REVIEWER_IN:-$(jq -r '.reviewer // "codex"' .github/ai-review/config.json)}"
           echo "REVIEWER=$R" >> "$GITHUB_ENV"
           command -v "$R" >/dev/null || { echo "::error::reviewer CLI '$R' not found on runner"; exit 1; }
           echo "reviewer resolved: $R"
@@ -556,8 +561,9 @@ jobs:
         run: |
           set -uo pipefail
           F=.ai-review/verdict.json
-          # REVIEWER is exported by the resolve step (GITHUB_ENV); fall back to config.
-          REVIEWER="${REVIEWER:-$(jq -r '.reviewer' .github/ai-review/config.json)}"
+          # REVIEWER is exported by the resolve step (GITHUB_ENV); fall back to config
+          # then to "codex" (PLAN-005 PR-D — same `// "codex"` guard as the resolve step).
+          REVIEWER="${REVIEWER:-$(jq -r '.reviewer // "codex"' .github/ai-review/config.json)}"
 
           # Set the review-state label via the REST API. (`gh pr edit --add-label`
           # trips the deprecated Projects-classic GraphQL path and silently fails.)

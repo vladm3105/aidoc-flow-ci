@@ -1,6 +1,7 @@
 {
   "$schema": "https://aidoc-flow.io/schemas/ai-review-config-v1.json",
   "version": 1,
+  "reviewer": "codex",
   "trust": {
     "ai_review": ["${CODEOWNER_HANDLE}"],
     "auto_fix":  []

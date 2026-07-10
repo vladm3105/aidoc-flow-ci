@@ -33,7 +33,13 @@ jobs:
   call:
     uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v1.7.1
     with:
-      reviewer: codex
+      # reviewer engine is CONFIG-DRIVEN: leave this unset and the reusable reads
+      # `.reviewer` (claude|codex) from your trust-config repo's
+      # .github/ai-review/config.json (operations@main by default; your own repo if
+      # you set trust_config_repo). Set the matching auth secret — claude:
+      # CLAUDE_CODE_OAUTH_TOKEN (CLI) or ANTHROPIC_API_KEY (API); codex:
+      # OPENAI_API_KEY. Uncomment to force an engine here regardless of config:
+      # reviewer: claude
       runner_labels_routine: '"runner-self"'
       runner_labels_review: '"runner-self"'
       # External adopters: point the trust config at YOUR ops/config repo
