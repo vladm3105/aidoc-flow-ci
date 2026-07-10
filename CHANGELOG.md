@@ -5,7 +5,24 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-_No changes staged since `ci/v1.7.1`._
+PLAN-005 pipeline-hardening PRs (bundle into the next `ci/v1.7.x`/`v1.8.0` cut):
+
+- **PR-A part 1** — enforcer **governance floor**: `auto-merge-ai-prs.yml`
+  computes `GOV_LOCKED` independently and refuses to re-arm unconditionally on
+  gov-locked PRs (`.github/**`/`governance/**`/`templates/ai-review/**`), closing
+  the `ai:review-passed`+`skip-ai-review` double-label bypass on governance paths.
+- **PR-C** — `sync-version-refs.sh --check-published` (remote tag-existence
+  guard; deadlock-free, not wired into pre-commit).
+- **PR-D** — **config-driven reviewer engine**: caller templates drop the
+  hardcoded `reviewer: codex`; the reusable falls back `.reviewer // "codex"`;
+  `config.json.template` gains `"reviewer"`; onboarding doc documents the
+  `.reviewer` ↔ token pairing (CLI + API).
+- **PR-E** — onboarding doc: external-adopter `trust_config_repo` override +
+  the `auto_merge.repos` requirement + public-path EXPERIMENTAL note.
+- **PR-F** — trust-boundary decision record (`DECISIONS.md` CI-0005) +
+  **declarative-only config-knob annotation** (a `config.json.template` `_note`
+  marking the 8 fields no workflow reads, so consumers don't rely on phantom
+  enforcement).
 
 ## ci/v1.7.1 — 2026-07-10
 

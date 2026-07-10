@@ -185,6 +185,76 @@ durable DECISIONS entry composing them. Codified here.
 
 ---
 
+## CI-0005: AI-review trust boundary + declarative-only config knobs (2026-07-10)
+
+**Context**
+
+PLAN-005's pre-prod review of the ai-review pipeline surfaced two gaps at
+company-default elevation: (1) no CI-NNNN records the ai-review / auto-merge
+**trust boundary** — who may be auto-reviewed + auto-merged, and where that is
+decided; (2) `config.json` ships several governance / auto-merge / composition
+knobs that LOOK enforceable but are read by **no** workflow (grep-verified),
+because the governance globs are hardcoded server-side. A consumer adding `spec/`
+to `governance.locked_paths` expecting human-merge protection gets none.
+
+**Decision**
+
+Trust boundary (this repo IMPLEMENTS it; the POLICY is OPS-0062 — see CI-0004):
+
+- **Who may be auto-reviewed:** logins in `.trust.ai_review` of the trust-config
+  repo (`trust_config_repo`@`trust_config_ref`, default
+  `vladm3105/aidoc-flow-operations@main` — a non-PR-mutable ref).
+- **Who may get auto-fix:** logins in `.trust.auto_fix` of the same trust-config
+  repo (`ai-review.yml` gates the auto-fix capability on it).
+- **Who may auto-merge:** repos in `.auto_merge.repos` of the operations config
+  (an operations-controlled allowlist). A repo not listed → the enforcer
+  fail-closes (disabled). **This is why no install-time "a bootstrap repo can't
+  auto-merge" guard is needed** — the allowlist already gates it; a
+  bootstrap-profile repo is simply not added until it has a review gate.
+- **Reviewer-App approval identity:** `vars.APP_REVIEWER_1_BOT_ID` (the counting
+  approval; the BL-3 App-at-HEAD gate + PR-A part 1 enforcer governance floor
+  build on it).
+- **`skip-ai-review`:** advisory carry-forward — hardened by PLAN-005 PR-A: the
+  enforcer's governance floor refuses it **unconditionally** on gov-locked PRs
+  (`.github/**` | `governance/**` | `templates/ai-review/**`); the HEAD-relative
+  product-code check is PR-A part 2.
+- **Reviewer engine:** config-driven via `.reviewer` (PLAN-005 PR-D), resolved
+  from the trust-config repo.
+
+Declarative-only config knobs (PLAN-005 D7): these `config.json` fields are NOT
+read by any workflow as of `ci/v1.7.x` and MUST NOT be relied on for
+enforcement — `governance.locked_paths`, `governance.require_human_review`,
+`governance.code_owners`, `auto_merge.enabled`, `auto_merge.spec_paths_blocked`,
+`composition.required`, `composition.carry_forward_on_skip_label`,
+`autofix.enabled`. (The ENFORCED fields are `trust.ai_review`, `trust.auto_fix`,
+`reviewer`, `auto_merge.repos`.) The
+governance globs are hardcoded server-side in `ai-review.yml` **deliberately** —
+a consumer-editable gov floor could be loosened by a PR. Wiring any of these
+(e.g. ADDING paths to `locked_paths`) is a future opt-in; a `_note` field in
+`config.json.template` flags them inline for anyone reading a consumer config.
+
+**Consequences**
+
+- A consumer reading `config.json` knows which fields bite (`trust.ai_review`,
+  `trust.auto_fix`, `reviewer`, `auto_merge.repos`) and which are declarative
+  (via the `_note` + this entry) — and that all but `trust.ai_review` are
+  resolved from the trust-config repo, not their local copy.
+- Auto-merge enablement is an operations-side allowlist action, not a
+  consumer-side config toggle — closing the "bootstrap repo self-enables
+  auto-merge" concern without new install tooling.
+- If a declarative knob is later wired, a new CI-NNNN records it and the `_note`
+  + this entry are annotated (append-only).
+
+**Origin**
+
+PLAN-005 rev-2 review (2026-07-10), findings "no CI-NNNN backs the trust
+boundary" (PR-F) + "governance config knobs are inert" (D7). The misdirected
+original PR-F "bootstrap install guard" was dropped: `apply-standards.sh` /
+`install.sh` do not install the auto-merge caller, and the operations allowlist
+already gates auto-merge — so the guard is a documented policy, not code.
+
+---
+
 <!-- Append new entries above this line; append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
 and update the superseded entry's "Consequences" section to reference
