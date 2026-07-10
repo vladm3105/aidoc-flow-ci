@@ -5,7 +5,18 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-_No changes staged since `ci/v1.8.1`._
+### Docs
+
+- **Runner class by visibility (canon rule).** Documented the workspace default:
+  **private repos → self-hosted `ci-ephemeral` runners; public → `ubuntu-latest`**
+  (a private repo on `ubuntu-latest` queues forever — no GitHub-hosted minutes
+  for private repos, OPS-0049). `install.sh --update` auto-detects visibility
+  (`gh repo view isPrivate`) + installs the matching `-private`/`-public`
+  variant; bootstrap selects it from `--visibility` (defaults `private`). Added
+  the explicit rule + the "register the self-hosted pool before adopting"
+  prerequisite + external-adopter override. `docs/runners.md` "Workspace
+  default" + REPO_STANDARDS §4.1. (No code change — the tooling already
+  implements it.)
 
 ## ci/v1.8.1 — 2026-07-10
 

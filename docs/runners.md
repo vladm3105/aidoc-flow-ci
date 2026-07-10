@@ -11,6 +11,36 @@ visibility)". For the bigger architectural picture, see
 [`architecture.md`](architecture.md) §5 ("Inputs that vary per
 consumer").
 
+## Workspace default — private repos use self-hosted runners (canon)
+
+**Within the aidoc-flow workspace, a repo's runner CLASS follows its
+visibility, by default:**
+
+| Repo visibility | Default runner | Caller variant |
+| --- | --- | --- |
+| **Private** | **self-hosted** — `["self-hosted", "aidoc", "ci-ephemeral"]` (and `[…, "ai-review"]` for the heavy reviewer job) | the `-private.yml` templates (`runner-self`) |
+| **Public** | GitHub-hosted `ubuntu-latest` | the `-public.yml` templates |
+
+Rationale: this account has **no GitHub-hosted Actions minutes for private
+repos** (OPS-0049), so a private repo pinned to `ubuntu-latest` cannot get a
+runner — its jobs queue indefinitely. Public repos get free GitHub-hosted
+minutes, so `ubuntu-latest` is correct there.
+
+`install.sh` encodes this rule: **`install.sh --update` auto-detects the repo's
+actual visibility** (`gh repo view isPrivate`) and installs the matching
+`-private` / `-public` variant; **bootstrap** selects the variant from the
+`--visibility` flag, which **defaults to `private`** (so a public repo must be
+bootstrapped with `--visibility public`, or it gets the self-hosted variant).
+
+> ⚠️ **Prerequisite for a private consumer:** register the
+> `["self-hosted", "aidoc", "ci-ephemeral"]` (+ `ai-review`) runner pool
+> **before** adopting — otherwise the correctly-installed self-hosted callers
+> queue forever with no matching runner. See §2 for the reference image.
+
+**External adopters** outside the aidoc-flow workspace have no `runner-self`
+pool, so they override this default — see §2 option 1 (`ubuntu-latest`, if their
+private repos have GitHub-hosted minutes) or option 2 (build their own pool).
+
 ## 0. Terminology — runner CLASS vs runner LABEL (canonical)
 
 Per [GitHub Actions docs](https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners),
@@ -67,7 +97,9 @@ custom names.
 > company/org adopting this CI standard does NOT have access to them. You
 > have two paths:
 >
-> 1. **Use `ubuntu-latest` (recommended default for adopters).** The
+> 1. **Use `ubuntu-latest` (recommended default for EXTERNAL adopters** — the
+>    aidoc-flow *workspace* default is self-hosted for private repos, see
+>    "Workspace default" above). The
 >    reviewer CLI is installed just-in-time at workflow start (`ci/v1.0.2`+),
 >    so no self-hosted infra is needed. Works for public repos and private
 >    repos that have GitHub-hosted Actions minutes. (You still set the

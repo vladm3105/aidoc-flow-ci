@@ -147,6 +147,24 @@ are allowed.
 `apply-standards.sh` (PR-B) tightens to `read` and adds the fork-PR
 constraints.
 
+### 4.1 Runner class by visibility (canon)
+
+A workspace repo's runner CLASS follows its visibility, by default:
+
+| Visibility | Default runner | Caller variant |
+| --- | --- | --- |
+| **Private** | self-hosted `["self-hosted", "aidoc", "ci-ephemeral"]` (+ `[…, "ai-review"]` for the heavy job) | `-private.yml` |
+| **Public** | GitHub-hosted `ubuntu-latest` | `-public.yml` |
+
+This account has **no GitHub-hosted Actions minutes for private repos**
+(OPS-0049), so a private repo pinned to `ubuntu-latest` would queue forever.
+`install.sh --update` auto-detects the repo's visibility (`gh repo view
+isPrivate`) and installs the matching variant; bootstrap selects it from
+`--visibility` (defaults to `private`). **A private consumer MUST register the
+self-hosted `ci-ephemeral` (+ `ai-review`) pool before adopting.** Full detail + the external-adopter
+override (they lack the self-hosted pool → `ubuntu-latest`): `docs/runners.md`
+"Workspace default".
+
 ## 5. Labels — canonical taxonomy
 
 The label taxonomy aligns with the **OPS-0065 diff-class dispatch table**
