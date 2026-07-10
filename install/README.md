@@ -34,6 +34,32 @@ which source it used at startup. In `curl`-piped mode there is no local
 `VERSION`, so the hardcoded fallback (bumped every release cut) is
 authoritative — pass `CI_TAG=` to pin a specific tag.
 
+### De-branding for external adopters
+
+The installed `config.json` trust handle and the `CLAUDE.md` canon-repo
+links default to the aidoc-flow workspace's own values. A different org
+overrides them at install time; the values are substituted into the
+templates as they are fetched.
+
+| Flag | Substitutes | Default |
+|---|---|---|
+| `--codeowner <handle>` | `config.json` `trust.ai_review` + `governance.code_owners` (leading `@` optional) | `vladm3105` |
+| `--canon-operations-url <url>` | the 7 `CLAUDE.md` links to the operations canon repo | `../operations` |
+| `--canon-ci-url <url>` | the `CLAUDE.md` link to this CI canon repo | `../aidoc-flow-ci` |
+
+```bash
+CI_TAG=ci/v1.7.0 bash install.sh acme/their-repo --visibility private \
+  --codeowner acme-bot \
+  --canon-operations-url https://github.com/acme/ops-canon \
+  --canon-ci-url https://github.com/acme/ci-canon
+```
+
+Omitting all three produces **byte-identical** output to the pre-D2
+templates. `install.sh` fails closed if any placeholder survives
+substitution, so a half-branded file is never written. Only files
+`install.sh` newly writes are substituted — an existing `config.json` or
+`CLAUDE.md` is preserved untouched.
+
 ## What it does
 
 1. **Clones** the consumer repo to `$PWD/aidoc-flow-ci-bootstrap-$$/consumer`

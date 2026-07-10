@@ -14,22 +14,70 @@
 #
 # Usage:
 #   bash install.sh <owner/repo> [--visibility public|private]
+#                                 [--codeowner <handle>]
+#                                 [--canon-operations-url <url>]
+#                                 [--canon-ci-url <url>]
 #   CI_TAG=ci/v1.7.0 bash install.sh <owner/repo> --visibility private
 #
-# Requires: gh (authenticated for write on the target repo) + curl + git.
+# De-branding flags (PLAN-004 D2) let an external org adopt the canon
+# without vladm3105/aidoc-flow-operations hardcoded. Placeholders in the
+# templates (${CODEOWNER_HANDLE} in config.json; ${CANON_OPERATIONS_URL} /
+# ${CANON_CI_URL} in CLAUDE.md) are substituted at fetch time. Every flag
+# DEFAULTS to the aidoc-flow values, so omitting all three produces
+# byte-identical output to the pre-D2 templates.
+#   --codeowner <handle>          trust/CODEOWNERS handle (leading @ optional;
+#                                   default vladm3105)
+#   --canon-operations-url <url>  path/URL to the operations canon repo
+#                                   (default ../operations)
+#   --canon-ci-url <url>          path/URL to this CI canon repo
+#                                   (default ../aidoc-flow-ci)
+#
+# Requires: gh (authenticated for write on the target repo) + curl + git +
+# python3 (placeholder substitution + existing label/pre-commit steps).
 
 set -euo pipefail
 
 TARGET_REPO="${1:?usage: $0 <owner/repo> [--visibility public|private]}"
 shift
 VISIBILITY="private"
+# De-branding defaults — chosen so omitting the flags yields byte-identical
+# output to the pre-D2 templates (the aidoc-flow workspace's own values).
+CODEOWNER_HANDLE="vladm3105"
+CANON_OPERATIONS_URL="../operations"
+CANON_CI_URL="../aidoc-flow-ci"
 while [ $# -gt 0 ]; do
   case "$1" in
     --visibility) VISIBILITY="$2"; shift 2 ;;
+    # Strip a leading @ so `--codeowner @org` and `--codeowner org` are
+    # equivalent; the templates re-add @ only where CODEOWNERS syntax needs it.
+    --codeowner) : "${2:?--codeowner requires a value}"; CODEOWNER_HANDLE="${2#@}"; shift 2 ;;
+    --canon-operations-url) CANON_OPERATIONS_URL="${2:?--canon-operations-url requires a value}"; shift 2 ;;
+    --canon-ci-url) CANON_CI_URL="${2:?--canon-ci-url requires a value}"; shift 2 ;;
     *) echo "unknown arg: $1" >&2; exit 1 ;;
   esac
 done
 case "$VISIBILITY" in public|private) ;; *) echo "--visibility must be public|private" >&2; exit 1 ;; esac
+# Validate the de-branding values BEFORE substitution. --codeowner lands in
+# config.json's trust.ai_review — a SECURITY allowlist — inside a JSON string,
+# so restrict it to the GitHub handle grammar (letters, digits, . _ / -). A
+# value with JSON-breaking chars (" ] } , or whitespace) could otherwise
+# corrupt the JSON or smuggle an extra trust entry, and the post-substitution
+# assertion only catches SURVIVING placeholders, not injected content.
+case "$CODEOWNER_HANDLE" in
+  "" | *[!A-Za-z0-9._/-]* )
+    echo "--codeowner: '$CODEOWNER_HANDLE' is not a valid handle (allowed: letters, digits, and . _ / -)" >&2
+    exit 1 ;;
+esac
+# --canon-*-url land in CLAUDE.md (AI-agent governance instructions). Reject
+# newlines / control chars so a value cannot break out of the markdown link
+# line and inject governance text (defense-in-depth).
+for _canon_url in "$CANON_OPERATIONS_URL" "$CANON_CI_URL"; do
+  case "$_canon_url" in
+    *[[:cntrl:]]* )
+      echo "--canon-*-url: values must not contain newlines or control characters" >&2
+      exit 1 ;;
+  esac
+done
 
 # Resolve the pinned CI tag. Precedence (PLAN-004 §4.4): CI_TAG env >
 # VERSION file (repo-local only) > hardcoded fallback. The fallback is
@@ -90,6 +138,33 @@ fetch_template() {
   fi
 }
 
+substitute_placeholders() {
+  # $1 = file to substitute in place. Replaces the canonical de-branding
+  # placeholders with the resolved values. Substitution is LITERAL (not
+  # regex) and the values are passed as argv to python3 — never interpolated
+  # into shell or code — so a hostile handle/URL cannot inject (same
+  # discipline as PLAN-004 C2's env-var indirection). A post-substitution
+  # assertion fails closed if any DECLARED placeholder survives (a typo in
+  # the template or a missed replacement), so a half-branded file can never
+  # be committed. It greps ONLY the three declared names — NOT a blanket
+  # ${...} scan — so unrelated shell-style ${VAR} text a consumer may
+  # legitimately carry elsewhere does not trip it (per PLAN-004 Pass-4).
+  local file="$1"
+  python3 - "$file" "$CODEOWNER_HANDLE" "$CANON_OPERATIONS_URL" "$CANON_CI_URL" <<'PYEOF'
+import sys
+path, handle, ops_url, ci_url = sys.argv[1:5]
+text = open(path, encoding="utf-8").read()
+text = text.replace("${CODEOWNER_HANDLE}", handle)
+text = text.replace("${CANON_OPERATIONS_URL}", ops_url)
+text = text.replace("${CANON_CI_URL}", ci_url)
+open(path, "w", encoding="utf-8").write(text)
+PYEOF
+  if grep -nE '\$\{(CODEOWNER_HANDLE|CANON_OPERATIONS_URL|CANON_CI_URL)\}' "$file" >&2; then
+    echo "  FAIL  unresolved canon placeholder(s) remain in ${file} (substitution bug — refusing to leave a half-branded file)" >&2
+    exit 1
+  fi
+}
+
 # Drop the default consumer-side callers. Preserve existing files.
 for wf in ai-review composition; do
   if [ -f ".github/workflows/${wf}.yml" ]; then
@@ -104,7 +179,8 @@ if [ -f ".github/ai-review/config.json" ]; then
   echo "  preserve  .github/ai-review/config.json (already exists)"
 else
   fetch_template "config.json.template" ".github/ai-review/config.json" || exit 1
-  echo "  add       .github/ai-review/config.json"
+  substitute_placeholders ".github/ai-review/config.json"
+  echo "  add       .github/ai-review/config.json (codeowner=${CODEOWNER_HANDLE})"
 fi
 
 # --- PLAN-003 PR-V2: CLAUDE.md canon template bootstrap ---
@@ -137,6 +213,7 @@ if [ -f "CLAUDE.md" ]; then
   fi
 else
   fetch_template "CLAUDE.md.template" "CLAUDE.md" || exit 1
+  substitute_placeholders "CLAUDE.md"
   echo "  add       CLAUDE.md (template with placeholders — FILL BEFORE COMMIT: <REPO_FRIENDLY_NAME>, <REPO_PURPOSE_ONE_LINER>, table cells, etc.)"
 fi
 
