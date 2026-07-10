@@ -20,15 +20,40 @@ checklist but does not perform it.
 ## What you provision
 
 | Kind | Name | What it is | Consumed at |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Secret | `APP_REVIEWER_1_ID` | the reviewer App's numeric **App ID** | `ai-review.yml` + `auto-merge-ai-prs.yml` (mint installation token) |
 | Secret | `APP_REVIEWER_1_KEY` | the reviewer App's **private key** (full PEM, incl. BEGIN/END lines) | same |
-| Secret | one reviewer-auth token | `CLAUDE_CODE_OAUTH_TOKEN` (Claude subscription — preferred, free on Pro/Max) **or** `ANTHROPIC_API_KEY` (Claude pay-per-token) **or** `OPENAI_API_KEY` (codex) | the "Run review" step exports it to the reviewer CLI |
+| Secret | one reviewer-auth token — **must match your `.reviewer` engine** (see "Reviewer engine" below) | for `.reviewer: claude` → `CLAUDE_CODE_OAUTH_TOKEN` (Claude subscription CLI, free on Pro/Max) **or** `ANTHROPIC_API_KEY` (Claude API, pay-per-token); for `.reviewer: codex` → `OPENAI_API_KEY` | the "Run review" step exports it to the reviewer CLI/API |
 | Variable | `APP_REVIEWER_1_BOT_ID` | the App's **bot-user** numeric id (NOT the App ID) | `composition.yml` + the R3 early-exit — matches the App's APPROVED review by `user.id` |
 
 Secrets can be set at the **repo** level (`gh secret set … --repo`) or
 inherited from an **org** secret; the variable is per-repo (`gh variable
 set …`).
+
+## Reviewer engine (config-driven)
+
+Which engine reviews PRs is **config-driven**, not hardcoded in the caller
+(PLAN-005 PR-D). The reusable resolves the engine as:
+
+**caller `reviewer:` input** (if set) → **`.reviewer` in the trust-config
+repo's `.github/ai-review/config.json`** → **`codex` fallback**.
+
+- **aidoc-flow consumers** read the engine from **`operations@main`**'s
+  config (the default `trust_config_repo`). To change the workspace default,
+  set `.reviewer` there — until then it falls back to `codex`.
+- **External adopters** (who set `trust_config_repo` to their own repo) read
+  `.reviewer` from **their own** `config.json` (shipped from
+  `config.json.template`, default `"codex"`).
+- **Per-repo force:** uncomment `reviewer: claude` (or `codex`) in the caller
+  to override config entirely.
+
+**The auth token you set MUST match the resolved engine** — otherwise the
+reviewer CLI/API can't authenticate (the "App set, engine key wrong" failure):
+
+| `.reviewer` | Auth secret (set ONE) |
+| --- | --- |
+| `claude` | `CLAUDE_CODE_OAUTH_TOKEN` (subscription CLI, free on Pro/Max) **or** `ANTHROPIC_API_KEY` (API) |
+| `codex` | `OPENAI_API_KEY` (API) |
 
 ## Steps
 
@@ -54,8 +79,11 @@ set …`).
    ```bash
    gh secret set APP_REVIEWER_1_ID  --repo <owner>/<repo> --body "<app-id>"
    gh secret set APP_REVIEWER_1_KEY --repo <owner>/<repo> < path/to/private-key.pem
-   # ONE reviewer-auth token (pick per your reviewer vendor):
-   gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo <owner>/<repo> --body "<token>"
+   # ONE reviewer-auth token — MUST match your resolved `.reviewer` engine (see above).
+   # The default engine is `codex` (the config fallback) → set OPENAI_API_KEY:
+   gh secret set OPENAI_API_KEY --repo <owner>/<repo> --body "<token>"
+   #   if you set `.reviewer: claude` instead → CLAUDE_CODE_OAUTH_TOKEN (CLI) or ANTHROPIC_API_KEY (API):
+   # gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo <owner>/<repo> --body "<token>"
    ```
 
 5. **Open a first PR** from an allowlisted author (a login in
