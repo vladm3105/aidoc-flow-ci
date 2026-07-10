@@ -18,8 +18,18 @@ recovery); PR-E reversed (don't flip `trust_config_repo` default — it breaks t
 enforcer schema + weakens trust); PR-C collapsed to a preventive guard; stale
 PLAN-004 cross-refs corrected; added D7 (inert gov knobs) + D8/§Release
 (propagate fixes to the ~9 consumers via `install.sh --update`). Gate: 28
-citations, 3 passes. Ready for execution (PR-A is the remaining BLOCKER). FT-8 is
-a post-elevation follow-up; FT-1..FT-6 remain.
+citations, 3 passes. **PLAN-005 execution in progress:** PR-A part 1 (enforcer
+governance floor — closes the gov-path double-label bypass) MERGED #108; PR-C
+(remote tag-existence guard, `--check-published`) MERGED #109. **Remaining:**
+PR-A part 2 (D2 HEAD-relative carry-forward — needs a LIVE §15 label-cycle smoke
+test); PR-D (reviewer-engine↔token — FOUNDER DECISION: default `codex` vs
+`claude`, + which token is actually set on consumers); PR-E (external-adopter
+override docs + public-path EXPERIMENTAL disposition); PR-F (bootstrap guard +
+D7 gov-knobs wire-or-annotate decision); PR-G (`composition ?ref=main` →
+default-branch-agnostic — `.github/` gate change). Plus the §Release propagation
+sweep (`install.sh --update` to the ~9 consumers for the v1.7.1 caller fix — 🔴
+write-to-other-repos, needs the ops inbox runbook). FT-8 post-elevation;
+FT-1..FT-6 remain.
 A 5-agent pre-prod review of this repo → SHIP-WITH-FIXES; the fix plan
 (`plans/PLAN-004_company-default-elevation.md`, merged #82) sequences A1–A6
 (docs) → B (correctness) → C (security) → D (de-brand + trust-root) → E
