@@ -5,9 +5,26 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-- **PLAN-005 PR-A part 2** (HEAD-relative `skip-ai-review` carry-forward, D2) —
-  implemented + security-reviewed on PR #116, **held** pending a live §15
-  label-cycle smoke test; ships in a follow-on `ci/v1.8.1`.
+_No changes staged since `ci/v1.8.1`._
+
+## ci/v1.8.1 — 2026-07-10
+
+> PATCH — the final PLAN-005 security hardening (PR-A part 2 / D2). Closes the
+> `skip-ai-review` approve-then-push bypass in both merge gates.
+
+### Fixed
+
+- **PR-A part 2 — HEAD-relative `skip-ai-review` carry-forward (D2)** in both
+  `auto-merge-ai-prs.yml` (re-arm) and `composition.yml` (required check): the
+  label now carries a prior App approval forward only when HEAD's **content
+  (git tree SHA) is identical** to an App-approved commit — closing the
+  approve-benign-then-push-malicious bypass. §15 label-cycle recovery still works
+  (approval stays at HEAD → tree matches); a rebase onto an *advanced* base
+  changes the tree → fresh review required (troubleshooting §15). Fails closed on
+  every path. Security-reviewed (no BLOCKER); the tree-SHA logic is offline-tested
+  (unit + real-git simulation). **The live §15 label-cycle smoke test is the
+  first-`v1.8.1`-adopter verification** (it could not be run pre-release —
+  requires a working consumer with the reviewer App armed).
 
 ## ci/v1.8.0 — 2026-07-10
 
