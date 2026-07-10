@@ -651,6 +651,47 @@ PR-V1 (bundled with canon shipment). Waves 1-4 = one PR per
 non-paused repo. Wave 5 = umbrella. Waves execute sequentially; within
 a wave, alphabetical order is fine.
 
+### 16.7 Template parameterization (de-branding)
+
+The templates `install.sh` writes carry the aidoc-flow workspace's own
+identity only as **defaults**. A different org overrides them at install
+time without editing the canon, via literal placeholders substituted as
+the template is fetched (PLAN-004 D2):
+
+| Placeholder | Template | `install.sh` flag | Default |
+|---|---|---|---|
+| `${CODEOWNER_HANDLE}` | `config.json.template` (`trust.ai_review`, `governance.code_owners`) | `--codeowner` | `vladm3105` |
+| `${CANON_OPERATIONS_URL}` | `CLAUDE.md.template` (operations canon links) | `--canon-operations-url` | `../operations` |
+| `${CANON_CI_URL}` | `CLAUDE.md.template` (CI canon link) | `--canon-ci-url` | `../aidoc-flow-ci` |
+
+Discipline for this mechanism:
+
+- **Defaults are byte-identical.** Omitting every flag MUST reproduce the
+  pre-parameterization template exactly, so existing consumers see no
+  drift. A round-trip test guards this.
+- **Values are data, never code.** `install.sh` passes flag values as
+  argv to a `python3` literal `str.replace`, never interpolating them into
+  a shell or regex — a hostile handle/URL cannot inject (same discipline
+  as PLAN-004 C2's env-var indirection for consumer input). `--codeowner`
+  is additionally validated against the GitHub handle grammar before
+  substitution, since it lands in the `config.json` `trust.ai_review`
+  security allowlist inside a JSON string.
+- **Fail closed on a surviving placeholder.** After substitution,
+  `install.sh` greps ONLY the three declared placeholder names; any
+  survivor aborts the install rather than committing a half-branded file.
+  It does not blanket-scan `${...}` (a consumer may legitimately carry
+  shell-style `${VAR}` text elsewhere).
+- **`CODEOWNERS.template` is intentionally NOT parameterized yet.** Of the
+  three de-brand-candidate templates it is the only one drift-checked by
+  exact match: `apply-standards.sh` exact-matches CODEOWNERS (alongside a
+  few non-branded files), whereas `config.json` is drift-exempt and
+  `CLAUDE.md` drift is a structural governance-table parse (§16.4). So a
+  `${CODEOWNER_HANDLE}` placeholder in CODEOWNERS would read as permanent
+  drift against a consumer's substituted `@handle`. De-branding it requires a
+  handle-normalizing drift check first (tracked in `plans/FRAMEWORK-TODO.md`
+  FT-7). `config.json` is drift-exempt and `CLAUDE.md` drift is a
+  structural governance-table parse, so both parameterize safely today.
+
 ## 17. Auto-merge for AI-opened PRs (two-layer default)
 
 Every non-paused, non-bootstrap workspace repo consumes both layers of

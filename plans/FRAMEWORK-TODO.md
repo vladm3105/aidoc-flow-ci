@@ -123,3 +123,34 @@ behavior change for aidoc-flow that must be validated against the live gate), or
 (b) document that composition intentionally uses the consumer's own config and
 ai-review/auto-merge use the central one, with the reason. Reconcile + add the
 `trust_config_repo`/`trust_config_ref` inputs to composition either way.
+
+### FT-7 — `CODEOWNERS.template` still hardcodes `@vladm3105`; de-brand needs a handle-normalizing drift check
+
+**Found:** 2026-07-09, PLAN-004 D2 (de-brand install templates).
+**Surface:** D2 parameterized `config.json.template` (`${CODEOWNER_HANDLE}`) and
+`CLAUDE.md.template` (`${CANON_*_URL}`) because neither is exact-match
+drift-checked (config.json is drift-exempt; CLAUDE.md drift is a structural
+governance-table parse via `parse-governance-table.py`). `CODEOWNERS.template`
+was deliberately LEFT branded: `apply-standards.sh` `exact_match_check`
+(`.github/CODEOWNERS` vs `CODEOWNERS.template`) diffs byte-for-byte, so a
+`${CODEOWNER_HANDLE}` placeholder in the template would read as permanent DRIFT
+against a consumer's substituted `@handle` on every `--check`. It is also NOT
+written by `install.sh` today (install.sh installs callers, config.json,
+CLAUDE.md, pre_push_check, pre-commit, labels — no CODEOWNERS), and `@vladm3105`
+is already correct for every current (vladm3105-owned) consumer, so leaving it
+branded has zero impact on the live workspace.
+**Effect:** a true external adopter must hand-edit `.github/CODEOWNERS` after
+install; the handle there is not yet flag-parameterized.
+**Fix sketch (drift-pipeline design decision — do deliberately):** pick one —
+(a) **normalize** owner handles out of the CODEOWNERS comparison: strip
+`@[\w/-]+` tokens (and map `${CODEOWNER_HANDLE}` on the template side) on BOTH
+sides before `diff`, so the check verifies path-routing STRUCTURE (which is
+canon) and ignores WHO owns (inherently consumer-specific) — needs no handle
+plumbed into CI, and is semantically correct since the owner is not canon;
+(b) **handle-aware:** thread `--codeowner` into `apply-standards.sh --check`
+(read from a repo var or the consumer's own `* @handle` line) and substitute
+before diff — more CI plumbing; (c) **structural:** downgrade CODEOWNERS from
+exact to a presence/shape check. Recommended: (a). Then add a CODEOWNERS install
+step to `install.sh` (fetch + `substitute_placeholders` + write
+`.github/CODEOWNERS`) reusing the D2 substitution helper, and de-brand
+`CODEOWNERS.template` to `${CODEOWNER_HANDLE}`. Defaults must stay byte-identical.

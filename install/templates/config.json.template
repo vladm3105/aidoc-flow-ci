@@ -2,12 +2,12 @@
   "$schema": "https://aidoc-flow.io/schemas/ai-review-config-v1.json",
   "version": 1,
   "trust": {
-    "ai_review": ["vladm3105"],
+    "ai_review": ["${CODEOWNER_HANDLE}"],
     "auto_fix":  []
   },
   "governance": {
     "locked_paths": [".github/", "governance/", "templates/ai-review/"],
-    "code_owners": ["@vladm3105"],
+    "code_owners": ["@${CODEOWNER_HANDLE}"],
     "require_human_review": false
   },
   "composition": {

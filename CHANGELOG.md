@@ -60,8 +60,21 @@ PRs #82 (plan) + #83/#84/#85/#86/#87/#88/#89/#90 (A1–A6).
   `trust_config_repo`/`trust_config_ref` inputs on ai-review + auto-merge
   (defaults byte-identical) so external adopters point at their own config repo
   (#99).
+- **D2 (de-brand install templates):** `config.json.template`
+  (`${CODEOWNER_HANDLE}`) + `CLAUDE.md.template` (`${CANON_OPERATIONS_URL}`,
+  `${CANON_CI_URL}`) parameterized; `install.sh` gains `--codeowner`,
+  `--canon-operations-url`, `--canon-ci-url` flags with literal `python3`
+  substitution (values passed as argv, never interpolated) + a fail-closed
+  post-substitution assertion. Defaults reproduce the pre-D2 templates
+  byte-for-byte (round-trip verified). `--codeowner` is validated against
+  the GitHub handle grammar before substitution (it lands in the
+  `trust.ai_review` security allowlist). `CODEOWNERS.template` deliberately
+  left branded — of the three de-brand candidates it is the only one
+  exact-match drift-checked, so a placeholder there needs a
+  handle-normalizing drift check first (FRAMEWORK-TODO FT-7).
+  REPO_STANDARDS §16.7.
 
-Remaining before the tag cuts: D2 (de-brand templates) + E (`install.sh --update`).
+Remaining before the tag cuts: CODEOWNERS de-brand (FT-7) + E (`install.sh --update`).
 
 ### Added — REPO_STANDARDS §17 auto-merge canon + canonical caller templates (2026-07-08)
 

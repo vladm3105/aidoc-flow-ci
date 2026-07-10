@@ -72,36 +72,36 @@ context — the file path does. When in doubt, open the linked path.
 
 - **OPS-0061 governance PR discipline** — ≤3 doc surfaces per governance
   PR + mandatory adversarial pre-push self-review on diff.
-  → `../operations/CLAUDE.md` § "Governance PR discipline".
+  → `${CANON_OPERATIONS_URL}/CLAUDE.md` § "Governance PR discipline".
 - **OPS-0062 AI-agent auto-merge default** — auto-watch + auto-merge
   green PRs the AI opens; 10-attempt cap; carve-outs for
   🟡/🔴/governance/cross-repo/spec.
-  → `../operations/CLAUDE.md` § "AI agent auto-merge default".
+  → `${CANON_OPERATIONS_URL}/CLAUDE.md` § "AI agent auto-merge default".
 - **OPS-0065 multi-agent automated review** — before every push, dispatch
   the diff-class-matched sub-agents in parallel; the canonical diff-class →
   agents table + prompt templates live upstream.
-  → `../operations/CLAUDE.md` — search `OPS-0065` (text landmark, lives
+  → `${CANON_OPERATIONS_URL}/CLAUDE.md` — search `OPS-0065` (text landmark, lives
   under `## Autonomy tiers`)
-  + `../operations/.claude/agents/review-prompts/INDEX.md`.
+  + `${CANON_OPERATIONS_URL}/.claude/agents/review-prompts/INDEX.md`.
 - **OPS-0066 3-cycle circuit-breaker** — cap review→fix→re-review loops
   at 3 cycles; escalate to founder if not converged.
-  → `../operations/CLAUDE.md` — search `OPS-0066` (text landmark, lives
+  → `${CANON_OPERATIONS_URL}/CLAUDE.md` — search `OPS-0066` (text landmark, lives
   under `## Autonomy tiers`).
 - **OPS-0067 aidoc-flow-standard scope** — multi-agent review applies to
   ALL non-paused workspace repos.
-  → `../operations/CLAUDE.md` — search `OPS-0067` (text landmark, lives
+  → `${CANON_OPERATIONS_URL}/CLAUDE.md` — search `OPS-0067` (text landmark, lives
   under `## Autonomy tiers`).
 - **OPS-0069 mandatory pre-push audit-trail phrase** — every push must
   carry either `Multi-agent self-review per OPS-0065 (<agents>): <verdict>`
   or `Self-review skipped per founder OK <reason>` in a commit message.
   Enforced locally by `scripts/pre_push_check.sh` + in CI by
   `.github/workflows/audit-trail.yml` → `call / verify`.
-  → `../operations/CLAUDE.md` — search `OPS-0069` (text landmark, lives
+  → `${CANON_OPERATIONS_URL}/CLAUDE.md` — search `OPS-0069` (text landmark, lives
   under `## Autonomy tiers`).
 - **REPO_STANDARDS canonical rulebook** — the CI + governance-workflow
   canon (CODEOWNERS, dependabot, standards-drift, pre-push,
   audit-trail, governance file canon per §16).
-  → `../aidoc-flow-ci/docs/REPO_STANDARDS.md`.
+  → `${CANON_CI_URL}/docs/REPO_STANDARDS.md`.
 
 ## Repo-specific rules (author these — not covered by canon)
 
