@@ -27,7 +27,7 @@
 #     push: { branches: [main] }
 #   jobs:
 #     md:
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v1.0.1
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v1.8.1
 #       with:
 #         globs: |
 #           **/*.md
