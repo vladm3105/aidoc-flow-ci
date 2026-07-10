@@ -54,6 +54,14 @@ TARGETS=(
 for _t in "$REPO_ROOT"/install/templates/workflows/*.yml; do
   [ -e "$_t" ] && TARGETS+=("${_t#"$REPO_ROOT"/}")
 done
+# This repo self-adopts its own canon (Wave 0) — its .github/workflows/*.yml
+# callers pin aidoc-flow-ci reusables too, and MUST track VERSION so the
+# canon-home dogfoods the current release (they previously drifted to v1.0.1–
+# v1.6.0 because they were outside this list). Only the `uses:…@ci/vX.Y.Z` shape
+# is rewritten (sed program below), so non-pin content is untouched.
+for _t in "$REPO_ROOT"/.github/workflows/*.yml; do
+  [ -e "$_t" ] && TARGETS+=("${_t#"$REPO_ROOT"/}")
+done
 
 CHECK_ONLY=0
 CHECK_PUBLISHED=0
