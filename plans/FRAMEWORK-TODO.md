@@ -163,3 +163,27 @@ exact to a presence/shape check. Recommended: (a). Then add a CODEOWNERS install
 step to `install.sh` (fetch + `substitute_placeholders` + write
 `.github/CODEOWNERS`) reusing the D2 substitution helper, and de-brand
 `CODEOWNERS.template` to `${CODEOWNER_HANDLE}`. Defaults must stay byte-identical.
+
+### FT-8 — migrate `sync/check-drift.sh` onto `manifest.json` (PLAN-004 PR-E2)
+
+**Found:** 2026-07-09, PLAN-004 PR-E (update path). PR-E shipped
+`install/templates/manifest.json` + `install.sh --update` consuming it, but
+scoped OUT the `sync/check-drift.sh` rewrite to keep the PR reviewable.
+**Surface:** `sync/check-drift.sh:30` still uses a hardcoded
+`for wf in ai-review composition` loop over the two auto-installed callers.
+It should read the workflow surface from `manifest.json` (the same list
+`install.sh --update` walks) so a newly-added canon workflow is drift-checked
+without editing the script. The existing "bring back to canonical: remove the
+local file + re-run install/install.sh" note (`sync/check-drift.sh:66`) can
+point at `install.sh --update` as the reconciliation path.
+**Effect:** drift-check coverage is limited to ai-review + composition;
+optional adopted workflows (labeler, codeql, secret-scan, …) are not
+drift-flagged by check-drift.sh (apply-standards.sh + check-standards-drift.sh
+cover other surfaces). Non-breaking gap, not a correctness bug.
+**Fix sketch:** replace the hardcoded loop with a `python3` walk of
+`manifest.json` filtering to `.github/workflows/*` entries (visibility
+resolved like `install.sh --update`), preserving the per-caller pin logic
+(each caller compared against the tag IT is pinned to, per PR-A2) and the
+warning-only/never-block contract. Reuse the manifest entry emission from
+`install.sh update_mode`. Keep it a separate PR (E2) — it touches a live
+CI drift-check script.

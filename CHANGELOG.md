@@ -77,8 +77,22 @@ PRs #82 (plan) + #83/#84/#85/#86/#87/#88/#89/#90 (A1–A6).
   STRUCTURE (canon) and ignores handle IDENTITY (consumer-specific). Existing
   `@vladm3105` consumers keep passing; a de-branded consumer no longer reads
   as permanent drift. Defaults byte-identical. REPO_STANDARDS §7 + §16.7.
+- **E (update path + canonical manifest):** new
+  `install/templates/manifest.json` — the machine-readable index of every
+  `template → consumer-file` mapping (path, template + visibility variants,
+  `substitute` placeholders, `safe_to_replace`). New `install.sh --update
+  <owner/repo>` mode walks it: re-fetches each already-adopted surface,
+  substitutes, diffs vs local, and prompts `[k]eep/[r]eplace/[d]iff-only`;
+  `--non-interactive` replaces only `safe_to_replace` files (the mechanical
+  workflow files + `dependabot.yml`) and keeps policy/governance files plus the
+  consumer-customized `codeql.yml` (atomic replace; absent files skipped;
+  idempotent). New `docs/UPDATE_GUIDE.md`.
+  REPO_STANDARDS §16.8. The `sync/check-drift.sh` migration onto the manifest
+  is tracked as FRAMEWORK-TODO FT-8 (E2).
 
-Remaining before the tag cuts: E (`install.sh --update` + `manifest.json`).
+Remaining before the tag cuts: none (PLAN-004 slices A–E complete; then the
+founder cuts `ci/v1.7.0`). FT-8 (drift-check manifest migration) is a
+post-elevation follow-up.
 
 ### Added — REPO_STANDARDS §17 auto-merge canon + canonical caller templates (2026-07-08)
 

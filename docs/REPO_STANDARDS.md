@@ -706,6 +706,26 @@ Discipline for this mechanism:
   and `.github/**` routes to the owner, so the CODEOWNERS file is itself
   owner-gated) plus the consumer's audit log, not by canon-parity drift.
 
+### 16.8 Canonical surface manifest + update path
+
+`install/templates/manifest.json` is the machine-readable index of every
+1:1 `template → consumer-file` mapping (per-file: consumer path, source
+template + per-visibility variants, de-branding `substitute` placeholders,
+and a `safe_to_replace` flag). It is the single list that `install.sh
+--update` walks; drift tooling migrates onto the same list so the surface
+set lives in one place instead of hardcoded per-script loops. Canon **rules**
+stay in this document; the manifest is only the index (per PLAN-004 §6 R6).
+
+- **`install.sh --update <owner/repo>`** re-fetches each surface the consumer
+  already has, substitutes placeholders, diffs vs local, and — interactively
+  — prompts `[k]eep / [r]eplace / [d]iff-only`; `--non-interactive` replaces
+  only `safe_to_replace` files (the mechanical workflow files +
+  `dependabot.yml`) and keeps policy/governance files plus the
+  consumer-customized `codeql.yml`. See `docs/UPDATE_GUIDE.md`.
+- **Out of the file-diff walk:** `labels.json` (a GitHub-API surface) and
+  `.pre-commit-config.yaml` (canon block MERGED, not replaced). Re-run
+  bootstrap `install.sh` to reconcile those.
+
 ## 17. Auto-merge for AI-opened PRs (two-layer default)
 
 Every non-paused, non-bootstrap workspace repo consumes both layers of
