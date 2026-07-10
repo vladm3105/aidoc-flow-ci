@@ -68,13 +68,17 @@ PRs #82 (plan) + #83/#84/#85/#86/#87/#88/#89/#90 (A1–A6).
   post-substitution assertion. Defaults reproduce the pre-D2 templates
   byte-for-byte (round-trip verified). `--codeowner` is validated against
   the GitHub handle grammar before substitution (it lands in the
-  `trust.ai_review` security allowlist). `CODEOWNERS.template` deliberately
-  left branded — of the three de-brand candidates it is the only one
-  exact-match drift-checked, so a placeholder there needs a
-  handle-normalizing drift check first (FRAMEWORK-TODO FT-7).
-  REPO_STANDARDS §16.7.
+  `trust.ai_review` security allowlist). REPO_STANDARDS §16.7.
+- **FT-7 (CODEOWNERS de-brand):** `CODEOWNERS.template` owner routes
+  parameterized to `@${CODEOWNER_HANDLE}`; `install.sh` now installs
+  `.github/CODEOWNERS` (substituted, preserve-if-exists). The drift check
+  gains `codeowners_check` — it normalizes every `@owner` to a `@OWNER`
+  sentinel on both sides before diffing, so it verifies path-routing
+  STRUCTURE (canon) and ignores handle IDENTITY (consumer-specific). Existing
+  `@vladm3105` consumers keep passing; a de-branded consumer no longer reads
+  as permanent drift. Defaults byte-identical. REPO_STANDARDS §7 + §16.7.
 
-Remaining before the tag cuts: CODEOWNERS de-brand (FT-7) + E (`install.sh --update`).
+Remaining before the tag cuts: E (`install.sh --update` + `manifest.json`).
 
 ### Added — REPO_STANDARDS §17 auto-merge canon + canonical caller templates (2026-07-08)
 

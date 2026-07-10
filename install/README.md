@@ -43,7 +43,7 @@ templates as they are fetched.
 
 | Flag | Substitutes | Default |
 |---|---|---|
-| `--codeowner <handle>` | `config.json` `trust.ai_review` + `governance.code_owners` (leading `@` optional) | `vladm3105` |
+| `--codeowner <handle>` | `config.json` `trust.ai_review` + `governance.code_owners`, and every owner route in `.github/CODEOWNERS` (leading `@` optional) | `vladm3105` |
 | `--canon-operations-url <url>` | the 7 `CLAUDE.md` links to the operations canon repo | `../operations` |
 | `--canon-ci-url <url>` | the `CLAUDE.md` link to this CI canon repo | `../aidoc-flow-ci` |
 
@@ -57,8 +57,8 @@ CI_TAG=ci/v1.7.0 bash install.sh acme/their-repo --visibility private \
 Omitting all three produces **byte-identical** output to the pre-D2
 templates. `install.sh` fails closed if any placeholder survives
 substitution, so a half-branded file is never written. Only files
-`install.sh` newly writes are substituted — an existing `config.json` or
-`CLAUDE.md` is preserved untouched.
+`install.sh` newly writes are substituted — an existing `config.json`,
+`CLAUDE.md`, or `.github/CODEOWNERS` is preserved untouched.
 
 ## What it does
 
@@ -69,24 +69,27 @@ substitution, so a half-branded file is never written. Only files
    local files.
 3. **Drops `.github/ai-review/config.json`** (the per-repo policy).
    Preserves existing.
-4. **Governance-canon bootstrap (PLAN-003):** if the consumer has no
+4. **Drops `.github/CODEOWNERS`** (owner routes substituted with
+   `--codeowner`; the drift check normalizes owner identity, so a
+   consumer's own handle is not read as drift). Preserves existing.
+5. **Governance-canon bootstrap (PLAN-003):** if the consumer has no
    `CLAUDE.md`, installs the canon template (with placeholders to fill
    before commit). If it has one, checks for the 5 required canonical
    sections and prints a manual-merge suggestion — it never auto-edits an
    existing `CLAUDE.md`.
-5. **Self-review canon (PLAN-002):** installs `scripts/pre_push_check.sh`
+6. **Self-review canon (PLAN-002):** installs `scripts/pre_push_check.sh`
    (preserves an existing one) and **merges** the canon hook block into
    `.pre-commit-config.yaml` idempotently (via a `# CANON:` marker). The
    merge needs `ruamel.yaml` or `pyyaml` (see Prerequisites) and upgrades
    `default_install_hook_types` to include `pre-push`.
-6. **Creates the 16 canonical labels** via `gh label create` (idempotent +
+7. **Creates the 16 canonical labels** via `gh label create` (idempotent +
    fail-loud — prefetches existing labels, exits nonzero on real
    failures): 5 state/control (`ai:review-passed`, `ai:review-changes`,
    `ai:human-review-required`, `skip-ai-review`, `ai:autofix-applied`),
    8 diff-class (`governance`, `docs`, `workflows`, `scripts`, `agents`,
    `tests`, `config`, `plans`), plus `dependencies`, `security`, and
    `skip-audit-trail`.
-7. **Prints founder next steps** (secrets, branch protection — see below).
+8. **Prints founder next steps** (secrets, branch protection — see below).
 
 The additional caller templates that ship in `install/templates/workflows/`
 (`labeler.yml`, `codeql.yml`, `markdown-lint.yml`, `links.yml`,

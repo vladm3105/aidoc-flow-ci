@@ -183,6 +183,20 @@ else
   echo "  add       .github/ai-review/config.json (codeowner=${CODEOWNER_HANDLE})"
 fi
 
+# --- PLAN-004 FT-7: CODEOWNERS canon (de-branded via --codeowner) ---
+# Ships for every tier (governance + umbrella gate on it via branch
+# protection `require_code_owner_reviews`; product + ops-private tiers ship
+# it but do NOT gate — see the template header). The drift check
+# (`apply-standards.sh`) compares CODEOWNERS with owner handles NORMALIZED,
+# so a consumer's own handle here is not read as drift against the canon.
+if [ -f ".github/CODEOWNERS" ]; then
+  echo "  preserve  .github/CODEOWNERS (already exists — inspect for canon parity via apply-standards.sh --check)"
+else
+  fetch_template "CODEOWNERS.template" ".github/CODEOWNERS" || exit 1
+  substitute_placeholders ".github/CODEOWNERS"
+  echo "  add       .github/CODEOWNERS (codeowner=${CODEOWNER_HANDLE})"
+fi
+
 # --- PLAN-003 PR-V2: CLAUDE.md canon template bootstrap ---
 # If consumer has no CLAUDE.md, install the canon template with all
 # placeholders present (consumer MUST fill placeholders before commit).

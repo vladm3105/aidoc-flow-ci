@@ -256,7 +256,11 @@ the workspace is a single-owner phase. v2 will fan out per-domain
 reviewers (e.g., docs → docs-savvy, workflows → security-savvy) as the
 team grows.
 
-Template ships in `install/templates/CODEOWNERS.template` (PR-B).
+Template ships in `install/templates/CODEOWNERS.template`. The owner
+handle is parameterized as `${CODEOWNER_HANDLE}` (default `vladm3105`);
+`install.sh --codeowner <handle>` substitutes it, and the drift check
+normalizes owner identity before comparing so a consumer's own handle is
+not read as drift (§16.7).
 
 ## 8. PR template
 
@@ -656,11 +660,11 @@ a wave, alphabetical order is fine.
 The templates `install.sh` writes carry the aidoc-flow workspace's own
 identity only as **defaults**. A different org overrides them at install
 time without editing the canon, via literal placeholders substituted as
-the template is fetched (PLAN-004 D2):
+the template is fetched (PLAN-004 D2 + FT-7):
 
 | Placeholder | Template | `install.sh` flag | Default |
 |---|---|---|---|
-| `${CODEOWNER_HANDLE}` | `config.json.template` (`trust.ai_review`, `governance.code_owners`) | `--codeowner` | `vladm3105` |
+| `${CODEOWNER_HANDLE}` | `config.json.template` (`trust.ai_review`, `governance.code_owners`) + `CODEOWNERS.template` (all owner routes) | `--codeowner` | `vladm3105` |
 | `${CANON_OPERATIONS_URL}` | `CLAUDE.md.template` (operations canon links) | `--canon-operations-url` | `../operations` |
 | `${CANON_CI_URL}` | `CLAUDE.md.template` (CI canon link) | `--canon-ci-url` | `../aidoc-flow-ci` |
 
@@ -681,16 +685,26 @@ Discipline for this mechanism:
   survivor aborts the install rather than committing a half-branded file.
   It does not blanket-scan `${...}` (a consumer may legitimately carry
   shell-style `${VAR}` text elsewhere).
-- **`CODEOWNERS.template` is intentionally NOT parameterized yet.** Of the
-  three de-brand-candidate templates it is the only one drift-checked by
-  exact match: `apply-standards.sh` exact-matches CODEOWNERS (alongside a
-  few non-branded files), whereas `config.json` is drift-exempt and
-  `CLAUDE.md` drift is a structural governance-table parse (§16.4). So a
-  `${CODEOWNER_HANDLE}` placeholder in CODEOWNERS would read as permanent
-  drift against a consumer's substituted `@handle`. De-branding it requires a
-  handle-normalizing drift check first (tracked in `plans/FRAMEWORK-TODO.md`
-  FT-7). `config.json` is drift-exempt and `CLAUDE.md` drift is a
-  structural governance-table parse, so both parameterize safely today.
+- **`CODEOWNERS` uses an owner-normalized drift check (FT-7).** CODEOWNERS
+  is the one de-brand template that `apply-standards.sh` drift-checks by
+  content (config.json is drift-exempt; CLAUDE.md drift is a structural
+  governance-table parse, §16.4). Because each consumer substitutes its own
+  `--codeowner` handle, WHO owns is consumer-specific and is **not** canon —
+  the path-routing **structure** is. So the check (`codeowners_check`)
+  normalizes every `@owner` token to a fixed `@OWNER` sentinel on both the
+  fetched template and the consumer file, then diffs: it catches
+  added/removed/reordered rules and extra/missing owner tokens while
+  ignoring handle identity. A de-branded consumer therefore does not read as
+  drift against the `${CODEOWNER_HANDLE}` placeholder template, and a
+  consumer that still hardcodes `@vladm3105` continues to pass. `install.sh`
+  also installs `.github/CODEOWNERS` (substituted, preserve-if-exists), so a
+  fresh consumer gets a correctly-owned file for its tier. **Owner *identity*
+  is intentionally out of drift scope:** the check cannot flag an owner
+  pointed at a wrong/typo'd or malicious handle (the canon has no correct
+  per-consumer handle to compare against). That is backstopped by branch
+  protection `require_code_owner_reviews` (which enforces whoever is listed —
+  and `.github/**` routes to the owner, so the CODEOWNERS file is itself
+  owner-gated) plus the consumer's audit log, not by canon-parity drift.
 
 ## 17. Auto-merge for AI-opened PRs (two-layer default)
 

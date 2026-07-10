@@ -126,6 +126,15 @@ ai-review/auto-merge use the central one, with the reason. Reconcile + add the
 
 ### FT-7 — `CODEOWNERS.template` still hardcodes `@vladm3105`; de-brand needs a handle-normalizing drift check
 
+**RESOLVED:** 2026-07-09 — implemented approach (a) normalize. `CODEOWNERS.template`
+owner routes → `@${CODEOWNER_HANDLE}`; `apply-standards.sh` gained
+`codeowners_check` (`normalize_codeowners` maps every `@owner` → `@OWNER` on both
+sides before diff, verifying path structure while ignoring handle identity);
+`install.sh` now installs `.github/CODEOWNERS` (substituted, preserve-if-exists)
+reusing D2's `substitute_placeholders`. Defaults byte-identical; existing
+`@vladm3105` consumers keep passing. REPO_STANDARDS §7 + §16.7. Original entry
+retained below for context.
+
 **Found:** 2026-07-09, PLAN-004 D2 (de-brand install templates).
 **Surface:** D2 parameterized `config.json.template` (`${CODEOWNER_HANDLE}`) and
 `CLAUDE.md.template` (`${CANON_*_URL}`) because neither is exact-match

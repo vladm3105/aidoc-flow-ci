@@ -6,7 +6,7 @@ context compaction.
 
 ## Current state (2026-07-09)
 
-**PLAN-004 (company-default elevation) — A/B/C-series + D1 + D2 COMPLETE; CODEOWNERS de-brand (FT-7) + E next.**
+**PLAN-004 (company-default elevation) — A/B/C-series + D1 + D2 + FT-7 COMPLETE; only PR-E next.**
 A 5-agent pre-prod review of this repo → SHIP-WITH-FIXES; the fix plan
 (`plans/PLAN-004_company-default-elevation.md`, merged #82) sequences A1–A6
 (docs) → B (correctness) → C (security) → D (de-brand + trust-root) → E
@@ -35,10 +35,16 @@ A 5-agent pre-prod review of this repo → SHIP-WITH-FIXES; the fix plan
   **Scope correction vs the pre-D2 HANDOFF/plan:** CLAUDE.md is NOT
   exact-match drift-checked (it's a structural governance-table parse) and
   config.json isn't drift-checked at all — so both parameterize with zero
-  drift risk. The feared "drift-pipeline redesign" applies ONLY to
-  `CODEOWNERS.template` (the only de-brand template that is exact-match
-  drift-checked, and it is not install-written), so CODEOWNERS de-brand was
-  split out to **FT-7** with the normalize-drift-check design.
+  drift risk. The feared "drift-pipeline redesign" applied ONLY to
+  `CODEOWNERS.template` (the only de-brand template that is content
+  drift-checked, and it was not install-written) — done as **FT-7**.
+- **FT-7** (CODEOWNERS de-brand): `CODEOWNERS.template` owner routes →
+  `@${CODEOWNER_HANDLE}`; `apply-standards.sh` `codeowners_check` normalizes
+  every `@owner` → `@OWNER` on both sides before diff (verifies path
+  structure, ignores handle identity — approach (a)); `install.sh` now
+  installs `.github/CODEOWNERS` (substituted, preserve-if-exists). Defaults
+  byte-identical; existing `@vladm3105` consumers keep passing. REPO_STANDARDS
+  §7 + §16.7.
 
 ⚠️ **No `ci/v1.7.0` tag exists yet** (latest is `ci/v1.6.0`). VERSION + all
 docs target it; the `curl …/ci/v1.7.0/…` install URLs won't resolve until the
@@ -50,28 +56,20 @@ enforcement, PR-U1/U2/U3/U4, 2026-07-08).
 
 ## Open threads
 
-- **PLAN-004 CODEOWNERS de-brand (FT-7) + E remaining** (see PLAN-004 §5.4–§5.5).
-  Each via: implement → pre-push reviewers (OPS-0065) → fold → merge-on-green.
-  - **CODEOWNERS de-brand = FT-7** (was the "D2 complication"): `CODEOWNERS.template`
-    is the only de-brand template that is exact-match drift-checked
-    (`apply-standards.sh` `exact_match_check` ~L379 also covers a few
-    non-branded files) AND is not written by `install.sh`, so a
-    `${CODEOWNER_HANDLE}` placeholder there reads as permanent drift. De-branding it
-    needs a handle-normalizing drift check FIRST (recommended: strip `@handle`
-    tokens from both sides before diff — verifies path structure, ignores the
-    consumer-specific owner) + a new install.sh CODEOWNERS install step reusing D2's
-    `substitute_placeholders`. Full design in `plans/FRAMEWORK-TODO.md` FT-7.
-    `@vladm3105` is correct for every current consumer, so this is not urgent.
+- **PLAN-004 PR-E remaining** (see PLAN-004 §5.5). Via: implement → pre-push
+  reviewers (OPS-0065) → fold → merge-on-green.
   - **E** (`install.sh --update`): update mode + `manifest.json` unified drift.
+    This is the last PLAN-004 slice.
   - Then the founder cuts the `ci/v1.7.0` tag (VERSION stays `ci/v1.7.0` — all
     A–E slices land under the first cut; the plan's per-slice `v1.8.0`/`v1.9.0`
-    numbers were aspirational and D2 is additive/byte-identical, not breaking).
+    numbers were aspirational — D2 + FT-7 are additive/byte-identical, not breaking).
 - **`plans/FRAMEWORK-TODO.md`** — FT-1 (branch-protection templates lag
   REPO_STANDARDS §2 on `call / verify`), FT-2 (verify `pre-commit`/`secret-scan`
   emitted context names), FT-3 (`labels.json` `skip-ai-review` description),
   FT-4 (CHANGELOG back-catalog per-tag cut), FT-5 (drift job needs
   `administration: read`), FT-6 (composition trust-source not parameterized —
-  reads `$GH_REPO@main`; fails safe). Resolve before elevation.
+  reads `$GH_REPO@main`; fails safe). Resolve before elevation. **FT-7
+  (CODEOWNERS de-brand) RESOLVED 2026-07-09.**
 - **PLAN-003 per-repo rollout waves** — one PR per non-paused repo per
   PLAN-003 §5.5 / operations `docs/CROSS_REPO_PLAYBOOKS.md` §T-D. Wave status
   is tracked there (do not hardcode a "next wave" here — it drifts). Validation
@@ -80,15 +78,12 @@ enforcement, PR-U1/U2/U3/U4, 2026-07-08).
 
 ## Next-session start-here
 
-1. **Pick up at FT-7 (CODEOWNERS de-brand) or PR-E** (A/B/C + D1 + D2 merged).
-   FT-7 needs the drift-pipeline decision (recommended: normalize `@handle` out
-   of the CODEOWNERS exact-match); PR-E is the `install.sh --update` +
-   `manifest.json` unified drift. Read `plans/FRAMEWORK-TODO.md` FT-7 for the
-   full CODEOWNERS design. Reuse D2's `install.sh` `substitute_placeholders`
-   helper. Keep defaults byte-identical (round-trip test). Verify each change
-   against the live `install.sh` + `apply-standards.sh` (grep the symbol; lines
-   shift). Cap review/fix loops at 3 per OPS-0066. Then the founder cuts
-   `ci/v1.7.0`.
+1. **Start PR-E** (A/B/C + D1 + D2 + FT-7 all merged — E is the LAST PLAN-004
+   slice). `install.sh --update` mode + `manifest.json` unified drift. Reuse
+   D2's `install.sh` `substitute_placeholders` helper for any re-fetch path.
+   Keep defaults byte-identical (round-trip test). Verify each change against
+   the live `install.sh` + `apply-standards.sh` (grep the symbol; lines shift).
+   Cap review/fix loops at 3 per OPS-0066. Then the founder cuts `ci/v1.7.0`.
 2. For PLAN-003 rollout work, read `docs/PLAYBOOK_governance-canon-rollout.md`
    then defer to operations `docs/CROSS_REPO_PLAYBOOKS.md` §T-D for
    authoritative per-wave scope.
