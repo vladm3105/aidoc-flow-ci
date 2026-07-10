@@ -6,7 +6,14 @@ context compaction.
 
 ## Current state (2026-07-10)
 
-**PLAN-004 (company-default elevation) — SHIPPED. All slices A–E merged AND `ci/v1.7.0` tag + release cut (2026-07-10). FT-8 is a post-elevation follow-up; FT-1..FT-6 remain.**
+**PLAN-004 (company-default elevation) — SHIPPED (`ci/v1.7.0`, 2026-07-10).**
+**`ci/v1.7.1` PATCH in flight** — PLAN-005 PR-B / B2: the `ai-review` caller
+templates shipped with no `permissions:` block → `startup_failure` on consumers
+under the canon `read` default (the pipeline never ran). Fixed by adding the
+caller `permissions:` block to both variants. Consumers re-pin `@ci/v1.7.1` or
+`install.sh --update`. PLAN-005's other findings (B1 enforcer gov-floor, D2
+skip-carry-forward, PR-E trust-default, stale cross-refs) are being revised into
+the plan next. FT-8 is a post-elevation follow-up; FT-1..FT-6 remain.
 A 5-agent pre-prod review of this repo → SHIP-WITH-FIXES; the fix plan
 (`plans/PLAN-004_company-default-elevation.md`, merged #82) sequences A1–A6
 (docs) → B (correctness) → C (security) → D (de-brand + trust-root) → E

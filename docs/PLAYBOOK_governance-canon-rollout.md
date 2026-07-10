@@ -31,7 +31,7 @@ FULLY green: all PRs merged, and zero drift on every wave repo. Run the
 drift check from each consumer's repo root:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.7.0/install/apply-standards.sh) --check
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.7.1/install/apply-standards.sh) --check
 ```
 
 `apply-standards.sh` lives in `aidoc-flow-ci`, not the consumer, so it is
@@ -67,7 +67,7 @@ per PLAN-002 §5.4 precedent + record via OPS-0069 audit-trail phrase.
 
 Before closing a wave:
 
-1. `bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.7.0/install/apply-standards.sh) --check`
+1. `bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.7.1/install/apply-standards.sh) --check`
    on every repo in the wave (run from each consumer's repo root — the
    script is fetched from `aidoc-flow-ci`, not present in the consumer).
    Zero drift required.

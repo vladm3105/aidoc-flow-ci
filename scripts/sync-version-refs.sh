@@ -38,6 +38,10 @@ TARGETS=(
   "docs/PLAYBOOK_governance-canon-rollout.md"
   "docs/REVIEWER_APP_ONBOARDING.md"
   "docs/BRANCH_PROTECTION.md"
+  # install.sh carries a `CI_TAG=ci/vX.Y.Z bash install.sh` usage EXAMPLE in its
+  # header (the CI_TAG= shape below). The authoritative CI_TAG_FALLBACK= line is
+  # NOT the CI_TAG= shape, so it is untouched and stays hand-bumped per release.
+  "install/install.sh"
 )
 # Every shipped caller template pins aidoc-flow-ci reusables — keep them all at
 # the current release tag so a fresh consumer install gets a coherent pin set.

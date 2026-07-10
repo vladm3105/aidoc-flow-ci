@@ -23,9 +23,24 @@ on:
     types: [opened, synchronize, reopened, labeled, unlabeled]
   pull_request_review:
     types: [submitted]
+
+# Caller-level permissions set the ceiling for the reusable. The canon repo
+# default is `read` (install/templates/actions-permissions.json), and the
+# reusable requests contents/pull-requests/issues: write — so WITHOUT this
+# block the reusable exceeds the caller grant and fails at load
+# (startup_failure, zero jobs) on any consumer under the read default. Scopes
+# match the reusable's own declaration (ai-review.yml). Safe under
+# pull_request_target because the reusable is diff-only: the heavy review job
+# fetches the diff via curl and never `actions/checkout`s the PR head into this
+# write-capable context (the sole checkout is the trust gate reading the
+# trust-config repo). Keep it diff-only if the reusable is ever edited.
+permissions:
+  contents: write        # reusable auto-merge fallback (gh pr merge via GITHUB_TOKEN)
+  pull-requests: write   # trust-gate + verdict comments + label set
+  issues: write          # gh api label create/apply paths
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v1.7.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v1.7.1
     with:
       reviewer: codex
       runner_labels_routine: '"ubuntu-latest"'
