@@ -3,6 +3,23 @@
 Notable releases of the shared CI library. SemVer per `ci/vX.Y.Z`
 tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
+## ci/v1.9.1 — 2026-07-11
+
+### Added
+
+- **App-native trust-config fetch** — the ai-review trust job + review job now
+  mint their cross-repo read token from the reviewer App
+  (`create-github-app-token`, scoped read-only to `trust_config_repo`) instead of
+  requiring a per-repo `AI_REVIEW_TOKEN` PAT. Token precedence: **App token →
+  `AI_REVIEW_TOKEN` → `GITHUB_TOKEN`** (fully backward-compatible — repos with
+  `AI_REVIEW_TOKEN` are unaffected; repos with only the App drop the PAT need).
+  Requires the reviewer App installed on `trust_config_repo` with
+  `contents: read`. A pre-flight verifies the minted token can actually read the
+  config and falls back to the PAT/GITHUB_TOKEN if not, so a mis-scoped App never
+  reds the gate. Fixes the engramory `repository not found` trust-fetch failure.
+  (Security-reviewed: read-only scope enforced via `permission-contents: read`;
+  no PR-controlled input reaches token minting or scope; fail-closed preserved.)
+
 ## ci/v1.9.0 — 2026-07-11
 
 ### Added

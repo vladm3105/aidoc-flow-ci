@@ -101,6 +101,9 @@ jobs:
     if: ${{ github.event.pull_request.draft == false && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'skip-ai-review') }}
     runs-on: ${{ fromJSON(inputs.runner_labels_routine) }}
     timeout-minutes: 10
+    env:
+      # secrets context is NOT available in step `if:` — map presence to env here.
+      APP_KEY_PRESENT: ${{ secrets.APP_REVIEWER_1_KEY != '' && secrets.APP_REVIEWER_1_ID != '' && '1' || '' }}
     outputs:
       ai_review_ok: ${{ steps.trust.outputs.ai_review_ok }}
       auto_fix_ok: ${{ steps.trust.outputs.auto_fix_ok }}
@@ -108,14 +111,68 @@ jobs:
       # Pull the trust allowlist from operations@main (the single trusted source).
       # Safe for any author: checks out operations@main (trusted), never PR code. Under
       # workflow_call a bare checkout would clone the CALLER repo; pinning repository+ref
-      # fixes that. Token: scoped read-only PAT (AI_REVIEW_TOKEN, cross-repo PRIVATE) →
-      # GITHUB_TOKEN (sufficient when operations reviews its own PRs).
+      # fixes that.
+      #
+      # Token precedence (ci/v1.9.1): reviewer-App installation token (minted below,
+      # scoped read-only to trust_config_repo — the App-native path, no per-repo PAT)
+      # → AI_REVIEW_TOKEN (legacy scoped PAT) → GITHUB_TOKEN (sufficient when
+      # operations reviews its own PRs). The App path requires the reviewer App
+      # installed on trust_config_repo with `contents: read`; if the App isn't
+      # configured (empty ID/KEY) or minting fails, it falls through cleanly.
+      - name: Resolve + validate trust-config owner/repo
+        id: tcr
+        env:
+          TCR: ${{ inputs.trust_config_repo }}
+        run: |
+          set -euo pipefail
+          # Fail closed on anything that isn't a clean owner/repo (a trailing
+          # slash / empty repo would scope the App token to ALL installation repos).
+          case "$TCR" in
+            */*/* | */ | /* | *[!A-Za-z0-9._/-]* )
+              echo "::error::invalid trust_config_repo '$TCR' — must be owner/repo"; exit 1 ;;
+          esac
+          [ "${TCR%%/*}" != "$TCR" ] && [ -n "${TCR##*/}" ] || { echo "::error::trust_config_repo must be owner/repo"; exit 1; }
+          echo "owner=${TCR%%/*}" >> "$GITHUB_OUTPUT"
+          echo "repo=${TCR##*/}" >> "$GITHUB_OUTPUT"
+      - name: Mint reviewer-App token for trust-config read (read-only, cross-repo)
+        id: trust_app_token
+        if: ${{ env.APP_KEY_PRESENT == '1' }}
+        continue-on-error: true
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
+        with:
+          app-id: ${{ secrets.APP_REVIEWER_1_ID }}
+          private-key: ${{ secrets.APP_REVIEWER_1_KEY }}
+          owner: ${{ steps.tcr.outputs.owner }}
+          repositories: ${{ steps.tcr.outputs.repo }}
+          permission-contents: read
+      # Pre-flight: a mint can SUCCEED yet lack contents:read (App installed on the
+      # trust repo without the permission). Verify the token can actually read the
+      # config before committing to it — else blank it so the `||` ladder falls back
+      # to AI_REVIEW_TOKEN/GITHUB_TOKEN (mirrors the auto-merge path's App→PAT fallback).
+      - name: Verify App token can read trust-config
+        id: trust_app_ok
+        if: ${{ env.APP_KEY_PRESENT == '1' && steps.trust_app_token.outputs.token != '' }}
+        continue-on-error: true
+        env:
+          TOK: ${{ steps.trust_app_token.outputs.token }}
+          OWNER: ${{ steps.tcr.outputs.owner }}
+          REPO: ${{ steps.tcr.outputs.repo }}
+          REF: ${{ inputs.trust_config_ref }}
+        run: |
+          set -uo pipefail
+          if curl --fail --silent -o /dev/null --retry 3 --retry-delay 2 \
+               -H "Authorization: Bearer ${TOK}" -H "Accept: application/vnd.github+json" \
+               "https://api.github.com/repos/${OWNER}/${REPO}/contents/.github/ai-review/config.json?ref=${REF}"; then
+            echo "ok=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::reviewer-App token cannot read ${OWNER}/${REPO} trust-config (App lacks contents:read?) — falling back to AI_REVIEW_TOKEN/GITHUB_TOKEN"
+          fi
       - name: Checkout trust allowlist (trust_config_repo@trust_config_ref)
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: ${{ inputs.trust_config_repo }}
           ref: ${{ inputs.trust_config_ref }}
-          token: ${{ secrets.AI_REVIEW_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ steps.trust_app_ok.outputs.ok == '1' && steps.trust_app_token.outputs.token || secrets.AI_REVIEW_TOKEN || secrets.GITHUB_TOKEN }}
 
       # "We trust only ourself." Config-driven role allowlists in config.json:
       #   trust.ai_review = logins whose PRs get the AI gate (+ auto-merge)
@@ -280,10 +337,56 @@ jobs:
       # repo move is a separate future IPLAN). Trust gate's `actions/checkout`
       # is kept as-is — it runs in a separate job with no second checkout to
       # interact with.
+      # ci/v1.9.1: mint the App token for the per-consumer config read too (same
+      # App-native precedence as the trust job). App token → AI_REVIEW_TOKEN → GITHUB_TOKEN.
+      - name: Resolve + validate trust-config owner/repo (review job)
+        id: tcr_review
+        if: ${{ env.SKIP_REVIEW != '1' }}
+        env:
+          TCR: ${{ inputs.trust_config_repo }}
+        run: |
+          set -euo pipefail
+          case "$TCR" in
+            */*/* | */ | /* | *[!A-Za-z0-9._/-]* )
+              echo "::error::invalid trust_config_repo '$TCR' — must be owner/repo"; exit 1 ;;
+          esac
+          [ "${TCR%%/*}" != "$TCR" ] && [ -n "${TCR##*/}" ] || { echo "::error::trust_config_repo must be owner/repo"; exit 1; }
+          echo "owner=${TCR%%/*}" >> "$GITHUB_OUTPUT"
+          echo "repo=${TCR##*/}" >> "$GITHUB_OUTPUT"
+      - name: Mint reviewer-App token for config read (read-only, cross-repo)
+        id: review_app_token
+        if: ${{ env.SKIP_REVIEW != '1' && env.APP_KEY_PRESENT == '1' }}
+        continue-on-error: true
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
+        with:
+          app-id: ${{ secrets.APP_REVIEWER_1_ID }}
+          private-key: ${{ secrets.APP_REVIEWER_1_KEY }}
+          owner: ${{ steps.tcr_review.outputs.owner }}
+          repositories: ${{ steps.tcr_review.outputs.repo }}
+          permission-contents: read
+      - name: Verify App token can read config (review job)
+        id: review_app_ok
+        if: ${{ env.SKIP_REVIEW != '1' && env.APP_KEY_PRESENT == '1' && steps.review_app_token.outputs.token != '' }}
+        continue-on-error: true
+        env:
+          TOK: ${{ steps.review_app_token.outputs.token }}
+          OWNER: ${{ steps.tcr_review.outputs.owner }}
+          REPO: ${{ steps.tcr_review.outputs.repo }}
+          REF: ${{ inputs.trust_config_ref }}
+        run: |
+          set -uo pipefail
+          if curl --fail --silent -o /dev/null --retry 3 --retry-delay 2 \
+               -H "Authorization: Bearer ${TOK}" -H "Accept: application/vnd.github+json" \
+               "https://api.github.com/repos/${OWNER}/${REPO}/contents/.github/ai-review/config.json?ref=${REF}"; then
+            echo "ok=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::reviewer-App token cannot read ${OWNER}/${REPO} config — falling back to AI_REVIEW_TOKEN/GITHUB_TOKEN"
+          fi
       - name: Fetch reviewer assets + per-consumer config
         if: ${{ env.SKIP_REVIEW != '1' }}
         env:
           GITHUB_WORKFLOW_REF: ${{ github.workflow_ref }}
+          APP_TOKEN: ${{ steps.review_app_ok.outputs.ok == '1' && steps.review_app_token.outputs.token || '' }}
           AI_REVIEW_TOKEN: ${{ secrets.AI_REVIEW_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Env indirection (per C2) — the trust-config source flows into the shell
@@ -312,11 +415,11 @@ jobs:
               }
           done
 
-          # Fetch per-consumer config from operations@main (PRIVATE; needs AI_REVIEW_TOKEN
-          # cross-repo OR GITHUB_TOKEN when operations reviews itself). Same precondition as
-          # the prior actions/checkout-based fetch — no change in deployment requirements.
+          # Fetch per-consumer config from operations@main (PRIVATE). Token precedence
+          # (ci/v1.9.1): reviewer-App installation token (App-native, no per-repo PAT) →
+          # AI_REVIEW_TOKEN (legacy PAT) → GITHUB_TOKEN (when operations reviews itself).
           mkdir -p .github/ai-review
-          TOKEN="${AI_REVIEW_TOKEN:-${GITHUB_TOKEN}}"
+          TOKEN="${APP_TOKEN:-${AI_REVIEW_TOKEN:-${GITHUB_TOKEN}}}"
           config_url="https://raw.githubusercontent.com/${TRUST_CONFIG_REPO}/${TRUST_CONFIG_REF}/.github/ai-review/config.json"
           curl --fail --silent --show-error --location \
             --retry 3 --retry-delay 2 \
