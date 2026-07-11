@@ -5,16 +5,23 @@ How to register self-hosted runner pools with the right labels so
 tradeoffs and operational notes.
 
 For label conventions, see [`../LABELS.md`](../LABELS.md) §2. For
-the routing rule (PRIVATE → `runner-self`, PUBLIC → `ubuntu-latest`),
-see [`../LABELS.md`](../LABELS.md) §2 "Routing rule (per repo
-visibility)". For the bigger architectural picture, see
+the routing rule (PRIVATE → self-hosted `["self-hosted","aidoc","ci-ephemeral"]`;
+PUBLIC → `ubuntu-latest`), see [`../LABELS.md`](../LABELS.md) §2 "Routing rule
+(per repo visibility)". For the bigger architectural picture, see
 [`architecture.md`](architecture.md) §5 ("Inputs that vary per
 consumer").
 
-## Workspace default — private repos use self-hosted runners (canon)
+> **`runner-self` is a placeholder, not a routing target.** The
+> `*-private.yml` templates ship the literal string `"runner-self"` as a
+> fill-in marker; it is NOT a registered label and `runs-on: runner-self`
+> matches no runner (jobs queue forever). Always resolve it to the real pool
+> label `["self-hosted","aidoc","ci-ephemeral"]` before the caller works.
 
-**Within the aidoc-flow workspace, a repo's runner CLASS follows its
-visibility, by default:**
+## Workspace policy — private repos are self-hosted ONLY (mandatory, canon)
+
+**Within the aidoc-flow workspace, every PRIVATE repo MUST run CI on
+self-hosted runners — `ubuntu-latest` is never acceptable for a private repo**
+(founder policy, 2026-07-11). A repo's runner CLASS follows its visibility:
 
 | Repo visibility | Default runner | Caller variant |
 | --- | --- | --- |
