@@ -1,20 +1,27 @@
 # links.yml — reusable link-checking workflow (powered by lychee).
 #
-# Wraps lycheeverse/lychee-action — the de-facto leader for
-# markdown/HTML/text link checking in 2025-2026 (Rust-based, async,
-# fast, actively maintained). Chosen over the older
-# gaurav-nelson/github-action-markdown-link-check (Node-based,
-# slower, no built-in caching).
+# CRITICAL: this installs + runs the upstream `lychee` BINARY directly, NOT
+# the `lycheeverse/lychee-action` marketplace wrapper. Reason (same defect
+# class that broke secret-scan, fixed ci/v1.9.2):
+#   - allowed-actions policy: the aidoc-flow workspace restricts Actions to
+#     `actions/*`, `github/*`, and `vladm3105/aidoc-flow-ci/*` (+ verified).
+#     `lycheeverse/lychee-action` is a third-party action → BLOCKED at
+#     run-init → `startup_failure` (proven live: links ran startup_failure on
+#     operations + business). The message is web-UI-only; `actionlint` does
+#     NOT catch it. Running the binary needs no action allowlist.
 #
-# Design decisions (research findings 2026-06-24):
-#   - SHA-pinned to lycheeverse/lychee-action@v2.6.1.
-#   - Two modes via `mode` input — internal (blocking, PR-gate) vs
-#     external (scheduled cron, non-blocking, opens issue on
-#     failure). Mature OSS pattern (lychee itself uses it).
+# Design decisions (ci/v1.9.4):
+#   - Curl the pinned lychee release. Use the **musl** static build
+#     (`x86_64-unknown-linux-musl`), NOT the gnu build: the gnu binary needs
+#     GLIBC 2.38+ and fails on older self-hosted Debian ephemeral runners;
+#     the musl build is statically linked and runs everywhere (ubuntu-latest
+#     + self-hosted). SHA-256 verified.
+#   - Two modes via `mode` input — internal (blocking PR-gate; `--offline`
+#     so only internal/relative links are checked, no network flake) vs
+#     external (scheduled cron; hits the network; non-blocking).
 #   - Cache via actions/cache/restore + actions/cache/save with
-#     if:always() so cache persists even when run fails.
-#   - GITHUB_TOKEN passed via env to avoid GH rate limits on
-#     github.com links.
+#     if:always() so cache persists even when the run fails.
+#   - GITHUB_TOKEN passed via env to avoid GH rate limits on github.com links.
 #
 # Consumer caller (typical — uses BOTH modes via two job calls):
 #
@@ -26,11 +33,11 @@
 #   jobs:
 #     internal:
 #       if: github.event_name != 'schedule'
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/links.yml@ci/v1.9.3
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/links.yml@ci/v1.9.4
 #       with: { mode: internal, fail-on-error: true }
 #     external:
 #       if: github.event_name == 'schedule'
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/links.yml@ci/v1.9.3
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/links.yml@ci/v1.9.4
 #       with: { mode: external, fail-on-error: false }
 #       permissions:
 #         contents: read
@@ -85,25 +92,46 @@ jobs:
           restore-keys: |
             lychee-${{ inputs.mode }}-
 
-      - name: lychee
-        uses: lycheeverse/lychee-action@8646ba30535128ac92d33dfc9133794bfdd9b411 # v2.8.0
-        with:
-          fail: ${{ inputs.fail-on-error }}
-          # The --offline flag in internal mode skips http(s) URLs
-          # entirely; external mode hits the network.
-          #
-          # NOTE (sec H4): these `${{ inputs.* }}` values are the lychee
-          # ACTION's `args:` input — passed to the lychee CLI (a Rust binary),
-          # NOT interpolated into a shell `run:`. So they are not shell-
-          # injectable and env-var indirection does not apply here (unlike the
-          # codeql/pre-commit `run:` steps). Worst case is lychee arg confusion
-          # from a consumer's own config-controlled input.
-          args: >-
-            --config ${{ inputs.config-file }}
-            ${{ inputs.mode == 'internal' && '--offline' || '' }}
-            ${{ inputs.paths }}
+      # Install the lychee binary directly (musl static build) — NOT a
+      # marketplace wrapper action, which the allowed-actions policy blocks.
+      - name: Install lychee (musl static binary)
         env:
+          LYCHEE_VERSION: "0.24.2"
+          LYCHEE_SHA256: "73657a111819a30c47c08352896796f23d64e4eb2b3ed39b6d32149241566fc5"
+        run: |
+          set -euo pipefail
+          curl -sSfL "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-unknown-linux-musl.tar.gz" -o /tmp/lychee.tgz
+          echo "${LYCHEE_SHA256}  /tmp/lychee.tgz" | sha256sum -c -
+          tar -xzf /tmp/lychee.tgz -C /tmp
+          install -m 0755 /tmp/lychee-x86_64-unknown-linux-musl/lychee /tmp/lychee
+          /tmp/lychee --version
+
+      - name: Run lychee
+        # Consumer-controlled inputs are mapped to env (NOT interpolated into
+        # the shell) so a hostile `paths`/`config-file` value cannot inject
+        # `${{ }}` expressions. Env expansion does not re-evaluate command
+        # substitution, so `$(...)` in a value is inert; PATHS is left
+        # unquoted only to word-split multiple paths (its documented shape).
+        env:
+          MODE: ${{ inputs.mode }}
+          CONFIG: ${{ inputs.config-file }}
+          PATHS: ${{ inputs.paths }}
+          FAIL: ${{ inputs.fail-on-error }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          args=(--no-progress --cache --max-cache-age 1d)
+          [ -f "${CONFIG}" ] && args+=(--config "${CONFIG}")
+          [ "${MODE}" = "internal" ] && args+=(--offline)
+          set +e
+          # `--` stops a caller-supplied PATHS value from being parsed as
+          # lychee options (defense-in-depth against argument injection).
+          /tmp/lychee "${args[@]}" -- ${PATHS}
+          rc=$?
+          set -e
+          # fail-on-error=false (external/scheduled mode) never fails the job.
+          [ "${FAIL}" = "true" ] || exit 0
+          exit "${rc}"
 
       - name: Save lychee cache
         if: always()

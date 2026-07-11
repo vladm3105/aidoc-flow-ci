@@ -29,7 +29,7 @@
 #     workflow_dispatch:
 #   jobs:
 #     codeql:
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/codeql.yml@ci/v1.9.3
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/codeql.yml@ci/v1.9.4
 #       with:
 #         languages: '["python","actions"]'
 #       permissions:
