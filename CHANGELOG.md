@@ -3,6 +3,19 @@
 Notable releases of the shared CI library. SemVer per `ci/vX.Y.Z`
 tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
+## ci/v1.9.2 — 2026-07-11
+
+### Fixed
+
+- **`secret-scan` now deploys** — it ran the third-party `gacts/gitleaks` wrapper
+  action, which the workspace allowed-actions policy (`actions/*`, `github/*`,
+  `vladm3105/aidoc-flow-ci/*` only) **blocks at run-init → startup_failure**. That
+  is why secret-scan never ran on any consumer. Replaced the wrapper with a
+  direct install + run of the upstream **gitleaks binary** (MIT, no key, no
+  allowlist change): `curl` the pinned `v8.30.1` release, `gitleaks dir .`
+  → SARIF → `github/codeql-action/upload-sarif` (allowlisted). Same scanner,
+  same gate semantics (`fail-on-findings` → `--exit-code`).
+
 ## ci/v1.9.1 — 2026-07-11
 
 ### Added
