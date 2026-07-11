@@ -74,6 +74,14 @@ reviewer CLI/API can't authenticate (the "App set, engine key wrong" failure):
 3. **Install the App on the consumer repo** — App settings → Install App
    → select the repo (only-select-repositories, per F5).
 
+   **App-native trust-fetch (ci/v1.9.1+):** also install the App on the
+   **`trust_config_repo`** (`aidoc-flow-operations`) with **`contents: read`**.
+   Then the consumer needs **no `AI_REVIEW_TOKEN`** — the trust/review jobs mint
+   an App installation token to read the trust config (precedence: App token →
+   `AI_REVIEW_TOKEN` → `GITHUB_TOKEN`). A pre-flight verifies the App can read the
+   config and falls back to the PAT if not, so this is safe to leave enabled.
+   Consumers that keep `AI_REVIEW_TOKEN` are unaffected.
+
 4. **Set the secrets** on the consumer:
 
    ```bash

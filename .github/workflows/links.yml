@@ -26,11 +26,11 @@
 #   jobs:
 #     internal:
 #       if: github.event_name != 'schedule'
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/links.yml@ci/v1.9.0
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/links.yml@ci/v1.9.1
 #       with: { mode: internal, fail-on-error: true }
 #     external:
 #       if: github.event_name == 'schedule'
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/links.yml@ci/v1.9.0
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/links.yml@ci/v1.9.1
 #       with: { mode: external, fail-on-error: false }
 #       permissions:
 #         contents: read
