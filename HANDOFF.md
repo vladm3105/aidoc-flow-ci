@@ -6,7 +6,32 @@ context compaction.
 
 ## Current state (2026-07-11)
 
-**`ci/v1.9.4` SHIPPED (PLAN-006 W4 — content-check canon fix).** While
+**PLAN-006 W4 content-check population — DONE (except docs-sync, founder-gated).**
+Two releases fixed the canon (`ci/v1.9.4` binary-install for links+markdown-lint;
+`ci/v1.9.5` markdown-lint `fail-on-findings` toggle + `.lychee.toml`
+`include_fragments` invalid-key fix), then populated the fleet:
+- **links 7/7 consumer repos** ✅ (lychee musl binary). operations + framework
+  ship a `.lychee.toml` scoping out cross-repo `../sibling/` links (resolve only
+  in the local workspace, not single-repo CI) + framework's `platforms/**`+
+  `examples/**` debt (tracked framework-side FRAMEWORK-TODO `LINKS-PLATFORM-DEBT`).
+- **markdown-lint 5/7 canon (report-only) + 2 covered-by-own** ✅ — business,
+  iplanic, interlog, engramory, iplan-standard run the canon reusable
+  `fail-on-findings: false` (surfaces annotations, doesn't block; graduate via
+  per-repo `--fix` per FT-11). operations (`docs-lint.yml`) + framework
+  (pre-commit markdownlint) already lint markdown — canon add is redundant +
+  its `.markdownlint.json` breaks their pre-push (the secret-scan
+  business/interlog covered-by-own pattern).
+- **docs-sync — BLOCKED on 🔴 founder action.** The caller needs the
+  `aidoc-flow-bot` GitHub App + `AIDOC_FLOW_BOT_ID`/`AIDOC_FLOW_BOT_KEY` secrets
+  provisioned per repo (an AI cannot create Apps / set secrets). Only ci +
+  operations have it (2/8). **NEXT: founder provisions aidoc-flow-bot on the
+  other 6, then deploy the docs-sync caller + `.github/docs-sync.json`.**
+
+**FT-11 graduation (markdown-lint blocking):** each of the 5 report-only repos
+needs a `markdownlint-cli2 --fix` pass (259+ residual/repo under the sane config)
++ add the check to branch protection. Tracked in `plans/FRAMEWORK-TODO.md`.
+
+_History (v1.9.4):_ **`ci/v1.9.4` SHIPPED (PLAN-006 W4 — content-check canon fix).** While
 populating the missing content-check workflows, discovered the same
 allowed-actions defect that broke `secret-scan` also blocked **`links`** and
 **`markdown-lint`**: both wrapped third-party marketplace actions
