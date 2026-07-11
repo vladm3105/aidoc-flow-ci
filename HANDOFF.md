@@ -4,18 +4,27 @@ Live cross-session resume point for the workspace CI + governance-workflow
 canon library. Read at session start; refresh at milestones and before
 context compaction.
 
-## Current state (2026-07-10)
+## Current state (2026-07-11)
 
-**PLAN-004 + PLAN-005 SHIPPED (2026-07-10). Releases: `ci/v1.7.0` (PLAN-004
-elevation), `ci/v1.7.1` (caller permissions), `ci/v1.8.0` (PLAN-005 A1/C/D/E/F/G),
-`ci/v1.8.1` BEING CUT (PLAN-005 PR-A part 2 / D2 — the last piece).** PLAN-005 is
-now 7/7 complete. #116 (D2) merged + cut as v1.8.1 per founder instruction; the
-live §15 smoke test could NOT be run pre-release (needs a working consumer with
-the App armed) → it's the first-`v1.8.1`-adopter verification. D2 is
-offline-validated (unit + real-git tree simulation) + security-reviewed (no
-BLOCKER, fails closed). **NEXT (founder/ops): consumer sync sweep → `@ci/v1.8.1`
-(latest); bump aidoc-flow-ci self-callers → v1.8.1; the §15 first-adopter check.
-See tmp/RUNBOOK + tmp/HANDOFF-NOTE.**
+**`ci/v1.9.0` being cut (PLAN-006 W2 — FT-9 fix + self-hosted policy).** The
+v1.8.1 consumer-sync sweep (via `install.sh --update`) clobbered the private
+callers' runner topology — the `-private.yml` templates shipped a `runner-self`
+**placeholder** that resolves to no registered runner, so every required check
+queued forever and bricked the gate (FT-9). Caught by ai-review on operations
+#244; remediated surgically across all 4 private repos. **All 4 private repos
+(operations/business/iplanic/interlog) are now on `@ci/v1.8.1` + self-hosted
+`ci-ephemeral`, ai-review proven green on operations/business/iplanic** (interlog
+confirms on next PR). v1.9.0 prevents recurrence: `-private.yml` templates now
+ship the real `ci-ephemeral` array, and a new **`install.sh --repin`** does a
+version-only pin bump (never `--update` for a re-pin). Founder policy codified:
+**private repos are self-hosted ONLY** (CLAUDE.md "Runner policy", REPO_STANDARDS
+§4.1/§4.2, docs/runners.md). **NEXT (PLAN-006):** W3 strict self-hosted on the
+lightweight callers + stale-pin sync (interlog audit-trail v1.6.0); W4 populate
+per-repo canon gaps; W5 public loose ends (iplan-runner #76, engramory).
+
+_History (2026-07-10):_ **PLAN-004 + PLAN-005 SHIPPED. Releases: `ci/v1.7.0`
+(PLAN-004 elevation), `ci/v1.7.1` (caller permissions), `ci/v1.8.0` (PLAN-005
+A1/C/D/E/F/G), `ci/v1.8.1` (PLAN-005 PR-A part 2 / D2).** PLAN-005 7/7 complete.
 
 _History:_ **`ci/v1.7.1` PATCH** — PLAN-005 PR-B / B2: the `ai-review` caller
 templates shipped with no `permissions:` block → `startup_failure` on consumers

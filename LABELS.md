@@ -155,8 +155,12 @@ Per-visibility defaults in `install/templates/workflows/`:
 
 | Visibility | Default `runner_labels_*` value |
 |---|---|
-| PRIVATE | `'"runner-self"'` |
+| PRIVATE | `'["self-hosted", "aidoc", "ci-ephemeral"]'` (+ `[…, "ai-review"]` heavy job) |
 | PUBLIC | `'"ubuntu-latest"'` |
+
+> Pre-`ci/v1.9.0` the PRIVATE templates shipped a `'"runner-self"'` placeholder
+> (a non-registered label → jobs queued forever, FT-9). v1.9.0+ ship the real
+> `ci-ephemeral` array directly.
 
 Rationale:
 

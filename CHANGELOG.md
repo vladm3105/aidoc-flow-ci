@@ -3,7 +3,29 @@
 Notable releases of the shared CI library. SemVer per `ci/vX.Y.Z`
 tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
-## Unreleased
+## ci/v1.9.0 — 2026-07-11
+
+### Added
+
+- **`install.sh --repin`** — version-only re-pin. Rewrites the `@ci/vX.Y.Z` on
+  every `uses: …/aidoc-flow-ci/…` line to the target tag and touches nothing
+  else — runner_labels, permissions, triggers, and all consumer customization
+  are preserved. This is the CORRECT re-pin operation; **`--update` must never
+  be used for a re-pin** (it re-applies the template body and clobbers
+  customized callers). Closes FT-9.
+
+### Fixed
+
+- **Private caller templates no longer ship the `runner-self` placeholder** (the
+  FT-9 root cause). `ai-review-private.yml`, `composition-private.yml`, and
+  `doc-maintainer-private.yml` now emit the real
+  `["self-hosted","aidoc","ci-ephemeral"]` label instead of `runner-self` —
+  which resolved to `runs-on: runner-self`, matched no registered runner, and
+  queued every required check forever (bricking the merge gate). The v1.8.1
+  `--update` sweep stamped this across operations/business/iplanic/interlog
+  before it was caught. Commented override examples in the single templates
+  (codeql/labeler/markdown-lint/pre-commit/secret-scan) corrected to the same
+  real label. Public templates unchanged (`ubuntu-latest`).
 
 ### Docs
 

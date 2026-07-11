@@ -235,3 +235,23 @@ adopting non-`with:` template changes. Requires a plan (canon change → semver
 MINOR + `REPO_STANDARDS.md` update + verified-planning 2-cycle review). Until
 shipped: **never run `install.sh --update` for a re-pin on a repo with a
 customized caller — do a surgical `@ci/v*` sed instead.**
+**RESOLVED (ci/v1.9.0, PLAN-006 W2):** `-private.yml` templates now ship the real
+`ci-ephemeral` array (no more `runner-self` placeholder); `install.sh --repin`
+(version-only pin bump) added — option (a). See CHANGELOG v1.9.0.
+
+### FT-10 — `runner-self` still used as a pool-nickname across reference docs
+
+**Found:** 2026-07-11, v1.9.0 doc-consistency review (documentation-specialist).
+**Surface:** after v1.9.0 removed `runner-self` from the shipped templates, the
+reference docs still use `runner-self` as the *nickname* for the self-hosted pool
+in several places: `docs/runners.md` §0/§2 pool tables + registration steps
+(~lines 91, 103, 122, 152-191), `docs/troubleshooting.md:95-96/286`,
+`LABELS.md:121`. Not a contradiction with the template change (the genuine
+"templates ship runner-self" claims were fixed in v1.9.0), but `runner-self` is
+**not registered on any runner** (real labels: `self-hosted,aidoc,ci-ephemeral`
+[+ `ai-review`]).
+**Effect:** a reader following runners.md registration steps would register a
+`runner-self` label no caller targets. Educational drift, not a live break.
+**Fix sketch:** reconcile the nickname — rewrite the reference docs to the real
+`ci-ephemeral`/`ai-review` labels throughout (align docs to infra; preferred).
+One focused docs PR; split to keep ≤3 surfaces.

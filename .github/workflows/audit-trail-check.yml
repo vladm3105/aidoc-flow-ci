@@ -18,9 +18,9 @@
 #       types: [opened, synchronize, reopened]
 #   jobs:
 #     call:
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/audit-trail-check.yml@ci/v1.8.1
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/audit-trail-check.yml@ci/v1.9.0
 #       with:
-#         runner_labels: '"ubuntu-latest"'   # or '"runner-self"' for PRIVATE
+#         runner_labels: '"ubuntu-latest"'   # or the self-hosted ci-ephemeral array for PRIVATE
 #       permissions:
 #         contents: read
 #         pull-requests: read
@@ -60,7 +60,7 @@ on:
   workflow_call:
     inputs:
       runner_labels:
-        description: 'JSON array (or single string) of runner labels. Default "ubuntu-latest" (cheap; lightweight job; safe for both PRIVATE + PUBLIC consumers since this job only reads PR metadata + commit messages). PRIVATE consumers per OPS-0049 may prefer "runner-self".'
+        description: 'JSON array (or single string) of runner labels. Default "ubuntu-latest" (cheap; lightweight job; safe for both PRIVATE + PUBLIC consumers since this job only reads PR metadata + commit messages). PRIVATE consumers per OPS-0049 may prefer the self-hosted "ci-ephemeral" pool.'
         type: string
         default: '"ubuntu-latest"'
 

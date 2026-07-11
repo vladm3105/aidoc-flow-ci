@@ -11,11 +11,13 @@ PUBLIC → `ubuntu-latest`), see [`../LABELS.md`](../LABELS.md) §2 "Routing rul
 [`architecture.md`](architecture.md) §5 ("Inputs that vary per
 consumer").
 
-> **`runner-self` is a placeholder, not a routing target.** The
-> `*-private.yml` templates ship the literal string `"runner-self"` as a
-> fill-in marker; it is NOT a registered label and `runs-on: runner-self`
-> matches no runner (jobs queue forever). Always resolve it to the real pool
-> label `["self-hosted","aidoc","ci-ephemeral"]` before the caller works.
+> **`runner-self` is a deprecated placeholder, not a routing target.** As of
+> `ci/v1.9.0` the `*-private.yml` templates ship the real
+> `["self-hosted","aidoc","ci-ephemeral"]` label directly. **Earlier** releases
+> shipped the literal string `"runner-self"` — a non-registered label, so
+> `runs-on: runner-self` matched no runner and jobs queued forever (FT-9). If
+> you find `runner-self` in an already-installed caller, replace it with the
+> real pool array.
 
 ## Workspace policy — private repos are self-hosted ONLY (mandatory, canon)
 
@@ -25,7 +27,7 @@ self-hosted runners — `ubuntu-latest` is never acceptable for a private repo**
 
 | Repo visibility | Default runner | Caller variant |
 | --- | --- | --- |
-| **Private** | **self-hosted** — `["self-hosted", "aidoc", "ci-ephemeral"]` (and `[…, "ai-review"]` for the heavy reviewer job) | the `-private.yml` templates (`runner-self`) |
+| **Private** | **self-hosted** — `["self-hosted", "aidoc", "ci-ephemeral"]` (and `[…, "ai-review"]` for the heavy reviewer job) | the `-private.yml` templates (ship `ci-ephemeral` as of v1.9.0) |
 | **Public** | GitHub-hosted `ubuntu-latest` | the `-public.yml` templates |
 
 Rationale: this account has **no GitHub-hosted Actions minutes for private

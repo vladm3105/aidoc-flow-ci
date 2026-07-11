@@ -27,7 +27,7 @@
 #     push: { branches: [main] }
 #   jobs:
 #     md:
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v1.8.1
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v1.9.0
 #       with:
 #         globs: |
 #           **/*.md
@@ -51,7 +51,7 @@ on:
         type: boolean
         default: false
       runner_labels:
-        description: 'JSON array (or single-string) of runner labels. Default "ubuntu-latest" — lightweight Node-based linter. PRIVATE consumers per OPS-0049 may override to "runner-self".'
+        description: 'JSON array (or single-string) of runner labels. Default "ubuntu-latest" — lightweight Node-based linter. PRIVATE consumers per OPS-0049 may override to the self-hosted "ci-ephemeral" pool.'
         type: string
         default: '"ubuntu-latest"'
 
