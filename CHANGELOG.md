@@ -3,6 +3,33 @@
 Notable releases of the shared CI library. SemVer per `ci/vX.Y.Z`
 tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
+## ci/v1.9.5 — 2026-07-11
+
+### Added
+
+- **`markdown-lint` gains a `fail-on-findings` input** (default `true`). Set
+  `false` for a **report-only** rollout: cli2 still emits `::error` PR
+  annotations, but the job exits 0 so it does not block merge. This is the
+  correct way to stage markdown-lint onto a repo with existing lint debt —
+  GitHub **forbids `continue-on-error` on a reusable-call job** (actionlint
+  `syntax-check`), so report-only must be expressed on the reusable, not the
+  caller. Mirrors `secret-scan`'s `fail-on-findings`.
+
+### Fixed
+
+- **`.lychee.toml` starter template dropped the invalid `include_fragments`
+  key.** lychee 0.24.2 (the version `links.yml` installs) rejects that key with
+  a fatal `TOML parse error`, so any consumer copying the template verbatim got
+  a config-load failure instead of a link check. Removed the key (fragment
+  checking stays at lychee's default).
+
+### Notes
+
+- Cross-repo relative links (`../sibling-repo/…`) resolve only in the local
+  multi-repo workspace, never in single-repo CI — a `links` gate on such a repo
+  needs a `.lychee.toml` excluding the sibling-repo path segments (see the
+  operations/framework consumer configs). Documented for future adopters.
+
 ## ci/v1.9.4 — 2026-07-11
 
 ### Fixed

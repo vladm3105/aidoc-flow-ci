@@ -12,9 +12,6 @@ timeout = 20
 # avoid CI flake against rate-limited services.
 accept = ["200", "206", "429"]
 
-# Fragments / anchors in same-repo + external links.
-include_fragments = true
-
 # Excludes
 exclude_loopback = true
 exclude_all_private = true
