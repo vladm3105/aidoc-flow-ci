@@ -132,10 +132,12 @@ policy (founder, 2026-07-11). The canonical private label is the verbose array
 `["self-hosted", "aidoc", "ci-ephemeral"]` (plus `[…, "ai-review"]` for the
 heavy reviewer job on repos with a second pool, e.g. operations).
 
-- The literal `"runner-self"` in the `install/templates/workflows/*-private.yml`
-  templates is a **placeholder**, NOT a real registered label. A caller left on
-  `runner-self` (or on the reusable's `ubuntu-latest` default) queues forever —
-  always resolve it to the real `["self-hosted","aidoc","ci-ephemeral"]` pool.
+- As of `ci/v1.9.0` the `install/templates/workflows/*-private.yml` templates
+  ship the real `["self-hosted","aidoc","ci-ephemeral"]` label. **Earlier**
+  releases shipped a `"runner-self"` placeholder — NOT a registered label, so a
+  caller left on `runner-self` (or on the reusable's `ubuntu-latest` default)
+  queues forever. If you see `runner-self` in an installed caller, replace it
+  with the real pool array.
 - **Never "fix" a bricked private-repo gate by falling back to `ubuntu-latest`.**
   If a private repo has no pool yet, the fix is to **register the pool**
   (`../operations/scripts/ci-runner/run-ephemeral.sh`, labels

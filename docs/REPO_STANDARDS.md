@@ -165,6 +165,23 @@ self-hosted `ci-ephemeral` (+ `ai-review`) pool before adopting.** Full detail +
 override (they lack the self-hosted pool → `ubuntu-latest`): `docs/runners.md`
 "Workspace default".
 
+As of `ci/v1.9.0` the `-private.yml` templates ship the **real**
+`["self-hosted", "aidoc", "ci-ephemeral"]` label directly (earlier releases
+shipped a `runner-self` placeholder that resolved to `runs-on: runner-self`,
+matched no runner, and queued every required check — FT-9).
+
+### 4.2 Re-pinning consumers (version-only) — `install.sh --repin`
+
+**A re-pin is a version-string-only change.** To move a consumer to a newer
+`ci/vX.Y.Z`, use `install.sh <owner/repo> --repin` (with `CI_TAG` or the
+`VERSION` fallback as the target): it rewrites the `@ci/vX.Y.Z` on every
+`uses: …/aidoc-flow-ci/…` line and **preserves runner_labels, permissions,
+triggers, and all consumer customization**. **Never use `--update` for a
+re-pin** — `--update` re-applies the template body and clobbers customized
+callers (this is exactly how the v1.8.1 sweep re-introduced `runner-self` and
+bricked the fleet; FT-9). `--update` is only for deliberately adopting a new
+template body, reviewing each drift.
+
 ## 5. Labels — canonical taxonomy
 
 The label taxonomy aligns with the **OPS-0065 diff-class dispatch table**

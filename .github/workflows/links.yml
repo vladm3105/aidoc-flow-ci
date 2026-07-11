@@ -26,11 +26,11 @@
 #   jobs:
 #     internal:
 #       if: github.event_name != 'schedule'
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/links.yml@ci/v1.8.1
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/links.yml@ci/v1.9.0
 #       with: { mode: internal, fail-on-error: true }
 #     external:
 #       if: github.event_name == 'schedule'
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/links.yml@ci/v1.8.1
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/links.yml@ci/v1.9.0
 #       with: { mode: external, fail-on-error: false }
 #       permissions:
 #         contents: read
@@ -58,7 +58,7 @@ on:
         type: boolean
         default: true
       runner_labels:
-        description: 'JSON array (or single-string) of runner labels. Default "ubuntu-latest". PRIVATE consumers per OPS-0049 may override to "runner-self".'
+        description: 'JSON array (or single-string) of runner labels. Default "ubuntu-latest". PRIVATE consumers per OPS-0049 may override to the self-hosted "ci-ephemeral" pool.'
         type: string
         default: '"ubuntu-latest"'
 

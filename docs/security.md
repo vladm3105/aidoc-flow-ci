@@ -98,8 +98,8 @@ repos:
 **Our routing rule (per [`../LABELS.md`](../LABELS.md) §2 +
 [`runners.md`](runners.md) §4) follows GitHub's recommendation:**
 
-- **PRIVATE repos** use `runner-self` (self-hosted) — no fork
-  concern; safe per GitHub's guidance.
+- **PRIVATE repos** use self-hosted `["self-hosted","aidoc","ci-ephemeral"]` — no
+  fork concern; safe per GitHub's guidance.
 - **PUBLIC repos** use `ubuntu-latest` (GitHub-hosted) — GitHub's
   recommended path; no self-hosted exposure.
 

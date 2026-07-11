@@ -21,7 +21,10 @@
 #   Update (re-fetch canon for a repo that already adopted; PLAN-004 PR-E):
 #   bash install.sh <owner/repo> --update [--non-interactive]
 #                                 [--codeowner <handle>] [--canon-*-url <url>]
-#   CI_TAG=ci/v1.8.1 bash install.sh <owner/repo> --visibility private
+#   Re-pin (version-only tag bump; preserves all customization — use this for a
+#   re-pin, NEVER --update which re-applies the template body; FT-9):
+#   CI_TAG=ci/v1.9.0 bash install.sh <owner/repo> --repin
+#   CI_TAG=ci/v1.9.0 bash install.sh <owner/repo> --visibility private
 #
 # De-branding flags (PLAN-004 D2) let an external org adopt the canon
 # without vladm3105/aidoc-flow-operations hardcoded. Placeholders in the
@@ -54,11 +57,19 @@ CANON_CI_URL="../aidoc-flow-ci"
 # --non-interactive auto-replaces only `safe_to_replace` files (workflows,
 # dependabot) and keeps everything else. Default (bootstrap) is unchanged.
 MODE_UPDATE=0
+MODE_REPIN=0
 NONINTERACTIVE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --visibility) VISIBILITY="$2"; shift 2 ;;
     --update) MODE_UPDATE=1; shift ;;
+    # --repin: version-only pin bump. Rewrites the @ci/vX.Y.Z on every
+    # `uses: …/aidoc-flow-ci/…` line to the target CI_TAG and touches NOTHING
+    # else — runner_labels, permissions, triggers, and any consumer
+    # customization are preserved. This is the CORRECT re-pin operation;
+    # `--update` (which re-applies the template body) must never be used for a
+    # re-pin (FT-9: it clobbers customized callers → runner-self brick).
+    --repin) MODE_REPIN=1; shift ;;
     --non-interactive) NONINTERACTIVE=1; shift ;;
     # Strip a leading @ so `--codeowner @org` and `--codeowner org` are
     # equivalent; the templates re-add @ only where CODEOWNERS syntax needs it.
@@ -69,6 +80,9 @@ while [ $# -gt 0 ]; do
   esac
 done
 case "$VISIBILITY" in public|private) ;; *) echo "--visibility must be public|private" >&2; exit 1 ;; esac
+if [ "$MODE_UPDATE" = 1 ] && [ "$MODE_REPIN" = 1 ]; then
+  echo "--update and --repin are mutually exclusive (--repin = version-only pin bump; --update = re-apply template body)" >&2; exit 1
+fi
 # Validate the de-branding values BEFORE substitution. --codeowner lands in
 # config.json's trust.ai_review — a SECURITY allowlist — inside a JSON string,
 # so restrict it to the GitHub handle grammar (letters, digits, . _ / -). A
@@ -102,7 +116,7 @@ done
 # and the hardcoded fallback is authoritative — that is expected and correct.
 # The startup log below names the winning source so a stale CI_TAG env var in
 # a consumer's CI caller silently overriding VERSION is diagnosable.
-CI_TAG_FALLBACK="ci/v1.8.1"
+CI_TAG_FALLBACK="ci/v1.9.0"
 if [ -n "${CI_TAG:-}" ]; then
   CI_TAG_SOURCE="CI_TAG env"
 else
@@ -130,7 +144,9 @@ fi
 TEMPLATE_BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/templates"
 
 echo "==> using CI_TAG=$CI_TAG (source: $CI_TAG_SOURCE)"
-if [ "$MODE_UPDATE" = 1 ]; then
+if [ "$MODE_REPIN" = 1 ]; then
+  echo "==> re-pinning $TARGET_REPO callers to @ $CI_TAG (version-only; topology preserved)"
+elif [ "$MODE_UPDATE" = 1 ]; then
   echo "==> updating $TARGET_REPO against canon @ $CI_TAG (non-interactive=$NONINTERACTIVE)"
 else
   echo "==> bootstrapping $TARGET_REPO (visibility=$VISIBILITY, tag=$CI_TAG)"
@@ -145,7 +161,7 @@ cd "$WORK_DIR/consumer"
 
 # Bootstrap creates the canon dirs; --update only touches files the consumer
 # already has, so it must NOT litter empty dirs into the clone.
-[ "$MODE_UPDATE" = 1 ] || mkdir -p .github/workflows .github/ai-review
+[ "$MODE_UPDATE" = 1 ] || [ "$MODE_REPIN" = 1 ] || mkdir -p .github/workflows .github/ai-review
 
 fetch_template() {
   # $1 = source path under install/templates/; $2 = destination path
@@ -298,6 +314,39 @@ PYEOF
   fi
   return 0
 }
+
+repin_mode() {
+  # Version-only re-pin: rewrite the @ci/vX.Y.Z on every
+  # `uses: …/aidoc-flow-ci/…` line in .github/workflows/*.yml to $CI_TAG.
+  # Preserves runner_labels, permissions, triggers, and every consumer
+  # customization — the ONLY change is the pinned tag. Idempotent.
+  local target="$CI_TAG" changed=0 f
+  [ -d .github/workflows ] || { echo "  no .github/workflows/ — nothing to re-pin" >&2; return 0; }
+  # Match both .yml and .yaml (GitHub Actions honors either); [ -f ] handles the
+  # literal-glob no-match case so a repo with only one extension is fine.
+  for f in .github/workflows/*.yml .github/workflows/*.yaml; do
+    [ -f "$f" ] || continue
+    grep -qE '^\s*uses:.*vladm3105/aidoc-flow-ci/' "$f" || continue
+    # rewrite only the pin on aidoc-flow-ci uses: lines; leave @main and
+    # comments untouched. Report old→new per file.
+    local before; before="$(grep -E '^\s*uses:.*aidoc-flow-ci/.*@ci/v[0-9.]+' "$f" | grep -oE '@ci/v[0-9.]+' | sort -u | tr '\n' ' ')"
+    sed -i -E "s#(^[[:space:]]*uses:[[:space:]]*vladm3105/aidoc-flow-ci/[^@]+)@ci/v[0-9.]+#\1@${target}#" "$f"
+    if ! git diff --quiet -- "$f" 2>/dev/null; then
+      echo "  repinned  $f  (${before:-?} -> @${target})"
+      changed=$((changed+1))
+    fi
+  done
+  echo "==> re-pin summary: $changed file(s) bumped to @${target}"
+  return 0
+}
+
+if [ "$MODE_REPIN" = 1 ]; then
+  if repin_mode; then repin_rc=0; else repin_rc=$?; fi
+  echo ""
+  echo "==> re-pin done (rc=$repin_rc). Working copy: $WORK_DIR/consumer"
+  echo "    Review the diff, then commit + push (version-only; topology preserved)."
+  exit "$repin_rc"
+fi
 
 if [ "$MODE_UPDATE" = 1 ]; then
   # Call in an `if` so a `return 1` from update_mode doesn't trip `set -e`
