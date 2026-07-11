@@ -196,3 +196,42 @@ resolved like `install.sh --update`), preserving the per-caller pin logic
 warning-only/never-block contract. Reuse the manifest entry emission from
 `install.sh update_mode`. Keep it a separate PR (E2) — it touches a live
 CI drift-check script.
+
+### FT-9 — 🔴 `install.sh --update` wholesale-replaces `safe_to_replace` callers, clobbering per-repo runner/permissions/trigger customizations
+
+**Found:** 2026-07-10, during the PLAN-005 v1.8.1 consumer-sync sweep — a
+fleet-wide gate-brick regression. Caught on operations #244 by that repo's own
+ai-review (verdict: changes-requested); the identical regression had **already
+merged** on iplanic (#247), business, and interlog before detection.
+**Surface:** `install/install.sh` `update_mode()` (lines ~186-261): for any
+manifest entry with `safe_to_replace: true` (all workflow callers except
+`codeql.yml`), `--update` **overwrites the local caller file wholesale** with
+the fetched generic template. The template ships the framework default
+`runner_labels: '"runner-self"'` and omits per-repo caller `permissions:`
+blocks, trigger customizations (`ready_for_review`, the `pull_request_review`
+exclusion), and per-caller `runner_labels` overrides.
+**Effect (critical):** running `--update` on a repo that has customized its
+callers silently reverts those customizations. Concretely on the private
+consumers, `runs-on: ${{ fromJSON(inputs.runner_labels_review) }}` became
+`runs-on: runner-self` — a label no repo has registered (operations pool =
+`self-hosted,aidoc,ci-ephemeral` + `…,ai-review`; iplanic = `…,ci-ephemeral`)
+— so every required-check job (ai-review trust/review, composition,
+doc-maintainer) queues indefinitely and **bricks the merge gate for every
+subsequent PR**. Also drops docs-sync/links overrides → `ubuntu-latest`
+fallback → OPS-0049 billing gate-down, and deletes doc-maintainer's
+`permissions:` block → startup_failure.
+**Root confusion:** `--update` conflates two distinct operations — "adopt a new
+canon **template body**" vs "bump the **pin version**." A **re-pin is
+version-only**: it must change only the `@ci/vX.Y.Z` string on each `uses:`
+line and touch nothing else.
+**Fix sketch:** split the two. Either (a) add a dedicated `--repin` path that
+surgically rewrites `@ci/v*` → target tag on existing caller `uses:` lines,
+preserving all customizations (the manual fix applied to operations #244 +
+iplanic); or (b) mark all workflow callers `safe_to_replace: false` in
+`manifest.json` so `--update` only reports body drift (never auto-replaces) and
+handles the pin bump separately; or (c) make `update_mode` merge — preserve the
+consumer's `with:` block (runner_labels/permissions/trigger overrides) while
+adopting non-`with:` template changes. Requires a plan (canon change → semver
+MINOR + `REPO_STANDARDS.md` update + verified-planning 2-cycle review). Until
+shipped: **never run `install.sh --update` for a re-pin on a repo with a
+customized caller — do a surgical `@ci/v*` sed instead.**
