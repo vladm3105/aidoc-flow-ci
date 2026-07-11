@@ -6,7 +6,32 @@ context compaction.
 
 ## Current state (2026-07-11)
 
-**`ci/v1.9.0` being cut (PLAN-006 W2 — FT-9 fix + self-hosted policy).** The
+**`ci/v1.9.4` SHIPPED (PLAN-006 W4 — content-check canon fix).** While
+populating the missing content-check workflows, discovered the same
+allowed-actions defect that broke `secret-scan` also blocked **`links`** and
+**`markdown-lint`**: both wrapped third-party marketplace actions
+(`lycheeverse/lychee-action`, `DavidAnson/markdownlint-cli2-action`) →
+`startup_failure` at run-init, so neither ever ran on any consumer. `ci/v1.9.4`
+refactors both to install the tool directly (lychee musl static binary +
+SHA-256 verify; `markdownlint-cli2@0.23.0` via `setup-node` + `npm
+--ignore-scripts`), relaxes MD060 in the `.markdownlint.json` template (new
+strict cli2-0.23 rule, 348 hits/repo), and adds REPO_STANDARDS §4.3
+(binary-not-action rule). PR #128 merged; tag + release cut. Pre-push OPS-0065
+review: security READY, correctness clean, docs 4 findings folded.
+
+**W4 accurate fleet tally (canon workflows on 8 repos, real repo names):**
+- **labeler 8/8** ✅ (interlog #54 merged last; ci self-adopted).
+- **secret-scan 8/8 effective** ✅ (6 via `secret-scan.yml`; business + interlog
+  covered by their own standalone `security.yml` gitleaks — confirmed clean 0
+  findings locally on both v8.21.2 + v8.30.1).
+- **ai-review / composition / audit-trail** — deployed fleet-wide (core gates).
+- **markdown-lint / links / docs-sync** — canon now RUNNABLE (v1.9.4) but NOT
+  populated fleet-wide: doing so is per-repo content triage (markdown-lint =
+  259 residual violations/repo under the sane config → needs `--fix` + adoption;
+  links = low-risk in `--offline`; docs-sync = per-repo config). **Tracked as
+  FT-11; scoped for founder decision — NOT a blind sweep.** ← NEXT.
+
+_History (v1.9.0 → v1.9.3):_ **`ci/v1.9.0`** (PLAN-006 W2 — FT-9 fix + self-hosted policy). The
 v1.8.1 consumer-sync sweep (via `install.sh --update`) clobbered the private
 callers' runner topology — the `-private.yml` templates shipped a `runner-self`
 **placeholder** that resolves to no registered runner, so every required check
