@@ -3,6 +3,21 @@
 Notable releases of the shared CI library. SemVer per `ci/vX.Y.Z`
 tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
+## ci/v1.9.3 — 2026-07-11
+
+### Fixed
+
+- **secret-scan now passes on clean repos + skips test-fixture false-positives.**
+  Two fixes so the gate is adoptable fleet-wide: (1) the reusable now ships a
+  **default gitleaks allowlist** (when the consumer sets no `config-path`) for
+  test fixtures + detect-secrets baselines — placeholder API keys, HMAC test
+  vectors, `tests/`/`vectors/`/`fixtures/` paths, `.secrets.baseline` — the
+  standard FP sources, not live secrets; (2) the SARIF-upload step is
+  `continue-on-error` so **PRIVATE repos without GitHub Advanced Security**
+  (which return `403 code scanning not enabled`) no longer fail the job — the
+  load-bearing gitleaks GATE is unaffected. A consumer that needs stricter
+  scanning ships its own `.gitleaks.toml`.
+
 ## ci/v1.9.2 — 2026-07-11
 
 ### Fixed
