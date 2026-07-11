@@ -1,23 +1,27 @@
-# markdown-lint.yml — reusable markdown-lint workflow.
+# markdown-lint.yml — reusable markdown-lint workflow (powered by markdownlint-cli2).
 #
-# Wraps DavidAnson/markdownlint-cli2-action — the first-party
-# successor to the older `markdownlint-cli`. Maintained by the
-# library author; recommended in 2025-2026 over the legacy CLI +
-# its third-party action wrappers.
+# CRITICAL: this installs + runs `markdownlint-cli2` from npm directly, NOT
+# the `DavidAnson/markdownlint-cli2-action` marketplace wrapper. Reason (same
+# defect class that broke secret-scan + links, fixed ci/v1.9.2 / v1.9.4):
+#   - allowed-actions policy: the aidoc-flow workspace restricts Actions to
+#     `actions/*`, `github/*`, and `vladm3105/aidoc-flow-ci/*` (+ verified). A
+#     third-party wrapper is BLOCKED at run-init → `startup_failure` (this is
+#     why markdown-lint never deployed on any consumer). Installing the npm
+#     package in a `run:` step needs no action allowlist; `actions/setup-node`
+#     IS allowlisted (`actions/*`) and guarantees Node on self-hosted runners.
 #
-# Design decisions (research findings 2026-06-24):
-#   - Use markdownlint-cli2-action (not nosborn/github-action-markdown-cli
-#     which wraps the legacy cli, nor igorshubovych/markdownlint-cli
-#     which is the legacy cli itself).
-#   - SHA-pinned to v23.2.0 (latest as of 2026-05-06).
-#   - Config file: .markdownlint.json default (most portable; works
-#     with both CLIs + every editor plugin). Override via `config`
-#     input for repos using .markdownlint-cli2.{jsonc,yaml,cjs,mjs}.
-#   - Reporter: cli2's built-in `github` outputFormatter emits
-#     ::error file=…,line=…:: workflow commands inline on PRs — no
-#     separate problem-matcher action needed.
-#   - Globs: caller passes glob list (default '**/*.md' which globs
-#     all markdown in the repo).
+# Design decisions (ci/v1.9.4):
+#   - `markdownlint-cli2` (the maintained successor to markdownlint-cli),
+#     pinned to npm `0.23.0`, installed globally in a run: step.
+#   - markdownlint-cli2 auto-detects `GITHUB_ACTIONS` and emits
+#     ::error file=…,line=…:: workflow commands inline on PRs — no separate
+#     problem-matcher action needed.
+#   - Globs: caller passes a newline-separated glob list (default '**/*.md').
+#   - Config: cli2's DEFAULT ruleset is very strict (MD013 line-length=80
+#     flags almost every real doc). Ship `install/templates/.markdownlint.json`
+#     (relaxes MD013/MD024/MD033/MD041/MD060) and adopt it per repo before enabling this
+#     as a blocking gate — otherwise every repo reds on cosmetic style. See
+#     REPO_STANDARDS §4.3.
 #
 # Consumer caller (typical):
 #
@@ -27,7 +31,7 @@
 #     push: { branches: [main] }
 #   jobs:
 #     md:
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v1.9.3
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v1.9.4
 #       with:
 #         globs: |
 #           **/*.md
@@ -39,7 +43,7 @@ on:
   workflow_call:
     inputs:
       globs:
-        description: 'Newline-separated list of globs to lint. Default "**/*.md". Use !pattern to exclude (e.g. "!node_modules/**").'
+        description: 'Newline-separated list of globs to lint. Default "**/*.md". Use !pattern to exclude (e.g. "!node_modules").'
         type: string
         default: '**/*.md'
       config:
@@ -69,9 +73,37 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: markdownlint-cli2
-        uses: DavidAnson/markdownlint-cli2-action@fa0cd0f1a052f54da593c83860f2292982f5d142 # v23.2.0
+      # setup-node is allowlisted (actions/*) and guarantees Node on
+      # self-hosted ephemeral runners that may not pre-bake it.
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          globs: ${{ inputs.globs }}
-          config: ${{ inputs.config }}
-          fix: ${{ inputs.fix }}
+          node-version: '22'
+
+      - name: Install + run markdownlint-cli2
+        # Consumer-controlled inputs are mapped to env (NOT interpolated into
+        # the shell) so a hostile `globs`/`config` value cannot inject
+        # `${{ }}` expressions. Globs are collected with noglob so the shell
+        # does not expand them — markdownlint-cli2 does its own globbing.
+        env:
+          GLOBS: ${{ inputs.globs }}
+          CONFIG: ${{ inputs.config }}
+          FIX: ${{ inputs.fix }}
+        run: |
+          set -euo pipefail
+          # --ignore-scripts: markdownlint-cli2 is pure JS (no build step), so
+          # skipping lifecycle scripts closes the transitive-dep install-time
+          # code-exec surface with no functional loss (parity with the
+          # verify-before-execute posture of the binary installs).
+          npm install -g --ignore-scripts markdownlint-cli2@0.23.0
+          args=()
+          [ -n "${CONFIG}" ] && args+=(--config "${CONFIG}")
+          [ "${FIX}" = "true" ] && args+=(--fix)
+          # Collect newline-separated globs as literal strings (skip blanks).
+          globlist=()
+          set -o noglob
+          while IFS= read -r line; do
+            [ -n "${line}" ] && globlist+=("${line}")
+          done <<< "${GLOBS}"
+          set +o noglob
+          markdownlint-cli2 "${args[@]}" "${globlist[@]}"

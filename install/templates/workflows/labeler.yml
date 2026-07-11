@@ -36,7 +36,7 @@ concurrency:
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/labeler.yml@ci/v1.9.3
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/labeler.yml@ci/v1.9.4
     permissions:
       contents: read
       pull-requests: write

@@ -255,3 +255,33 @@ in several places: `docs/runners.md` §0/§2 pool tables + registration steps
 **Fix sketch:** reconcile the nickname — rewrite the reference docs to the real
 `ci-ephemeral`/`ai-review` labels throughout (align docs to infra; preferred).
 One focused docs PR; split to keep ≤3 surfaces.
+
+### FT-11 — fleet population of `markdown-lint` / `links` / `docs-sync` is per-repo content triage, not a sweep
+
+**Found:** 2026-07-11, PLAN-006 W4 population (canon-defect discovery).
+**Surface:** the canon-source defect is fixed in v1.9.4 (both `markdown-lint`
+and `links` were blocked at run-init by the allowed-actions policy; now
+binary-installed). But *populating* the remaining content-check workflows
+fleet-wide is NOT mechanical:
+- **`markdown-lint`** — under the shipped `.markdownlint.json` default (which
+  already disables MD060) it still finds **259 violations on aidoc-flow-ci
+  alone** (mostly `--fix`-able: MD013 line-length, MD032, etc.); the strict
+  default with MD060 on is 1300. Every repo needs a `--fix` pass + residual
+  hand-remediation + config adoption BEFORE the gate can be enabled, or it reds
+  every PR. Estimate: 8 repos × hundreds of hits.
+- **`links`** — low-risk in `--offline` internal mode (only internal/relative
+  links; lychee ran 0 errors on this repo). Re-pin callers to v1.9.4 + add the
+  caller per repo. Safe-ish to enable once re-pinned; external-mode (network)
+  should stay non-blocking/scheduled.
+- **`docs-sync`** — viable (proven green on operations; uses only `actions/*`).
+  Needs a per-repo `.github/docs-sync.json` for 6 more repos (currently on
+  ci + operations). Post-merge automation, not a PR gate.
+**Effect:** the persistent "populate all canon workflows on all repos" goal is
+complete for the *gate* workflows (labeler, secret-scan effective 8/8,
+ai-review, composition, audit-trail); the three content-check workflows above
+are runnable but not yet enabled fleet-wide because doing so is bounded content
+remediation, not a blind sweep. Ties to [[reference_canon_workflow_hard_constraints]] #3.
+**Fix sketch:** a dedicated remediation plan — per repo: run `markdownlint-cli2
+--fix`, commit, adopt `.markdownlint.json`, re-pin to v1.9.4, add the caller,
+verify green. Sequence links (cheap) → docs-sync (config) → markdown-lint
+(remediation-heavy). Escalate scope/priority to founder before starting.

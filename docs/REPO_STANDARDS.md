@@ -182,6 +182,33 @@ callers (this is exactly how the v1.8.1 sweep re-introduced `runner-self` and
 bricked the fleet; FT-9). `--update` is only for deliberately adopting a new
 template body, reviewing each drift.
 
+### 4.3 Reusable workflows install tools as BINARIES, never third-party actions
+
+**Canon reusable workflows may `uses:` only `actions/*`, `github/*`, and
+`vladm3105/aidoc-flow-ci/*`** — the same allowed-actions allowlist every
+consumer sets (§4, `install/templates/actions-permissions.json`). A reusable
+that wraps ANY third-party marketplace action (`gacts/gitleaks`,
+`lycheeverse/lychee-action`, `DavidAnson/markdownlint-cli2-action`, …) is
+**BLOCKED at run-init → `startup_failure`** on every consumer — no logs, no
+API error (the message is web-UI-only; `actionlint` does NOT catch it). This
+silently bricked `secret-scan` (fixed v1.9.2), `links`, and `markdown-lint`
+(both fixed v1.9.4).
+
+**Pattern:** install the tool directly in a `run:` step —
+
+- **Static binary** (gitleaks, lychee): `curl` the pinned release, verify its
+  SHA-256, run it. Prefer a **musl static build** where offered — the gnu
+  build links against a recent GLIBC and fails on older self-hosted Debian
+  ephemeral runners.
+- **npm / language package** (markdownlint-cli2): use the allowlisted
+  `actions/setup-node` (or `setup-python`, etc.) to guarantee the runtime,
+  then install the pinned package in a `run:` step.
+
+Map every consumer-controlled input to `env:` (never interpolate `${{ }}`
+into the shell) so a hostile input value cannot inject an expression. When
+authoring or reviewing a canon workflow, verify every `uses:` is on the
+allowlist.
+
 ## 5. Labels — canonical taxonomy
 
 The label taxonomy aligns with the **OPS-0065 diff-class dispatch table**

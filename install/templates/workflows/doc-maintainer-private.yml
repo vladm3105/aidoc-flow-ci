@@ -51,7 +51,7 @@ on:
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v1.9.3
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v1.9.4
     with:
       runner_labels: '["self-hosted", "aidoc", "ci-ephemeral"]'
     secrets: inherit  # pragma: allowlist secret

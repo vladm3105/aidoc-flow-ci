@@ -3,6 +3,45 @@
 Notable releases of the shared CI library. SemVer per `ci/vX.Y.Z`
 tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
+## ci/v1.9.4 — 2026-07-11
+
+### Fixed
+
+- **`markdown-lint` + `links` now deploy** — both wrapped a third-party
+  marketplace action (`DavidAnson/markdownlint-cli2-action`,
+  `lycheeverse/lychee-action`) that the workspace allowed-actions policy
+  BLOCKS at run-init → `startup_failure` (proven live: `links` ran
+  `startup_failure` on operations + business; `markdown-lint` never ran
+  anywhere). Same defect class fixed for `secret-scan` in v1.9.2. Both are
+  now refactored to install the tool directly in a `run:` step:
+  - **`links`** curls the pinned **lychee** release. Uses the **musl** static
+    build (`x86_64-unknown-linux-musl`, SHA-256 verified) — NOT the gnu build,
+    which needs GLIBC 2.38+ and fails on older self-hosted Debian ephemeral
+    runners. Same modes/inputs/caching; consumer-controlled inputs mapped to
+    `env` (no `${{ }}` injection).
+  - **`markdown-lint`** installs `markdownlint-cli2@0.23.0` from npm after
+    `actions/setup-node` (allowlisted `actions/*`, guarantees Node on
+    self-hosted runners). Globs collected with `noglob` so the shell does not
+    pre-expand them; cli2 auto-emits `::error` PR annotations.
+
+### Changed
+
+- **`install/templates/.markdownlint.json`** now also disables **MD060**
+  (table-column-style) — a new, very strict rule in cli2 0.23.0 that flags
+  table-pipe padding on essentially every existing doc (348 MD060 hits on this
+  repo alone). Cosmetic + `--fix`-able; disabling it keeps the canon default
+  from turning every repo red on adoption. Enabling `markdown-lint` as a blocking gate
+  still requires a per-repo `--fix` remediation pass first (see FT-11).
+
+### Notes
+
+- These two workflows had **never run green on any consumer** (blocked at
+  run-init), so their defects went unseen — the "never-deployed workflows
+  accumulate silent defects" pattern. This release makes them *runnable*;
+  fleet **population** remains per-repo content triage (markdown-lint reds on
+  real style violations; links is low-risk in `--offline` internal mode) and
+  is tracked as FT-11, not swept blindly.
+
 ## ci/v1.9.3 — 2026-07-11
 
 ### Fixed
