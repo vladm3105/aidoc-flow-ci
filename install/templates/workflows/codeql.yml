@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/codeql.yml@ci/v1.9.1
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/codeql.yml@ci/v1.9.2
     permissions:
       actions: read
       contents: read

@@ -107,7 +107,7 @@ For each consumer repo in the new project (the project's main
 repo, its sub-libraries, etc.):
 
 ```sh
-bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.9.1/install/install.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.9.2/install/install.sh) \
   <owner>/<consumer-repo> --visibility <public|private>
 ```
 

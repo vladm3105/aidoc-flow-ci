@@ -41,7 +41,7 @@
 #       - cron: '7,37 * * * *'   # off-peak reconciler (per IPLAN-0025 D9)
 #   jobs:
 #     call:
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v1.9.1
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v1.9.2
 #       secrets: inherit
 
 name: doc-maintainer
