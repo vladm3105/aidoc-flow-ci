@@ -123,6 +123,26 @@ what it says + (b) the canonical file path to READ for the full rule.
   for CI + governance-workflow rules. Reference by section number.
   → `docs/REPO_STANDARDS.md`.
 
+## Runner policy — private repos are self-hosted ONLY (no exceptions)
+
+**Every private aidoc-flow repo (operations, business, iplanic, interlog)
+MUST run CI on self-hosted runners — never `ubuntu-latest`.** GitHub-hosted
+minutes on a private repo are OPS-0049 billing exposure and against workspace
+policy (founder, 2026-07-11). The canonical private label is the verbose array
+`["self-hosted", "aidoc", "ci-ephemeral"]` (plus `[…, "ai-review"]` for the
+heavy reviewer job on repos with a second pool, e.g. operations).
+
+- The literal `"runner-self"` in the `install/templates/workflows/*-private.yml`
+  templates is a **placeholder**, NOT a real registered label. A caller left on
+  `runner-self` (or on the reusable's `ubuntu-latest` default) queues forever —
+  always resolve it to the real `["self-hosted","aidoc","ci-ephemeral"]` pool.
+- **Never "fix" a bricked private-repo gate by falling back to `ubuntu-latest`.**
+  If a private repo has no pool yet, the fix is to **register the pool**
+  (`../operations/scripts/ci-runner/run-ephemeral.sh`, labels
+  `self-hosted,aidoc,ci-ephemeral`), not to switch to GitHub-hosted.
+- Public repos (engramory, framework, iplan-standard, iplan-runner) stay on
+  `ubuntu-latest`. Full routing table + registration steps: `docs/runners.md`.
+
 ## Repo-specific rules (canon-source discipline)
 
 **Canon changes are load-bearing across the workspace.** Every
