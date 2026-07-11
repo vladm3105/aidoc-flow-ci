@@ -31,7 +31,7 @@
 #     push: { branches: [main] }
 #   jobs:
 #     md:
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v1.9.4
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v1.9.5
 #       with:
 #         globs: |
 #           **/*.md
@@ -54,6 +54,10 @@ on:
         description: 'Apply automatic fixes (writes back to working tree). Default false; useful for the autofix pipeline (IPLAN-0014) but not for a blocking PR gate.'
         type: boolean
         default: false
+      fail-on-findings:
+        description: 'Whether lint findings fail the job. Default true (blocking gate). Set false for a REPORT-ONLY rollout — cli2 still emits ::error PR annotations, but the job exits 0 so it does not block merge. (GitHub forbids continue-on-error on a reusable-call job, so report-only must be expressed here, not in the caller.)'
+        type: boolean
+        default: true
       runner_labels:
         description: 'JSON array (or single-string) of runner labels. Default "ubuntu-latest" — lightweight Node-based linter. PRIVATE consumers per OPS-0049 may override to the self-hosted "ci-ephemeral" pool.'
         type: string
@@ -89,6 +93,7 @@ jobs:
           GLOBS: ${{ inputs.globs }}
           CONFIG: ${{ inputs.config }}
           FIX: ${{ inputs.fix }}
+          FAIL: ${{ inputs.fail-on-findings }}
         run: |
           set -euo pipefail
           # --ignore-scripts: markdownlint-cli2 is pure JS (no build step), so
@@ -106,4 +111,12 @@ jobs:
             [ -n "${line}" ] && globlist+=("${line}")
           done <<< "${GLOBS}"
           set +o noglob
-          markdownlint-cli2 "${args[@]}" "${globlist[@]}"
+          # Report-only mode (fail-on-findings=false): cli2 still prints the
+          # ::error annotations, but we swallow its non-zero exit so the job
+          # doesn't block merge. (continue-on-error is illegal on the CALLER's
+          # reusable-call job, so the toggle lives here.)
+          if [ "${FAIL}" = "true" ]; then
+            markdownlint-cli2 "${args[@]}" "${globlist[@]}"
+          else
+            markdownlint-cli2 "${args[@]}" "${globlist[@]}" || echo "::notice::markdown-lint report-only — findings above do not block merge (fail-on-findings=false)"
+          fi
