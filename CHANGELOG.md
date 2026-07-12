@@ -15,6 +15,18 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   reusable body change (no new tag needed); existing callers must add the block
   directly.
 
+### Added / Fixed — pin-currency wiring + SHA-pin re-pin (2026-07-12)
+
+- **`install.sh --repin` now converts SHA-pinned callers** (`@<sha> # ci/vX`)
+  to the target tag, not just `@ci/v*` tag pins — the canonical re-pin tool now
+  covers the whole fleet (the audit-trail caller was historically SHA-pinned and
+  silently skipped, needing a manual conversion).
+- **`check-pin-currency.sh` is now wired into the weekly drift check**:
+  `sync/check-standards-drift.sh` runs it in-repo (covers public + private via
+  each repo's own checkout), and aidoc-flow-ci's `standards-drift.yml` adds a
+  central `--fleet` public-repo audit. Pin-staleness is now caught automatically
+  each Monday, not just on demand.
+
 ### Added — pin-currency drift check (2026-07-12)
 
 - **`sync/check-pin-currency.sh`** — flags consumer `@ci/vX.Y.Z` pins that LAG

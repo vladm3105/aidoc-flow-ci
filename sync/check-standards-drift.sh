@@ -244,5 +244,23 @@ else
 fi
 rm -f "$lb_local" "$lb_canon"
 
+# --- pin-currency (companion drift dimension) ---
+# Also flag @ci/v* caller pins that LAG the current VERSION — the staleness
+# dimension this settings check + check-drift.sh both miss. In-repo (reads the
+# local ./.github/workflows checkout, so it works for public AND private via
+# each repo's own token). Warning-only. Uses the local copy if present
+# (self-run / already fetched), else fetches from the resolved CI_TAG.
+if [ -f sync/check-pin-currency.sh ]; then
+  bash sync/check-pin-currency.sh || true
+else
+  _pc="$(mktemp)"
+  if curl -fsSL "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/sync/check-pin-currency.sh" -o "$_pc" 2>/dev/null; then
+    bash "$_pc" || true
+  else
+    echo "::notice::check-standards-drift: check-pin-currency.sh not available at ${CI_TAG} — skipping pin-currency (re-pin standards-drift to a release that includes it)"
+  fi
+  rm -f "$_pc"
+fi
+
 echo "check-standards-drift: $DRIFT drift, $FETCH_ERRORS fetch/scope error(s) (never blocks)"
 exit 0
