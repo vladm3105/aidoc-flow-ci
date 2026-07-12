@@ -1,12 +1,13 @@
 {
-  "_comment": "Branch protection for GOVERNANCE tier per REPO_STANDARDS.md §2. Consumed by `install/apply-standards.sh --apply` (PR-C2) via `gh api PUT /repos/{owner}/{repo}/branches/main/protection`. Tier repos: aidoc-flow-framework, aidoc-flow-iplan-standard. Required approving reviews: 1 human (spec/schema blast radius). CODEOWNERS required. `Secret scan (gitleaks)` OMITTED from status-checks per canon §2 (governance skip).",
+  "_comment": "Branch protection for GOVERNANCE tier per REPO_STANDARDS.md \u00a72. Consumed by `install/apply-standards.sh --apply` (PR-C2) via `gh api PUT /repos/{owner}/{repo}/branches/main/protection`. Tier repos: aidoc-flow-framework, aidoc-flow-iplan-standard. Required approving reviews: 1 human (spec/schema blast radius). CODEOWNERS required. `Secret scan (gitleaks)` OMITTED from status-checks per canon \u00a72 (governance skip).",
   "_apply_note": "PR-C2 MUST strip ALL `_`-prefix keys before POST/PUT/PATCH. Use `jq 'del(.._comment, .._apply_note, .._docs, .._endpoint, .._umbrella_note)'` or equivalent. GitHub REST endpoints strictly validate unknown fields.",
   "required_status_checks": {
     "strict": false,
     "contexts": [
       "call / ai-review",
       "call / composition",
-      "Lint / format / security hooks"
+      "call / verify",
+      "call / Lint / format / security hooks"
     ]
   },
   "enforce_admins": true,

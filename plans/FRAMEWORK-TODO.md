@@ -10,6 +10,8 @@ when resolved.
 
 ### FT-1 — Branch-protection templates lag REPO_STANDARDS §2 on `call / verify`
 
+**RESOLVED (2026-07-12, PLAN-007 W2):** branch-protection templates + REPO_STANDARDS §2 corrected to the verified `call / …` emitted names (incl. `call / verify`); `tests/test_checknames.sh` guards against recurrence.
+
 **Found:** 2026-07-09, during PLAN-004 PR-A3 (`BRANCH_PROTECTION.md` authoring).
 **Surfaces:** `docs/REPO_STANDARDS.md` §2 (line ~84) lists `call / verify`
 in the required-checks baseline for governance/product/ops; the shipped
@@ -31,6 +33,8 @@ that also flips required checks. Reconcile §2 ⇄ templates ⇄
 `BRANCH_PROTECTION.md` so all three agree.
 
 ### FT-2 — Verify the real emitted context names for `pre-commit` + `secret-scan`
+
+**RESOLVED (2026-07-12, PLAN-007 W2):** verified emitted check-names captured from live runs + recorded in REPO_STANDARDS §2 verified-names table; templates aligned; regression-tested.
 
 **Found:** 2026-07-09, PLAN-004 PR-A3 (pre-push review L1).
 **Surfaces:** `docs/REPO_STANDARDS.md` §2 + the `branch-protection-*.json`

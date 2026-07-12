@@ -81,7 +81,7 @@ All non-paused repos protect `main`. Tier drives the profile.
 | Required approving reviews | 1 human | 0 | 0 | 0 | 0 |
 | Dismiss stale reviews on push | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Require review from CODEOWNERS | ✅ | ⏸ v2 | ⏸ v2 | ✅ | ⏸ v2 |
-| Required status checks (baseline) | `call / ai-review`, `call / composition`, `call / verify`, `Lint / format / security hooks` + tier-specific | `call / ai-review`, `call / composition`, `call / verify`, `Lint / format / security hooks`, `Secret scan (gitleaks)` + tier-specific | `call / ai-review`, `call / composition`, `call / verify`, `Lint / format / security hooks`, `Secret scan (gitleaks)` + tier-specific | (no required checks — submodule-pointer only; `call / verify` runs advisory) | `Lint / format / security hooks` + tier-specific (`call / verify` deferred to CI adoption per §14.3) |
+| Required status checks (baseline) | `call / ai-review`, `call / composition`, `call / verify`, `call / Lint / format / security hooks` + tier-specific | `call / ai-review`, `call / composition`, `call / verify`, `call / Lint / format / security hooks`, `call / gitleaks` + tier-specific | `call / ai-review`, `call / composition`, `call / verify`, `call / Lint / format / security hooks`, `call / gitleaks` + tier-specific | (no required checks — submodule-pointer only; `call / verify` runs advisory) | `call / Lint / format / security hooks` + tier-specific (`call / verify` deferred to CI adoption per §14.3) |
 | Require branches up-to-date before merge | ⏸ (adds re-run round-trips; deferred) | ⏸ | ⏸ | ⏸ | ⏸ |
 | Require signed commits | ⏸ v2 | ⏸ v2 | ⏸ v2 | ✅ (unsigned AI commits blocked; `--admin` per OPS-0062) | ⏸ v2 |
 | Include administrators | ✅ | ✅ | ✅ | ⏸ (`--admin` merge is the intentional bypass) | ✅ |
@@ -106,6 +106,23 @@ through `--admin`. Umbrella already has this constraint as a deliberate
 governance layer; other tiers defer until the workspace adopts a signing
 solution (`gitsign`, `gh api PATs with commit signing`, etc.) — tracked
 as v2.
+
+**Verified emitted check-names (FT-2, 2026-07-12).** A required-context name
+that does not match the string CI actually emits never turns green → the PR is
+blocked forever. The canon reusables emit `call / <job>`; the verified map is:
+
+| Workflow | Emitted required-check name |
+| --- | --- |
+| ai-review | `call / ai-review` (+ `call / trust`) |
+| composition | `call / composition` |
+| audit-trail | `call / verify` |
+| pre-commit | `call / Lint / format / security hooks` |
+| secret-scan (canon) | `call / gitleaks` |
+
+**Caveat:** a repo using its own standalone `security.yml` (business, interlog)
+emits `Secret scan (gitleaks)`, NOT `call / gitleaks` — arm that name instead on
+those repos. `tests/test_checknames.sh` asserts every `call / …` context in a
+branch-protection template maps to a real reusable job, so this can't drift again.
 
 ## 3. GitHub security settings
 
