@@ -15,6 +15,20 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   reusable body change (no new tag needed); existing callers must add the block
   directly.
 
+### Added — automated test suite (PLAN-007 W1) (2026-07-12)
+
+- **`tests/` + `.github/workflows/tests.yml`** — the automated regression gate
+  the library previously lacked (verification was fleet-dogfooding only). Runs
+  on every PR + push: static lint (`shellcheck` -S error, `yamllint`,
+  `actionlint`), **workflow-contract** assertions (every reusable declares
+  `permissions` + uses only allowlisted actions + no floating pins; every
+  private caller template carries valid-JSON `ci-ephemeral` `runner_labels`;
+  ai-review/composition callers carry the permissions block), **script-logic**
+  unit tests (pin-currency staleness detection, `--repin` tag+SHA seds +
+  idempotency), and a **negative** suite proving the checks reject third-party
+  actions / malformed `runner_labels` / permissions omissions. 103 assertions.
+  Building the suite immediately surfaced 2 over-strict checks (now corrected).
+
 ### Added / Fixed — pin-currency wiring + SHA-pin re-pin (2026-07-12)
 
 - **`install.sh --repin` now converts SHA-pinned callers** (`@<sha> # ci/vX`)
