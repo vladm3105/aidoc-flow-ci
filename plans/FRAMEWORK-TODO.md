@@ -305,10 +305,21 @@ independent of the arming act:
   `call / Lint / format / security hooks` → the bare context never posts, so
   these repos have been merging via `--admin`. Fix = re-point the required
   context to the emitted name (in the runbook's step B).
-- **iplan-runner canon adoption broken.** `call / ai-review` = skipped +
-  `call / gitleaks` = **failure** on its PRs. Its own product checks are green;
-  its canon callers are not. Repair canon wiring before arming any `call / …`
-  gate on it.
+- **iplan-runner canon adoption — RESOLVED (iplan-runner #88, 2026-07-12).**
+  `call / gitleaks` was failing on a placeholder HMAC key in the
+  `iplanic-vectors/` conformance vectors (the canon default allowlist matches a
+  bare `vectors/` but not the compound dir name). Fixed consumer-side via
+  `config-path: .gitleaks.toml` + a proper `[extend] useDefault=true` allowlist
+  (which also un-broke the repo's previously rule-less, no-op standalone
+  gitleaks). On the fix PR, `call / ai-review` + `call / composition` ran green —
+  the earlier "skipped" was PR-specific, not a wiring defect. Its canon `call/…`
+  gates are now armable.
+  - _Canon observation (low-priority):_ the reusable's default gitleaks
+    allowlist path `(^|/)(vectors|fixtures|testdata|examples)/` misses compound
+    names like `*-vectors/`. The `config-path` escape hatch is the intended
+    per-consumer fix, so leaving the canon default strict (opt-in) is defensible;
+    broadening it fleet-wide risks over-suppression. No action unless a second
+    consumer hits it.
 - **interlog `call / composition` conditionality.** Armed but did not emit on
   its latest PR (path-filtered?). Confirm composition posts on every PR or
   reclassify it non-required.
