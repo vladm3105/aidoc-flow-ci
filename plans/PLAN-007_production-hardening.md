@@ -14,7 +14,7 @@ readiness review into tracked, reviewable workstreams.
 | --- | --- | --- | --- |
 | W1 | Automated test suite for the reusables + scripts | No `tests/` — verification is empirical only | no |
 | W2 | Guardrail FT burn-down (FT-1, FT-2, FT-5, FT-6-residual) | Correctness/consistency debt in the canon | no |
-| W3 | Graduate `markdown-lint`→blocking + `docs-sync`→live (FT-11) | Two workflows stuck in rollout stages | markdown-lint **DONE** (5 merged + 1 founder-reserved); docs-sync-live still 🔴 founder App / defer to doc-maintainer |
+| W3 | Graduate `markdown-lint`→blocking + `docs-sync`→live (FT-11) | Two workflows stuck in rollout stages | markdown-lint **DONE** (all 6 canon consumers merged); docs-sync-live still 🔴 founder App / defer to doc-maintainer |
 | W4 | Arm gates as required checks fleet-wide | Gates run but don't all enforce | partly (per-repo protection) |
 | W5 | Green the canon repo's own CI (Dependabot noise) | aidoc-flow-ci main reads red | no |
 
@@ -137,8 +137,8 @@ labor-heavy item.
   the workspace-legitimate false-positives above; ci #149, REPO_STANDARDS §4.4),
   which dropped per-repo residuals from the hundreds to the dozens. Then per-repo
   graduation to `fail-on-findings: true`: **business #57, interlog #63,
-  engramory #49, iplan-runner #89, iplanic #258 MERGED**; **iplan-standard #30
-  green, reserved for founder merge** (governance tier). operations + framework
+  engramory #49, iplan-runner #89, iplanic #258, iplan-standard #30 all
+  MERGED** (iplan-standard, governance tier, merged by the founder). operations + framework
   are covered-by-own-tooling. Each graduation reflowed prose-`+` roots first,
   used `--fix` only for structural rules, and ran a documentation-specialist to
   verify zero prose changed (caught real MD050 `__init__.py`→`**init**.py`
