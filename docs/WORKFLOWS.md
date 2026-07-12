@@ -320,6 +320,7 @@ warning is the operator's opportunity to reconcile intent.
 
 ## 8. Cross-references
 
+- [`AI_CI_DEPLOYMENT.md`](AI_CI_DEPLOYMENT.md) — **AI-agent playbook + wizard** for deploying the full stack on a new repo (prerequisites, sequence, gotchas, verification)
 - [`architecture.md`](architecture.md) — reusable-workflow model + trust flow
 - [`multi-project-guide.md`](multi-project-guide.md) — new-project onboarding flow
 - [`overrides.md`](overrides.md) — the 3 override modes

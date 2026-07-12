@@ -1,0 +1,339 @@
+# Deploying the full CI stack on a new repo — AI-agent playbook
+
+**Audience: an AI agent** (Claude Code / Codex / etc.) deploying the complete
+aidoc-flow CI surface — ai-review, composition, auto-merge, pre-commit,
+audit-trail, secret-scan, links, markdown-lint, labeler, docs-sync, codeql —
+onto a new (or under-covered) workspace repo.
+
+This is the **operational how-to**. It encodes every failure mode learned in
+the 2026-07 fleet rollout so you don't re-derive them. Companion docs (read
+when a step points you there): [`WORKFLOWS.md`](WORKFLOWS.md) (catalog + skip
+rules), [`REVIEWER_APP_ONBOARDING.md`](REVIEWER_APP_ONBOARDING.md) (App +
+secrets), [`runners.md`](runners.md) (self-hosted pools),
+[`REPO_STANDARDS.md`](REPO_STANDARDS.md) (tiers + settings).
+
+> **Fast path:** run [`install/deploy-ci-wizard.sh`](../install/deploy-ci-wizard.sh)
+> `preflight <owner/repo>` first — it audits every prerequisite below and
+> prints a 🟢/🔴 report. Then `scaffold` to generate the caller files. The
+> wizard automates the deterministic parts; this doc explains the judgment
+> calls + gotchas it can't.
+
+---
+
+## 0. TL;DR — the deployment in one screen
+
+```
+1. PREFLIGHT   →  determine visibility; verify runner pool (private), reviewer
+                  App + secrets + bot-id var, labels, allowed-actions policy.
+                  Some items are 🔴 FOUNDER-ONLY — you cannot do them.
+2. DEPLOY      →  add caller workflows + config files, in dependency order,
+                  using the PUBLIC or PRIVATE variant. One PR per workflow (or
+                  a small batch); each PR carries a CHANGELOG entry + the
+                  OPS-0069 audit-trail phrase.
+3. VERIFY      →  open a throwaway test PR; confirm the App submits an APPROVED
+                  review (ai-review green) and composition resolves SUCCESS.
+4. ARM         →  (opt-in) add the checks to branch-protection required_status_checks
+                  so they actually block merges. Do this only after they run green.
+```
+
+**🔴 vs 🟢 — know what you cannot do.** Three prerequisites are FOUNDER-ONLY
+(you prepare the ask, the human executes):
+
+| 🔴 Founder-only | Why you can't |
+| --- | --- |
+| Install the reviewer **App** on the repo (+ on `aidoc-flow-operations`) | App installation is F5 blast-radius; needs org/repo admin UI |
+| Set the reviewer **secrets** (`APP_REVIEWER_1_ID`, `APP_REVIEWER_1_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`) | You don't hold the App private key / token values |
+| Register a self-hosted **runner pool** for a private repo | Provisions infra |
+
+Everything else (caller workflows, config files, non-secret variables, labels,
+verification, arming) is 🟢 — you do it.
+
+---
+
+## 1. Preflight — gather facts + verify prerequisites
+
+### 1.1 Visibility (decides EVERYTHING downstream)
+
+```bash
+gh repo view <owner/repo> --json visibility -q .visibility   # PUBLIC | PRIVATE
+```
+
+- **PUBLIC** → callers run on `ubuntu-latest`; use the `*-public.yml` templates.
+- **PRIVATE** → callers run on the self-hosted pool; use the `*-private.yml`
+  templates. **Private repos are self-hosted ONLY — never `ubuntu-latest`**
+  (OPS-0049 billing + policy). The canonical private label is the JSON array
+  `["self-hosted", "aidoc", "ci-ephemeral"]` (heavy reviewer jobs on repos
+  with a second pool use `["self-hosted", "aidoc", "ai-review"]`).
+
+Do NOT trust a stale doc's visibility column — always re-check with `gh`.
+
+### 1.2 Runner pool (PRIVATE repos only) — 🔴 if absent
+
+```bash
+gh api repos/<owner/repo>/actions/runners --jq '.runners[]|{name,status,labels:[.labels[].name]}'
+```
+Expect an online runner with labels `self-hosted,aidoc,ci-ephemeral`. If none:
+**do not fall back to `ubuntu-latest`** — the fix is to register the pool
+(`aidoc-flow-operations/scripts/ci-runner/run-ephemeral.sh`), a 🔴 founder step.
+A private caller left on `ubuntu-latest` or the placeholder `runner-self` queues
+forever. See [`runners.md`](runners.md).
+
+### 1.3 Reviewer App + secrets + bot-id (needed for ai-review + composition)
+
+A working ai-review repo has THREE repo-level secrets and ONE variable
+(`vladm3105` is a user account — no org secrets to inherit, so these are
+**per-repo**):
+
+```bash
+gh secret   list -R <owner/repo> | grep -E 'APP_REVIEWER_1_ID|APP_REVIEWER_1_KEY|CLAUDE_CODE_OAUTH_TOKEN'
+gh variable list -R <owner/repo> | grep APP_REVIEWER_1_BOT_ID
+```
+
+- **Secrets missing → 🔴 founder** must (a) install the `aidoc-reviewer` App on
+  the repo AND on `aidoc-flow-operations` (the trust-config repo, `contents:read`),
+  then (b) set the 3 secrets. `CLAUDE_CODE_OAUTH_TOKEN` is the token because the
+  workspace `.reviewer` engine is `claude` (verify:
+  `gh api repos/vladm3105/aidoc-flow-operations/contents/.github/ai-review/config.json --jq .content | base64 -d | jq .reviewer`).
+- **`APP_REVIEWER_1_BOT_ID` variable → 🟢 you set it.** It's the App's bot-user
+  id and is **App-global** (same on every repo): **`294948438`**. Set it
+  directly — no need to wait for the first review to capture it:
+  ```bash
+  gh variable set APP_REVIEWER_1_BOT_ID -R <owner/repo> --body "294948438"
+  ```
+  Without it, `composition` runs **INERT** (passes without enforcing).
+- **Trust allowlist:** the repo's PRs are only auto-reviewed if the PR author is
+  in `operations@main` `.github/ai-review/config.json` `trust.ai_review`
+  (`vladm3105` is already listed). No local `config.json` is required in the
+  consumer for the default trust flow (composition reads the bot-id variable +
+  operations' config).
+
+### 1.4 Labels — 🟢 create the canon set
+
+```bash
+# state-machine + skip labels (ai-review + audit-trail need these)
+gh label create ai:review-passed         -R <owner/repo> --color 0e8a16 --force
+gh label create ai:review-changes        -R <owner/repo> --color d93f0b --force
+gh label create ai:human-review-required -R <owner/repo> --color fbca04 --force
+gh label create skip-ai-review           -R <owner/repo> --color ededed --force
+gh label create skip-audit-trail         -R <owner/repo> --color d876e3 --force
+```
+Plus the diff-class / path labels your `.github/labeler.yml` references
+(`labeler` does NOT create labels). Canonical specs:
+`install/templates/labels.json`.
+
+### 1.5 Allowed-actions policy (sanity check)
+
+```bash
+gh api repos/<owner/repo>/actions/permissions/selected-actions \
+  --jq '{patterns_allowed, verified_allowed, github_owned_allowed}'
+```
+Should allow `vladm3105/aidoc-flow-ci/*`, `actions/*`, `github/*` (+ verified).
+This is why the reusables install tools as **binaries/npm**, never third-party
+marketplace actions (see §5). If a repo's policy is stricter, a caller that
+pulls a blocked action will `startup_failure` silently.
+
+---
+
+## 2. Deployment sequence (dependency-ordered)
+
+Deploy in this order — later phases depend on earlier ones. One PR per
+workflow, or batch the independent content-checks. **Pin every caller at the
+current tag** (`ci/v1.9.5` at time of writing — read `../VERSION`).
+
+| # | Phase | Workflow(s) | Depends on | Notes |
+| --- | --- | --- | --- | --- |
+| 1 | Hygiene | `pre-commit` | repo has `.pre-commit-config.yaml` | runs `pre-commit run --all-files` |
+| 2 | Doc-quality | `links`, `markdown-lint` (report-only), `labeler` | §1.4 labels; per-repo configs (§4) | content floor |
+| 3 | Secrets | `secret-scan` | — | skip if repo ships its own gitleaks `security.yml` (covered-by-own) |
+| 4 | Audit | `audit-trail` | `skip-audit-trail` label | renders as `call / verify` |
+| 5 | **Review** | `ai-review` + `composition` | §1.3 App + secrets + bot-id | deploy together; verify (§6) |
+| 6 | Merge | `auto-merge-ai-prs` | ai-review + repo in `auto_merge.repos` allowlist | inert without ai-review |
+| 7 | Mechanical | `docs-sync` (dry-run) | — | live mode needs `aidoc-flow-bot` App (🔴) |
+| 8 | Code-scan | `codeql` | repo has compiled/interpreted code | skip docs-only repos |
+
+**Covered-by-own exception:** if a repo already lints markdown via its own
+pre-commit hook, or scans secrets via its own `security.yml`, treat that
+workflow as satisfied — do NOT also add the canon one (and NEVER overwrite the
+repo's existing `.markdownlint.json` — see §5). Record it as `🕳 own` in
+`WORKFLOWS.md` §2.
+
+---
+
+## 3. Deploying a caller (the mechanical loop)
+
+For each workflow, per PR:
+
+1. **Branch first** (never commit to `main` directly).
+2. Copy the caller from `install/templates/workflows/<name>-{public,private}.yml`
+   (or the single template for `pre-commit`/`markdown-lint`/`links`/`labeler`/
+   `docs-sync`) to `.github/workflows/<name>.yml`.
+3. **Pin the tag** to the current `ci/vX.Y.Z`; for a PRIVATE repo add
+   `runner_labels: '["self-hosted", "aidoc", "ci-ephemeral"]'` under `with:`.
+4. Add the repo-specific config file(s) (§4).
+5. **Add a CHANGELOG entry** in the same PR if the repo has a `## [Unreleased]`
+   section + a doc-currency rule (operations-style repos enforce it — a missing
+   entry is a guaranteed ai-review `CHANGES_REQUESTED`).
+6. Commit with the **OPS-0069 audit-trail phrase** in the body (either
+   `Multi-agent self-review per OPS-0065 (<agents>): <verdict>` or
+   `Self-review skipped per founder OK <reason>`), else the local pre-push hook /
+   `audit-trail` CI check blocks.
+7. Open the PR, watch checks, merge when green (`--admin` only per the repo's
+   rules; private repos with strict protection can't bypass a failing required
+   check).
+
+Use `install.sh <owner/repo> --repin` to bump an existing caller's tag
+(version-string-only). **Never `install.sh --update` on a customized repo** — it
+re-applies the template body and clobbers `runner_labels`/permissions/triggers
+(FT-9).
+
+---
+
+## 4. Per-repo config files
+
+| Workflow | Config file | Notes |
+| --- | --- | --- |
+| `markdown-lint` | `.markdownlint.json` | Copy `install/templates/.markdownlint.json` **only if the repo has none**. If it already has one (or its own pre-commit markdownlint), DO NOT overwrite it — you'll break its gate (see §5). |
+| `links` | `.lychee.toml` | Base on `install/templates/.lychee.toml`. Add repo-specific `exclude`/`exclude_path` for cross-repo `../sibling/` links + debt paths (see §5). |
+| `labeler` | `.github/labeler.yml` | Map the repo's ACTUAL paths → its ACTUAL labels (v5 `changed-files: any-glob-to-any-file:` format). Labels must pre-exist. |
+| `docs-sync` | `.github/docs-sync.json` | Copy `install/templates/docs-sync.json` (ships `dry_run: true`). Disable `changelog_stub` if the repo has no `CHANGELOG.md`. |
+| `pre-commit` | `.pre-commit-config.yaml` | Consumer-owned; the workflow just runs it. |
+
+---
+
+## 5. Gotchas checklist — READ BEFORE YOU DEPLOY
+
+Every one of these cost real debugging time. They are load-bearing.
+
+1. **Private repos = self-hosted ONLY.** Never `ubuntu-latest` on a private
+   repo. `runner-self` is a placeholder, not a registered label — a caller left
+   on it queues forever.
+2. **`runner_labels` must be valid JSON.** `'["self-hosted", "aidoc", "ci-ephemeral"]'`
+   — with the double-quotes. A shell heredoc silently strips inner quotes
+   (`'[self-hosted, aidoc, ...]'` → invalid JSON → `fromJSON()` breaks the
+   workflow). Write caller files with a real editor / quoted heredoc and
+   validate: `python3 -c "import yaml,json; print(json.loads(yaml.safe_load(open(F))['jobs']['call']['with']['runner_labels']))"`.
+3. **`ai-review` caller MUST point at the canon reusable**, not at another
+   consumer. `uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/vX.Y.Z`
+   — NOT `vladm3105/aidoc-flow-operations/.github/workflows/ai-review.yml@main`
+   (operations' file is itself a `pull_request_target` *caller*, not a
+   `workflow_call` reusable → `uses:`-ing it fails with "workflow file issue").
+4. **`ai-review` + `composition` callers need a top-level `permissions:` block.**
+   Without it they `startup_failure` at run-init (zero jobs, web-UI-only error)
+   under the repo read-default token. ai-review needs
+   `contents/pull-requests/issues: write`; composition needs
+   `pull-requests/contents: read`. The public/private templates ship these as of
+   `ci/v1.7.1`/`v1.9.5` — verify they're present after copying.
+5. **`composition` needs `vars.APP_REVIEWER_1_BOT_ID`** (= `294948438`) or it
+   runs INERT (passes without enforcing). Set it in preflight (§1.3).
+6. **Content-checks install tools directly, never third-party actions.** The
+   allowed-actions policy blocks `gacts/gitleaks`, `lycheeverse/lychee-action`,
+   `DavidAnson/markdownlint-cli2-action`, etc. → silent `startup_failure` (the
+   error is web-UI-only; `actionlint` does NOT catch it). The reusables already
+   install binaries/npm — you don't touch this, but know the failure signature.
+   `continue-on-error` is ILLEGAL on a reusable-call job — for report-only, use
+   the reusable's `fail-on-findings: false` input, not `continue-on-error`.
+7. **`links`: cross-repo `../sibling/` links break in single-repo CI.** They
+   resolve in the local multi-repo workspace but not in CI (only the one repo is
+   checked out). If a local `lychee --offline` says 0 errors but CI fails on
+   `business/…`/`operations/…` paths, add sibling excludes to `.lychee.toml`
+   (`exclude = ["/business/", "/operations/", …]`). Also base the config on the
+   canonical template — a hand-written one that omits `accept = ["200","206","429"]`
+   + host excludes will flake on the weekly external run, and the `include_fragments`
+   key is INVALID in lychee 0.24.2 (fatal TOML parse error — fixed in the
+   template `ci/v1.9.5`).
+8. **`markdown-lint`: NEVER clobber an existing `.markdownlint.json`.** If the
+   repo already tunes it (or lints markdown via its own pre-commit hook), leave
+   it alone and treat markdown-lint as covered-by-own. Overwriting a repo's
+   relaxed config with the canon one re-enables rules its prose violates and
+   breaks its pre-commit gate.
+9. **`markdown-lint` deploys report-only.** A repo with existing markdown has
+   hundreds of cosmetic violations. Deploy `fail-on-findings: false` (surfaces
+   annotations, doesn't block). Graduating to blocking needs a per-repo
+   `markdownlint-cli2 --fix` pass + arming (§7). Tracked as FT-11.
+10. **`docs-sync` dry-run needs NO App.** The `aidoc-flow-bot` App is only used
+    by the live-mode "Apply" step (gated by `dry_run != true`). Deploy it in
+    dry-run everywhere now; live-mode graduation is a separate 🔴 founder step.
+11. **`pull_request_target` callers (ai-review) don't self-trigger on the adding
+    PR.** GitHub runs `pull_request_target` from the BASE branch, which doesn't
+    have the caller yet. So the PR that ADDS ai-review won't run it — merge it
+    (ai-review isn't required yet), then open a fresh test PR to verify (§6).
+12. **Doc-currency + `secrets: inherit`.** Repos with the "every PR updates
+    CHANGELOG" rule will `CHANGES_REQUESTED` any workflow PR lacking a CHANGELOG
+    entry. And match the repo's caller convention — if its other callers use
+    `secrets: inherit`, add it (harmless; its absence gets flagged).
+
+---
+
+## 6. Verification protocol (do NOT skip)
+
+After ai-review + composition are on `main`:
+
+1. Open a **throwaway test PR** with a one-line doc edit (e.g. a comment in
+   `HANDOFF.md`). ai-review (`pull_request_target`, from main) now fires.
+2. Watch for ALL of:
+   - `call / ai-review` → **SUCCESS** (you'll often see a stale `CANCELLED` +
+     a `SUCCESS` — the SUCCESS is the real one).
+   - An **APPROVED review by `aidoc-reviewer[bot]`** (id `294948438`):
+     ```bash
+     gh api repos/<owner/repo>/pulls/<pr>/reviews \
+       --jq '.[]|select(.user.type=="Bot")|{login:.user.login,id:.user.id,state:.state}'
+     ```
+   - `ai:review-passed` label applied.
+   - `call / composition` → **SUCCESS** (fires on the App's review + on
+     ai-review's `workflow_run`).
+3. If ai-review/composition show `startup_failure` → §5 items 3, 4, 6. If
+   composition is green but never enforces → item 5 (bot-id var).
+4. Merge (or close) the test PR.
+
+---
+
+## 7. Arming — making checks actually gate (opt-in)
+
+A deployed check RUNS but does not BLOCK until it's in branch protection.
+Arm only checks you've confirmed run **green**, and never arm a check whose
+gate is still flaky (e.g. don't arm `composition` while `ai-review` is
+failing). Add contexts:
+
+```bash
+gh api -X PATCH repos/<owner/repo>/branches/main/protection/required_status_checks \
+  -f 'contexts[]=call / ai-review' -f 'contexts[]=call / composition' \
+  -f 'contexts[]=call / verify'  # audit-trail
+```
+(Or edit the full protection payload — see `install/templates/branch-protection-*.json`
+per tier.) Arming is a hard-to-reverse, blast-radius change — confirm with the
+human before arming a repo you don't own.
+
+---
+
+## 8. Troubleshooting quick-reference
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `startup_failure`, zero jobs, no logs | (a) missing `permissions:` block; (b) blocked third-party action; (c) invalid `runner_labels` JSON | §5 items 2, 4, 6 |
+| ai-review "workflow file issue" | caller points at a non-reusable (operations' caller) | §5 item 3 |
+| Private caller queues forever | `ubuntu-latest`/`runner-self` on a private repo, or no pool | §1.2, §5 item 1 |
+| composition green but doesn't block | not armed, OR bot-id var unset (inert) | §7 / §5 item 5 |
+| links green locally, red in CI | cross-repo `../sibling/` links | §5 item 7 |
+| pre-commit red after adding `.markdownlint.json` | clobbered the repo's tuned config | §5 item 8 (restore original) |
+| ai-review `CHANGES_REQUESTED` on a workflow PR | missing CHANGELOG entry / `secrets: inherit` | §5 item 12 |
+
+---
+
+## 9. The wizard
+
+[`install/deploy-ci-wizard.sh`](../install/deploy-ci-wizard.sh) automates the
+safe, deterministic parts:
+
+```bash
+install/deploy-ci-wizard.sh preflight <owner/repo>   # read-only prerequisite audit → 🟢/🔴 report
+install/deploy-ci-wizard.sh plan      <owner/repo>   # ordered deployment plan for this repo
+install/deploy-ci-wizard.sh scaffold  <owner/repo> <dir>  # write caller files + configs into <dir> for you to review + commit
+install/deploy-ci-wizard.sh verify    <owner/repo> <pr>   # poll ai-review + composition + App review on a PR
+```
+
+The wizard does NOT commit, push, merge, set secrets, or install Apps — those
+stay under your (and the human's) control. It surfaces 🔴 blockers, picks the
+right public/private variant + runner labels, and generates valid caller files
+so you avoid the JSON-quoting and permissions-block gotchas. Follow this doc for
+the judgment calls it can't make (covered-by-own decisions, per-repo lychee/
+labeler config, arming).

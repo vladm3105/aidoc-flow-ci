@@ -1,0 +1,18 @@
+# Caller template for aidoc-flow-ci's reusable audit-trail-check workflow.
+# OPS-0069 audit-trail phrase gate — belt-and-suspenders CI check for the local
+# pre-push hook: verifies every non-exempt PR carries the OPS-0065/0069
+# audit-trail phrase in a commit body. Renders as `call / verify`.
+# Requires the `skip-audit-trail` canon label in the repo (two-signal skip).
+# PUBLIC variant (ubuntu-latest). PRIVATE consumers use audit-trail-private.yml.
+name: audit-trail
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  call:
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/audit-trail-check.yml@ci/v1.9.5
+    permissions:
+      contents: read
+      pull-requests: read
