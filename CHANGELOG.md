@@ -15,6 +15,15 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   reusable body change (no new tag needed); existing callers must add the block
   directly.
 
+### Added — pin-currency drift check (2026-07-12)
+
+- **`sync/check-pin-currency.sh`** — flags consumer `@ci/vX.Y.Z` pins that LAG
+  the current `VERSION`. Fills the pin-staleness gap the two existing drift
+  checks miss (both compare a caller to the template *at its pinned tag*, so a
+  6-versions-behind repo shows "no drift"). In-repo warning-only mode + a
+  `--fleet <repos…>` table mode. Pairs with `install.sh --repin`. Also wired as
+  `deploy-ci-wizard.sh audit-pins`.
+
 ### Added — AI-agent CI deployment playbook + wizard (2026-07-12)
 
 - **`docs/AI_CI_DEPLOYMENT.md`** — end-to-end, AI-agent-oriented how-to for
