@@ -90,6 +90,8 @@ entry is dropped or duplicated (line-count + entry-count before/after).
 
 ### FT-5 — `standards-drift` can't verify branch-protection / actions-permissions (needs `administration: read`)
 
+**RESOLVED (2026-07-12, PLAN-007 W2):** `check-standards-drift.sh` now distinguishes a 403/permission failure (needs `administration: read` — emits a best-effort `uncheckable` warning) from genuinely-absent protection, so a scoped token no longer false-alarms.
+
 **Found:** 2026-07-09, PLAN-004 C1 review.
 **Surface:** `.github/workflows/standards-drift.yml` job grants `contents: read`;
 `sync/check-standards-drift.sh` makes `gh api` reads of `branches/*/protection`,
@@ -106,6 +108,8 @@ GITHUB_TOKEN can read another repo's branch protection, or document that it
 requires a PAT/App token with admin:read for cross-repo drift.
 
 ### FT-6 — trust-config source inconsistency: `composition` reads `$GH_REPO@main`, ai-review/auto-merge read `trust_config_repo`
+
+**VERIFIED not-an-enforcement-gap (2026-07-12, PLAN-007 W2):** re-read composition.yml — when a repo has no local `.github/ai-review/config.json`, the read falls to the `else` branch = **fail-closed, ENFORCE the App-approval requirement** (composition.yml ~213). The consumer-local config is read ONLY for the author-EXEMPTION path (exempt a non-trusted author as human-review-only); it fails safe. So composition enforces everywhere; the `GH_REPO`-vs-`trust_config_repo` difference is a low-priority consistency nit (unify the author-exemption source with ai-review's `trust_config_repo`), NOT a gate that silently passes. Downgraded from load-bearing.
 
 **PARTIALLY RESOLVED:** 2026-07-10, PLAN-005 PR-G — the hardcoded `?ref=main` is
 fixed: `composition.yml` now reads the config from the repo's **actual default
