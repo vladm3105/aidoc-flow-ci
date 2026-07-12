@@ -111,10 +111,19 @@ warn_uncheckable() {
 bp_local=$(mktemp)
 bp_canon_raw=$(mktemp)
 bp_canon=$(mktemp)
-if ! gh api "repos/${REPO}/branches/${DEFAULT_BRANCH}/protection" > "$bp_local" 2>/dev/null; then
-  echo "::warning::branch-protection: no protection on ${DEFAULT_BRANCH} (canon expects one)"
-  DRIFT=$((DRIFT + 1))
-elif ! curl -fsSL "${TEMPLATE_BASE}/branch-protection-${TIER}.json" > "$bp_canon_raw" 2>/dev/null; then
+bp_err=$(mktemp)
+if ! gh api "repos/${REPO}/branches/${DEFAULT_BRANCH}/protection" > "$bp_local" 2>"$bp_err"; then
+  # FT-5: the protection endpoint needs `administration: read`. A scoped
+  # GITHUB_TOKEN (contents:read) gets 403 — that is "can't verify", NOT "no
+  # protection". Distinguish so the drift check doesn't false-alarm.
+  if grep -qiE '403|forbidden|administration|not accessible|permission' "$bp_err"; then
+    warn_uncheckable "branch-protection" "needs 'administration: read' on the token (FT-5) — grant it to the drift job (or run with a PAT) to verify branch protection; skipping"
+  else
+    echo "::warning::branch-protection: no protection on ${DEFAULT_BRANCH} (canon expects one)"
+    DRIFT=$((DRIFT + 1))
+  fi
+  rm -f "$bp_err"
+elif { rm -f "$bp_err"; ! curl -fsSL "${TEMPLATE_BASE}/branch-protection-${TIER}.json" > "$bp_canon_raw" 2>/dev/null; }; then
   warn_uncheckable "branch-protection" "canon fetch failed"
 else
   strip_meta "$bp_canon_raw" > "$bp_canon"

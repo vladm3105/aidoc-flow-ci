@@ -192,8 +192,9 @@ W4 arms once gates verified green + names confirmed. W3 runs in parallel
   §2 check-names to the verified `call / …` emitted strings (added `call / verify`;
   fixed pre-commit + secret-scan names) + `tests/test_checknames.sh` guard. This
   unblocks W4 arming (a mismatched required name would have bricked every gate).
-  W2 remaining: FT-5 (drift admin:read doc) + FT-6-residual (composition trust-
-  config source — document/decide).
+  W2 FT-5 DONE (drift distinguishes 403 from absent). W2 FT-6 VERIFIED
+  not-an-enforcement-gap (composition fails-closed to ENFORCE when no local
+  config; downgraded to a consistency nit). **W2 COMPLETE.**
 - **2026-07-12 — W1 DONE**: `tests/` suite + `tests.yml` shipped (103
   assertions: lint + workflow-contract + script-logic + negative). Surfaced +
   fixed 2 over-strict checks during authoring. NEXT for W1: add `Tests` to
