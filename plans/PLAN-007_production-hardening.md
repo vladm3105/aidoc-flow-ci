@@ -183,6 +183,16 @@ W4 arms once gates verified green + names confirmed. W3 runs in parallel
 - ✅ aidoc-flow-ci main reads green.
 - Then re-run the readiness review; target verdict: "yes, hardened."
 
+## Execution log
+
+- **2026-07-12 — W5 DONE** (#137): pruned `.github/dependabot.yml` to
+  `github-actions` only (4 orphan ecosystems removed) — canon repo's Dependabot
+  runs green.
+- **2026-07-12 — W1 DONE**: `tests/` suite + `tests.yml` shipped (103
+  assertions: lint + workflow-contract + script-logic + negative). Surfaced +
+  fixed 2 over-strict checks during authoring. NEXT for W1: add `Tests` to
+  aidoc-flow-ci's required checks (deferred with W4 arming).
+
 ## Review log
 
 ### Pass 1 — 2026-07-12 — author (self)

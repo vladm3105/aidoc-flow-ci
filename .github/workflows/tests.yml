@@ -1,0 +1,41 @@
+# tests.yml — aidoc-flow-ci's own test suite (PLAN-007 W1).
+# Runs tests/run.sh on every PR + push to main: static lint (shellcheck +
+# yamllint + actionlint), reusable/caller workflow-contract assertions, and
+# script-logic unit tests. This is the automated regression gate the library
+# previously lacked (verification was fleet-dogfooding only).
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    name: suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install lint tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck yamllint jq
+          # actionlint via go (preinstalled on ubuntu-latest); best-effort —
+          # the suite skips actionlint gracefully if the install fails.
+          go install github.com/rhysd/actionlint/cmd/actionlint@latest || true
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+
+      - name: Run test suite
+        run: bash tests/run.sh
