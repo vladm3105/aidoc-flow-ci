@@ -226,6 +226,29 @@ into the shell) so a hostile input value cannot inject an expression. When
 authoring or reviewing a canon workflow, verify every `uses:` is on the
 allowlist.
 
+### 4.4 `markdown-lint` config template (`install/templates/.markdownlint.json`)
+
+The canon `.markdownlint.json` is the recommended ruleset consumers **copy**
+(cli2 auto-resolves the consumer's own root copy; the reusable does not bake a
+default). It disables three rules that fire almost entirely on legitimate
+workspace doc styles rather than defects:
+
+| Rule | Disabled because |
+| --- | --- |
+| `MD013` line-length | The 120-char limit fires on changelog data rows + long reference lines across every repo; enforcing it means hundreds of prose reflows. Disabled workspace-wide (founder decision 2026-07-12; accepts abandoning the line-length discipline). |
+| `MD024` duplicate-heading | keep-a-changelog inherently repeats `### Added`/`### Changed` per release; `siblings_only` did not fully suppress it. |
+| `MD036` emphasis-as-heading | Every `DECISIONS.md` uses `**Context**`/`**Decision**`/`**Consequences**`/`**Origin**` bold-labels by deliberate ADR style, not as headings. |
+
+(`MD041` first-line-heading and `MD060` were already disabled before this
+change.) The structural rules that catch real defects — `MD033` (inline HTML,
+outside the allowlisted elements), `MD040` (code-fence language), `MD056` (table
+columns), heading-increment, etc. — stay **enforced**; those are the genuine
+cleanups a consumer fixes when graduating `fail-on-findings: false → true`
+(PLAN-007 W3 / FT-11). This is a **template-only change**: no reusable body
+change, no new `ci/` tag — do NOT bump `VERSION` for it (that would falsely flag
+every pinned consumer as stale via `check-pin-currency.sh`). Consumers adopt it
+by re-copying the config in their own graduation PR.
+
 ## 5. Labels — canonical taxonomy
 
 The label taxonomy aligns with the **OPS-0065 diff-class dispatch table**
