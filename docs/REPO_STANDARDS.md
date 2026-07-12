@@ -58,13 +58,13 @@ back-annotated — read it in its temporal context.
 Every workspace repo belongs to exactly one tier. Tier drives every
 per-repo requirement below.
 
-| Tier | Repos (2026-07-07) | Signal |
+| Tier | Repos (2026-07-11) | Signal |
 | --- | --- | --- |
 | **Governance** | `aidoc-flow-framework`, `aidoc-flow-iplan-standard` | Public spec/schema repo; human-merge only |
 | **Product code** | `iplan-runner`, `aidoc-flow-engramory`, `aidoc-flow-ci` | Public runtime/library repo |
-| **Ops-private** | `aidoc-flow-operations`, `aidoc-flow-business`, `aidoc-flow-iplanic` | Private operations/docs repo |
+| **Ops-private** | `aidoc-flow-operations`, `aidoc-flow-business`, `aidoc-flow-iplanic`, `aidoc-flow-interlog` | Private operations/docs repo |
 | **Umbrella** | `aidoc-flow` | Multi-repo umbrella; submodule-pointer PRs only; `--admin` merge |
-| **Bootstrap** | `aidoc-flow-interlog` | New repo pending CI adoption |
+| **Bootstrap** | _(none currently — `aidoc-flow-interlog` graduated to Ops-private 2026-07 after full CI adoption)_ | New repo pending CI adoption |
 | **Paused** | `aidoc-flow-knowledge-rag`, `aidoc-flow-site` | Frozen per founder direction 2026-07-04 |
 
 Tier is not property of the repo file — it's a canonical assignment

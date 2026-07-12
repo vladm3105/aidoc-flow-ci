@@ -6,30 +6,32 @@ context compaction.
 
 ## Current state (2026-07-11)
 
-**PLAN-006 W4 content-check population — DONE (except docs-sync, founder-gated).**
+**PLAN-006 W4 content-check population — COMPLETE across all active repos.**
 Two releases fixed the canon (`ci/v1.9.4` binary-install for links+markdown-lint;
 `ci/v1.9.5` markdown-lint `fail-on-findings` toggle + `.lychee.toml`
-`include_fragments` invalid-key fix), then populated the fleet:
-- **links 7/7 consumer repos** ✅ (lychee musl binary). operations + framework
+`include_fragments` invalid-key fix), then populated the fleet. Final state
+audited 2026-07-11 (see `docs/WORKFLOWS.md` §2):
+- **links** ✅ every active repo (lychee musl binary). operations + framework
   ship a `.lychee.toml` scoping out cross-repo `../sibling/` links (resolve only
   in the local workspace, not single-repo CI) + framework's `platforms/**`+
-  `examples/**` debt (tracked framework-side FRAMEWORK-TODO `LINKS-PLATFORM-DEBT`).
-- **markdown-lint 5/7 canon (report-only) + 2 covered-by-own** ✅ — business,
-  iplanic, interlog, engramory, iplan-standard run the canon reusable
-  `fail-on-findings: false` (surfaces annotations, doesn't block; graduate via
-  per-repo `--fix` per FT-11). operations (`docs-lint.yml`) + framework
-  (pre-commit markdownlint) already lint markdown — canon add is redundant +
-  its `.markdownlint.json` breaks their pre-push (the secret-scan
-  business/interlog covered-by-own pattern).
-- **docs-sync — BLOCKED on 🔴 founder action.** The caller needs the
-  `aidoc-flow-bot` GitHub App + `AIDOC_FLOW_BOT_ID`/`AIDOC_FLOW_BOT_KEY` secrets
-  provisioned per repo (an AI cannot create Apps / set secrets). Only ci +
-  operations have it (2/8). **NEXT: founder provisions aidoc-flow-bot on the
-  other 6, then deploy the docs-sync caller + `.github/docs-sync.json`.**
+  `examples/**` debt (framework-side FRAMEWORK-TODO `LINKS-PLATFORM-DEBT`).
+- **markdown-lint** ✅ — 6 repos run the canon reusable **report-only**
+  (`fail-on-findings: false`); operations (`docs-lint.yml`) + framework
+  (pre-commit markdownlint) covered-by-own (adding `.markdownlint.json` breaks
+  their pre-push — the secret-scan business/interlog covered-by-own pattern).
+- **docs-sync** ✅ — deployed **dry-run** every active repo. Was WRONGLY thought
+  founder-blocked: the `aidoc-flow-bot` App is only used by the live-mode Apply
+  step (gated by `dry_run != true`); dry-run proposes doc-fixes as a PR comment
+  via `GITHUB_TOKEN` — no App needed.
+- **iplan-runner** (a 9th active submodule, initially missed) populated with all
+  three content-checks (PR #79).
 
-**FT-11 graduation (markdown-lint blocking):** each of the 5 report-only repos
-needs a `markdownlint-cli2 --fix` pass (259+ residual/repo under the sane config)
-+ add the check to branch protection. Tracked in `plans/FRAMEWORK-TODO.md`.
+**Two opt-in graduations remain (tracked, NOT dev gaps):**
+1. **markdown-lint report-only → blocking** — per-repo `markdownlint-cli2 --fix`
+   (259+ cosmetic residual/repo) + add to branch protection. `plans/FRAMEWORK-TODO.md` FT-11.
+2. **docs-sync dry-run → live** — 🔴 founder provisions the `aidoc-flow-bot` App
+   + `AIDOC_FLOW_BOT_ID`/`KEY` secrets per repo (only ci + operations have it).
+   Note docs-sync is also slated for `doc-maintainer.yml` supersession at v2.0.0.
 
 _History (v1.9.4):_ **`ci/v1.9.4` SHIPPED (PLAN-006 W4 — content-check canon fix).** While
 populating the missing content-check workflows, discovered the same
