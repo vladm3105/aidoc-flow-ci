@@ -140,6 +140,22 @@ drift (given FT-5).
 **Semver:** none (per-repo settings). **Depends on:** W2 (FT-2 verified
  check-names + FT-1 §2⇄template reconciliation), W1 (green gates).
 
+**Status — runbook prepared; founder executes (🔴).** Arming branch protection
+across the fleet is a write to other repos + a branch-protection rule change =
+🔴 per the autonomy tiers + OPS-0062 exceptions; it is **not** AI-autonomous
+under verbal authorization (memory `feedback_writes_to_other_repos_inbox_first`,
+2026-07-09). A read-only survey (2026-07-12) found the arming is **not** a
+template sweep: 2 repos unprotected (iplan-standard, engramory), 3 repos carry a
+**phantom** bare `Lint / format / security hooks` required-context while they
+emit the canon `call / …` name (framework, business, iplanic — likely merging
+via `--admin`), iplan-runner's canon adoption is broken (`call / ai-review`
+skipped, `call / gitleaks` failing), and interlog arms a possibly-conditional
+`call / composition`. The exact per-repo target contexts + `gh api` commands +
+mandatory per-repo verification + rollback are captured in the founder-executable
+runbook: **`docs/FLEET_BRANCH_PROTECTION_ARMING.md`**. Follow-ups (iplan-runner
+canon repair, interlog composition conditionality, `--admin`-dependence) logged
+as FT-12.
+
 ### W5 — Green the canon repo's own CI (Dependabot noise)
 
 **Problem:** aidoc-flow-ci main shows red from failing Dependabot "Update" jobs

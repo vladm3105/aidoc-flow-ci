@@ -292,3 +292,23 @@ now deployed on every active repo (see `docs/WORKFLOWS.md` §2):
   dry-run adoptions may migrate to `doc-maintainer` rather than each graduating.
 
 Ties to [[reference_canon_workflow_hard_constraints]] #3.
+
+### FT-12 — fleet branch-protection arming anomalies (PLAN-007 W4 survey)
+
+**Found:** 2026-07-12, PLAN-007 W4 read-only survey. Runbook:
+`docs/FLEET_BRANCH_PROTECTION_ARMING.md`. Arming itself is 🔴 (founder-executed).
+Three sub-issues the survey surfaced that need canon/repo remediation
+independent of the arming act:
+
+- **Phantom required-context (framework, business, iplanic).** Each arms a
+  **bare** `Lint / format / security hooks` required-check but emits the canon
+  `call / Lint / format / security hooks` → the bare context never posts, so
+  these repos have been merging via `--admin`. Fix = re-point the required
+  context to the emitted name (in the runbook's step B).
+- **iplan-runner canon adoption broken.** `call / ai-review` = skipped +
+  `call / gitleaks` = **failure** on its PRs. Its own product checks are green;
+  its canon callers are not. Repair canon wiring before arming any `call / …`
+  gate on it.
+- **interlog `call / composition` conditionality.** Armed but did not emit on
+  its latest PR (path-filtered?). Confirm composition posts on every PR or
+  reclassify it non-required.
