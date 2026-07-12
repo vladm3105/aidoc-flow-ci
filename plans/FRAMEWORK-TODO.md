@@ -280,12 +280,23 @@ now deployed on every active repo (see `docs/WORKFLOWS.md` §2):
   no App needed — the `aidoc-flow-bot` App is only for the live Apply step).
 
 **Remaining (deliberate opt-in graduations, NOT dev gaps):**
-- **`markdown-lint` report-only → blocking.** Per repo: `markdownlint-cli2
-  --fix` (≈259 cosmetic residual/repo under the shipped `.markdownlint.json`,
-  mostly MD013/MD032; strict-default with MD060 is ~1300), commit the fixes,
-  then set `fail-on-findings: true` (or drop it) + add the check to branch
-  protection. Sequence by residual size (business/operations cleanest). Do NOT
-  hand-edit example artifacts — scope globs out of any `examples/**`.
+- **`markdown-lint` report-only → blocking.** _Progress 2026-07-12 (PLAN-007
+  W3):_ **business GRADUATED** (0 residual → clean `fail-on-findings` flip,
+  business #57). Measured residuals on the other 5 canon-markdown-lint repos:
+  engramory 580, iplanic 418, iplan-runner 226, interlog 93, iplan-standard 30.
+  `--fix` clears the auto-fixable rules (MD004/MD032), **but the residual is
+  dominated by workspace-legitimate false-positives, NOT fixable defects:**
+  MD036 on ADR bold-labels (`**Context**`/`**Decision**`/… in every
+  `DECISIONS.md`), MD024 on keep-a-changelog `### Added`/`### Changed`, MD013 on
+  changelog data rows, MD033 on PR-template placeholder tokens. Hand-editing
+  these damages the intended formats (and DECISIONS/CHANGELOG edits are
+  governance-sensitive). **Leveraged path = a canon `.markdownlint.json`
+  decision** (relax MD036 — ADR bold-labels are a deliberate workspace style —
+  + assess MD024/MD013/MD033 for changelog/template contexts) so multiple repos
+  graduate at once, vs. per-repo prose reflow. Doc-style policy call → founder
+  decision, don't unilaterally weaken canon lint. Then per repo: `--fix` (scope
+  globs out of `examples/**` — never hand-edit example artifacts) + set
+  `fail-on-findings: true` + arm the check (W4).
 - **`docs-sync` dry-run → live.** 🔴 founder provisions `aidoc-flow-bot` App +
   `AIDOC_FLOW_BOT_ID`/`KEY` secrets per repo, then set `dry_run: false`. Weigh
   against the pending `doc-maintainer.yml` supersession at `ci/v2.0.0` — the
