@@ -3,6 +3,22 @@
 Notable releases of the shared CI library. SemVer per `ci/vX.Y.Z`
 tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
+### Added — fleet branch-protection arming runbook + markdown-lint graduation complete (PLAN-007 W3/W4) (2026-07-12)
+
+- **`docs/FLEET_BRANCH_PROTECTION_ARMING.md`** (NEW) — founder-executable runbook
+  for arming the canon CI gates as *required* status checks per repo (🔴 — a
+  write to other repos + branch-protection change, reserved for the founder). A
+  read-only fleet survey drives it: it reconciles each repo's actual emitted
+  check-name (canon `call / …` vs standalone), flags the FT-12 phantom bare-lint
+  contexts (framework/business/iplanic/iplanic forcing `--admin` merges), the two
+  unprotected repos, and interlog's conditional composition, with exact `gh api`
+  commands + per-repo verification + rollback. Tracked as FT-12.
+- **markdown-lint report-only → blocking graduated across all 6 canon consumers**
+  (enabled by the `.markdownlint.json` relaxation below): the per-repo
+  `fail-on-findings: true` flips + residual cleanups shipped in each consumer's
+  own repo (business/interlog/engramory/iplan-runner/iplanic/iplan-standard).
+  Only the founder-executed W4 arming remains to make them merge-blocking.
+
 ### Added — functional doc-maintainer and production CI hardening (unreleased)
 
 - Replaced the doc-maintainer planner/apply/reconciler stubs with a bounded AI
