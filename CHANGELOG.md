@@ -3,6 +3,26 @@
 Notable releases of the shared CI library. SemVer per `ci/vX.Y.Z`
 tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
+### Changed — markdown-lint canon config relaxed for workspace doc styles (PLAN-007 W3) (2026-07-12)
+
+- **`install/templates/.markdownlint.json` disables `MD013` (line-length),
+  `MD024` (duplicate-heading), and `MD036` (emphasis-as-heading).** These three
+  fired almost entirely on legitimate workspace doc styles — ADR bold-labels
+  (`**Context**`/`**Decision**`/… in every `DECISIONS.md`), keep-a-changelog
+  repeated `### Added`/`### Changed`, and long changelog data rows — blocking the
+  report-only → blocking graduation (FT-11) behind hundreds of false-positives.
+  Relaxing them drops per-repo residuals from the hundreds to the dozens
+  (engramory 580→27, iplanic 418→60, iplan-standard 30→3), leaving only genuine
+  cleanups (MD033 inline-HTML, MD040 code-fence-language, MD056 tables) for
+  per-repo graduation. Founder-decided 2026-07-12 (weakens the 120-char line
+  discipline workspace-wide, accepted as the tradeoff).
+- **Template-only change — no reusable body change, no new tag, `VERSION`
+  unchanged** (bumping it would falsely flag pinned consumers as stale via
+  `check-pin-currency.sh`). Consumers hold
+  their own `.markdownlint.json` copies; graduate each by adopting this relaxed
+  config + `--fix` + `fail-on-findings: true` (per-repo PRs, cleanest-first).
+  `business` already graduated (0 residual) ahead of this relaxation.
+
 ### Fixed — composition caller templates missing `permissions:` block (2026-07-12)
 
 - **`composition-public.yml` + `composition-private.yml` templates now ship a
