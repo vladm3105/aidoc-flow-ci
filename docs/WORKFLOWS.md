@@ -23,9 +23,9 @@ Pin at a released tag; never `@main` in a consumer.
 | 3 | `auto-merge-ai-prs.yml` | Server-side enforcer for AI-opened PRs — detects stuck-green PRs (`ai:review-passed` + `mergeStateStatus:CLEAN` + `autoMergeRequest:null` + `updatedAt > 2 min`) and re-arms `gh pr merge --auto --merge` under the reviewer App's token. | ~15 s | IPLAN-0030 (operations 2026-06-30) |
 | 4 | `pre-commit.yml` | Standard `pre-commit run --all-files` runner. Consumer supplies `.pre-commit-config.yaml`; the workflow provides caching + Python setup + pinned pre-commit version. | ~30-90 s | Framework + operations pattern |
 | 5 | `codeql.yml` | CodeQL static analysis. Wraps `github/codeql-action@v4`. Language-configurable via `languages:` input; supports `push`/`pull_request`/`schedule` triggers. | ~2-5 min | GitHub-standard code scanning |
-| 6 | `secret-scan.yml` | Secret scanning via gitleaks. Wraps `gacts/gitleaks` (MIT, no license key) — deliberately NOT the official `gitleaks/gitleaks-action` (org-license requirement). Scans full history + PR diff. | ~30-60 s | Standard secret-scan pattern |
-| 7 | `markdown-lint.yml` | Markdown lint. Wraps `DavidAnson/markdownlint-cli2-action` (first-party successor to `markdownlint-cli`). Consumer supplies `.markdownlint*` config. | ~15-45 s | Standard doc-quality gate |
-| 8 | `links.yml` | Link checking via lychee. Wraps `lycheeverse/lychee-action` — Rust-based, async, offline-mode support. Two modes: blocking (offline / internal-only) + weekly (external / soft-fail). | ~30-90 s (offline); ~2-5 min (external) | Standard doc-quality gate |
+| 6 | `secret-scan.yml` | Secret scanning via gitleaks. Installs the pinned gitleaks **binary** directly in a `run:` step (MIT, no key) — NOT a marketplace wrapper (the allowed-actions policy blocks third-party actions → `startup_failure`; fixed `ci/v1.9.2`). Ships a default test-fixture allowlist; SARIF upload is `continue-on-error` for private repos without Advanced Security. | ~30-60 s | Standard secret-scan pattern |
+| 7 | `markdown-lint.yml` | Markdown lint via `markdownlint-cli2`, installed from npm after allowlisted `actions/setup-node` — NOT the `DavidAnson/markdownlint-cli2-action` wrapper (allowlist-blocked; fixed `ci/v1.9.4`). `fail-on-findings` input (default true) → set `false` for a **report-only** rollout (`ci/v1.9.5`; `continue-on-error` is illegal on reusable-call jobs). Consumer supplies `.markdownlint*` config. | ~15-45 s | Standard doc-quality gate |
+| 8 | `links.yml` | Link checking via the lychee **musl static binary**, installed + SHA-256-verified in a `run:` step — NOT the `lycheeverse/lychee-action` wrapper (allowlist-blocked; fixed `ci/v1.9.4`; musl not gnu, which needs GLIBC 2.38+ and dies on older self-hosted Debian runners). Two modes: blocking (offline / internal-only) + weekly (external / soft-fail). Cross-repo `../sibling/` links need a `.lychee.toml` exclude (they resolve only in the local multi-repo workspace). | ~30-90 s (offline); ~2-5 min (external) | Standard doc-quality gate |
 | 9 | `labeler.yml` | Path-based PR labeling. Reads consumer's `.github/labeler.yml` (v5+ format: `changed-files: any-glob-to-any-file:`) and applies labels. Labels must pre-exist. | ~10 s | Framework `labeler.yml` pattern |
 | 10 | `docs-sync.yml` | Mechanical post-merge doc fixer. Runs deterministic transformations (version-reference propagation, structural bump propagation) + commits + opens PR if changes are made. | ~30-60 s | IPLAN-0018 (operations 2026-06-25) |
 | 11 | `doc-maintainer.yml` | AI-driven post-merge doc-of-record maintainer. **Supersedes** `docs-sync.yml` at the end of Phase 3 (`ci/v2.0.0`). Uses Claude Code sub-agent dispatch to catch semantic drift `docs-sync.yml`'s deterministic transformations miss. | ~2-5 min | IPLAN-0025 (operations 2026-06-28) |
@@ -47,74 +47,91 @@ Rows = workspace repos. Columns = the 12 workflows. Cell values:
 - **⏸ skip** — deliberately skipped with rationale
 - **N/A** — not applicable (no matching surface)
 
-Actual state audited 2026-07-07 via `gh api repos/*/contents/.github/workflows`
-against every workspace repo.
+Actual state audited **2026-07-11** via `gh api repos/*/contents/.github/workflows`
++ `gh repo view --json visibility` against every workspace repo (post
+content-check population; `ci/v1.9.5`).
 
 | Repo (visibility) | ai-review | composition | auto-merge | pre-commit | codeql | secret-scan | markdown-lint | links | labeler | docs-sync | doc-maintainer | audit-trail |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `aidoc-flow-operations` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (scripts/*.py + .github/scripts/*.py present) | 🕳 custom (`security.yml` — bare gitleaks) | 🕳 custom (`docs-lint.yml`) | ✅ | ⚠️ GAP | ✅ | ✅ | ⚠️ GAP (Wave 2 rollout) |
-| `aidoc-flow-framework` (public) | ✅ | ✅ | ⏸ (spec/governance tier — human-merge only) | ✅ | ✅ | ⚠️ GAP | ⚠️ GAP (pre-commit local markdownlint may cover) | ⚠️ GAP | ✅ | N/A | ⏸ per-need | ⚠️ GAP (Wave 1 rollout) |
-| `aidoc-flow-business` (private) | ✅ | ✅ | ✅ | ✅ | N/A (docs-only) | ⚠️ GAP | ⚠️ GAP | ✅ | ⚠️ GAP | ⏸ per-need | ⏸ per-need | ⚠️ GAP (Wave 2 rollout) |
-| `aidoc-flow-iplanic` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (runtime Python) | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⏸ per-need | ⏸ per-need | ⚠️ GAP (Wave 2 rollout) |
-| `iplan-runner` (public) | ✅ | **⚠️ GAP (missing composition.yml — ai-review verdict not authoritatively gated)** | ✅ | ✅ | ✅ | ⚠️ GAP (repo's `security.yml` is `pip-audit` dependency-audit, not gitleaks — orthogonal concern) | ⚠️ GAP | ⚠️ GAP | ✅ | ⏸ per-need | ⏸ per-need | ⚠️ GAP (Wave 3 rollout) |
-| `aidoc-flow-engramory` (public) | ✅ | ✅ | ✅ | **⚠️ GAP** (only `ci.yml` — no pre-commit reusable) | ⚠️ GAP (Python maturing) | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⏸ per-need | ⏸ per-need | ⚠️ GAP (Wave 3 rollout) |
-| `aidoc-flow` (umbrella; private) | ⏸ (submodule pointer PRs only) | ⏸ (same) | ⏸ (downstream of ai-review skip — no `ai:review-passed` label emitted; umbrella uses `gh pr merge --admin` per OPS-0062) | ⚠️ GAP (has 4 site-flavor workflows: `nightly-live.yml` / `post-deploy.yml` / `pr-checks.yml` / `release.yml` — no `pre-commit.yml`) | N/A | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | N/A | N/A | N/A | ⚠️ GAP (Wave 5 rollout; advisory only per REPO_STANDARDS.md §14.3 — umbrella has `required_status_checks: null`) |
-| `aidoc-flow-iplan-standard` (private) | ⚠️ GAP (planned) | ⚠️ GAP (planned) | ⏸ (schema-tier — human-merge) | ⚠️ GAP | N/A (docs-only) | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⏸ per-need | ⏸ per-need | ⚠️ GAP (Wave 1 rollout) |
-| `aidoc-flow-interlog` (private; new 2026-07-06) | ⚠️ GAP (planned; charter/discovery) | ⚠️ GAP (planned) | ⚠️ GAP (planned) | ⚠️ GAP | ⚠️ GAP (Python-planned) | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⚠️ GAP | ⏸ per-need | ⏸ per-need | ⏸ (bootstrap-tier — local hook only per REPO_STANDARDS.md §14.3; CI caller pending CI adoption) |
-| `aidoc-flow-ci` (public — this repo) | ⏸ (self-referencing) | ⏸ (self-referencing) | ⏸ (spec/governance tier) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | N/A | ⚠️ GAP (Wave 0 self-adoption via PR-U4) |
+| `aidoc-flow-operations` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (scripts/*.py) | ✅ | 🕳 custom (`docs-lint.yml`) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `aidoc-flow-framework` (public) | ✅ | ✅ | ⏸ (spec tier — human-merge) | ✅ | ✅ | ✅ | 🕳 own (pre-commit markdownlint) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
+| `aidoc-flow-business` (private) | ✅ | ✅ | ✅ | ✅ | N/A (docs-only) | 🕳 custom (`security.yml`) | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ⚠️ GAP |
+| `aidoc-flow-iplanic` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (runtime Python) | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
+| `iplan-runner` (public) | ✅ | **⚠️ GAP (missing composition.yml — ai-review verdict not authoritatively gated)** | ✅ | ✅ | ✅ | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
+| `aidoc-flow-engramory` (public) | ✅ | ✅ | ✅ | **⚠️ GAP** (only `ci.yml`) | ⚠️ GAP (Python maturing) | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
+| `aidoc-flow-iplan-standard` (public) | ⚠️ GAP (planned) | ⚠️ GAP (planned) | ⚠️ inert (caller + allowlisted, but no `ai-review` → no `ai:review-passed` label to act on) | ⚠️ GAP | N/A (docs-only) | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
+| `aidoc-flow-interlog` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (Python-planned) | 🕳 custom (`security.yml`) | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
+| `aidoc-flow-ci` (public — ships the reusables) | ⏸ (self-ref) | ⏸ (self-ref) | ⏸ (gov tier) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (ships) | ✅ (ships) | ✅ |
+| `aidoc-flow` (umbrella; private) | ⏸ (pointer PRs only) | ⏸ (same) | ⏸ (admin-merge per OPS-0062) | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | ⏸ advisory (umbrella `required_status_checks: null`) |
 | `aidoc-flow-knowledge-rag` (paused) | — | — | — | — | — | — | — | — | — | — | — | — |
 | `aidoc-flow-site` (paused) | — | — | — | — | — | — | — | — | — | — | — | — |
+
+**Content-check surface is COMPLETE** (`secret-scan` / `markdown-lint` /
+`links` / `labeler` / `docs-sync`) across every active repo — via the canon
+reusable, or a documented `🕳 custom`/`own` equivalent (operations
+`docs-lint.yml`, framework pre-commit markdownlint, business/interlog
+`security.yml` gitleaks). `markdown-lint` runs **report-only**
+(`fail-on-findings: false`) on the canon adopters; `docs-sync` runs **dry-run**
+on the repos populated 2026-07-11 (`ci` + `operations` predate this and set
+their own mode via `.github/docs-sync.json`). Graduation to blocking / live is
+opt-in per repo (see §2.1).
 
 **Paused repos** (`knowledge-rag`, `aidoc-flow-site` per founder direction
 2026-07-04) — no adoption changes until unpaused.
 
 ### 2.1 Gap summary — actionable follow-up
 
-Aggregated ⚠️ GAP cells above (paused repos + N/A excluded). Each row is a
-potential single-PR consumer adoption; ordering is by adoption-sequence
-step (§4) so `pre-commit` → `secret-scan` → `markdown-lint` etc.:
+The content-check + labeler surface (`secret-scan` / `markdown-lint` /
+`links` / `labeler` / `docs-sync`) is now **complete** across all active repos
+(2026-07-11 population; `ci/v1.9.4`/`v1.9.5`). Remaining ⚠️ GAP cells and
+open graduations:
 
-- **Critical gap:** `iplan-runner` MISSING `composition.yml`. The
-  ai-review verdict is not authoritatively enforced without it — a
-  reviewer-App approval is announced but not composed as a required
-  check for merge.
-- **Critical gap:** `aidoc-flow-engramory` MISSING `pre-commit.yml`. Only
-  ships `ci.yml` locally; pre-commit hygiene not applied in CI.
-- **Missing on ALL non-`aidoc-flow-ci` active repos** except operations
-  (custom gitleaks-based `security.yml`): `secret-scan.yml`. Gitleaks
-  secret scanning is high-value + trivial cost — should adopt.
-  (iplan-runner ships `security.yml` too but it is `pip-audit`
-  dependency-audit — a separate concern from secret-scan; no reusable
-  `pip-audit.yml` exists in this library yet.)
-- **Missing on most repos**: `markdown-lint.yml`. Operations has a
-  local `docs-lint.yml`; framework's pre-commit stack has markdownlint;
-  everyone else has nothing.
-- **Missing on most repos**: `links.yml`. Adopted today by operations +
-  business (plus aidoc-flow-ci itself, which ships the reusable).
-  Blocking `links.yml (offline)` is a doc-quality floor.
-- **Missing on most repos**: `labeler.yml`. Only framework + iplan-runner
-  + aidoc-flow-ci adopt. Path-based labels reinforce OPS-0065 diff-class
-  visibility — should adopt.
-- **Missing on repos with Python code**: `codeql.yml`. Operations
-  (`scripts/*.py`), iplanic (runtime Python), engramory (Python maturing),
-  interlog (Python planned).
-- **Migration candidate: custom → reusable**: operations
-  `security.yml` (gitleaks) + `docs-lint.yml` — could migrate to
-  `secret-scan.yml` + `markdown-lint.yml` reusables for consistency +
-  drift detection. iplan-runner `security.yml` is `pip-audit` — separate
-  category (no reusable target yet; potential future
-  `pip-audit.yml` addition).
+**Graduations (deliberate opt-in, not dev gaps):**
 
-### 2.2 Bootstrap-tier repos
+- **`markdown-lint` report-only → blocking.** Runs everywhere with
+  `fail-on-findings: false` (surfaces `::error` annotations, doesn't block).
+  Graduating a repo to a blocking gate needs a `markdownlint-cli2 --fix`
+  remediation pass (≈259 cosmetic residual/repo under the shipped
+  `.markdownlint.json`) + adding the check to branch protection. Tracked in
+  `plans/FRAMEWORK-TODO.md` (FT-11).
+- **`docs-sync` dry-run → live.** Runs everywhere in dry-run (proposes
+  doc-fixes as a PR comment; no push-back). Graduating to auto-commit needs
+  the **`aidoc-flow-bot` App + `AIDOC_FLOW_BOT_ID`/`AIDOC_FLOW_BOT_KEY`
+  secrets** provisioned per repo (🔴 founder action; only `ci` + `operations`
+  have it). Note `docs-sync` is also slated for `doc-maintainer.yml`
+  supersession at `ci/v2.0.0` (§3.8) — treat these dry-run adoptions as the
+  interim mechanical layer.
 
-- `aidoc-flow-interlog` (created 2026-07-06 per GitHub `created_at`;
-  project memory noted 2026-07-07 which was the update timestamp) is
-  bootstrap-tier — no CI adopted yet. First CI PR should follow §4
-  adoption sequencing.
-- `aidoc-flow-iplan-standard` currently ships only `conformance.yml` (a
-  local workflow, not the reusable). ai-review + composition + pre-commit
-  + all doc-quality workflows planned per its Phase D onboarding (per
-  operations `docs/REPO_ONBOARDING.md`).
+**Remaining true gaps (non-content-check):**
+
+- **Critical:** `iplan-runner` MISSING `composition.yml` — the ai-review
+  verdict is announced but not composed as a required check (needs the
+  reviewer-App composition wiring).
+- `aidoc-flow-iplan-standard` MISSING `ai-review` + `composition` +
+  `pre-commit` (planned per its Phase D onboarding).
+- `aidoc-flow-engramory` MISSING `pre-commit.yml` (only ships `ci.yml`).
+- `aidoc-flow-business` MISSING `audit-trail` caller.
+- `codeql.yml` missing on Python repos still lacking it: operations
+  (`scripts/*.py`), iplanic, engramory, interlog.
+- **Migration candidates (custom → reusable):** operations `docs-lint.yml`
+  → `markdown-lint.yml`; business/interlog `security.yml` (gitleaks) →
+  `secret-scan.yml`. Functionally covered today; migrate for drift-detection
+  consistency. iplan-runner `security.yml` is `pip-audit` (separate concern;
+  no reusable target yet).
+
+### 2.2 Bootstrap-tier repos — none remaining
+
+Both previously-bootstrap repos are now fully CI-adopted:
+
+- `aidoc-flow-interlog` — adopted the full gate + content-check surface
+  (ai-review, composition, auto-merge, pre-commit, audit-trail, links,
+  markdown-lint, docs-sync, labeler; secret-scan via own `security.yml`).
+- `aidoc-flow-iplan-standard` — adopted the content-check surface +
+  audit-trail; ships the `auto-merge-ai-prs` caller (and is in the
+  `auto_merge.repos` allowlist) but it is **inert** until `ai-review` lands
+  (nothing emits the `ai:review-passed` label it keys off).
+  `ai-review`/`composition`/`pre-commit` remain planned per its Phase D
+  onboarding (per operations `docs/REPO_ONBOARDING.md`).
 
 ## 3. Skip guidance — legitimate reasons per workflow
 
@@ -135,9 +152,12 @@ canonical skip patterns:
 ### 3.2 `auto-merge-ai-prs.yml`
 
 - **Skip on:** spec/governance-tier repos deliberately excluded from
-  `operations/.github/ai-review/config.json` `auto_merge.repos` allowlist
-  (currently `aidoc-flow-framework`, `aidoc-flow-iplan-standard`). Rationale:
-  human merges spec/schema changes intentionally.
+  `operations/.github/ai-review/config.json` `auto_merge.repos` allowlist —
+  currently only `aidoc-flow-framework` (verified against the live config
+  2026-07-11). Rationale: a human merges spec/schema changes intentionally.
+  (`aidoc-flow-iplan-standard` IS in the allowlist + ships the caller, but
+  auto-merge stays **inert** there until `ai-review` lands to emit the
+  `ai:review-passed` label the enforcer keys off — see the §2 matrix.)
 - **Skip on:** the CI library repo itself (governance tier).
 - **Skip on:** the `aidoc-flow` umbrella — even though it IS in the
   `auto_merge.repos` allowlist, its ai-review is skipped (submodule
@@ -183,9 +203,16 @@ canonical skip patterns:
 
 ### 3.8 `docs-sync.yml`
 
-- **Skip on:** all repos going forward — being **superseded** by
-  `doc-maintainer.yml` at end of Phase 3 (`ci/v2.0.0`; per IPLAN-0025 P8).
-  New adoptions should go directly to `doc-maintainer.yml`.
+- **Deployed fleet-wide in DRY-RUN** (2026-07-11) as the interim mechanical
+  doc-fixer — proposes CHANGELOG-stub / version-sync changes as a PR comment
+  with **no push-back and no App required** (the `aidoc-flow-bot` App is only
+  referenced by the live-mode "Apply" step, gated by `dry_run != true`).
+- **Live-mode graduation** (`dry_run: false`) needs the `aidoc-flow-bot` App +
+  secrets per repo (🔴 founder) — do this only where mechanical auto-commit
+  earns its keep.
+- **Superseded by `doc-maintainer.yml`** at end of Phase 3 (`ci/v2.0.0`; per
+  IPLAN-0025 P8). The dry-run adoptions are the interim layer; migrate them to
+  `doc-maintainer.yml` when it stabilizes rather than graduating each to live.
 
 ### 3.9 `doc-maintainer.yml`
 
@@ -195,8 +222,10 @@ canonical skip patterns:
 
 ### 3.10 `audit-trail-check.yml`
 
-- **Skip on: bootstrap tier** (`aidoc-flow-interlog`) — local pre-push
-  hook enforces OPS-0069 authoritatively; CI belt-and-suspenders adopts
+- **Skip on: bootstrap tier** (any new repo before CI adoption — none
+  currently; `aidoc-flow-interlog` has since graduated + adopted the CI
+  caller) — the local pre-push hook enforces OPS-0069 authoritatively; CI
+  belt-and-suspenders adopts
   only when the repo joins the ai-review consumer set (per
   `REPO_STANDARDS.md` §14.3).
 - **Skip on: paused repos** (`aidoc-flow-knowledge-rag`,
@@ -242,14 +271,13 @@ order — each step depends on the prior:
 
 ## 5. Version pinning
 
-All consumer callers pin at `@ci/vX.Y.Z`. Current pins in the workspace:
-
-| Workflow | Current stable tag | Notes |
-|---|---|---|
-| `ai-review.yml` | `@ci/v1.4.3` (operations); `@ci/v1.5.1` (framework) | Consumers bump on their own cadence |
-| `composition.yml` | `@ci/v1.3.0` (operations); `@ci/v1.5.1` (framework) | Consumers bump on their own cadence |
-| `auto-merge-ai-prs.yml` | `@ci/v1.5.1` | Latest — added timeout-minutes: 10 fix |
-| others | `@ci/v1.4.x` or newer per consumer | See individual repo caller pins |
+All consumer callers pin at `@ci/vX.Y.Z`; latest release is **`ci/v1.9.5`**
+(see [`../VERSION`](../VERSION)). The content-check callers populated
+2026-07-11 pin `@ci/v1.9.4`/`v1.9.5`. Gate callers (ai-review / composition /
+auto-merge / audit-trail) bump on each consumer's own cadence — read the
+`@ci/vX.Y.Z` string in each repo's `.github/workflows/*.yml` (do NOT hardcode
+a version here; it drifts). Re-pin with `install/install.sh <repo> --repin`
+(version-string-only; never `--update`, which clobbers customizations).
 
 The [`../CHANGELOG.md`](../CHANGELOG.md) is the source-of-truth for tag →
 change mapping.
@@ -265,7 +293,17 @@ warning is the operator's opportunity to reconcile intent.
 
 ## 7. Change log
 
-- 2026-07-06 — Initial registry codified.
+- 2026-07-11 — **Content-check population complete + catalog corrected.**
+  Re-audited all 12 columns × every repo (+ visibility). `secret-scan` /
+  `markdown-lint` / `links` / `labeler` / `docs-sync` now cover every active
+  repo (canon reusable or documented custom/own equivalent). Catalog §1
+  descriptions for #6/#7/#8 corrected: all three install the tool as a
+  **binary/npm package** in a `run:` step, NOT the marketplace wrappers that
+  the allowed-actions policy blocks (`startup_failure`) — fixed in
+  `ci/v1.9.2`/`v1.9.4`; `markdown-lint` gained a `fail-on-findings` report-only
+  toggle (`v1.9.5`). `markdown-lint` deployed report-only + `docs-sync`
+  dry-run fleet-wide; graduations tracked in §2.1. iplan-standard corrected to
+  **public**; interlog + iplan-standard no longer bootstrap-tier.
 - 2026-07-07 — Registry audited against actual repo state via
   `gh api repos/*/contents/.github/workflows` across every workspace
   repo. Cell values expanded from `✅ / ⏸ / N/A` to `✅ / ⚠️ GAP /
@@ -278,6 +316,7 @@ warning is the operator's opportunity to reconcile intent.
   `security.yml` + `docs-lint.yml`; iplan-runner `security.yml`),
   and 1 new bootstrap-tier repo (`aidoc-flow-interlog`). §2.1 added
   as actionable follow-up. §2.2 flags bootstrap-tier repos.
+- 2026-07-06 — Initial registry codified.
 
 ## 8. Cross-references
 

@@ -256,32 +256,31 @@ in several places: `docs/runners.md` §0/§2 pool tables + registration steps
 `ci-ephemeral`/`ai-review` labels throughout (align docs to infra; preferred).
 One focused docs PR; split to keep ≤3 surfaces.
 
-### FT-11 — fleet population of `markdown-lint` / `links` / `docs-sync` is per-repo content triage, not a sweep
+### FT-11 — graduate `markdown-lint` (report-only → blocking) + `docs-sync` (dry-run → live)
 
-**Found:** 2026-07-11, PLAN-006 W4 population (canon-defect discovery).
-**Surface:** the canon-source defect is fixed in v1.9.4 (both `markdown-lint`
-and `links` were blocked at run-init by the allowed-actions policy; now
-binary-installed). But *populating* the remaining content-check workflows
-fleet-wide is NOT mechanical:
-- **`markdown-lint`** — under the shipped `.markdownlint.json` default (which
-  already disables MD060) it still finds **259 violations on aidoc-flow-ci
-  alone** (mostly `--fix`-able: MD013 line-length, MD032, etc.); the strict
-  default with MD060 on is 1300. Every repo needs a `--fix` pass + residual
-  hand-remediation + config adoption BEFORE the gate can be enabled, or it reds
-  every PR. Estimate: 8 repos × hundreds of hits.
-- **`links`** — low-risk in `--offline` internal mode (only internal/relative
-  links; lychee ran 0 errors on this repo). Re-pin callers to v1.9.4 + add the
-  caller per repo. Safe-ish to enable once re-pinned; external-mode (network)
-  should stay non-blocking/scheduled.
-- **`docs-sync`** — viable (proven green on operations; uses only `actions/*`).
-  Needs a per-repo `.github/docs-sync.json` for 6 more repos (currently on
-  ci + operations). Post-merge automation, not a PR gate.
-**Effect:** the persistent "populate all canon workflows on all repos" goal is
-complete for the *gate* workflows (labeler, secret-scan effective 8/8,
-ai-review, composition, audit-trail); the three content-check workflows above
-are runnable but not yet enabled fleet-wide because doing so is bounded content
-remediation, not a blind sweep. Ties to [[reference_canon_workflow_hard_constraints]] #3.
-**Fix sketch:** a dedicated remediation plan — per repo: run `markdownlint-cli2
---fix`, commit, adopt `.markdownlint.json`, re-pin to v1.9.4, add the caller,
-verify green. Sequence links (cheap) → docs-sync (config) → markdown-lint
-(remediation-heavy). Escalate scope/priority to founder before starting.
+**Found:** 2026-07-11, PLAN-006 W4 population. **Status: population DONE;
+graduations remain.**
+**Done:** the canon defect was fixed (`v1.9.4` binary-install for
+`markdown-lint`+`links`; `v1.9.5` `markdown-lint` `fail-on-findings` toggle +
+`.lychee.toml` `include_fragments` fix), and all content-check workflows are
+now deployed on every active repo (see `docs/WORKFLOWS.md` §2):
+- **`links`** — blocking (offline) on every repo (0 errors; debt repos ship a
+  scoping `.lychee.toml`).
+- **`markdown-lint`** — deployed **report-only** (`fail-on-findings: false`);
+  operations/framework covered by own tooling.
+- **`docs-sync`** — deployed **dry-run** (proposes doc-fixes as a PR comment;
+  no App needed — the `aidoc-flow-bot` App is only for the live Apply step).
+
+**Remaining (deliberate opt-in graduations, NOT dev gaps):**
+- **`markdown-lint` report-only → blocking.** Per repo: `markdownlint-cli2
+  --fix` (≈259 cosmetic residual/repo under the shipped `.markdownlint.json`,
+  mostly MD013/MD032; strict-default with MD060 is ~1300), commit the fixes,
+  then set `fail-on-findings: true` (or drop it) + add the check to branch
+  protection. Sequence by residual size (business/operations cleanest). Do NOT
+  hand-edit example artifacts — scope globs out of any `examples/**`.
+- **`docs-sync` dry-run → live.** 🔴 founder provisions `aidoc-flow-bot` App +
+  `AIDOC_FLOW_BOT_ID`/`KEY` secrets per repo, then set `dry_run: false`. Weigh
+  against the pending `doc-maintainer.yml` supersession at `ci/v2.0.0` — the
+  dry-run adoptions may migrate to `doc-maintainer` rather than each graduating.
+
+Ties to [[reference_canon_workflow_hard_constraints]] #3.
