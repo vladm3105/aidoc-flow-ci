@@ -3,6 +3,18 @@
 Notable releases of the shared CI library. SemVer per `ci/vX.Y.Z`
 tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
+### Fixed — composition caller templates missing `permissions:` block (2026-07-12)
+
+- **`composition-public.yml` + `composition-private.yml` templates now ship a
+  top-level `permissions:` block** (`pull-requests: read` + `contents: read`).
+  Without it, a consumer's composition caller `startup_failure`s at run-init
+  (zero jobs, web-UI-only error) under the repo read-default token — the same
+  class as the ai-review v1.7.1 fix. This silently broke composition on
+  framework (where it is a REQUIRED check), iplanic, business, engramory, and
+  iplan-standard; operations was unaffected (its caller had the block). No
+  reusable body change (no new tag needed); existing callers must add the block
+  directly.
+
 ## ci/v1.9.5 — 2026-07-11
 
 ### Added
