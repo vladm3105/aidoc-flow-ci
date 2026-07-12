@@ -245,6 +245,11 @@ fixtures, examples, and baselines by default; a consumer may suppress a false
 positive only with a narrow repository-owned rule rather than a directory-wide
 canon exclusion. Canon CI validation MUST fail when shellcheck, yamllint, or
 actionlint is unavailable, and actionlint MUST inspect embedded workflow shell.
+Downloaded binaries MUST be installed into a job-scoped directory created with
+`BIN_DIR="$RUNNER_TEMP/bin"; mkdir -p "$BIN_DIR"`, added to `$GITHUB_PATH`, and
+verified by invoking the absolute path in the install step. Do not assume
+`$HOME/.local/bin` exists and do not require `sudo` or `/usr/local/bin`; this
+single pattern works on GitHub-hosted and self-hosted ephemeral runners.
 
 `sync/check-standards-drift.sh` remains warning-only for scheduled observation,
 but release and adoption validation MUST invoke `--strict`, which fails on

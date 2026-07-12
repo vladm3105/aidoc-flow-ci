@@ -12,7 +12,8 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   and conventions templates plus behavioral regression tests.
 - Hash-verifies the pinned gitleaks and actionlint binaries, removes blanket
   secret-scan exclusions for tests/fixtures/examples, pins pre-commit, makes
-  missing CI linters fatal, and enables shellcheck for embedded workflow shell.
+  missing CI linters fatal, enables shellcheck for embedded workflow shell, and
+  installs downloaded tools through the unified `$RUNNER_TEMP/bin` pattern.
 - Adds strict standards-drift mode for release/adoption gates and fixes the
   markdown-lint private-runner example's duplicate `with:` block.
 
