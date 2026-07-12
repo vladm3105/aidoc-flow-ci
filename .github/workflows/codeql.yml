@@ -111,7 +111,7 @@ jobs:
           eval "$BUILD_COMMAND"
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@21eb7f7842f33eafc83782b56fff2a2c43e9696f # v4.36.1
+        uses: github/codeql-action/analyze@87557b9c84dde89fdd9b10e88954ac2f4248e463 # v4.36.1
         with:
           category: /language:${{ matrix.language }}
           # Fork PRs get a read-only GITHUB_TOKEN (security-events: write is
