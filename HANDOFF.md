@@ -6,22 +6,39 @@ context compaction.
 
 ## Current state (2026-07-12)
 
-**PLAN-007 production-hardening — W1/W2/W5 DONE; W4 runbook prepared; W3
-remains.** Completed: W1 test suite (`tests/`, PR #143), W5 Dependabot prune
-(#137), W2 guardrails (FT-1/2/5 resolved, FT-6 downgraded; #144/#145).
+**PLAN-007 production-hardening — W1/W2/W3(markdown-lint)/W5 DONE; remaining work
+is entirely founder-gated (W4 arming + W3 docs-sync-live).** Completed: W1 test
+suite (`tests/`, PR #143), W5 Dependabot prune (#137), W2 guardrails
+(FT-1/2/5 resolved, FT-6 downgraded; #144/#145).
+
+- **W3 markdown-lint report-only → blocking — DONE across all 6 canon consumers.**
+  Founder chose to **relax the canon `.markdownlint.json`** (disable
+  MD013/MD024/MD036 — workspace-legitimate false-positives; ci #149,
+  REPO_STANDARDS §4.4), then per-repo graduation to `fail-on-findings: true`:
+  **business #57, interlog #63, engramory #49, iplan-runner #89, iplanic #258,
+  iplan-standard #30 all MERGED**. operations + framework covered-by-own-tooling.
+  Tracked in FT-11. **Load-bearing lesson (codified in FT-11):** a blind
+  `markdownlint-cli2 --fix` is UNSAFE on these docs — it corrupts prose (a literal
+  `+`/`#` at line-start → MD004/MD001 cascades) and code identifiers
+  (`__init__.py`→`**init**.py` via MD050). Every graduation reflowed prose-`+`
+  roots first, `--fix`ed only structural rules, and had a documentation-specialist
+  verify zero prose changed (caught real BLOCKERs on iplan-runner + iplanic; the
+  pre-commit `check_plan` gate caught `--fix` breaking verified-planning ledger
+  citations twice). engramory added a repo-local `MD025.front_matter_title:""`.
 - **W4 — arm gates fleet-wide = 🔴 founder-executed** (write to other repos +
-  branch-protection change; not AI-autonomous under verbal auth per autonomy
-  tiers + OPS-0062 + `feedback_writes_to_other_repos_inbox_first`). A read-only
-  survey (2026-07-12) showed arming is NOT a template sweep — 2 repos
-  unprotected (iplan-standard, engramory), 3 carry a **phantom** bare-lint
-  required-context (framework/business/iplanic → merging via `--admin`),
-  iplan-runner canon adoption broken (`call / ai-review` skipped, `call /
-  gitleaks` failing), interlog composition possibly conditional. Founder-runnable
-  runbook with exact per-repo `gh api` commands + verification + rollback:
-  **`docs/FLEET_BRANCH_PROTECTION_ARMING.md`**. Follow-ups = FT-12. (I applied
-  then reverted an engramory pilot when I recognized the 🔴 boundary.)
-- **W3 remains** — markdown-lint report-only→blocking (`--fix` remediation,
-  labor-heavy) + docs-sync dry-run→live (🔴 App). FT-11.
+  branch-protection change; not AI-autonomous per autonomy tiers + OPS-0062 +
+  `feedback_writes_to_other_repos_inbox_first`). Founder-runnable runbook with
+  exact per-repo `gh api` commands + verification + rollback:
+  **`docs/FLEET_BRANCH_PROTECTION_ARMING.md`**. This is the highest-value
+  remaining step — it makes the now-blocking checks actually BLOCK red PRs, and
+  fixes the FT-12 phantom bare-lint contexts still forcing `--admin` merges on
+  business/interlog/iplanic/framework. FT-12 also records iplan-runner canon
+  gitleaks fix (RESOLVED, iplan-runner #88) + interlog composition conditionality.
+- **W3 docs-sync dry-run → live — still 🔴** founder App (`aidoc-flow-bot`), or
+  fold into the `doc-maintainer.yml` supersession. Note: the functional
+  doc-maintainer work (a concurrent effort this session) has landed on `main`
+  (see CHANGELOG "functional doc-maintainer …") — reconcile W3 docs-sync-live
+  against it before provisioning the App.
 
 _Recent (2026-07-11):_ **PLAN-006 W4 content-check population — COMPLETE across all active repos.**
 Two releases fixed the canon (`ci/v1.9.4` binary-install for links+markdown-lint;
@@ -43,12 +60,14 @@ audited 2026-07-11 (see `docs/WORKFLOWS.md` §2):
 - **iplan-runner** (a 9th active submodule, initially missed) populated with all
   three content-checks (PR #79).
 
-**Two opt-in graduations remain (tracked, NOT dev gaps):**
-1. **markdown-lint report-only → blocking** — per-repo `markdownlint-cli2 --fix`
-   (259+ cosmetic residual/repo) + add to branch protection. `plans/FRAMEWORK-TODO.md` FT-11.
-2. **docs-sync dry-run → live** — 🔴 founder provisions the `aidoc-flow-bot` App
-   + `AIDOC_FLOW_BOT_ID`/`KEY` secrets per repo (only ci + operations have it).
-   Note docs-sync is also slated for `doc-maintainer.yml` supersession at v2.0.0.
+**Graduations status (SUPERSEDED by the 2026-07-12 current-state above):**
+1. **markdown-lint report-only → blocking — DONE 2026-07-12** (all 6 consumers
+   merged; the "259 residual/repo + `--fix`" framing was superseded by relaxing
+   the canon `.markdownlint.json` per the founder decision). Only the
+   founder-executed W4 arming remains. `plans/FRAMEWORK-TODO.md` FT-11.
+2. **docs-sync dry-run → live** — still 🔴 founder provisions the `aidoc-flow-bot`
+   App + `AIDOC_FLOW_BOT_ID`/`KEY` secrets per repo (only ci + operations have
+   it); or fold into the now-functional `doc-maintainer.yml` supersession.
 
 _History (v1.9.4):_ **`ci/v1.9.4` SHIPPED (PLAN-006 W4 — content-check canon fix).** While
 populating the missing content-check workflows, discovered the same
@@ -69,11 +88,10 @@ review: security READY, correctness clean, docs 4 findings folded.
   covered by their own standalone `security.yml` gitleaks — confirmed clean 0
   findings locally on both v8.21.2 + v8.30.1).
 - **ai-review / composition / audit-trail** — deployed fleet-wide (core gates).
-- **markdown-lint / links / docs-sync** — canon now RUNNABLE (v1.9.4) but NOT
-  populated fleet-wide: doing so is per-repo content triage (markdown-lint =
-  259 residual violations/repo under the sane config → needs `--fix` + adoption;
-  links = low-risk in `--offline`; docs-sync = per-repo config). **Tracked as
-  FT-11; scoped for founder decision — NOT a blind sweep.** ← NEXT.
+- **markdown-lint / links / docs-sync** — canon RUNNABLE (v1.9.4) + now populated
+  fleet-wide. markdown-lint **graduated to blocking on all 6 consumers 2026-07-12**
+  (canon relaxed + per-repo cleanup; see current-state above); links populated;
+  docs-sync deployed dry-run (live-mode still 🔴 App). FT-11.
 
 _History (v1.9.0 → v1.9.3):_ **`ci/v1.9.0`** (PLAN-006 W2 — FT-9 fix + self-hosted policy). The
 v1.8.1 consumer-sync sweep (via `install.sh --update`) clobbered the private
@@ -216,15 +234,24 @@ enforcement, PR-U1/U2/U3/U4, 2026-07-08).
 
 ## Next-session start-here
 
-1. **PLAN-004 SHIPPED — A–E merged + `ci/v1.7.0` tag/release cut 2026-07-10.**
-   Next: (a) live `install.sh --update` against one real consumer (e.g.
-   interlog) as post-cut verification; (b) follow-ups FT-8 (migrate
-   `sync/check-drift.sh` onto `manifest.json`, = E2) + the pending FT-1..FT-6.
-   Cap review/fix loops at 3 per OPS-0066.
-2. For PLAN-003 rollout work, read `docs/PLAYBOOK_governance-canon-rollout.md`
-   then defer to operations `docs/CROSS_REPO_PLAYBOOKS.md` §T-D for
-   authoritative per-wave scope.
-3. `docs/REPO_STANDARDS.md` is the durable canon consumers follow.
+1. **PLAN-007 production-hardening — W1/W2/W3(markdown-lint)/W5 DONE; the two
+   remaining items are BOTH 🔴 founder-gated:**
+   - **W4 — arm the gates as required checks** (`docs/FLEET_BRANCH_PROTECTION_ARMING.md`).
+     Highest-value: makes the now-blocking checks actually block red PRs + fixes
+     the FT-12 phantom bare-lint contexts forcing `--admin` merges. Do NOT execute
+     as an AI (write to other repos + branch-protection = 🔴); hand the runbook to
+     the founder.
+   - **W3 docs-sync dry-run → live** — 🔴 `aidoc-flow-bot` App, or fold into the
+     now-functional `doc-maintainer.yml` (landed on main this session — reconcile
+     first). FT-11.
+2. Open FT follow-ups (`plans/FRAMEWORK-TODO.md`): FT-8 (migrate
+   `sync/check-drift.sh` onto `manifest.json`), FT-7/FT-10 (de-branding), FT-12
+   (arming anomalies — subsumed by W4). Cap review/fix loops at 3 per OPS-0066.
+3. `docs/REPO_STANDARDS.md` is the durable canon consumers follow. For PLAN-003
+   rollout work, read `docs/PLAYBOOK_governance-canon-rollout.md` then defer to
+   operations `docs/CROSS_REPO_PLAYBOOKS.md` §T-D.
+4. _History:_ PLAN-004 SHIPPED (A–E merged + `ci/v1.7.0` 2026-07-10); PLAN-006 W4
+   content-check population COMPLETE (2026-07-11).
 
 ## Recent decisions
 
