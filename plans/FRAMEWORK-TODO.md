@@ -286,9 +286,9 @@ now deployed on every active repo (see `docs/WORKFLOWS.md` §2):
   false-positives on changelog data rows, keep-a-changelog headings, ADR
   `**Context**`/`**Decision**` bold-labels; ci #149, REPO_STANDARDS §4.4). (2)
   Per-repo graduation to `fail-on-findings: true`: **business #57, interlog #63,
-  engramory #49, iplan-runner #89, iplanic #258 MERGED**; **iplan-standard #30
-  green, reserved for founder merge** (governance tier, OPS-0062-excluded from AI
-  auto-merge). operations + framework are covered-by-own-tooling (not the canon
+  engramory #49, iplan-runner #89, iplanic #258, iplan-standard #30 all
+  MERGED** (iplan-standard is governance tier — OPS-0062-excluded from AI
+  auto-merge, so the founder merged it). operations + framework are covered-by-own-tooling (not the canon
   reusable). **Key lesson: a blind `markdownlint-cli2 --fix` is UNSAFE on these
   docs** — it corrupts prose (a literal `+`/`#` at line-start misread as a
   list/heading marker → MD004/MD001 cascades) and code identifiers
