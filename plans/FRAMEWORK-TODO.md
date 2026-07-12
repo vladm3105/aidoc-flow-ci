@@ -280,23 +280,26 @@ now deployed on every active repo (see `docs/WORKFLOWS.md` §2):
   no App needed — the `aidoc-flow-bot` App is only for the live Apply step).
 
 **Remaining (deliberate opt-in graduations, NOT dev gaps):**
-- **`markdown-lint` report-only → blocking.** _Progress 2026-07-12 (PLAN-007
-  W3):_ **business GRADUATED** (0 residual → clean `fail-on-findings` flip,
-  business #57). Measured residuals on the other 5 canon-markdown-lint repos:
-  engramory 580, iplanic 418, iplan-runner 226, interlog 93, iplan-standard 30.
-  `--fix` clears the auto-fixable rules (MD004/MD032), **but the residual is
-  dominated by workspace-legitimate false-positives, NOT fixable defects:**
-  MD036 on ADR bold-labels (`**Context**`/`**Decision**`/… in every
-  `DECISIONS.md`), MD024 on keep-a-changelog `### Added`/`### Changed`, MD013 on
-  changelog data rows, MD033 on PR-template placeholder tokens. Hand-editing
-  these damages the intended formats (and DECISIONS/CHANGELOG edits are
-  governance-sensitive). **Leveraged path = a canon `.markdownlint.json`
-  decision** (relax MD036 — ADR bold-labels are a deliberate workspace style —
-  + assess MD024/MD013/MD033 for changelog/template contexts) so multiple repos
-  graduate at once, vs. per-repo prose reflow. Doc-style policy call → founder
-  decision, don't unilaterally weaken canon lint. Then per repo: `--fix` (scope
-  globs out of `examples/**` — never hand-edit example artifacts) + set
-  `fail-on-findings: true` + arm the check (W4).
+- **`markdown-lint` report-only → blocking — DONE across all canon consumers
+  (PLAN-007 W3, 2026-07-12).** Sequence: (1) founder chose to **relax the canon
+  `.markdownlint.json`** (disable MD013/MD024/MD036 — workspace-legitimate
+  false-positives on changelog data rows, keep-a-changelog headings, ADR
+  `**Context**`/`**Decision**` bold-labels; ci #149, REPO_STANDARDS §4.4). (2)
+  Per-repo graduation to `fail-on-findings: true`: **business #57, interlog #63,
+  engramory #49, iplan-runner #89, iplanic #258 MERGED**; **iplan-standard #30
+  green, reserved for founder merge** (governance tier, OPS-0062-excluded from AI
+  auto-merge). operations + framework are covered-by-own-tooling (not the canon
+  reusable). **Key lesson: a blind `markdownlint-cli2 --fix` is UNSAFE on these
+  docs** — it corrupts prose (a literal `+`/`#` at line-start misread as a
+  list/heading marker → MD004/MD001 cascades) and code identifiers
+  (`__init__.py`→`**init**.py` via MD050). Every graduation reflowed the prose-`+`
+  roots first, used `--fix` only for genuinely-structural rules, and ran a
+  documentation-specialist to verify zero prose changed (it caught real MD050
+  BLOCKERs on iplan-runner + iplanic; the pre-commit `check_plan` gate caught
+  `--fix` breaking verified-planning ledger citations twice). engramory added a
+  repo-local `MD025.front_matter_title:""` for its `sdd/**` frontmatter-titled
+  docs. **Still pending: arming each as a required status check = the
+  founder-executed W4 step** (`docs/FLEET_BRANCH_PROTECTION_ARMING.md`; FT-12).
 - **`docs-sync` dry-run → live.** 🔴 founder provisions `aidoc-flow-bot` App +
   `AIDOC_FLOW_BOT_ID`/`KEY` secrets per repo, then set `dry_run: false`. Weigh
   against the pending `doc-maintainer.yml` supersession at `ci/v2.0.0` — the

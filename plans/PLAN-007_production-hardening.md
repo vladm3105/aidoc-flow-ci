@@ -14,7 +14,7 @@ readiness review into tracked, reviewable workstreams.
 | --- | --- | --- | --- |
 | W1 | Automated test suite for the reusables + scripts | No `tests/` — verification is empirical only | no |
 | W2 | Guardrail FT burn-down (FT-1, FT-2, FT-5, FT-6-residual) | Correctness/consistency debt in the canon | no |
-| W3 | Graduate `markdown-lint`→blocking + `docs-sync`→live (FT-11) | Two workflows stuck in rollout stages | **partly** (docs-sync App) |
+| W3 | Graduate `markdown-lint`→blocking + `docs-sync`→live (FT-11) | Two workflows stuck in rollout stages | markdown-lint **DONE** (5 merged + 1 founder-reserved); docs-sync-live still 🔴 founder App / defer to doc-maintainer |
 | W4 | Arm gates as required checks fleet-wide | Gates run but don't all enforce | partly (per-repo protection) |
 | W5 | Green the canon repo's own CI (Dependabot noise) | aidoc-flow-ci main reads red | no |
 
@@ -132,21 +132,20 @@ labor-heavy item.
   via `--admin` because business's branch protection still requires the phantom
   bare `Lint / format / security hooks` context (FT-12) — LIVE confirmation that
   the phantom forces `--admin` merges; the W4 runbook fixes it.
-- **Remaining 5 (engramory 580, iplanic 418, iplan-runner 226, interlog 93,
-  iplan-standard 30 residual) — BLOCKED ON A LINT-POLICY DECISION, not mechanical
-  work.** `--fix` clears the auto-fixable rules (MD004/MD032), but the residual
-  is dominated by **workspace-legitimate false-positives**: `MD036`
-  emphasis-as-heading on ADR bold-labels (`**Context**`/`**Decision**`/
-  `**Consequences**`/`**Origin**` in every `DECISIONS.md`), `MD024`
-  duplicate-heading on keep-a-changelog `### Added`/`### Changed`, `MD013`
-  line-length on changelog data rows, `MD033` on PR-template placeholder tokens
-  (`<verdict>`). Hand-"fixing" these would damage the intended formats and, for
-  DECISIONS/CHANGELOG, is a governance-sensitive content edit. The leveraged path
-  is a **canon `.markdownlint.json` decision** (relax `MD036` — ADR bold-labels
-  are a deliberate workspace style — and assess `MD024`/`MD013`/`MD033` for the
-  changelog/template contexts), which lets multiple repos graduate at once, vs.
-  per-repo prose reflow. This is a doc-style policy call (weakens some rules with
-  reason) — surface to founder rather than unilaterally weaken canon lint. FT-11.
+- **markdown-lint graduation — COMPLETE across all canon consumers.** Founder
+  chose to **relax the canon `.markdownlint.json`** (disable MD013/MD024/MD036 —
+  the workspace-legitimate false-positives above; ci #149, REPO_STANDARDS §4.4),
+  which dropped per-repo residuals from the hundreds to the dozens. Then per-repo
+  graduation to `fail-on-findings: true`: **business #57, interlog #63,
+  engramory #49, iplan-runner #89, iplanic #258 MERGED**; **iplan-standard #30
+  green, reserved for founder merge** (governance tier). operations + framework
+  are covered-by-own-tooling. Each graduation reflowed prose-`+` roots first,
+  used `--fix` only for structural rules, and ran a documentation-specialist to
+  verify zero prose changed (caught real MD050 `__init__.py`→`**init**.py`
+  BLOCKERs on iplan-runner + iplanic; the pre-commit `check_plan` gate caught
+  `--fix` breaking verified-planning ledger citations twice). **Still pending:
+  arming each blocking check as a REQUIRED status check = the founder-executed
+  W4 step** (`docs/FLEET_BRANCH_PROTECTION_ARMING.md`). FT-11.
 
 ### W4 — Arm gates as required checks fleet-wide
 
