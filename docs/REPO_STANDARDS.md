@@ -164,6 +164,18 @@ are allowed.
 `apply-standards.sh` (PR-B) tightens to `read` and adds the fork-PR
 constraints.
 
+### 4.0a AI documentation-maintainer safety contract
+
+Repositories adopting `doc-maintainer.yml` MUST provide
+`.github/doc-maintainer.json` and `.github/doc-maintainer-conventions.md`, begin
+in dry-run mode, and keep autonomous edits restricted to explicit low-risk
+documentation globs. The planner treats PR text and patches as untrusted data,
+validates every AI-selected path against `allowed_paths`, caps edits per PR,
+and classifies any path not explicitly low-risk as high-risk. Low-risk edits
+open a normal bot PR subject to the repository's review gates; high-risk edits
+open an issue and are never applied automatically. Live mode additionally
+requires the scoped `aidoc-flow-bot` App and enforces `max_prs_per_day`.
+
 ### 4.1 Runner class by visibility (canon)
 
 A workspace repo's runner CLASS follows its visibility, by default:
@@ -226,6 +238,23 @@ into the shell) so a hostile input value cannot inject an expression. When
 authoring or reviewing a canon workflow, verify every `uses:` is on the
 allowlist.
 
+Downloaded executables MUST be version-pinned and checked against a hard-coded
+upstream SHA-256 before extraction or execution. Language-installed CI tools
+MUST pin their top-level package version. Secret scanning MUST cover tests,
+fixtures, examples, and baselines by default; a consumer may suppress a false
+positive only with a narrow repository-owned rule rather than a directory-wide
+canon exclusion. Canon CI validation MUST fail when shellcheck, yamllint, or
+actionlint is unavailable, and actionlint MUST inspect embedded workflow shell.
+Downloaded binaries MUST be installed into a job-scoped directory created with
+`BIN_DIR="$RUNNER_TEMP/bin"; mkdir -p "$BIN_DIR"`, added to `$GITHUB_PATH`, and
+verified by invoking the absolute path in the install step. Do not assume
+`$HOME/.local/bin` exists and do not require `sudo` or `/usr/local/bin`; this
+single pattern works on GitHub-hosted and self-hosted ephemeral runners.
+
+`sync/check-standards-drift.sh` remains warning-only for scheduled observation,
+but release and adoption validation MUST invoke `--strict`, which fails on
+settings drift, stale pins, fetch errors, or controls that cannot be verified.
+
 ### 4.4 `markdown-lint` config template (`install/templates/.markdownlint.json`)
 
 The canon `.markdownlint.json` is the recommended ruleset consumers **copy**
@@ -239,10 +268,8 @@ workspace doc styles rather than defects:
 | `MD024` duplicate-heading | keep-a-changelog inherently repeats `### Added`/`### Changed` per release; `siblings_only` did not fully suppress it. |
 | `MD036` emphasis-as-heading | Every `DECISIONS.md` uses `**Context**`/`**Decision**`/`**Consequences**`/`**Origin**` bold-labels by deliberate ADR style, not as headings. |
 
-(`MD041` first-line-heading and `MD060` were already disabled before this
-change.) The structural rules that catch real defects — `MD033` (inline HTML,
-outside the allowlisted elements), `MD040` (code-fence language), `MD056` (table
-columns), heading-increment, etc. — stay **enforced**; those are the genuine
+`MD033` (inline HTML, allowlisted elements), `MD040` (code-fence language),
+`MD056` (table columns), and the rest stay **enforced** — those are genuine
 cleanups a consumer fixes when graduating `fail-on-findings: false → true`
 (PLAN-007 W3 / FT-11). This is a **template-only change**: no reusable body
 change, no new `ci/` tag — do NOT bump `VERSION` for it (that would falsely flag

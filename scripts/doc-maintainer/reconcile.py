@@ -25,8 +25,8 @@ Logic:
      v1.4.0 ships report-only since workflow_dispatch needs the input
      plumbing on the consumer caller side).
 
-alpha.1 status: REPORT ONLY. Dispatch logic ships in v1.4.1 along with
-caller-side `workflow_dispatch` input declaration.
+With --dispatch, missed SHAs are sent through the caller's workflow_dispatch
+head_sha input. The workflow's SHA-tied dedup guard makes recovery idempotent.
 """
 
 from __future__ import annotations
@@ -72,31 +72,41 @@ def main() -> int:
         - dt.timedelta(minutes=args.lookback_min)
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    repo = gh_api(f"repos/{args.gh_repo}")
+    default_branch = repo.get("default_branch") if isinstance(repo, dict) else None
+    if not default_branch:
+        fail("could not resolve repository default branch")
     commits = gh_api(
-        f"repos/{args.gh_repo}/commits?sha=main&since={since}&per_page=30"
+        f"repos/{args.gh_repo}/commits?sha={default_branch}&since={since}&per_page=30"
     )
     if not isinstance(commits, list):
         fail("commits API returned non-list")
         return 1
 
+    runs = gh_api(
+        f"repos/{args.gh_repo}/actions/workflows/{args.workflow}/runs?per_page=100"
+    )
+    workflow_runs = runs.get("workflow_runs", []) if isinstance(runs, dict) else []
     missed: list[str] = []
     for commit in commits:
         sha = commit.get("sha")
         if not sha:
             continue
-        runs = gh_api(
-            f"repos/{args.gh_repo}/actions/runs"
-            f"?event=push&head_sha={sha}&per_page=5"
-        )
-        if isinstance(runs, dict):
-            wf_runs = runs.get("workflow_runs", [])
-            has_run = any(
-                r.get("path", "").endswith(args.workflow) or
-                r.get("name") == args.workflow.replace(".yml", "")
-                for r in wf_runs
+        has_run = any(
+            (
+                run.get("event") == "push"
+                and run.get("head_sha") == sha
+                and (run.get("status") != "completed" or run.get("conclusion") == "success")
             )
-            if not has_run:
-                missed.append(sha)
+            or (
+                run.get("event") == "workflow_dispatch"
+                and sha in str(run.get("display_title", ""))
+                and (run.get("status") != "completed" or run.get("conclusion") == "success")
+            )
+            for run in workflow_runs
+        )
+        if not has_run:
+            missed.append(sha)
 
     if not missed:
         print(
@@ -113,15 +123,16 @@ def main() -> int:
         print(f"  - {sha}")
 
     if args.dispatch:
-        # v1.4.1: dispatch each missed SHA via workflow_dispatch.
-        # v1.4.0 ships report-only because the dispatch path needs
-        # caller-side `workflow_dispatch:` declaration + the workflow
-        # body needs a `head_sha` input that override the default
-        # `github.sha` lookup.
-        print(
-            "::notice::reconcile: alpha.1 stub — --dispatch is reported but"
-            " v1.4.0 does not yet auto-dispatch. v1.4.1 will."
-        )
+        for sha in missed:
+            try:
+                subprocess.run(
+                    ["gh", "workflow", "run", args.workflow, "--repo", args.gh_repo,
+                     "--ref", default_branch, "-f", f"head_sha={sha}"],
+                    check=True, capture_output=True, text=True,
+                )
+                print(f"::notice::reconcile: dispatched {sha}")
+            except subprocess.CalledProcessError as exc:
+                fail(f"failed to dispatch {sha}: {exc.stderr.strip()[:200]}")
     return 0
 
 

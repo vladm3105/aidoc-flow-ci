@@ -131,7 +131,9 @@ jobs:
             */*/* | */ | /* | *[!A-Za-z0-9._/-]* )
               echo "::error::invalid trust_config_repo '$TCR' — must be owner/repo"; exit 1 ;;
           esac
-          [ "${TCR%%/*}" != "$TCR" ] && [ -n "${TCR##*/}" ] || { echo "::error::trust_config_repo must be owner/repo"; exit 1; }
+          if [ "${TCR%%/*}" = "$TCR" ] || [ -z "${TCR##*/}" ]; then
+            echo "::error::trust_config_repo must be owner/repo"; exit 1
+          fi
           echo "owner=${TCR%%/*}" >> "$GITHUB_OUTPUT"
           echo "repo=${TCR##*/}" >> "$GITHUB_OUTPUT"
       - name: Mint reviewer-App token for trust-config read (read-only, cross-repo)
@@ -350,7 +352,9 @@ jobs:
             */*/* | */ | /* | *[!A-Za-z0-9._/-]* )
               echo "::error::invalid trust_config_repo '$TCR' — must be owner/repo"; exit 1 ;;
           esac
-          [ "${TCR%%/*}" != "$TCR" ] && [ -n "${TCR##*/}" ] || { echo "::error::trust_config_repo must be owner/repo"; exit 1; }
+          if [ "${TCR%%/*}" = "$TCR" ] || [ -z "${TCR##*/}" ]; then
+            echo "::error::trust_config_repo must be owner/repo"; exit 1
+          fi
           echo "owner=${TCR%%/*}" >> "$GITHUB_OUTPUT"
           echo "repo=${TCR##*/}" >> "$GITHUB_OUTPUT"
       - name: Mint reviewer-App token for config read (read-only, cross-repo)

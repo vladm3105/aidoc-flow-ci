@@ -41,6 +41,10 @@ on:
         description: 'Python version for the pre-commit runtime. Default "3.12" (matches framework + iplan-runner + operations).'
         type: string
         default: '3.12'
+      pre-commit-version:
+        description: 'Pinned pre-commit framework version.'
+        type: string
+        default: '4.6.0'
       extra-deps:
         description: 'Newline-separated additional pip install args (e.g. "-r tests/conformance/requirements.txt"). Default empty — pre-commit alone covers most repos. Use when a hook needs project-specific deps.'
         type: string
@@ -76,12 +80,14 @@ jobs:
       - name: Install pre-commit (+ optional extra deps)
         env:
           EXTRA_DEPS: ${{ inputs.extra-deps }}
+          PRE_COMMIT_VERSION: ${{ inputs.pre-commit-version }}
         run: |
-          # env indirection (sec H4): $EXTRA_DEPS is intentionally UNQUOTED so it
-          # word-splits into extra package args; passing via env (not a source
-          # interpolation) means a value like `;whoami` becomes a literal arg to
-          # pip (which errors) rather than shell injection into the run script.
-          pip install pre-commit $EXTRA_DEPS
+          # Parse the documented pip-argument string into an array. Environment
+          # indirection keeps shell metacharacters inert; array expansion avoids
+          # accidental globbing and preserves the argument boundary explicitly.
+          extra_args=()
+          [ -z "$EXTRA_DEPS" ] || read -r -a extra_args <<< "$EXTRA_DEPS"
+          python -m pip install --disable-pip-version-check "pre-commit==${PRE_COMMIT_VERSION}" "${extra_args[@]}"
 
       - name: Run hooks
         env:

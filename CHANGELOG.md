@@ -3,6 +3,20 @@
 Notable releases of the shared CI library. SemVer per `ci/vX.Y.Z`
 tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
+### Added — functional doc-maintainer and production CI hardening (unreleased)
+
+- Replaced the doc-maintainer planner/apply/reconciler stubs with a bounded AI
+  documentation-impact planner, validated low-risk edit generation, bot PR
+  creation, high-risk issue routing, prompt-injection/path/secret guards, daily
+  caps, dry-run detail, and scheduled missed-run recovery. Added consumer config
+  and conventions templates plus behavioral regression tests.
+- Hash-verifies the pinned gitleaks and actionlint binaries, removes blanket
+  secret-scan exclusions for tests/fixtures/examples, pins pre-commit, makes
+  missing CI linters fatal, enables shellcheck for embedded workflow shell, and
+  installs downloaded tools through the unified `$RUNNER_TEMP/bin` pattern.
+- Adds strict standards-drift mode for release/adoption gates and fixes the
+  markdown-lint private-runner example's duplicate `with:` block.
+
 ### Changed — markdown-lint canon config relaxed for workspace doc styles (PLAN-007 W3) (2026-07-12)
 
 - **`install/templates/.markdownlint.json` disables `MD013` (line-length),

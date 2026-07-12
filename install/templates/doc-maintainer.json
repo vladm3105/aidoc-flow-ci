@@ -1,0 +1,13 @@
+{
+  "$schema": "https://aidoc-flow.io/schemas/doc-maintainer-config-v1.json",
+  "version": 1,
+  "dry_run": true,
+  "kill_switch": false,
+  "allowed_paths": ["README.md", "CHANGELOG.md", "HANDOFF.md", "ROADMAP.md", "DECISIONS.md", "docs/**"],
+  "max_edits_per_pr": 8,
+  "max_prs_per_day": 5,
+  "auto_merge": {
+    "low_risk_paths": ["README.md", "CHANGELOG.md", "docs/**"],
+    "high_risk_paths": ["HANDOFF.md", "ROADMAP.md", "DECISIONS.md", "**/HANDOFF.md", "**/ROADMAP.md", "**/DECISIONS.md"]
+  }
+}
