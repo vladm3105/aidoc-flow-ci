@@ -15,6 +15,22 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   reusable body change (no new tag needed); existing callers must add the block
   directly.
 
+### Added — AI-agent CI deployment playbook + wizard (2026-07-12)
+
+- **`docs/AI_CI_DEPLOYMENT.md`** — end-to-end, AI-agent-oriented how-to for
+  deploying the full CI stack (ai-review, composition, auto-merge, pre-commit,
+  audit-trail, secret-scan, links, markdown-lint, labeler, docs-sync, codeql)
+  on a new repo: prerequisites (🔴 founder vs 🟢 AI), dependency-ordered
+  sequence, a gotchas checklist encoding every failure mode from the 2026-07
+  fleet rollout, verification protocol, and arming. 
+- **`install/deploy-ci-wizard.sh`** — safe read-only/scaffold wizard
+  (`preflight`/`plan`/`scaffold`/`verify`) that audits prerequisites, picks the
+  public/private variant + runner labels, and generates valid caller files
+  (correct JSON labels, permissions blocks, canon-reusable pointers, markdown-
+  lint report-only). Never commits/pushes/merges/sets-secrets.
+- **`install/templates/workflows/audit-trail-{public,private}.yml`** — new
+  caller templates (audit-trail previously had no template).
+
 ## ci/v1.9.5 — 2026-07-11
 
 ### Added
