@@ -1,13 +1,14 @@
 {
-  "_comment": "Branch protection for OPS-PRIVATE tier per REPO_STANDARDS.md §2. Tier repos: aidoc-flow-operations, aidoc-flow-business, aidoc-flow-iplanic. Same profile as product-code tier — ai-review + composition is the substantive gate. Private repos have no fork-PR risk.",
+  "_comment": "Branch protection for OPS-PRIVATE tier per REPO_STANDARDS.md \u00a72. Tier repos: aidoc-flow-operations, aidoc-flow-business, aidoc-flow-iplanic. Same profile as product-code tier \u2014 ai-review + composition is the substantive gate. Private repos have no fork-PR risk.",
   "_apply_note": "PR-C2 MUST strip ALL `_`-prefix keys before POST/PUT/PATCH. Use `jq 'del(.._comment, .._apply_note, .._docs, .._endpoint, .._umbrella_note)'` or equivalent. GitHub REST endpoints strictly validate unknown fields.",
   "required_status_checks": {
     "strict": false,
     "contexts": [
       "call / ai-review",
       "call / composition",
-      "Lint / format / security hooks",
-      "Secret scan (gitleaks)"
+      "call / verify",
+      "call / Lint / format / security hooks",
+      "call / gitleaks"
     ]
   },
   "enforce_admins": true,

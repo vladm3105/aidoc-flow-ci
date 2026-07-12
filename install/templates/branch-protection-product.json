@@ -1,13 +1,14 @@
 {
-  "_comment": "Branch protection for PRODUCT-CODE tier per REPO_STANDARDS.md §2. Tier repos: iplan-runner, aidoc-flow-engramory, aidoc-flow-ci. Required approving reviews: 0 (substantive review = ai-review.yml + composition.yml; auto-merge armed by auto-merge-ai-prs.yml). CODEOWNERS review deferred to v2. Includes `Secret scan (gitleaks)` because public/private both benefit.",
+  "_comment": "Branch protection for PRODUCT-CODE tier per REPO_STANDARDS.md \u00a72. Tier repos: iplan-runner, aidoc-flow-engramory, aidoc-flow-ci. Required approving reviews: 0 (substantive review = ai-review.yml + composition.yml; auto-merge armed by auto-merge-ai-prs.yml). CODEOWNERS review deferred to v2. Includes `Secret scan (gitleaks)` because public/private both benefit.",
   "_apply_note": "PR-C2 MUST strip ALL `_`-prefix keys before POST/PUT/PATCH. Use `jq 'del(.._comment, .._apply_note, .._docs, .._endpoint, .._umbrella_note)'` or equivalent. GitHub REST endpoints strictly validate unknown fields.",
   "required_status_checks": {
     "strict": false,
     "contexts": [
       "call / ai-review",
       "call / composition",
-      "Lint / format / security hooks",
-      "Secret scan (gitleaks)"
+      "call / verify",
+      "call / Lint / format / security hooks",
+      "call / gitleaks"
     ]
   },
   "enforce_admins": true,

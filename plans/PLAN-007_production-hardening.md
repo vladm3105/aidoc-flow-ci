@@ -188,6 +188,12 @@ W4 arms once gates verified green + names confirmed. W3 runs in parallel
 - **2026-07-12 — W5 DONE** (#137): pruned `.github/dependabot.yml` to
   `github-actions` only (4 orphan ecosystems removed) — canon repo's Dependabot
   runs green.
+- **2026-07-12 — W2 (FT-1/FT-2) DONE**: corrected branch-protection template +
+  §2 check-names to the verified `call / …` emitted strings (added `call / verify`;
+  fixed pre-commit + secret-scan names) + `tests/test_checknames.sh` guard. This
+  unblocks W4 arming (a mismatched required name would have bricked every gate).
+  W2 remaining: FT-5 (drift admin:read doc) + FT-6-residual (composition trust-
+  config source — document/decide).
 - **2026-07-12 — W1 DONE**: `tests/` suite + `tests.yml` shipped (103
   assertions: lint + workflow-contract + script-logic + negative). Surfaced +
   fixed 2 over-strict checks during authoring. NEXT for W1: add `Tests` to

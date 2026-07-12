@@ -15,6 +15,19 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   reusable body change (no new tag needed); existing callers must add the block
   directly.
 
+### Fixed — branch-protection check-names corrected to verified emitted strings (PLAN-007 W2, FT-1/FT-2) (2026-07-12)
+
+- The branch-protection templates + REPO_STANDARDS §2 listed required-check
+  names that **do not match what CI emits** — `Lint / format / security hooks`
+  (real: `call / Lint / format / security hooks`) and `Secret scan (gitleaks)`
+  (real canon name: `call / gitleaks`) — and OMITTED `call / verify` (FT-1). A
+  mismatched required context never turns green → arming it would block every PR
+  forever (the trap W4 fleet-arming was about to hit). Corrected all three tier
+  templates + §2 to the verified `call / …` names, captured a verified-emitted-
+  names table in §2, and added **`tests/test_checknames.sh`** — asserts every
+  `call / …` template context maps to a real reusable job, so it can't drift
+  again. Closes FT-1 + FT-2.
+
 ### Added — automated test suite (PLAN-007 W1) (2026-07-12)
 
 - **`tests/` + `.github/workflows/tests.yml`** — the automated regression gate
