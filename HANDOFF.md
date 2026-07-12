@@ -4,9 +4,26 @@ Live cross-session resume point for the workspace CI + governance-workflow
 canon library. Read at session start; refresh at milestones and before
 context compaction.
 
-## Current state (2026-07-11)
+## Current state (2026-07-12)
 
-**PLAN-006 W4 content-check population — COMPLETE across all active repos.**
+**PLAN-007 production-hardening — W1/W2/W5 DONE; W4 runbook prepared; W3
+remains.** Completed: W1 test suite (`tests/`, PR #143), W5 Dependabot prune
+(#137), W2 guardrails (FT-1/2/5 resolved, FT-6 downgraded; #144/#145).
+- **W4 — arm gates fleet-wide = 🔴 founder-executed** (write to other repos +
+  branch-protection change; not AI-autonomous under verbal auth per autonomy
+  tiers + OPS-0062 + `feedback_writes_to_other_repos_inbox_first`). A read-only
+  survey (2026-07-12) showed arming is NOT a template sweep — 2 repos
+  unprotected (iplan-standard, engramory), 3 carry a **phantom** bare-lint
+  required-context (framework/business/iplanic → merging via `--admin`),
+  iplan-runner canon adoption broken (`call / ai-review` skipped, `call /
+  gitleaks` failing), interlog composition possibly conditional. Founder-runnable
+  runbook with exact per-repo `gh api` commands + verification + rollback:
+  **`docs/FLEET_BRANCH_PROTECTION_ARMING.md`**. Follow-ups = FT-12. (I applied
+  then reverted an engramory pilot when I recognized the 🔴 boundary.)
+- **W3 remains** — markdown-lint report-only→blocking (`--fix` remediation,
+  labor-heavy) + docs-sync dry-run→live (🔴 App). FT-11.
+
+_Recent (2026-07-11):_ **PLAN-006 W4 content-check population — COMPLETE across all active repos.**
 Two releases fixed the canon (`ci/v1.9.4` binary-install for links+markdown-lint;
 `ci/v1.9.5` markdown-lint `fail-on-findings` toggle + `.lychee.toml`
 `include_fragments` invalid-key fix), then populated the fleet. Final state
