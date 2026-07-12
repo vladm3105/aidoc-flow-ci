@@ -219,6 +219,16 @@ canonical skip patterns:
 - **Skip on:** repos where the maintenance burden isn't yet a real problem
   (small repos, low PR volume). Adopt when doc-of-record drift becomes a
   recurring theme in review cycles.
+- **Behavior:** after a merged PR reaches the default branch, the configured
+  Claude or Codex agent receives bounded PR metadata/patches, the repository's
+  Markdown inventory, and `.github/doc-maintainer-conventions.md`. Its JSON
+  plan is schema/path/cap validated. In dry-run mode the plan is posted to the
+  merged PR. In live mode, allowlisted low-risk edits become a bot PR and
+  high-risk edits become a `docs` issue for human judgment.
+- **Required consumer files:** `.github/doc-maintainer.json` and
+  `.github/doc-maintainer-conventions.md`; starter templates ship in
+  `install/templates/`. Begin with `dry_run: true` and inspect at least five
+  coherent plans before enabling live mode.
 
 ### 3.10 `audit-trail-check.yml`
 

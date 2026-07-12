@@ -32,10 +32,13 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq shellcheck yamllint jq
-          # actionlint via go (preinstalled on ubuntu-latest); best-effort —
-          # the suite skips actionlint gracefully if the install fails.
-          go install github.com/rhysd/actionlint/cmd/actionlint@latest || true
-          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+          # Pinned + hash-verified binary: avoids both a floating tool and
+          # dependence on whichever Go toolchain ubuntu-latest currently has.
+          curl -fsSL https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o /tmp/actionlint.tgz
+          printf '%s  %s\n' '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8' /tmp/actionlint.tgz | sha256sum --check --strict
+          tar -xzf /tmp/actionlint.tgz -C /tmp actionlint
+          install /tmp/actionlint "$HOME/.local/bin/actionlint"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Run test suite
         run: bash tests/run.sh

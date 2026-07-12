@@ -17,7 +17,12 @@ on:
   schedule:
     # Monday 09:00 UTC — early week visibility for any accumulated drift.
     - cron: '0 9 * * 1'
-  workflow_dispatch:  # manual re-run
+  workflow_dispatch:
+    inputs:
+      strict:
+        description: 'Fail on drift or an uncheckable control (use for release/adoption validation)'
+        type: boolean
+        default: false
 
 # Zero default token permissions (sec LOW, defense-in-depth); the drift
 # job below explicitly grants only what it needs (contents: read).
@@ -36,7 +41,11 @@ jobs:
       - name: Run standards drift check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash sync/check-standards-drift.sh --tier product
+          STRICT: ${{ inputs.strict || false }}
+        run: |
+          args=(--tier product)
+          [ "$STRICT" = "true" ] && args+=(--strict)
+          bash sync/check-standards-drift.sh "${args[@]}"
 
       - name: Fleet pin-currency audit (public repos)
         # Central weekly view of stale @ci/v* pins. GITHUB_TOKEN can read public

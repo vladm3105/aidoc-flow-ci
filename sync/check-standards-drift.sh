@@ -12,7 +12,7 @@
 # actions permissions).
 #
 # Usage:
-#   bash sync/check-standards-drift.sh --tier <tier>
+#   bash sync/check-standards-drift.sh --tier <tier> [--strict]
 #     --tier <name>   REQUIRED. governance|product|ops|umbrella|bootstrap.
 #     --repo <owner/repo>
 #                     REQUIRED unless run in a checked-out consumer repo
@@ -20,8 +20,8 @@
 #     --ci-tag <tag>  canon tag (default: reads @ci/vX.Y.Z pin from
 #                     .github/workflows/*.yml; falls back to main).
 #
-# Exit codes:
-#   0   always (warning-only contract)
+#     --strict       exit non-zero on drift or an uncheckable control; intended
+#                    for release/adoption gates. Default remains warning-only.
 #
 # Requires: bash 4+, gh CLI authenticated, jq.
 
@@ -35,41 +35,45 @@ fi
 TIER=""
 REPO=""
 CI_TAG_OVERRIDE=""
+STRICT=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --tier)   TIER="$2"; shift 2 ;;
     --repo)   REPO="$2"; shift 2 ;;
     --ci-tag) CI_TAG_OVERRIDE="$2"; shift 2 ;;
+    --strict) STRICT=1; shift ;;
     -h|--help) sed -nE '/^# aidoc-flow-ci/,/^set /p' "$0" | sed -E 's/^# ?//; /^set /d'; exit 0 ;;
-    *) echo "::warning::check-standards-drift: unknown arg: $1"; exit 0 ;;
+    *) echo "::warning::check-standards-drift: unknown arg: $1"; exit 2 ;;
   esac
 done
 
+stop_uncheckable() {
+  echo "::warning::check-standards-drift: $1"
+  [ "$STRICT" -eq 0 ] && exit 0
+  exit 2
+}
+
 case "$TIER" in
   governance|product|ops|umbrella|bootstrap) ;;
-  *) echo "::warning::check-standards-drift: --tier required (governance|product|ops|umbrella|bootstrap)"; exit 0 ;;
+  *) stop_uncheckable "--tier required (governance|product|ops|umbrella|bootstrap)" ;;
 esac
 
 if ! command -v gh >/dev/null 2>&1; then
-  echo "::warning::check-standards-drift: gh CLI not found — skipping"
-  exit 0
+  stop_uncheckable "gh CLI not found — skipping"
 fi
 if ! command -v jq >/dev/null 2>&1; then
-  echo "::warning::check-standards-drift: jq not found — skipping"
-  exit 0
+  stop_uncheckable "jq not found — skipping"
 fi
 if ! gh auth status >/dev/null 2>&1; then
-  echo "::warning::check-standards-drift: gh CLI not authenticated — skipping"
-  exit 0
+  stop_uncheckable "gh CLI not authenticated — skipping"
 fi
 
 if [ -z "$REPO" ]; then
   REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")
 fi
 if [ -z "$REPO" ]; then
-  echo "::warning::check-standards-drift: --repo not provided and gh repo view failed"
-  exit 0
+  stop_uncheckable "--repo not provided and gh repo view failed"
 fi
 
 # Resolve ONE canon tag to compare this repo's WHOLE-REPO settings (branch
@@ -91,7 +95,8 @@ TEMPLATE_BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TA
 # Discover the target's actual default branch (M4-sec: not hardcoded main).
 DEFAULT_BRANCH=$(gh api "repos/${REPO}" --jq '.default_branch' 2>/dev/null || echo "main")
 
-echo "check-standards-drift: repo=$REPO tier=$TIER canon=$CI_TAG branch=$DEFAULT_BRANCH (warning-only)"
+MODE="warning-only"; [ "$STRICT" -eq 1 ] && MODE="strict"
+echo "check-standards-drift: repo=$REPO tier=$TIER canon=$CI_TAG branch=$DEFAULT_BRANCH ($MODE)"
 
 DRIFT=0
 FETCH_ERRORS=0
@@ -259,17 +264,19 @@ rm -f "$lb_local" "$lb_canon"
 # local ./.github/workflows checkout, so it works for public AND private via
 # each repo's own token). Warning-only. Uses the local copy if present
 # (self-run / already fetched), else fetches from the resolved CI_TAG.
+PIN_ERRORS=0
 if [ -f sync/check-pin-currency.sh ]; then
-  bash sync/check-pin-currency.sh || true
+  bash sync/check-pin-currency.sh || PIN_ERRORS=$((PIN_ERRORS + 1))
 else
   _pc="$(mktemp)"
   if curl -fsSL "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/sync/check-pin-currency.sh" -o "$_pc" 2>/dev/null; then
-    bash "$_pc" || true
+    bash "$_pc" || PIN_ERRORS=$((PIN_ERRORS + 1))
   else
     echo "::notice::check-standards-drift: check-pin-currency.sh not available at ${CI_TAG} — skipping pin-currency (re-pin standards-drift to a release that includes it)"
   fi
   rm -f "$_pc"
 fi
 
-echo "check-standards-drift: $DRIFT drift, $FETCH_ERRORS fetch/scope error(s) (never blocks)"
+echo "check-standards-drift: $DRIFT drift, $FETCH_ERRORS fetch/scope error(s), $PIN_ERRORS pin error(s) ($MODE)"
+[ "$STRICT" -eq 0 ] || [ $((DRIFT + FETCH_ERRORS + PIN_ERRORS)) -eq 0 ] || exit 1
 exit 0

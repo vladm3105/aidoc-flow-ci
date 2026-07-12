@@ -162,7 +162,7 @@ PY
     fi
   done
   # config files
-  for pair in ".markdownlint.json:.markdownlint.json" ".lychee.toml:.lychee.toml" "docs-sync.json:.github/docs-sync.json"; do
+  for pair in ".markdownlint.json:.markdownlint.json" ".lychee.toml:.lychee.toml" "docs-sync.json:.github/docs-sync.json" "doc-maintainer.json:.github/doc-maintainer.json" "doc-maintainer-conventions.md:.github/doc-maintainer-conventions.md"; do
     local from="${pair%%:*}" to="${pair##*:}"
     if [ -f "$TPL/$from" ]; then mkdir -p "$dir/$(dirname "$to")"; cp "$TPL/$from" "$dir/$to"; c_ok "config $to"; fi
   done

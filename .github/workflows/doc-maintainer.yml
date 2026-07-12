@@ -69,6 +69,10 @@ on:
         description: 'Override config dry_run (true=force dry-run; false=force live). Empty = use config.'
         type: string
         default: ''
+      merge_sha:
+        description: 'Merge commit to analyze. Empty uses github.sha; the scheduled reconciler supplies this when recovering a missed push run.'
+        type: string
+        default: ''
     secrets:
       AIDOC_FLOW_BOT_ID:
         description: 'aidoc-flow-bot App numeric ID. Required for non-dry-run mode.'
@@ -87,7 +91,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
-  actions: read
+  actions: write          # scheduled reconciler dispatches missed merge SHAs
 
 concurrency:
   # Keyed by event so a cron reconcile never queues behind a slow push
@@ -144,12 +148,14 @@ jobs:
           python3 .doc-maintainer-scripts/reconcile.py \
             --gh-repo "$GH_REPO" \
             --lookback-min 90 \
+            --dispatch \
             || { echo "::error::reconcile.py failed — failing LOUD per IPLAN-0025 D12 / Risk 12"; exit 1; }
           echo "::notice::reconciler complete."
 
   maintain:
-    # Push-triggered pipeline ONLY — the reconcile job owns the schedule path
-    # (BLOCKER B1 fix). Recursion guard #2 (belt-and-suspenders for [skip ci]).
+    # Push-triggered pipeline ONLY — the reconcile job owns the schedule path.
+    # Actor guards prevent bot-PR merges from recursively opening another PR;
+    # generated commits intentionally do NOT use [skip ci], so normal PR gates run.
     if: ${{ github.event_name != 'schedule' && github.actor != 'aidoc-flow-bot[bot]' && github.event.head_commit.author.username != 'aidoc-flow-bot[bot]' }}
     name: AI-driven doc maintenance
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
@@ -157,7 +163,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
-      MERGE_SHA: ${{ github.sha }}
+      MERGE_SHA: ${{ inputs.merge_sha || github.sha }}
       CONFIG_PATH: ${{ inputs.config_path }}
       CONVENTIONS_PATH: ${{ inputs.conventions_path }}
       REVIEWER: ${{ inputs.reviewer }}
@@ -355,11 +361,30 @@ jobs:
           LOW_COUNT="${{ steps.plan.outputs.low_count }}"
           HIGH_COUNT="${{ steps.plan.outputs.high_count }}"
           BODY=$(mktemp)
+          PATCH=.doc-maintainer-proposed.patch
+          : > "$PATCH"
+          while IFS= read -r path; do
+            diff -u --label "a/$path" --label "b/$path" "$path" ".doc-maintainer-proposed/${path}.proposed" >> "$PATCH"
+            rc=$?
+            [ "$rc" -le 1 ] || { echo "::error::could not render dry-run patch for $path"; exit "$rc"; }
+          done < <(jq -r '.low_risk_set[].path' .doc-maintainer-plan.json)
           {
             echo "🤖 **doc-maintainer (dry-run)** — proposed doc edits after merge of PR #${PR}."
             echo ""
             echo "- **Low-risk edits proposed:** ${LOW_COUNT} (would land via a bot PR through ai-review chain in live mode)"
             echo "- **High-risk edits proposed:** ${HIGH_COUNT} (would surface as a GitHub issue for human application in live mode)"
+            echo ""
+            jq -r '(.low_risk_set + .high_risk_set)[] | "- `\(.path)`: \(.instruction) — \(.rationale)"' .doc-maintainer-plan.json
+            if [ -s "$PATCH" ]; then
+              echo ""
+              echo "<details><summary>Generated low-risk patch preview (truncated to 40 KB)</summary>"
+              echo ""
+              echo '```diff'
+              head -c 40000 "$PATCH"
+              echo ""
+              echo '```'
+              echo "</details>"
+            fi
             echo ""
             echo "Workflow run: ${RUN_URL}"
             echo ""
@@ -367,38 +392,93 @@ jobs:
           } > "$BODY"
           gh pr comment "$PR" --body-file "$BODY"
 
+      - name: Upload dry-run proposed patch
+        if: ${{ steps.cfg.outputs.skip != 'true' && steps.cfg.outputs.dry_run == 'true' && steps.plan.outputs.low_count != '0' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: doc-maintainer-proposed-${{ github.sha }}
+          path: .doc-maintainer-proposed.patch
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Mint doc-maintainer App token
+        id: bot_token
+        if: ${{ steps.cfg.outputs.skip != 'true' && steps.cfg.outputs.dry_run != 'true' && steps.plan.outputs.low_count != '0' }}
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
+        with:
+          app-id: ${{ secrets.AIDOC_FLOW_BOT_ID }}
+          private-key: ${{ secrets.AIDOC_FLOW_BOT_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Step 10 — Live branch (low-risk) — open bot PR
         if: ${{ steps.cfg.outputs.skip != 'true' && steps.cfg.outputs.dry_run != 'true' && steps.plan.outputs.low_count != '0' }}
         env:
-          BOT_ID: ${{ secrets.AIDOC_FLOW_BOT_ID }}
-          BOT_KEY: ${{ secrets.AIDOC_FLOW_BOT_KEY }}
+          BOT_TOKEN: ${{ steps.bot_token.outputs.token }}
         run: |
-          set -uo pipefail
-          if [ -z "${BOT_ID:-}" ] || [ -z "${BOT_KEY:-}" ]; then
-            echo "::error::live-mode requires AIDOC_FLOW_BOT_ID + AIDOC_FLOW_BOT_KEY secrets (per IPLAN-0025 P5a App permission expansion runbook)."
-            exit 1
-          fi
+          set -euo pipefail
+          [ -n "${BOT_TOKEN:-}" ] || { echo "::error::could not mint doc-maintainer App token"; exit 1; }
           PR=$(gh api "repos/$GH_REPO/commits/$MERGE_SHA/pulls" --jq '.[0].number' 2>/dev/null || echo "")
-          # Live-mode commit/push/open-PR logic ships in v1.4.1 (alpha.1 stub
-          # per IPLAN-0025 §3 P5 — graduation gated on P5a App permission
-          # expansion + P3a trust allowlist expansion).
-          # alpha.1: emit notice; alpha.2 ships the App-token-mint + branch
-          # push + PR-open via planner.json apply mode.
-          echo "::notice::alpha.1 stub — live low-risk PR creation ships in v1.4.1 after P5a App permission + P3a trust allowlist preconditions land (per IPLAN-0025 §3 + Risk 7 + Risk 13)"
+          [ -n "$PR" ] || { echo "::error::cannot resolve source PR for $MERGE_SHA"; exit 1; }
+          MAX_PRS=$(jq -r '.max_prs_per_day // 5' "$CONFIG_PATH")
+          TODAY=$(date -u +%F)
+          CREATED_TODAY=$(GH_TOKEN="$BOT_TOKEN" gh api "repos/$GH_REPO/pulls?state=all&per_page=100&sort=created&direction=desc" \
+            --jq "[.[] | select(.user.login == \"aidoc-flow-bot[bot]\" and (.created_at | startswith(\"$TODAY\")))] | length")
+          [ "$CREATED_TODAY" -lt "$MAX_PRS" ] || { echo "::error::doc-maintainer daily PR cap reached ($CREATED_TODAY/$MAX_PRS)"; exit 1; }
+          python3 - <<'PY'
+          import json, pathlib, shutil
+          plan = json.load(open('.doc-maintainer-plan.json'))
+          root = pathlib.Path('.doc-maintainer-proposed')
+          for entry in plan['low_risk_set']:
+              path = pathlib.PurePosixPath(entry['path'])
+              if path.is_absolute() or '..' in path.parts:
+                  raise SystemExit(f"unsafe proposed path: {path}")
+              source = root / f"{path}.proposed"
+              if not source.is_file():
+                  raise SystemExit(f"missing proposed file: {source}")
+              shutil.copyfile(source, pathlib.Path(path))
+          PY
+          BRANCH="docs/doc-maintainer-${MERGE_SHA:0:8}-${GITHUB_RUN_ATTEMPT}"
+          git config user.name "aidoc-flow-bot[bot]"
+          git config user.email "aidoc-flow-bot[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          while IFS= read -r path; do git add -- "$path"; done < <(jq -r '.low_risk_set[].path' .doc-maintainer-plan.json)
+          git diff --cached --quiet && { echo "::error::agent proposed no effective documentation changes"; exit 1; }
+          git commit -m "docs: maintain documentation for PR #${PR}"
+          git remote set-url origin "https://x-access-token:${BOT_TOKEN}@github.com/${GH_REPO}.git"
+          git push origin "HEAD:refs/heads/$BRANCH"
+          git remote set-url origin "https://github.com/${GH_REPO}.git"
+          BODY=$(mktemp)
+          {
+            echo "Automated documentation follow-up for #${PR}."
+            echo ""
+            jq -r '.low_risk_set[] | "- `\(.path)`: \(.rationale)"' .doc-maintainer-plan.json
+            echo ""
+            echo "Generated by the doc-maintainer agent; normal CI and AI review still apply."
+          } > "$BODY"
+          GH_TOKEN="$BOT_TOKEN" gh pr create --base "${{ github.event.repository.default_branch }}" --head "$BRANCH" \
+            --title "docs: maintain documentation for PR #${PR}" --body-file "$BODY"
 
       - name: Step 11 — Live branch (high-risk) — open GitHub issue
         if: ${{ steps.cfg.outputs.skip != 'true' && steps.cfg.outputs.dry_run != 'true' && steps.plan.outputs.high_count != '0' }}
         env:
-          BOT_ID: ${{ secrets.AIDOC_FLOW_BOT_ID }}
-          BOT_KEY: ${{ secrets.AIDOC_FLOW_BOT_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -uo pipefail
-          if [ -z "${BOT_ID:-}" ] || [ -z "${BOT_KEY:-}" ]; then
-            echo "::error::live-mode requires AIDOC_FLOW_BOT_ID + AIDOC_FLOW_BOT_KEY secrets"
-            exit 1
-          fi
-          echo "::notice::alpha.1 stub — high-risk issue creation ships in v1.4.1 (per IPLAN-0025 §2.1 step 11 + D8)"
+          set -euo pipefail
+          PR=$(jq -r '.pr_number' .doc-maintainer-plan.json)
+          TITLE="Documentation follow-up required for PR #${PR}"
+          EXISTS=$(gh api "repos/$GH_REPO/issues?state=all&per_page=100" --jq "[.[] | select(.title == \"$TITLE\")] | length")
+          [ "$EXISTS" -eq 0 ] || { echo "::notice::high-risk follow-up already exists for PR #${PR}"; exit 0; }
+          BODY=$(mktemp)
+          {
+            echo "The doc-maintainer identified documentation changes requiring human judgment after PR #${PR}."
+            echo ""
+            jq -r '.high_risk_set[] | "## `\(.path)`\n\n**Required update:** \(.instruction)\n\n**Reason:** \(.rationale)\n"' .doc-maintainer-plan.json
+          } > "$BODY"
+          gh issue create --title "$TITLE" --body-file "$BODY"
 
       - name: Cleanup
         if: always()
-        run: rm -rf .doc-maintainer-scripts .doc-maintainer-proposed .doc-maintainer-plan.json
+        run: rm -rf .doc-maintainer-scripts .doc-maintainer-proposed .doc-maintainer-plan.json .doc-maintainer-proposed.patch

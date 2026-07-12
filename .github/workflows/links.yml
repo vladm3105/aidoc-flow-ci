@@ -123,10 +123,12 @@ jobs:
           args=(--no-progress --cache --max-cache-age 1d)
           [ -f "${CONFIG}" ] && args+=(--config "${CONFIG}")
           [ "${MODE}" = "internal" ] && args+=(--offline)
+          read -r -a path_args <<< "$PATHS"
+          [ "${#path_args[@]}" -gt 0 ] || { echo "::error::paths input is empty"; exit 1; }
           set +e
           # `--` stops a caller-supplied PATHS value from being parsed as
           # lychee options (defense-in-depth against argument injection).
-          /tmp/lychee "${args[@]}" -- ${PATHS}
+          /tmp/lychee "${args[@]}" -- "${path_args[@]}"
           rc=$?
           set -e
           # fail-on-error=false (external/scheduled mode) never fails the job.

@@ -16,16 +16,30 @@
 #     fork-authored PRs to HUMAN-REVIEW-ONLY in ai-review.yml).
 
 name: doc-maintainer
+run-name: doc-maintainer ${{ inputs.head_sha || github.sha }}
 
 on:
   push:
     branches: [main]
   schedule:
     - cron: '7,37 * * * *'
+  workflow_dispatch:
+    inputs:
+      head_sha:
+        description: 'Merge SHA to recover (normally set by the scheduled reconciler)'
+        required: false
+        type: string
+
+permissions:
+  actions: write
+  contents: write
+  issues: write
+  pull-requests: write
 
 jobs:
   call:
     uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v1.9.5
     with:
       runner_labels: '"ubuntu-latest"'
+      merge_sha: ${{ inputs.head_sha || '' }}
     secrets: inherit  # pragma: allowlist secret

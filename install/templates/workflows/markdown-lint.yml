@@ -42,6 +42,5 @@ jobs:
         !.git
       # Report-only rollout (recommended for a repo with existing lint debt):
       # fail-on-findings: false
-    # PRIVATE consumers override:
-    # with:
-    #   runner_labels: '["self-hosted", "aidoc", "ci-ephemeral"]'
+      # PRIVATE consumers add this inside the existing `with:` block:
+      # runner_labels: '["self-hosted", "aidoc", "ci-ephemeral"]'

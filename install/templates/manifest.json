@@ -50,6 +50,20 @@
       "auto_install": false
     },
     {
+      "path": ".github/doc-maintainer.json",
+      "template": "doc-maintainer.json",
+      "substitute": [],
+      "safe_to_replace": false,
+      "auto_install": false
+    },
+    {
+      "path": ".github/doc-maintainer-conventions.md",
+      "template": "doc-maintainer-conventions.md",
+      "substitute": [],
+      "safe_to_replace": false,
+      "auto_install": false
+    },
+    {
       "path": ".github/workflows/codeql.yml",
       "template": "workflows/codeql.yml",
       "substitute": [],
