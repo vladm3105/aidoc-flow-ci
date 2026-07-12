@@ -37,3 +37,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash sync/check-standards-drift.sh --tier product
+
+      - name: Fleet pin-currency audit (public repos)
+        # Central weekly view of stale @ci/v* pins. GITHUB_TOKEN can read public
+        # repos' contents; PRIVATE repos (operations/business/iplanic/interlog)
+        # are covered by their OWN weekly standards-drift run, which chains
+        # check-pin-currency.sh in-repo. Warning-only.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bash sync/check-pin-currency.sh --fleet \
+            vladm3105/aidoc-flow-framework vladm3105/aidoc-flow-engramory \
+            vladm3105/aidoc-flow-iplan-standard vladm3105/iplan-runner \
+            vladm3105/aidoc-flow-ci || true
