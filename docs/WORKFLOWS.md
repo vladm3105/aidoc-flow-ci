@@ -284,6 +284,13 @@ change mapping.
 
 ## 6. Drift detection
 
+A third check, [`sync/check-pin-currency.sh`](../sync/check-pin-currency.sh),
+flags callers whose `@ci/vX.Y.Z` pin LAGS the current `VERSION` (the
+pin-staleness dimension the other two miss). Run `bash
+sync/check-pin-currency.sh --fleet <repos…>` for a fleet audit, or in a
+consumer repo for a warning-only in-repo check. Re-pin stale repos with
+`install/install.sh <repo> --repin` (version-string-only).
+
 The [`sync/check-drift.sh`](../sync/check-drift.sh) script compares each
 consumer's `.github/workflows/*.yml` against the canonical template at the
 pinned `ci/vX.Y.Z` tag and reports any diff as a `::warning::`. Warning-only,

@@ -198,10 +198,19 @@ verify() {
   echo "  If startup_failure → docs/AI_CI_DEPLOYMENT.md §5 (items 3,4,6) + §8."
 }
 
+audit_pins() {  # $@ = owner/repo… (default: the workspace fleet)
+  local repos=("$@")
+  [ ${#repos[@]} -eq 0 ] && repos=(vladm3105/aidoc-flow-operations vladm3105/aidoc-flow-framework \
+    vladm3105/aidoc-flow-business vladm3105/aidoc-flow-iplanic vladm3105/aidoc-flow-interlog \
+    vladm3105/aidoc-flow-engramory vladm3105/aidoc-flow-iplan-standard vladm3105/iplan-runner)
+  GH="$GH" bash "$HERE/../sync/check-pin-currency.sh" --canon "$CI_TAG" --fleet "${repos[@]}"
+}
+
 case "${1:-help}" in
-  preflight) preflight "${2:?owner/repo}";;
-  plan)      plan "${2:?owner/repo}";;
-  scaffold)  scaffold "${2:?owner/repo}" "${3:?target dir}" "${@:4}";;
-  verify)    verify "${2:?owner/repo}" "${3:?pr number}";;
-  *) sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//';;
+  preflight)  preflight "${2:?owner/repo}";;
+  plan)       plan "${2:?owner/repo}";;
+  scaffold)   scaffold "${2:?owner/repo}" "${3:?target dir}" "${@:4}";;
+  verify)     verify "${2:?owner/repo}" "${3:?pr number}";;
+  audit-pins) audit_pins "${@:2}";;
+  *) sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; echo "  deploy-ci-wizard.sh audit-pins [owner/repo…]        # fleet pin-staleness audit";;
 esac
