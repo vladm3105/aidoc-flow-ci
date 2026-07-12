@@ -126,6 +126,28 @@ doc-maintainer recorded).
 **Semver:** none (per-repo config), but the markdown-lint remediation is the
 labor-heavy item.
 
+**Progress (2026-07-12):**
+- **business — GRADUATED** (business #57): 0 residual violations under its own
+  `.markdownlint.json`, so a clean `fail-on-findings: false→true` flip. Merged
+  via `--admin` because business's branch protection still requires the phantom
+  bare `Lint / format / security hooks` context (FT-12) — LIVE confirmation that
+  the phantom forces `--admin` merges; the W4 runbook fixes it.
+- **Remaining 5 (engramory 580, iplanic 418, iplan-runner 226, interlog 93,
+  iplan-standard 30 residual) — BLOCKED ON A LINT-POLICY DECISION, not mechanical
+  work.** `--fix` clears the auto-fixable rules (MD004/MD032), but the residual
+  is dominated by **workspace-legitimate false-positives**: `MD036`
+  emphasis-as-heading on ADR bold-labels (`**Context**`/`**Decision**`/
+  `**Consequences**`/`**Origin**` in every `DECISIONS.md`), `MD024`
+  duplicate-heading on keep-a-changelog `### Added`/`### Changed`, `MD013`
+  line-length on changelog data rows, `MD033` on PR-template placeholder tokens
+  (`<verdict>`). Hand-"fixing" these would damage the intended formats and, for
+  DECISIONS/CHANGELOG, is a governance-sensitive content edit. The leveraged path
+  is a **canon `.markdownlint.json` decision** (relax `MD036` — ADR bold-labels
+  are a deliberate workspace style — and assess `MD024`/`MD013`/`MD033` for the
+  changelog/template contexts), which lets multiple repos graduate at once, vs.
+  per-repo prose reflow. This is a doc-style policy call (weakens some rules with
+  reason) — surface to founder rather than unilaterally weaken canon lint. FT-11.
+
 ### W4 — Arm gates as required checks fleet-wide
 
 **Problem:** deployed gates run but don't all enforce. Using the per-tier
