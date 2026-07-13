@@ -3,6 +3,18 @@
 Notable releases of the shared CI library. SemVer per `ci/vX.Y.Z`
 tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
+### Changed — unified LiteLLM gateway for all AI jobs (unreleased)
+
+- `ai-review` and `doc-maintainer` now call one OpenAI-compatible LiteLLM
+  proxy through a dependency-free Python adapter. Runners no longer install,
+  authenticate, or select Claude/Codex CLIs.
+- The consumer contract is `LITELLM_BASE_URL`, `LITELLM_API_KEY`, and LiteLLM
+  model aliases (`litellm.model` for review; caller `model` for doc-maintainer).
+  Provider credentials, routing, fallback, and budgets stay behind LiteLLM.
+- Proxy errors, missing configuration, malformed JSON, and structurally invalid
+  verdicts fail closed. This removes vendor-specific workflow inputs and is a
+  breaking interface change targeted for `ci/v2.0.0`.
+
 ### Added — fleet branch-protection arming runbook + markdown-lint graduation complete (PLAN-007 W3/W4) (2026-07-12)
 
 - **`docs/FLEET_BRANCH_PROTECTION_ARMING.md`** (NEW) — founder-executable runbook

@@ -20,7 +20,7 @@
 #     path (P3) does NOT need this — comments use GITHUB_TOKEN.
 #   - secrets AIDOC_FLOW_BOT_ID + AIDOC_FLOW_BOT_KEY set on consumer
 #     (live mode only; dry-run mode runs without them).
-#   - CLAUDE_CODE_OAUTH_TOKEN set (when reviewer=claude — default).
+#   - LITELLM_BASE_URL + LITELLM_API_KEY set.
 #
 # Phase 1 (this template's purpose): dry-run pilot on operations.
 # Mechanical docs-sync.yml stays LIVE during the pilot. After ≥5 clean
@@ -64,8 +64,11 @@ permissions:
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v1.9.5
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v2.0.0
     with:
       runner_labels: '["self-hosted", "aidoc", "ci-ephemeral"]'
+      model: ai-doc-maintainer
+      # Private HTTP proxies require explicit opt-in:
+      # litellm_allow_insecure_http: true
       merge_sha: ${{ inputs.head_sha || '' }}
     secrets: inherit  # pragma: allowlist secret

@@ -159,7 +159,7 @@ is on `ci/v1.1.0-alpha.1`. Pin updates are per-repo PRs.
 
 When a new project adopts `aidoc-flow-ci`, the project still owns:
 
-- **WHICH reviewer to use** (codex / claude / future LiteLLM-routed) — config.json choice
+- **WHICH LiteLLM model alias to use** — trusted config choice
 - **WHO can approve** (trust.ai_review allowlist) — config.json choice
 - **WHETHER to auto-merge** (auto_merge.enabled) — config.json choice
 - **WHICH skills to apply** (per IPLAN-0021 once shipped) — config.json `skills.allowlist`

@@ -116,7 +116,7 @@ done
 # and the hardcoded fallback is authoritative — that is expected and correct.
 # The startup log below names the winning source so a stale CI_TAG env var in
 # a consumer's CI caller silently overriding VERSION is diagnosable.
-CI_TAG_FALLBACK="ci/v1.9.5"
+CI_TAG_FALLBACK="ci/v2.0.0"
 if [ -n "${CI_TAG:-}" ]; then
   CI_TAG_SOURCE="CI_TAG env"
 else

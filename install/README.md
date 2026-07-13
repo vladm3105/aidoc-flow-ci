@@ -120,8 +120,7 @@ until the template ships.)
 ## What it does NOT do
 
 - **Doesn't add secrets** — the founder adds `APP_REVIEWER_1_ID` /
-  `APP_REVIEWER_1_KEY` + the reviewer auth token (`CLAUDE_CODE_OAUTH_TOKEN`
-  / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`). See
+  `APP_REVIEWER_1_KEY` plus `LITELLM_BASE_URL` and `LITELLM_API_KEY`. See
   [`../docs/REVIEWER_APP_ONBOARDING.md`](../docs/REVIEWER_APP_ONBOARDING.md).
 - **Doesn't change branch protection** — the required checks
   (`call / ai-review`, `call / composition`, `call / verify`) must be

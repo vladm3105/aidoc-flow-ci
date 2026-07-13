@@ -18,7 +18,7 @@ The reusable `ai-review.yml` workflow checks out `aidoc-flow-ci` at the
 **consumer's pinned tag** (parsed from `github.workflow_ref`) via
 sparse-checkout (only this directory), then passes:
 
-- `review-prompt.md` → reviewer CLI's `--append-system-prompt-file`
+- `review-prompt.md` → instructions prepended to the LiteLLM request
 - `verdict.schema.json` → downstream parser for the structured verdict
 
 ## Why aidoc-flow-ci instead of operations

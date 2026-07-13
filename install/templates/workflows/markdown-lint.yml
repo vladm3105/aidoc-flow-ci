@@ -33,7 +33,7 @@ concurrency:
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v1.9.5
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v2.0.0
     with:
       globs: |
         **/*.md

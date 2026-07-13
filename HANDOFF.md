@@ -6,6 +6,21 @@ context compaction.
 
 ## Current state (2026-07-12)
 
+**Unified LiteLLM agent gateway (`feat/unified-litellm-agents`) — implementation
+complete, publication pending.** `ai-review` and `doc-maintainer` now use a
+dependency-free OpenAI-compatible adapter with `LITELLM_BASE_URL`, scoped
+`LITELLM_API_KEY`, and model aliases; vendor CLI paths are removed. The change
+is staged as breaking `ci/v2.0.0`, with templates, installer fallback, wizard,
+standards, security docs, and tests aligned. Safety controls include HTTPS by
+default (explicit private-HTTP opt-in), no redirects, bounded requests and
+responses, secret-pattern redaction, exact verdict schema/semantic validation,
+oversized-diff refusal, total retry deadlines, atomic outputs, and job-scoped
+permissions. Full suite passes (checknames 14, contracts 97, negative 9,
+scripts 24). OPS-0065 review used the maximum 3 cycles: final code/failure
+reviewers READY; the security reviewer’s final documentation-only finding was
+folded without a prohibited fourth cycle. Next: commit/push/open draft PR, merge,
+then cut `ci/v2.0.0` before repinning consumers.
+
 **PLAN-007 production-hardening — W1/W2/W3(markdown-lint)/W5 DONE; remaining work
 is entirely founder-gated (W4 arming + W3 docs-sync-live).** Completed: W1 test
 suite (`tests/`, PR #143), W5 Dependabot prune (#137), W2 guardrails

@@ -88,8 +88,8 @@ label names when talking about a specific image / pool. Example:
 
 | Label | Origin | What's installed |
 |---|---|---|
-| `runner-self` | Our self-hosted pool | gh + `codex`/`claude` CLI pre-baked + authenticated |
-| `ubuntu-latest` | GitHub-hosted | gh CLI pre-installed; reviewer CLI installed at workflow start (`ci/v1.0.2`+) |
+| `runner-self` | Our self-hosted pool | Python, gh, jq, curl, git; network route to LiteLLM |
+| `ubuntu-latest` | GitHub-hosted | Standard tools; network route to LiteLLM required |
 | *(future)* `runner-azure`, `runner-aws`, `runner-fargate` | Other origins (reserved namespace) | Per-provider |
 
 **Constraint** (per [`../LABELS.md`](../LABELS.md) §2): GitHub
@@ -109,11 +109,9 @@ custom names.
 > 1. **Use `ubuntu-latest` (recommended default for EXTERNAL adopters** — the
 >    aidoc-flow *workspace* default is self-hosted for private repos, see
 >    "Workspace default" above). The
->    reviewer CLI is installed just-in-time at workflow start (`ci/v1.0.2`+),
->    so no self-hosted infra is needed. Works for public repos and private
->    repos that have GitHub-hosted Actions minutes. (You still set the
->    reviewer-auth secret — the JIT-installed CLI needs it to authenticate;
->    see [`REVIEWER_APP_ONBOARDING.md`](REVIEWER_APP_ONBOARDING.md).)
+>    dependency-free HTTP adapter is included by the reusable workflow, so no
+>    vendor CLI is needed. The runner must reach the configured LiteLLM proxy;
+>    see [`REVIEWER_APP_ONBOARDING.md`](REVIEWER_APP_ONBOARDING.md).
 > 2. **Build your own self-hosted image** only if you need self-hosted
 >    (e.g., private repos with no GitHub-hosted minutes). Use the
 >    operations `Dockerfile` below as a **template** — it shows exactly
@@ -130,12 +128,11 @@ with the following baked in:
 | Tool | Why |
 |---|---|
 | `gh` CLI | Required by `ai-review` + `composition` workflows for `gh api` calls; **historical foot-gun** (PR #101 on operations spent ~2h debugging a "network failure" that was actually `gh: not found` in the runner image) |
-| `codex` CLI | Default reviewer for `ai-review` |
-| `claude` CLI | Alternate reviewer; selected via `reviewer: claude` input |
-| `python3`, `jq`, `curl`, `git` | Standard CLI utilities most workflows assume |
+| `python3` | Runs the dependency-free LiteLLM adapter |
+| `gh`, `jq`, `curl`, `git` | Standard CLI utilities the workflows assume |
 
-The image is rebuilt + re-tagged when any of those tools needs an
-update. Operations' ephemeral runner supervisor pulls
+The image is rebuilt and re-tagged when those tools need an update.
+Operations' ephemeral runner supervisor pulls
 `aidoc-flow-runner:latest` per container spawn (no long-running
 warm pool — each PR run gets a fresh ephemeral container).
 
@@ -181,12 +178,12 @@ registered correctly. Check the runner's labels via
 
 | Origin | Cost | Latency | CLI availability | Fork-PR safety |
 |---|---|---|---|---|
-| `runner-self` | Fixed (your infrastructure) | Low (warm container; ephemeral spawn ~5-10s) | Pre-baked (gh + codex + claude) | **Trust gate required** for PUBLIC repos (untrusted PR code on self-hosted is GitHub's documented anti-pattern) |
-| `ubuntu-latest` (GitHub-hosted) | Free for PUBLIC; metered for PRIVATE (per OPS-0049 this account has zero GitHub-hosted minutes for PRIVATE) | High (~30-60s VM cold-start) | gh pre-installed; reviewer CLI installed by workflow at start (`ci/v1.0.2`+) | Safe by default (GitHub-isolated VMs; fork PRs sandboxed) |
+| `runner-self` | Fixed (your infrastructure) | Low (warm container; ephemeral spawn ~5-10s) | Standard tools + LiteLLM reachability | **Trust gate required** for PUBLIC repos (untrusted PR code on self-hosted is GitHub's documented anti-pattern) |
+| `ubuntu-latest` (GitHub-hosted) | Free for PUBLIC; metered for PRIVATE (per OPS-0049 this account has zero GitHub-hosted minutes for PRIVATE) | High (~30-60s VM cold-start) | Standard tools + public LiteLLM reachability | Safe by default (GitHub-isolated VMs; fork PRs sandboxed) |
 | `runner-azure`/`runner-aws`/etc. | Per-provider | Per-provider | Per-image | Same trust-gate concern as `runner-self` if shared with PUBLIC repos |
 
 **For PRIVATE consumers:** a self-hosted pool is the practical choice
-(no GitHub-hosted minutes; CLI pre-baked; low latency). Inside aidoc-flow
+(no GitHub-hosted minutes; low latency). Inside aidoc-flow
 that pool is `runner-self`; **external adopters** substitute their own
 self-hosted label per the §2 callout — `runner-self` resolves only to
 aidoc-flow's pool.
@@ -213,11 +210,10 @@ or AWS-Fargate self-registered):
 
 1. **Register the runner pool** with the custom label
    (e.g., `runner-azure`). Must match `[a-zA-Z0-9_-]+` (no colons).
-2. **Bake the same CLI set** into the image (`gh` + reviewer CLI
-   + standard utilities). Use [operations'
+2. **Bake the standard tools** into the image (`python3`, `gh`, `jq`, `curl`,
+   and `git`) and provide a route to LiteLLM. Use [operations'
    `scripts/ci-runner/Dockerfile`](https://github.com/vladm3105/aidoc-flow-operations/blob/main/scripts/ci-runner/Dockerfile)
-   as the reference; the reviewer-CLI install steps are
-   provider-agnostic.
+   as the reference.
 3. **Update [`../LABELS.md`](../LABELS.md) §2 table** to add the
    new label row with its capability description.
 4. **Update this doc's §1 table** with the new origin.

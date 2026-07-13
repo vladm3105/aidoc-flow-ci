@@ -176,6 +176,30 @@ open a normal bot PR subject to the repository's review gates; high-risk edits
 open an issue and are never applied automatically. Live mode additionally
 requires the scoped `aidoc-flow-bot` App and enforces `max_prs_per_day`.
 
+### 4.0b Unified LiteLLM agent gateway
+
+All canonical AI execution (`ai-review` and `doc-maintainer`) goes through one
+OpenAI-compatible LiteLLM proxy. Consumers provide repository or organization
+secrets `LITELLM_BASE_URL` and `LITELLM_API_KEY`; they do not install or log in
+to vendor CLIs on runners. AI review resolves its model alias from caller input
+`model`, then trusted config `litellm.model`. Doc-maintainer uses its caller
+`model` input (default `ai-doc-maintainer`). The proxy owns provider selection,
+fallbacks, budgets, and provider credentials; CI receives only a scoped LiteLLM
+key. Runners must be able to reach the configured proxy. Proxy failures and
+malformed responses fail closed and never become an approving verdict.
+
+The proxy URL MUST use HTTPS. Plain HTTP requires the explicit caller opt-in
+`litellm_allow_insecure_http: true` and is limited to a controlled private
+network. Use separate virtual keys for review and documentation maintenance,
+restricted to their model aliases with spend/rate limits and rotation; never
+use the LiteLLM master key. Disable sensitive prompt/response logging and apply
+an appropriate retention policy: AI review sends a bounded, secret-pattern-
+redacted PR diff to the proxy, which can still contain private source code.
+Doc-maintainer sends redacted PR metadata, patches, repository conventions,
+and redacted current documentation. Secret-shaped source values use opaque
+placeholders during inference and are restored only after the response; missing
+or duplicated placeholders fail closed.
+
 ### 4.1 Runner class by visibility (canon)
 
 A workspace repo's runner CLASS follows its visibility, by default:

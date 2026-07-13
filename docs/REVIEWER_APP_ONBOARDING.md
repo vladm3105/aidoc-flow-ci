@@ -23,37 +23,41 @@ checklist but does not perform it.
 | --- | --- | --- | --- |
 | Secret | `APP_REVIEWER_1_ID` | the reviewer App's numeric **App ID** | `ai-review.yml` + `auto-merge-ai-prs.yml` (mint installation token) |
 | Secret | `APP_REVIEWER_1_KEY` | the reviewer App's **private key** (full PEM, incl. BEGIN/END lines) | same |
-| Secret | one reviewer-auth token — **must match your `.reviewer` engine** (see "Reviewer engine" below) | for `.reviewer: claude` → `CLAUDE_CODE_OAUTH_TOKEN` (Claude subscription CLI, free on Pro/Max) **or** `ANTHROPIC_API_KEY` (Claude API, pay-per-token); for `.reviewer: codex` → `OPENAI_API_KEY` | the "Run review" step exports it to the reviewer CLI/API |
+| Secret | `LITELLM_BASE_URL` | OpenAI-compatible LiteLLM proxy URL, normally ending in `/v1` | AI execution |
+| Secret | `LITELLM_API_KEY` | scoped LiteLLM virtual key | AI execution |
 | Variable | `APP_REVIEWER_1_BOT_ID` | the App's **bot-user** numeric id (NOT the App ID) | `composition.yml` + the R3 early-exit — matches the App's APPROVED review by `user.id` |
 
 Secrets can be set at the **repo** level (`gh secret set … --repo`) or
 inherited from an **org** secret; the variable is per-repo (`gh variable
 set …`).
 
-## Reviewer engine (config-driven)
+## LiteLLM model alias (config-driven)
 
-Which engine reviews PRs is **config-driven**, not hardcoded in the caller
-(PLAN-005 PR-D). The reusable resolves the engine as:
+Which model reviews PRs is config-driven. The reusable resolves it as:
 
-**caller `reviewer:` input** (if set) → **`.reviewer` in the trust-config
-repo's `.github/ai-review/config.json`** → **`codex` fallback**.
+**caller `model:` input** (if set) → **`.litellm.model` in the trust-config
+repo's `.github/ai-review/config.json`**.
 
-- **aidoc-flow consumers** read the engine from **`operations@main`**'s
-  config (the default `trust_config_repo`). To change the workspace default,
-  set `.reviewer` there — until then it falls back to `codex`.
+- **aidoc-flow consumers** read the alias from **`operations@main`**'s config
+  (the default `trust_config_repo`).
 - **External adopters** (who set `trust_config_repo` to their own repo) read
-  `.reviewer` from **their own** `config.json` (shipped from
-  `config.json.template`, default `"codex"`).
-- **Per-repo force:** uncomment `reviewer: claude` (or `codex`) in the caller
-  to override config entirely.
+  `.litellm.model` from their own config (template default `ai-reviewer`).
+- **Per-repo force:** set caller input `model` to override trusted config.
 
-**The auth token you set MUST match the resolved engine** — otherwise the
-reviewer CLI/API can't authenticate (the "App set, engine key wrong" failure):
+Provider credentials and routing remain inside LiteLLM. CI receives only the
+proxy URL and a scoped virtual key.
 
-| `.reviewer` | Auth secret (set ONE) |
-| --- | --- |
-| `claude` | `CLAUDE_CODE_OAUTH_TOKEN` (subscription CLI, free on Pro/Max) **or** `ANTHROPIC_API_KEY` (API) |
-| `codex` | `OPENAI_API_KEY` (API) |
+Use a review-specific virtual key restricted to the `ai-reviewer` alias, with
+spend/rate limits and rotation. Never use the LiteLLM master key. Disable
+sensitive request/response logging and configure retention appropriately:
+review sends a bounded, secret-pattern-redacted diff, but it still contains
+private source code. HTTPS is mandatory unless the caller explicitly opts into
+HTTP for a controlled private network.
+
+Doc-maintainer uses a separate scoped key and sends redacted PR metadata,
+patches, conventions, and redacted current documentation. Secret-shaped source
+values are replaced with opaque tokens during inference and restored only
+afterward; token loss or duplication fails closed.
 
 ## Steps
 
@@ -87,11 +91,8 @@ reviewer CLI/API can't authenticate (the "App set, engine key wrong" failure):
    ```bash
    gh secret set APP_REVIEWER_1_ID  --repo <owner>/<repo> --body "<app-id>"
    gh secret set APP_REVIEWER_1_KEY --repo <owner>/<repo> < path/to/private-key.pem
-   # ONE reviewer-auth token — MUST match your resolved `.reviewer` engine (see above).
-   # The default engine is `codex` (the config fallback) → set OPENAI_API_KEY:
-   gh secret set OPENAI_API_KEY --repo <owner>/<repo> --body "<token>"
-   #   if you set `.reviewer: claude` instead → CLAUDE_CODE_OAUTH_TOKEN (CLI) or ANTHROPIC_API_KEY (API):
-   # gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo <owner>/<repo> --body "<token>"
+   gh secret set LITELLM_BASE_URL --repo <owner>/<repo> --body "https://litellm.example/v1"
+   gh secret set LITELLM_API_KEY  --repo <owner>/<repo> --body "<scoped-virtual-key>"
    ```
 
 5. **Open a first PR** from an allowlisted author (a login in
@@ -131,18 +132,15 @@ with:
 That repo's `.github/ai-review/config.json` must carry:
 
 - **`.trust.ai_review`** — the login allowlist (who may be auto-reviewed).
-- **`.reviewer`** — your engine (`claude` | `codex`); see "Reviewer engine".
+- **`.litellm.model`** — the LiteLLM model alias used for review.
 - **`.auto_merge.repos`** — **required to enable the auto-merge enforcer.**
   ⚠️ `config.json.template` ships **without** an `auto_merge.repos` key, and the
   enforcer fail-closes (disables itself) when it's absent or not an array. If
   you want auto-merge, add `"auto_merge": { "repos": ["your-org/your-repo"] }`
   (the repos you allow to auto-merge) to that config.
 
-**Public-runner reviewer path is EXPERIMENTAL.** The public caller installs the
-reviewer CLI at workflow start on `ubuntu-latest` (per `ci/v1.0.2+`); that path
-is not yet verified end-to-end in CI. Treat public-runner review as
-experimental until you've confirmed a green run in your own public repo; the
-private (self-hosted, CLI-pre-baked) path is the verified one.
+Public and private callers use the same HTTP adapter. Public runners require
+network reachability to the proxy; private runners may use an internal URL.
 
 ## Verifying it's armed
 

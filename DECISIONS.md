@@ -218,8 +218,8 @@ Trust boundary (this repo IMPLEMENTS it; the POLICY is OPS-0062 — see CI-0004)
   enforcer's governance floor refuses it **unconditionally** on gov-locked PRs
   (`.github/**` | `governance/**` | `templates/ai-review/**`); the HEAD-relative
   product-code check is PR-A part 2.
-- **Reviewer engine:** config-driven via `.reviewer` (PLAN-005 PR-D), resolved
-  from the trust-config repo.
+- **Reviewer engine (superseded by CI-0006):** was config-driven via
+  `.reviewer`; `ci/v2.0.0` instead resolves `litellm.model`.
 
 Declarative-only config knobs (PLAN-005 D7): these `config.json` fields are NOT
 read by any workflow as of `ci/v1.7.x` and MUST NOT be relied on for
@@ -227,7 +227,8 @@ enforcement — `governance.locked_paths`, `governance.require_human_review`,
 `governance.code_owners`, `auto_merge.enabled`, `auto_merge.spec_paths_blocked`,
 `composition.required`, `composition.carry_forward_on_skip_label`,
 `autofix.enabled`. (The ENFORCED fields are `trust.ai_review`, `trust.auto_fix`,
-`reviewer`, `auto_merge.repos`.) The
+  `reviewer`, `auto_merge.repos`; CI-0006 supersedes `reviewer` with
+  `litellm.model` for `ci/v2.0.0`.) The
 governance globs are hardcoded server-side in `ai-review.yml` **deliberately** —
 a consumer-editable gov floor could be loosened by a PR. Wiring any of these
 (e.g. ADDING paths to `locked_paths`) is a future opt-in; a `_note` field in
@@ -236,7 +237,8 @@ a consumer-editable gov floor could be loosened by a PR. Wiring any of these
 **Consequences**
 
 - A consumer reading `config.json` knows which fields bite (`trust.ai_review`,
-  `trust.auto_fix`, `reviewer`, `auto_merge.repos`) and which are declarative
+  `trust.auto_fix`, `reviewer`, `auto_merge.repos`; `reviewer` is superseded by
+  CI-0006's `litellm.model`) and which are declarative
   (via the `_note` + this entry) — and that all but `trust.ai_review` are
   resolved from the trust-config repo, not their local copy.
 - Auto-merge enablement is an operations-side allowlist action, not a
@@ -252,6 +254,41 @@ boundary" (PR-F) + "governance config knobs are inert" (D7). The misdirected
 original PR-F "bootstrap install guard" was dropped: `apply-standards.sh` /
 `install.sh` do not install the auto-merge caller, and the operations allowlist
 already gates auto-merge — so the guard is a documented policy, not code.
+
+---
+
+## CI-0006: Route every canonical AI job through LiteLLM (2026-07-12)
+
+**Context**
+
+AI review and documentation maintenance selected and authenticated vendor CLIs
+independently. That duplicated installation, credentials, routing, fallback,
+and cost controls across runners and made a unified self-hosted deployment
+impossible.
+
+**Decision**
+
+Canonical AI jobs call one OpenAI-compatible LiteLLM proxy using
+`LITELLM_BASE_URL` and a scoped `LITELLM_API_KEY`. Workflows select only a
+LiteLLM model alias. Provider credentials, provider/model routing, fallback,
+budgets, and retries beyond the bounded transport retry remain proxy policy.
+Vendor CLIs and their credentials are no longer part of the CI contract.
+
+The GitHub reviewer App remains separate: LiteLLM produces the judgment, while
+the App supplies the GitHub identity that submits a counting review. Trust
+gating, governance floors, and composition enforcement are unchanged.
+
+**Consequences**
+
+- `litellm.model` supersedes CI-0005's `.reviewer` engine selector.
+- `ai-review` and `doc-maintainer` share a dependency-free HTTP adapter.
+- Missing proxy configuration, network errors, and invalid output fail closed.
+- Removing vendor-specific workflow inputs is a breaking `ci/v2.0.0` change.
+
+**Origin**
+
+Founder direction to use LiteLLM for all AI agents, including ai-review and
+doc-maintainer, 2026-07-12.
 
 ---
 

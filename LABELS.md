@@ -118,8 +118,8 @@ caller templates set the `runner_labels_*` inputs to one of these):
 
 | Label | Origin | What's installed | Where it resolves |
 |---|---|---|---|
-| `runner-self` | Our self-hosted runners | gh + codex + claude CLI pre-baked + authenticated | Operations' `aidoc-flow-runner:latest` Docker pool |
-| `ubuntu-latest` | GitHub-hosted | gh CLI pre-installed; reviewer CLI installed at workflow start (`ci/v1.0.1`+) | GitHub's fixed `ubuntu-latest` runner image |
+| `runner-self` | Our self-hosted runners | standard tools + LiteLLM network route | Operations' `aidoc-flow-runner:latest` Docker pool |
+| `ubuntu-latest` | GitHub-hosted | standard tools + public LiteLLM network route | GitHub's fixed `ubuntu-latest` runner image |
 | Reserved: `runner-azure`, `runner-aws`, `runner-fargate`, … | Future origins | Per-provider | Per-provider runner pool |
 
 ### Naming convention

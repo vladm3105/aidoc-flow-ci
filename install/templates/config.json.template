@@ -1,8 +1,10 @@
 {
   "$schema": "https://aidoc-flow.io/schemas/ai-review-config-v1.json",
   "version": 1,
-  "_note": "Field enforcement as of ci/v1.7.x. ENFORCED: trust.ai_review, trust.auto_fix, reviewer, auto_merge.repos. DECLARATIVE-ONLY (read by NO workflow — the governance globs are hardcoded server-side in ai-review.yml; do NOT rely on these for enforcement): governance.locked_paths, governance.require_human_review, governance.code_owners, auto_merge.enabled, auto_merge.spec_paths_blocked, composition.required, composition.carry_forward_on_skip_label, autofix.enabled. NB: reviewer, auto_merge.repos, and trust.auto_fix are resolved from the TRUST-CONFIG repo (operations@main by default), NOT this local copy — editing them here has effect only if this repo IS the trust-config repo; trust.ai_review is additionally read locally by composition. See DECISIONS.md CI-0005.",
-  "reviewer": "codex",
+  "_note": "ENFORCED: trust.ai_review, trust.auto_fix, litellm.model, auto_merge.repos. The LiteLLM model alias, auto_merge.repos, and trust.auto_fix are resolved from the TRUST-CONFIG repo (operations@main by default), not the PR branch. See DECISIONS.md CI-0005.",
+  "litellm": {
+    "model": "ai-reviewer"
+  },
   "trust": {
     "ai_review": ["${CODEOWNER_HANDLE}"],
     "auto_fix":  []

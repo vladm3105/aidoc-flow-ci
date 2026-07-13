@@ -110,8 +110,8 @@ mitigation is:
 1. The trust gate ensures fork-PR code **never reaches the
    self-hosted reviewer job** (HUMAN-REVIEW-ONLY route).
 2. The reusable workflow body **never executes PR code** — it
-   reads PR-diff metadata via `gh api` only; the reviewer CLI
-   analyzes the diff as text, not as executable code.
+   reads PR-diff metadata via `gh api` only; LiteLLM receives the diff as
+   untrusted text, not as executable code.
 3. Even with both above, this is **accepted-risk, not GitHub-
    recommended**. Document the deviation in the consumer's
    CLAUDE.md.
@@ -128,21 +128,20 @@ Consumer callers typically use:
 ```yaml
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v1.0.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.0.0
     secrets: inherit   # passes all consumer-repo secrets to reusable
 ```
 
-The reusable workflow declares the secrets it uses
-(`APP_REVIEWER_1_ID`, `APP_REVIEWER_1_KEY`, etc.) at the top of
-the workflow file (`secrets:` block in `on: workflow_call:`).
-`inherit` passes them through; the reusable workflow can also
-explicitly accept them via the `secrets:` block.
+`inherit` passes consumer secrets to the reusable. The workflow references
+only its documented names; unrelated inherited secrets are not exported to the
+LiteLLM process.
 
 ### 4.2 What secrets the workflows need
 
 | Workflow | Secrets required |
 |---|---|
-| `ai-review` | `APP_REVIEWER_1_ID` + `APP_REVIEWER_1_KEY` (the reviewer App's credentials; consumer sets these once after App install per F5 blast-radius rule) |
+| `ai-review` | `APP_REVIEWER_1_ID` + `APP_REVIEWER_1_KEY`; `LITELLM_BASE_URL` + review-scoped `LITELLM_API_KEY` |
+| `doc-maintainer` | `LITELLM_BASE_URL` + documentation-scoped `LITELLM_API_KEY`; live mode also requires `AIDOC_FLOW_BOT_ID` + `AIDOC_FLOW_BOT_KEY` |
 | `composition` | None beyond `GITHUB_TOKEN` (auto-provided by Actions) |
 | `labeler` | None beyond `GITHUB_TOKEN` |
 | `codeql` | None beyond `GITHUB_TOKEN` |

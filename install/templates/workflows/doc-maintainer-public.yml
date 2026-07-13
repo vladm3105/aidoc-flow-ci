@@ -8,9 +8,8 @@
 # PUBLIC-runner specifics:
 #   - Runs on ubuntu-latest (GitHub-hosted) per docs/security.md §3
 #     (self-hosted runners on PUBLIC repos = accepted-risk only).
-#   - LLM CLI install step (workflow body step 3) actually installs
-#     claude/codex via npm at job start (on self-hosted runners with the
-#     CLI pre-baked, the install step is a no-op).
+#   - The workflow calls the same LiteLLM proxy as private consumers; no
+#     vendor CLI is installed on the GitHub-hosted runner.
 #   - Fork PRs do NOT trigger this workflow (push: main fires only after
 #     merge to default, by which point the trust gate has already routed
 #     fork-authored PRs to HUMAN-REVIEW-ONLY in ai-review.yml).
@@ -38,8 +37,9 @@ permissions:
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v1.9.5
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v2.0.0
     with:
       runner_labels: '"ubuntu-latest"'
+      model: ai-doc-maintainer
       merge_sha: ${{ inputs.head_sha || '' }}
     secrets: inherit  # pragma: allowlist secret

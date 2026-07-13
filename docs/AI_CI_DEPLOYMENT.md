@@ -42,7 +42,7 @@ secrets), [`runners.md`](runners.md) (self-hosted pools),
 | 🔴 Founder-only | Why you can't |
 | --- | --- |
 | Install the reviewer **App** on the repo (+ on `aidoc-flow-operations`) | App installation is F5 blast-radius; needs org/repo admin UI |
-| Set the reviewer **secrets** (`APP_REVIEWER_1_ID`, `APP_REVIEWER_1_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`) | You don't hold the App private key / token values |
+| Set the reviewer **secrets** (`APP_REVIEWER_1_ID`, `APP_REVIEWER_1_KEY`, `LITELLM_BASE_URL`, `LITELLM_API_KEY`) | You don't hold the App private key / token values |
 | Register a self-hosted **runner pool** for a private repo | Provisions infra |
 
 Everything else (caller workflows, config files, non-secret variables, labels,
@@ -80,20 +80,19 @@ forever. See [`runners.md`](runners.md).
 
 ### 1.3 Reviewer App + secrets + bot-id (needed for ai-review + composition)
 
-A working ai-review repo has THREE repo-level secrets and ONE variable
+A working ai-review repo has FOUR repo-level secrets and ONE variable
 (`vladm3105` is a user account — no org secrets to inherit, so these are
 **per-repo**):
 
 ```bash
-gh secret   list -R <owner/repo> | grep -E 'APP_REVIEWER_1_ID|APP_REVIEWER_1_KEY|CLAUDE_CODE_OAUTH_TOKEN'
+gh secret   list -R <owner/repo> | grep -E 'APP_REVIEWER_1_ID|APP_REVIEWER_1_KEY|LITELLM_BASE_URL|LITELLM_API_KEY'
 gh variable list -R <owner/repo> | grep APP_REVIEWER_1_BOT_ID
 ```
 
 - **Secrets missing → 🔴 founder** must (a) install the `aidoc-reviewer` App on
-  the repo AND on `aidoc-flow-operations` (the trust-config repo, `contents:read`),
-  then (b) set the 3 secrets. `CLAUDE_CODE_OAUTH_TOKEN` is the token because the
-  workspace `.reviewer` engine is `claude` (verify:
-  `gh api repos/vladm3105/aidoc-flow-operations/contents/.github/ai-review/config.json --jq .content | base64 -d | jq .reviewer`).
+  the repo and trust-config repo, then (b) set the App credentials plus a
+  reachable LiteLLM URL and scoped virtual key. The model alias is
+  `.litellm.model` in the trusted AI-review config.
 - **`APP_REVIEWER_1_BOT_ID` variable → 🟢 you set it.** It's the App's bot-user
   id and is **App-global** (same on every repo): **`294948438`**. Set it
   directly — no need to wait for the first review to capture it:
