@@ -29,11 +29,16 @@ secrets), [`runners.md`](runners.md) (self-hosted pools),
 2. DEPLOY      →  add caller workflows + config files, in dependency order,
                   using the PUBLIC or PRIVATE variant. One PR per workflow (or
                   a small batch); each PR carries a CHANGELOG entry + the
-                  OPS-0069 audit-trail phrase.
+                  OPS-0069 audit-trail phrase. First adoption: admin-merge the
+                  bootstrap PR (pull_request_target workflows read from base
+                  branch, which doesn't have them yet).
 3. VERIFY      →  open a throwaway test PR; confirm the App submits an APPROVED
                   review (ai-review green) and composition resolves SUCCESS.
-4. ARM         →  (opt-in) add the checks to branch-protection required_status_checks
-                  so they actually block merges. Do this only after they run green.
+                  Verify labeler fires and canonical labels are applied.
+                  Do NOT skip this — it's the only end-to-end smoke test.
+4. ARM         →  (opt-in) add the checks to branch-protection
+                  required_status_checks so they actually block merges. Do this
+                  only after the probe PR shows them all green.
 ```
 
 **🔴 vs 🟢 — know what you cannot do.** Three prerequisites are FOUNDER-ONLY
@@ -183,6 +188,24 @@ workflow as satisfied — do NOT also add the canon one (and NEVER overwrite the
 repo's existing `.markdownlint.json` — see §5). Record it as `🕳 own` in
 `WORKFLOWS.md` §2.
 
+### First-adoption sequence (do NOT skip)
+
+When deploying CI to a repo that has never had it before, chicken-and-egg
+patterns block several workflows from firing on the adoption PR itself:
+
+| Order | Action | Why this order |
+|---|---|---|
+| 1 | **Provision the runner** | Private repos need a `[ci-runner, single-use]` pool before any job can be picked up (§1.2). |
+| 2 | **Set App secrets + bot-id variable** | `APP_REVIEWER_1_ID`/`_KEY`, `LITELLM_BASE_URL`/`_REVIEW_API_KEY`/`_DOC_API_KEY`, `APP_REVIEWER_1_BOT_ID` — all required for trust + ai-review + composition. |
+| 3 | **Create canonical labels** | `apply-standards.sh --apply` on the target repo creates the 16 canon labels that the labeler and ai-review expect. |
+| 4 | **Open the CI adoption PR** | Add caller workflows, `.github/labeler.yml`, `.pre-commit-config.yaml`, config files. This PR CANNOT trigger ai-review/composition/labeler (they read from `main`, which doesn't have them yet). |
+| 5 | **Merge via admin** | Admin-merge the adoption PR. The workflows are now on `main`. |
+| 6 | **Open a probe PR** | A trivial content PR (e.g. whitespace in HANDOFF.md). ai-review, composition, and labeler MUST now fire from `main`. Verify all return green. |
+| 7 | **Arm branch protection** | Only after the probe PR shows all checks green (§7). Do not arm a check whose workflow has never run on this repo. |
+
+Do not skip the probe PR — it's the only way to confirm the full chain works
+before arming checks that would block every future PR.
+
 ---
 
 ## 3. Deploying a caller (the mechanical loop)
@@ -290,6 +313,42 @@ Every one of these cost real debugging time. They are load-bearing.
     CHANGELOG" rule will `CHANGES_REQUESTED` any workflow PR lacking a CHANGELOG
     entry. And match the repo's caller convention — if its other callers use
     `secrets: inherit`, add it (harmless; its absence gets flagged).
+13. **`APP_REVIEWER_1_KEY` must be a valid PEM private key.** A miscopied,
+    truncated, or incorrectly-encoded key produces `A JSON web token could not
+    be decoded` when the trust step signs the JWT, followed by `fatal: repository
+    not found` on `aidoc-flow-operations` (the token has no access). Verify the
+    key starts with `-----BEGIN RSA PRIVATE KEY-----` and ends with
+    `-----END RSA PRIVATE KEY-----`. Set it from the file, not copy-paste:
+    `gh secret set APP_REVIEWER_1_KEY -R <owner/repo> < app-key.pem`. The trust
+    step fetches the allowlist from `aidoc-flow-operations` containing — the
+    reviewer App MUST also be installed on that repo for the token to have access.
+14. **`.github/labeler.yml` must exist on the base branch before labeler fires.**
+    The labeler workflow uses `pull_request_target`, which reads config from
+    `main`. Adding `.github/labeler.yml` in the CI adoption PR has no effect
+    until that PR is merged — the same chicken-and-egg pattern as ai-review.
+    After merging the adoption PR, the labeler will work on subsequent PRs.
+15. **Canonical labels must be created before labeler can apply them.**
+    `actions/labeler` applies existing labels — it does not create them. Run
+    `apply-standards.sh --apply` (or `gh label create` for each canon label)
+    before expecting the labeler to work. Without this, the labeler job
+    succeeds silently but produces `Label does not exist` annotations.
+    The 16 canonical labels are defined in `install/templates/labels.json`.
+16. **Design-spec repos still need a `.pre-commit-config.yaml`.** The ops-tier
+    branch protection includes `call / Lint / format / security hooks` as a
+    required check. Even a docs-only or design-spec repo needs a minimal
+    pre-commit config to satisfy it. A valid bare-minimum config:
+    ```yaml
+    repos:
+      - repo: https://github.com/pre-commit/pre-commit-hooks
+        rev: v5.0.0
+        hooks:
+          - id: check-yaml
+          - id: check-json
+          - id: end-of-file-fixer
+          - id: trailing-whitespace
+    ```
+    If a repo genuinely has no checkable files, remove the check from branch
+    protection rather than carrying a hollow pre-commit config.
 
 ---
 
@@ -344,6 +403,10 @@ human before arming a repo you don't own.
 | composition green but doesn't block | not armed, OR bot-id var unset (inert) | §7 / §5 item 5 |
 | links green locally, red in CI | cross-repo `../sibling/` links | §5 item 7 |
 | pre-commit red after adding `.markdownlint.json` | clobbered the repo's tuned config | §5 item 8 (restore original) |
+| `A JSON web token could not be decoded` on trust step | `APP_REVIEWER_1_KEY` not valid PEM or App not installed on `aidoc-flow-operations` | §5 item 13 |
+| labeler "Label does not exist" | canonical labels not created on repo | §5 item 15 |
+| labeler queued forever, never fires | `.github/labeler.yml` missing from base branch, or no labels present | §5 items 14, 15 |
+| `call / Lint / format / security hooks` never fires on PRs | no `.pre-commit-config.yaml`; or pre-commit workflow not on main (pull_request reads from PR branch — verify it | §5 item 16 |
 | ai-review `CHANGES_REQUESTED` on a workflow PR | missing CHANGELOG entry / `secrets: inherit` | §5 item 12 |
 
 ---
