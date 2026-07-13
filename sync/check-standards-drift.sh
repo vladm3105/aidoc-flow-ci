@@ -133,8 +133,10 @@ elif { rm -f "$bp_err"; ! curl -fsSL "${TEMPLATE_BASE}/branch-protection-${TIER}
 else
   strip_meta "$bp_canon_raw" > "$bp_canon"
   for k in enforce_admins required_signatures allow_force_pushes allow_deletions; do
-    local_v=$(jq -r ".${k}.enabled // .${k} // \"null\"" "$bp_local")
-    canon_v=$(jq -r ".${k} // \"null\"" "$bp_canon")
+    # GitHub returns these as {enabled:false}; canon stores flat booleans.
+    # Do not use `//` for normalization because jq treats false as fallback.
+    local_v=$(jq -r --arg k "$k" 'if has($k) then if (.[$k] | type) == "object" then if (.[$k] | has("enabled")) then .[$k].enabled else "null" end else .[$k] end else "null" end' "$bp_local")
+    canon_v=$(jq -r --arg k "$k" 'if has($k) then .[$k] else "null" end' "$bp_canon")
     if [ "$local_v" != "$canon_v" ]; then
       echo "::warning::branch-protection.${k}: canon=$canon_v actual=$local_v"
       DRIFT=$((DRIFT + 1))
@@ -144,6 +146,26 @@ else
   canon_ctx=$(jq -r '.required_status_checks.contexts // [] | sort | join(",")' "$bp_canon")
   if [ "$local_ctx" != "$canon_ctx" ]; then
     echo "::warning::branch-protection.contexts: canon=[$canon_ctx] actual=[$local_ctx]"
+    DRIFT=$((DRIFT + 1))
+  fi
+  local_strict=$(jq -r '.required_status_checks.strict // false' "$bp_local")
+  canon_strict=$(jq -r '.required_status_checks.strict // false' "$bp_canon")
+  if [ "$local_strict" != "$canon_strict" ]; then
+    echo "::warning::branch-protection.strict: canon=$canon_strict actual=$local_strict"
+    DRIFT=$((DRIFT + 1))
+  fi
+  # Compare the PR-only contract as a normalized subset. GitHub's response may
+  # include URL metadata and optional fields that are not part of our canon.
+  review_filter='(.required_pull_request_reviews // null) | if . == null then null else {
+    dismiss_stale_reviews: (.dismiss_stale_reviews // false),
+    require_code_owner_reviews: (.require_code_owner_reviews // false),
+    required_approving_review_count: (.required_approving_review_count // 0),
+    require_last_push_approval: (.require_last_push_approval // false)
+  } end'
+  local_reviews=$(jq -c "$review_filter" "$bp_local")
+  canon_reviews=$(jq -c "$review_filter" "$bp_canon")
+  if [ "$local_reviews" != "$canon_reviews" ]; then
+    echo "::warning::branch-protection.required_pull_request_reviews: canon=$canon_reviews actual=$local_reviews"
     DRIFT=$((DRIFT + 1))
   fi
 fi
@@ -159,9 +181,9 @@ elif ! curl -fsSL "${TEMPLATE_BASE}/repo-settings.json" > "$rs_canon_raw" 2>/dev
   warn_uncheckable "repo-settings" "canon fetch failed"
 else
   strip_meta "$rs_canon_raw" > "$rs_canon"
-  for k in allow_merge_commit allow_squash_merge allow_rebase_merge delete_branch_on_merge allow_auto_merge; do
-    local_v=$(jq -r ".${k}" "$rs_local")
-    canon_v=$(jq -r ".${k}" "$rs_canon")
+  for k in allow_merge_commit allow_squash_merge allow_rebase_merge delete_branch_on_merge allow_auto_merge allow_update_branch squash_merge_commit_title squash_merge_commit_message; do
+    local_v=$(jq -r --arg k "$k" 'if has($k) then .[$k] else "null" end' "$rs_local")
+    canon_v=$(jq -r --arg k "$k" 'if has($k) then .[$k] else "null" end' "$rs_canon")
     if [ "$local_v" != "$canon_v" ]; then
       echo "::warning::repo-settings.${k}: canon=$canon_v actual=$local_v"
       DRIFT=$((DRIFT + 1))

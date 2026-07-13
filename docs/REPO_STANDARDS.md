@@ -124,6 +124,24 @@ emits `Secret scan (gitleaks)`, NOT `call / gitleaks` — arm that name instead 
 those repos. `tests/test_checknames.sh` asserts every `call / …` context in a
 branch-protection template maps to a real reusable job, so this can't drift again.
 
+### 2.1 Branch naming and lifecycle
+
+All changes use a short-lived working branch and a PR into the protected
+default branch. The canonical technical lifecycle—intent-based naming,
+automation exceptions, update strategy, squash merge, cleanup, hotfixes, and
+the boundary between enforced settings and review conventions—is defined in
+[`BRANCHING.md`](BRANCHING.md).
+
+The standard prefixes are `feat/`, `fix/`, `docs/`, `chore/`, `refactor/`, and
+`test/`; existing coordinated playbooks may retain the legacy `feature/` alias.
+Automation that requires an actor prefix may use `agent/`, while managed
+dependency bots keep their generated namespaces. Branch names are conventions,
+not a branch-protection API rule. PR-only default-branch changes, no force-
+push/deletion, squash-only merge, update-branch support, and automatic head-
+branch deletion are enforced for non-bypass actors by the branch-protection and
+repository-settings templates. The umbrella admin bypass is governed by
+OPS-0062 and still requires a PR.
+
 ## 3. GitHub security settings
 
 Each repo's GitHub-hosted security features (secret scanning, push
@@ -579,6 +597,8 @@ coordinated-merge-window pattern from
 - [`security.md`](security.md) — threat model + secrets
 - [`../LABELS.md`](../LABELS.md) — pre-existing label conventions
   (label separators + runner-label namespace)
+- [`BRANCHING.md`](BRANCHING.md) — canonical branch naming, lifecycle,
+  update, merge, cleanup, and enforcement boundary
 - `aidoc-flow-operations/docs/REPO_ONBOARDING.md` — 4-step CI
   activation checklist
 - `aidoc-flow-operations/docs/CROSS_REPO_PLAYBOOKS.md` — T-C

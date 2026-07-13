@@ -247,4 +247,53 @@ else
   _g "strict drift mode fails when a control cannot be checked"
 fi
 
+echo "== standards-drift detects branching-server contract drift =="
+mkdir -p "$TMP/drift-contract/bin" "$TMP/drift-contract/fixtures"
+cp "$ROOT/install/templates/branch-protection-product.json" "$TMP/drift-contract/fixtures/bp-canon.json"
+cp "$ROOT/install/templates/repo-settings.json" "$TMP/drift-contract/fixtures/repo-canon.json"
+cp "$ROOT/install/templates/actions-permissions.json" "$TMP/drift-contract/fixtures/actions.json"
+cp "$ROOT/install/templates/labels.json" "$TMP/drift-contract/fixtures/labels.json"
+jq '.required_pull_request_reviews = null
+  | .enforce_admins = {enabled:true}
+  | .required_signatures = {enabled:false}
+  | .allow_force_pushes = {enabled:false}
+  | .allow_deletions = {enabled:false}' \
+  "$TMP/drift-contract/fixtures/bp-canon.json" > "$TMP/drift-contract/fixtures/bp-actual.json"
+jq '. + {default_branch:"main", visibility:"public"} | .allow_update_branch=false | .squash_merge_commit_title="COMMIT_OR_PR_TITLE" | .squash_merge_commit_message="COMMIT_MESSAGES"' \
+  "$TMP/drift-contract/fixtures/repo-canon.json" > "$TMP/drift-contract/fixtures/repo-actual.json"
+cat > "$TMP/drift-contract/bin/gh" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  "auth status") exit 0 ;;
+  *"branches/main/protection"*) cat "$DRIFT_FIXTURES/bp-actual.json" ;;
+  *"actions/permissions/selected-actions"*) echo '{"github_owned_allowed":true,"verified_allowed":true}' ;;
+  *"actions/permissions/workflow"*) echo '{"default_workflow_permissions":"read"}' ;;
+  *"actions/permissions/access"*) echo '{"access_level":"none"}' ;;
+  *"actions/permissions"*) echo '{"allowed_actions":"selected"}' ;;
+  *"labels?per_page=100"*) cat "$DRIFT_FIXTURES/labels.json" ;;
+  *"repos/owner/repo --jq .default_branch"*) echo main ;;
+  *"repos/owner/repo --jq .visibility"*) echo public ;;
+  *"repos/owner/repo"*) cat "$DRIFT_FIXTURES/repo-actual.json" ;;
+  *) echo "unexpected gh call: $*" >&2; exit 1 ;;
+esac
+SH
+cat > "$TMP/drift-contract/bin/curl" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  *"branch-protection-product.json"*) cat "$DRIFT_FIXTURES/bp-canon.json" ;;
+  *"repo-settings.json"*) cat "$DRIFT_FIXTURES/repo-canon.json" ;;
+  *"actions-permissions.json"*) cat "$DRIFT_FIXTURES/actions.json" ;;
+  *"labels.json"*) cat "$DRIFT_FIXTURES/labels.json" ;;
+  *) echo "unexpected curl call: $*" >&2; exit 1 ;;
+esac
+SH
+chmod +x "$TMP/drift-contract/bin/gh" "$TMP/drift-contract/bin/curl"
+drift_out="$TMP/drift-contract/out.txt"
+if DRIFT_FIXTURES="$TMP/drift-contract/fixtures" PATH="$TMP/drift-contract/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 --strict >"$drift_out" 2>&1; then
+  _r "strict drift mode accepted missing PR protection and merge-setting drift"
+else
+  assert_ok "grep -q 'branch-protection.required_pull_request_reviews' '$drift_out' && grep -q 'repo-settings.allow_update_branch' '$drift_out' && grep -q 'repo-settings.squash_merge_commit_title' '$drift_out' && grep -q 'repo-settings.squash_merge_commit_message' '$drift_out'" "strict drift mode detects PR-only, update-branch, and squash metadata drift"
+fi
+
 suite_summary "scripts"

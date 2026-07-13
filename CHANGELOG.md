@@ -3,6 +3,14 @@
 Notable releases of the shared CI library. SemVer per `ci/vX.Y.Z`
 tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
+### Added — canonical branching standard (unreleased)
+
+- Added `docs/BRANCHING.md` as the technical contract for working-branch
+  naming, lifecycle, safe updates, squash merges, cleanup, hotfixes, release
+  tags, automation exceptions, and enforcement boundaries.
+- Expanded strict standards-drift checks to detect missing PR protection and
+  drift in update-branch and squash-title/body repository settings.
+
 ### Changed — unified LiteLLM gateway for all AI jobs (unreleased)
 
 - `ai-review` and `doc-maintainer` now call one OpenAI-compatible LiteLLM
