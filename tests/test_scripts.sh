@@ -50,11 +50,131 @@ assert_ok "diff -q '$f' '$f.1' >/dev/null" "repin is idempotent"
 echo "== --repin regression guard (both seds present in install.sh) =="
 assert_ok "grep -qE 's#.*aidoc-flow-ci.*@ci/v' '$ROOT/install/install.sh'" "install.sh has the tag-pin sed"
 assert_ok "grep -qE '@\[0-9a-f\]\{40\}' '$ROOT/install/install.sh'"          "install.sh has the SHA-pin sed"
+assert_ok "grep -q 'CI_TAG_FALLBACK=\"'$current_tag'\"' '$ROOT/install/install.sh'" "standalone installer fallback matches VERSION"
 
-echo "== doc-maintainer planner + apply (mocked GitHub and AI CLIs) =="
+echo "== deploy wizard LiteLLM scaffold contract =="
+cat > "$TMP/wizard-gh" <<'SH'
+#!/usr/bin/env bash
+if [ "$1 $2" = "repo view" ]; then printf 'PUBLIC\n'; exit 0; fi
+exit 1
+SH
+chmod +x "$TMP/wizard-gh"
+GH="$TMP/wizard-gh" bash "$ROOT/install/deploy-ci-wizard.sh" scaffold owner/repo "$TMP/scaffold" ai-review composition doc-maintainer >/dev/null
+assert_ok "jq -e '.litellm.model == \"ai-reviewer\" and .trust.ai_review == [\"owner\"]' '$TMP/scaffold/.github/ai-review/config.json' >/dev/null" "wizard renders trusted LiteLLM config without placeholders"
+assert_ok "grep -q '@ci/v2.0.0' '$TMP/scaffold/.github/workflows/ai-review.yml' && grep -q 'model: ai-doc-maintainer' '$TMP/scaffold/.github/workflows/doc-maintainer.yml'" "wizard emits coherent v2 LiteLLM callers"
+
+echo "== LiteLLM OpenAI-compatible adapter =="
+assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
+import importlib.util, json, os, sys
+spec = importlib.util.spec_from_file_location('litellm_client', sys.argv[1])
+module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+seen = {}
+class Response:
+    def __enter__(self): return self
+    def __exit__(self, *_args): pass
+    def read(self, _limit): return json.dumps({'choices':[{'message':{'content':'{\"decision\":\"approve\"}'}}]}).encode()
+def fake_urlopen(request, timeout):
+    seen['url'] = request.full_url
+    seen['auth'] = request.headers['Authorization']
+    seen['payload'] = json.loads(request.data)
+    seen['timeout'] = timeout
+    return Response()
+module.open_no_redirect = fake_urlopen
+os.environ['LITELLM_BASE_URL'] = 'https://proxy.example/v1/'
+os.environ['LITELLM_API_KEY'] = 'test-key'
+result = module.completion('review', model='ai-reviewer', json_mode=True, timeout=30)
+assert result.startswith('{\"decision\"')
+assert seen['url'] == 'https://proxy.example/v1/chat/completions'
+assert seen['auth'] == 'Bearer test-key'
+assert seen['payload']['model'] == 'ai-reviewer'
+assert seen['payload']['response_format'] == {'type':'json_object'}
+assert 0 < seen['timeout'] <= 10
+PY" "adapter sends the expected authenticated chat-completions request"
+
+assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
+import importlib.util, json, os, sys
+spec = importlib.util.spec_from_file_location('litellm_client', sys.argv[1])
+module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+attempts = {'count': 0}
+class Response:
+    def __enter__(self): return self
+    def __exit__(self, *_args): pass
+    def read(self, _limit):
+        attempts['count'] += 1
+        fence = chr(96) * 3
+        content = '' if attempts['count'] < 3 else fence + 'json\n{\"ok\":true}\n' + fence
+        return json.dumps({'choices':[{'message':{'content':content}}]}).encode()
+module.open_no_redirect = lambda request, timeout: Response()
+module.time.sleep = lambda _delay: None
+os.environ['LITELLM_BASE_URL'] = 'https://proxy.example/v1'
+os.environ['LITELLM_API_KEY'] = 'test-key'
+result = module.completion('review', model='ai-reviewer', json_mode=True, timeout=30)
+assert attempts['count'] == 3
+assert result == '{\"ok\":true}'
+PY" "adapter retries empty responses and normalizes fenced JSON"
+
+assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location('litellm_client', sys.argv[1])
+module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+valid = {'decision':'approve','summary':'ok','findings':[]}
+module.validate_verdict(valid)
+invalid = [
+    {**valid, 'extra': True},
+    {**valid, 'decision': 'maybe'},
+    {**valid, 'findings': [{'severity':'urgent','path':'x','line':1,'body':'b','fix':'f'}]},
+    {**valid, 'findings': [{'severity':'low','path':'x','line':1.5,'body':'b','fix':'f'}]},
+    {**valid, 'findings': [{'severity':'low','path':'x','line':1,'body':'b'}]},
+    {**valid, 'findings': [{'severity':'medium','path':'x','line':1,'body':'b','fix':'f'}]},
+    {**valid, 'decision':'request_changes'},
+    {**valid, 'decision':'request_changes', 'findings': [{'severity':'critical','path':'x','line':1,'body':'b','fix':''}]},
+]
+for value in invalid:
+    try: module.validate_verdict(value)
+    except module.ResponseShapeError: continue
+    raise AssertionError(value)
+PY" "verdict validator rejects schema violations fail-closed"
+
+assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location('litellm_client', sys.argv[1])
+module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+secret = 'sk-' + 'A' * 24
+redacted, mapping = module.redact_secret_shaped('before ' + secret + ' after')
+assert secret not in redacted and '[REDACTED_SECRET_0]' in redacted
+assert module.restore_redactions(redacted, mapping) == 'before ' + secret + ' after'
+PY" "prompt redaction hides and safely restores secret-shaped source content"
+
+echo "== doc-maintainer planner + apply (mocked GitHub and LiteLLM adapter) =="
 mkdir -p "$TMP/doc/bin" "$TMP/doc/repo/docs"
 cp "$ROOT/scripts/doc-maintainer/planner.py" "$TMP/doc/planner.py"
 cp "$ROOT/scripts/doc-maintainer/apply.py" "$TMP/doc/apply.py"
+cat > "$TMP/doc/litellm_client.py" <<'PY'
+import os
+import re
+class ResponseShapeError(ValueError): pass
+SECRET_PATTERNS = (re.compile(r'\bsk-[A-Za-z0-9_-]{20,}\b'),)
+def redact_secret_shaped(text):
+    mapping = {}
+    def replace(match):
+        token = f'[REDACTED_SECRET_{len(mapping)}]'; mapping[token] = match.group(0); return token
+    for pattern in SECRET_PATTERNS: text = pattern.sub(replace, text)
+    return text, mapping
+def restore_redactions(text, mapping):
+    for token, original in mapping.items():
+        if text.count(token) != 1: raise ResponseShapeError('redaction token missing')
+        text = text.replace(token, original)
+    return text
+def completion(prompt, **_kwargs):
+    mode = os.environ.get("LITELLM_FAKE_MODE", "")
+    if mode == "secret":
+        return "Existing sk-AAAAAAAAAAAAAAAAAAAA and new sk-BBBBBBBBBBBBBBBBBBBB"
+    if mode == "destructive":
+        return "one replacement line"
+    if "CURRENT FILE:" in prompt:
+        return "# Project\n\nThe API includes `/v2/items`.\n"
+    return '{"updates":[{"path":"README.md","instruction":"Document /v2/items","rationale":"PR #42 adds the endpoint"},{"path":"docs/DECISIONS.md","instruction":"Record the API decision","rationale":"Public API changed"}]}'
+PY
 cat > "$TMP/doc/bin/gh" <<'SH'
 #!/usr/bin/env bash
 case "$*" in
@@ -64,48 +184,27 @@ case "$*" in
   *) exit 1 ;;
 esac
 SH
-cat > "$TMP/doc/bin/claude" <<'SH'
-#!/usr/bin/env bash
-input=$(cat)
-if grep -q 'CURRENT FILE:' <<< "$input"; then
-  printf '# Project\n\nThe API includes `/v2/items`.\n'
-else
-  printf '%s\n' '{"updates":[{"path":"README.md","instruction":"Document /v2/items","rationale":"PR #42 adds the endpoint"},{"path":"docs/DECISIONS.md","instruction":"Record the API decision","rationale":"Public API changed"}]}'
-fi
-SH
-chmod +x "$TMP/doc/bin/gh" "$TMP/doc/bin/claude"
+chmod +x "$TMP/doc/bin/gh"
 cat > "$TMP/doc/repo/config.json" <<'JSON'
 {"dry_run":true,"allowed_paths":["README.md","docs/**"],"max_edits_per_pr":5,"auto_merge":{"low_risk_paths":["README.md"],"high_risk_paths":["docs/**"]}}
 JSON
 printf '# Project\n' > "$TMP/doc/repo/README.md"
 printf '# Decisions\n' > "$TMP/doc/repo/docs/DECISIONS.md"
 printf '# Conventions\n' > "$TMP/doc/repo/conventions.md"
-(cd "$TMP/doc/repo" && PATH="$TMP/doc/bin:$PATH" python3 ../planner.py --merge-sha abc --gh-repo owner/repo --config config.json --conventions conventions.md --reviewer claude --out-plan plan.json)
+(cd "$TMP/doc/repo" && PATH="$TMP/doc/bin:$PATH" python3 ../planner.py --merge-sha abc --gh-repo owner/repo --config config.json --conventions conventions.md --model ai-doc-maintainer --out-plan plan.json)
 assert_ok "jq -e '.low_risk_set[0].path == \"README.md\" and .high_risk_set[0].path == \"docs/DECISIONS.md\"' '$TMP/doc/repo/plan.json' >/dev/null" "planner validates and classifies AI-selected docs"
-(cd "$TMP/doc/repo" && PATH="$TMP/doc/bin:$PATH" python3 ../apply.py --plan plan.json --tier low_risk --gh-repo owner/repo --reviewer claude --out-dir proposed)
+(cd "$TMP/doc/repo" && PATH="$TMP/doc/bin:$PATH" python3 ../apply.py --plan plan.json --tier low_risk --gh-repo owner/repo --model ai-doc-maintainer --out-dir proposed)
 assert_ok "grep -q '/v2/items' '$TMP/doc/repo/proposed/README.md.proposed'" "apply generates a bounded proposed documentation file"
 
-cat > "$TMP/doc/bin/claude" <<'SH'
-#!/usr/bin/env bash
-cat >/dev/null
-printf 'Existing sk-AAAAAAAAAAAAAAAAAAAA and new sk-BBBBBBBBBBBBBBBBBBBB\n'
-SH
-chmod +x "$TMP/doc/bin/claude"
 printf 'Existing sk-AAAAAAAAAAAAAAAAAAAA\n' > "$TMP/doc/repo/README.md"
-if (cd "$TMP/doc/repo" && PATH="$TMP/doc/bin:$PATH" python3 ../apply.py --plan plan.json --tier low_risk --gh-repo owner/repo --reviewer claude --out-dir proposed-secret) >/dev/null 2>&1; then
+if (cd "$TMP/doc/repo" && LITELLM_FAKE_MODE=secret PATH="$TMP/doc/bin:$PATH" python3 ../apply.py --plan plan.json --tier low_risk --gh-repo owner/repo --model ai-doc-maintainer --out-dir proposed-secret) >/dev/null 2>&1; then
   _r "apply accepted newly introduced secret-shaped content"
 else
   _g "apply rejects a new secret even when the source already contains another match"
 fi
 
-cat > "$TMP/doc/bin/claude" <<'SH'
-#!/usr/bin/env bash
-cat >/dev/null
-printf 'one replacement line\n'
-SH
-chmod +x "$TMP/doc/bin/claude"
 for n in $(seq 1 20); do echo "original line $n"; done > "$TMP/doc/repo/README.md"
-if (cd "$TMP/doc/repo" && PATH="$TMP/doc/bin:$PATH" python3 ../apply.py --plan plan.json --tier low_risk --gh-repo owner/repo --reviewer claude --out-dir proposed-destructive) >/dev/null 2>&1; then
+if (cd "$TMP/doc/repo" && LITELLM_FAKE_MODE=destructive PATH="$TMP/doc/bin:$PATH" python3 ../apply.py --plan plan.json --tier low_risk --gh-repo owner/repo --model ai-doc-maintainer --out-dir proposed-destructive) >/dev/null 2>&1; then
   _r "apply accepted a destructive full-document replacement"
 else
   _g "apply rejects excessive document deletion/replacement"

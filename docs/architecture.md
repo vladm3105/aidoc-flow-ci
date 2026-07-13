@@ -30,7 +30,7 @@ own equivalent.
 
 **Each CONSUMER repo (operations, framework, business, iplanic,
 future projects' consumers) has its OWN per-repo config** —
-`.github/ai-review/config.json` (trust allowlist, vendor choice,
+`.github/ai-review/config.json` (trust allowlist, LiteLLM model alias,
 auto-merge eligibility) + `.github/docs-sync.json` + optional
 overrides via `.github/ai-review/review-prompt.md` (per-consumer
 rubric) etc.
@@ -98,7 +98,7 @@ This is the most intricate part of the design.
 flowchart TD
     PR[PR opened/updated] --> Trust{trust job<br/>allowlisted author?}
     Trust -->|No| Human[label: ai:human-review-required<br/>HUMAN-REVIEW-ONLY path]
-    Trust -->|Yes| Review[heavy reviewer job<br/>codex/claude CLI on PR diff]
+    Trust -->|Yes| Review[heavy reviewer job<br/>LiteLLM proxy on PR diff]
     Review -->|verdict: approved| Approve[App posts APPROVED review<br/>label: ai:review-passed]
     Review -->|verdict: changes requested| Changes[App posts CHANGES_REQUESTED review<br/>label: ai:review-changes]
     Approve -->|pull_request_review event| Comp[composition job re-evaluates]
@@ -164,9 +164,9 @@ Common inputs across workflows:
 
 - `runner_labels` (or `runner_labels_routine` / `runner_labels_review`
   for `ai-review`): default `"ubuntu-latest"`; PRIVATE consumers
-  override to the self-hosted `["self-hosted","aidoc","ci-ephemeral"]` array per
+  override to the self-hosted `["self-hosted","ci-runner","single-use"]` array per
   [`../LABELS.md`](../LABELS.md) §2 routing rule
-- `reviewer` (`ai-review` only): `codex` | `claude` (default config)
+- `model` (`ai-review` only): LiteLLM model alias (trusted config or caller override)
 - `config-file` / `config-path`: pointer to the per-repo policy file
 
 Inputs do NOT vary the workflow shape — only knob values. The

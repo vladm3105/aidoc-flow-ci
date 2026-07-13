@@ -98,7 +98,7 @@ repos:
 **Our routing rule (per [`../LABELS.md`](../LABELS.md) §2 +
 [`runners.md`](runners.md) §4) follows GitHub's recommendation:**
 
-- **PRIVATE repos** use self-hosted `["self-hosted","aidoc","ci-ephemeral"]` — no
+- **PRIVATE repos** use self-hosted `["self-hosted","ci-runner","single-use"]` — no
   fork concern; safe per GitHub's guidance.
 - **PUBLIC repos** use `ubuntu-latest` (GitHub-hosted) — GitHub's
   recommended path; no self-hosted exposure.
@@ -110,8 +110,8 @@ mitigation is:
 1. The trust gate ensures fork-PR code **never reaches the
    self-hosted reviewer job** (HUMAN-REVIEW-ONLY route).
 2. The reusable workflow body **never executes PR code** — it
-   reads PR-diff metadata via `gh api` only; the reviewer CLI
-   analyzes the diff as text, not as executable code.
+   reads PR-diff metadata via `gh api` only; LiteLLM receives the diff as
+   untrusted text, not as executable code.
 3. Even with both above, this is **accepted-risk, not GitHub-
    recommended**. Document the deviation in the consumer's
    CLAUDE.md.
@@ -128,21 +128,20 @@ Consumer callers typically use:
 ```yaml
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v1.0.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.0.0
     secrets: inherit   # passes all consumer-repo secrets to reusable
 ```
 
-The reusable workflow declares the secrets it uses
-(`APP_REVIEWER_1_ID`, `APP_REVIEWER_1_KEY`, etc.) at the top of
-the workflow file (`secrets:` block in `on: workflow_call:`).
-`inherit` passes them through; the reusable workflow can also
-explicitly accept them via the `secrets:` block.
+`inherit` passes consumer secrets to the reusable. The workflow references
+only its documented names; unrelated inherited secrets are not exported to the
+LiteLLM process.
 
 ### 4.2 What secrets the workflows need
 
 | Workflow | Secrets required |
 |---|---|
-| `ai-review` | `APP_REVIEWER_1_ID` + `APP_REVIEWER_1_KEY` (the reviewer App's credentials; consumer sets these once after App install per F5 blast-radius rule) |
+| `ai-review` | `APP_REVIEWER_1_ID` + `APP_REVIEWER_1_KEY`; `LITELLM_BASE_URL` + `LITELLM_REVIEW_API_KEY` |
+| `doc-maintainer` | `LITELLM_BASE_URL` + `LITELLM_DOC_API_KEY`; live mode also requires `AIDOC_FLOW_BOT_ID` + `AIDOC_FLOW_BOT_KEY` |
 | `composition` | None beyond `GITHUB_TOKEN` (auto-provided by Actions) |
 | `labeler` | None beyond `GITHUB_TOKEN` |
 | `codeql` | None beyond `GITHUB_TOKEN` |
@@ -150,14 +149,13 @@ explicitly accept them via the `secrets:` block.
 | `links` | None beyond `GITHUB_TOKEN` (passed to lychee to avoid GH rate limits on github.com URLs) |
 | `secret-scan` | None beyond `GITHUB_TOKEN` |
 
-### 4.3 Secret-name convention (v1.0.0 limitation)
+### 4.3 Reviewer App secret-name convention
 
-The `APP_REVIEWER_1_*` names are **hardcoded** in
-`ai-review.yml`'s body. Consumers using non-default names would
-need to fork. v1.0.1+ may add `app_id_secret_name` /
-`app_key_secret_name` inputs IF consumers actually need
-non-default names. See
-[`../README.md`](../README.md) "v1.0.0 known limitations".
+The `APP_REVIEWER_1_*` names are the canonical reviewer-App contract and are
+declared explicitly by `ai-review.yml`. LiteLLM credentials deliberately use
+separate purpose-scoped names: `LITELLM_REVIEW_API_KEY` for review and
+`LITELLM_DOC_API_KEY` for documentation maintenance. Never reuse the proxy
+master key or one unrestricted virtual key for both agents.
 
 ## 5. `pull_request_target` vs `pull_request` — why `_target`
 

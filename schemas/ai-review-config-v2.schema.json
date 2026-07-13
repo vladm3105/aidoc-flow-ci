@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.0.0/schemas/ai-review-config-v2.schema.json",
+  "title": "aidoc-flow AI review configuration v2",
+  "type": "object",
+  "required": ["version", "litellm", "trust", "auto_merge"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "version": {"const": 2},
+    "_note": {"type": "string"},
+    "litellm": {
+      "type": "object",
+      "required": ["model"],
+      "properties": {
+        "model": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"}
+      },
+      "additionalProperties": false
+    },
+    "trust": {
+      "type": "object",
+      "required": ["ai_review", "auto_fix"],
+      "properties": {
+        "ai_review": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "auto_fix": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+      },
+      "additionalProperties": false
+    },
+    "governance": {"type": "object"},
+    "composition": {"type": "object"},
+    "auto_merge": {"type": "object"},
+    "autofix": {"type": "object"}
+  },
+  "additionalProperties": false
+}

@@ -8,7 +8,7 @@
 # Visibility: single template (works for both PRIVATE + PUBLIC). The
 # default runner is ubuntu-latest (cheap; labeler only reads PR
 # metadata + writes labels via gh-token). PRIVATE consumers may
-# override `runner_labels` to '["self-hosted", "aidoc", "ci-ephemeral"]' to keep CI on the
+# override `runner_labels` to '["self-hosted", "ci-runner", "single-use"]' to keep CI on the
 # self-hosted pool per OPS-0049 (no GitHub-hosted minutes for private).
 
 name: labeler
@@ -36,10 +36,10 @@ concurrency:
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/labeler.yml@ci/v1.9.5
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/labeler.yml@ci/v2.0.0
     permissions:
       contents: read
       pull-requests: write
     # Override the default for PRIVATE consumers:
     # with:
-    #   runner_labels: '["self-hosted", "aidoc", "ci-ephemeral"]'
+    #   runner_labels: '["self-hosted", "ci-runner", "single-use"]'

@@ -2,8 +2,8 @@
 #
 # Secrets required (consumer adds to repo secrets):
 #   APP_REVIEWER_1_ID + APP_REVIEWER_1_KEY  reviewer App credentials
-#   OPENAI_API_KEY                           if reviewer: codex
-#   ANTHROPIC_API_KEY                        if reviewer: claude
+#   LITELLM_BASE_URL                         proxy base URL (normally .../v1)
+#   LITELLM_REVIEW_API_KEY                   review-scoped LiteLLM virtual key
 #
 # `pull_request_target` (not `pull_request`) is required so the trust gate has
 # write-capable credentials + secrets; the heavy job runs only for trusted
@@ -31,17 +31,15 @@ permissions:
   issues: write          # gh api label create/apply paths
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v1.9.5
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.0.0
     with:
-      # reviewer engine is CONFIG-DRIVEN: leave this unset and the reusable reads
-      # `.reviewer` (claude|codex) from your trust-config repo's
-      # .github/ai-review/config.json (operations@main by default; your own repo if
-      # you set trust_config_repo). Set the matching auth secret — claude:
-      # CLAUDE_CODE_OAUTH_TOKEN (CLI) or ANTHROPIC_API_KEY (API); codex:
-      # OPENAI_API_KEY. Uncomment to force an engine here regardless of config:
-      # reviewer: claude
-      runner_labels_routine: '["self-hosted", "aidoc", "ci-ephemeral"]'
-      runner_labels_review: '["self-hosted", "aidoc", "ci-ephemeral"]'
+      # Model selection is CONFIG-DRIVEN: the reusable reads `litellm.model`
+      # from the trusted .github/ai-review/config.json. Uncomment to override:
+      # model: ai-reviewer
+      runner_labels_routine: '["self-hosted", "ci-runner", "single-use"]'
+      runner_labels_review: '["self-hosted", "ci-runner", "single-use"]'
+      # Private HTTP proxies require explicit opt-in:
+      # litellm_allow_insecure_http: true
       # External adopters: point the trust config at YOUR ops/config repo
       # (holds `.github/ai-review/config.json`). Defaults to
       # vladm3105/aidoc-flow-operations@main.

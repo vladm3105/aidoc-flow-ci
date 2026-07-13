@@ -6,12 +6,12 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import json
-import os
 import re
 import subprocess
 import sys
-import tempfile
 from pathlib import Path, PurePosixPath
+
+from litellm_client import completion, redact_secret_shaped
 
 MAX_PATCH_BYTES = 120_000
 MAX_DOC_INVENTORY = 500
@@ -92,32 +92,8 @@ def extract_json(text: str) -> dict:
     return value
 
 
-def invoke_agent(reviewer: str, prompt: str) -> str:
-    env = os.environ.copy()
-    try:
-        if reviewer == "claude":
-            result = subprocess.run(
-                ["claude", "-p", "--output-format", "text"], input=prompt,
-                text=True, capture_output=True, timeout=600, env=env,
-            )
-            output = result.stdout
-        else:
-            with tempfile.NamedTemporaryFile() as output_file:
-                result = subprocess.run(
-                    ["codex", "exec", "--sandbox", "read-only", "--output-last-message", output_file.name, "-"],
-                    input=prompt, text=True, capture_output=True, timeout=600, env=env,
-                )
-                output_file.seek(0)
-                output = output_file.read().decode()
-        if result.returncode != 0:
-            fail(f"{reviewer} exited {result.returncode}: {result.stderr[-1000:]}")
-        if not output.strip():
-            fail(f"{reviewer} returned an empty plan")
-        return output
-    except FileNotFoundError:
-        fail(f"{reviewer} CLI is not installed on this runner")
-    except subprocess.TimeoutExpired:
-        fail(f"{reviewer} timed out after 10 minutes")
+def invoke_agent(model: str, prompt: str) -> str:
+    return completion(prompt, model=model, json_mode=True, timeout=600)
 
 
 def main() -> int:
@@ -126,7 +102,7 @@ def main() -> int:
     parser.add_argument("--gh-repo", required=True)
     parser.add_argument("--config", required=True)
     parser.add_argument("--conventions", required=True)
-    parser.add_argument("--reviewer", required=True, choices=("claude", "codex"))
+    parser.add_argument("--model", required=True)
     parser.add_argument("--out-plan", required=True)
     args = parser.parse_args()
 
@@ -193,7 +169,8 @@ Repository conventions: {conventions[:30000]}
 Complete changed-file list: {json.dumps([item.get('filename') for item in files])}
 Changed files and bounded patches: {json.dumps(patches)}
 """
-    raw = extract_json(invoke_agent(args.reviewer, prompt))
+    prompt, _redactions = redact_secret_shaped(prompt)
+    raw = extract_json(invoke_agent(args.model, prompt))
     updates = raw.get("updates")
     if not isinstance(updates, list):
         fail("AI plan must contain an updates array")

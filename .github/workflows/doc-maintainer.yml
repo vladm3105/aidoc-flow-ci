@@ -4,7 +4,7 @@
 # docs-sync.yml at end of Phase 3 (ci/v2.0.0). This reusable workflow:
 #
 #   1. Reads the merge diff + per-consumer conventions doc.
-#   2. Invokes `claude` (or `codex`) to PLAN which docs-of-record need
+#   2. Invokes the configured LiteLLM model to PLAN which docs-of-record need
 #      updating (the AI decides scope; no hardcoded trigger map).
 #   3. Risk-tier partitions the plan into low-risk and high-risk sets.
 #   4. Dry-run: posts a PR-comment listing proposed edits. Live: opens
@@ -25,7 +25,7 @@
 #   4. max_edits_per_pr + max_prs_per_day caps.
 #   5. Prompt redacts secret-shaped strings (Risk 11) and forbids source
 #      code / governance config edits.
-#   6. claude unavailable → fail LOUD with ::error:: + open tracking
+#   6. LiteLLM unavailable → fail LOUD with ::error:: + open tracking
 #      issue (D12 / Risk 12); never silently misses.
 #
 # RECURSION GUARDS (belt-and-suspenders):
@@ -41,7 +41,7 @@
 #       - cron: '7,37 * * * *'   # off-peak reconciler (per IPLAN-0025 D9)
 #   jobs:
 #     call:
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v1.9.5
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v2.0.0
 #       secrets: inherit
 
 name: doc-maintainer
@@ -57,10 +57,14 @@ on:
         description: 'Path to consumer conventions doc (AI reads). Default: .github/doc-maintainer-conventions.md'
         type: string
         default: '.github/doc-maintainer-conventions.md'
-      reviewer:
-        description: 'LLM: claude (default; subscription-auth) or codex (OPENAI_API_KEY)'
+      model:
+        description: 'LiteLLM model alias used for planning and documentation edits.'
         type: string
-        default: 'claude'
+        default: 'ai-doc-maintainer'
+      litellm_allow_insecure_http:
+        description: 'Explicitly allow an HTTP LiteLLM URL (private networks only).'
+        type: boolean
+        default: false
       runner_labels:
         description: 'JSON array of runner labels. Default ubuntu-latest.'
         type: string
@@ -80,18 +84,14 @@ on:
       AIDOC_FLOW_BOT_KEY:
         description: 'aidoc-flow-bot App private key (PEM). Required for non-dry-run mode.'
         required: false
-      CLAUDE_CODE_OAUTH_TOKEN:
-        description: 'Claude subscription auth token. Required when reviewer=claude.'
+      LITELLM_BASE_URL:
+        description: 'LiteLLM proxy base URL, normally ending in /v1.'
         required: false
-      OPENAI_API_KEY:
-        description: 'OpenAI API key. Required when reviewer=codex.'
+      LITELLM_DOC_API_KEY:
+        description: 'Scoped LiteLLM virtual key. Do not use a master key.'
         required: false
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-  actions: write          # scheduled reconciler dispatches missed merge SHAs
+permissions: {}
 
 concurrency:
   # Keyed by event so a cron reconcile never queues behind a slow push
@@ -112,6 +112,9 @@ jobs:
     name: Doc-maintainer reconcile (schedule backup)
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
     timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
@@ -160,16 +163,21 @@ jobs:
     name: AI-driven doc maintenance
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
     timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
       MERGE_SHA: ${{ inputs.merge_sha || github.sha }}
       CONFIG_PATH: ${{ inputs.config_path }}
       CONVENTIONS_PATH: ${{ inputs.conventions_path }}
-      REVIEWER: ${{ inputs.reviewer }}
+      LITELLM_MODEL: ${{ inputs.model }}
       DRY_RUN_OVERRIDE: ${{ inputs.dry_run_override }}
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
+      LITELLM_API_KEY: ${{ secrets.LITELLM_DOC_API_KEY }}
+      LITELLM_ALLOW_INSECURE_HTTP: ${{ inputs.litellm_allow_insecure_http }}
     steps:
       - name: Checkout (full history for git rename detection + doc inventory)
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -196,6 +204,8 @@ jobs:
             curl -fsSL "${BASE}/${op}.py" -o ".doc-maintainer-scripts/${op}.py"
             chmod +x ".doc-maintainer-scripts/${op}.py"
           done
+          curl -fsSL "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${TAG}/scripts/litellm_client.py" \
+            -o .doc-maintainer-scripts/litellm_client.py
           ls -la .doc-maintainer-scripts/
 
       - name: Step 1 — Deterministic dedup check (skip if maintainer-bot PR exists for this SHA)
@@ -259,52 +269,15 @@ jobs:
           fi
           echo "dry_run=$DRY_RUN" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
-          echo "::notice::doc-maintainer running; dry_run=$DRY_RUN reviewer=$REVIEWER"
+          echo "::notice::doc-maintainer running; dry_run=$DRY_RUN model=$LITELLM_MODEL"
 
-      - name: Step 3 — Resolve LLM CLI (best-effort install; warn-not-error)
+      - name: Step 3 — Validate LiteLLM configuration
         if: ${{ steps.cfg.outputs.skip != 'true' }}
         run: |
-          set -uo pipefail
-          # IPLAN-0025 v1.4.1 hotfix (operations PR #171 alpha.1 bug): step 3
-          # MUST be warn-not-error. Rationale: the alpha.1 stub planner.py does
-          # NOT invoke the LLM (emits empty plan); the actual CLI requirement
-          # only kicks in v1.4.1+ when the real LLM call ships in planner.py
-          # apply-mode. fail-LOUD discipline (D12) is preserved BUT moved
-          # INSIDE planner.py / apply.py where the LLM is actually invoked.
-          # Step 3 is now a best-effort install for ubuntu-latest convenience;
-          # self-hosted runners pre-bake the CLI; npm-less runners (e.g.
-          # operations' ci-ephemeral pool) emit warning + downstream Python
-          # scripts decide whether to fail.
-          case "$REVIEWER" in
-            claude)
-              if command -v claude >/dev/null 2>&1; then
-                echo "::notice::claude CLI already available (pre-baked on this runner)."
-              elif command -v npm >/dev/null 2>&1; then
-                # Pin the version (sec H5) — an unpinned `npm install -g` pulls
-                # whatever `latest` resolves to at run time, so a bad upstream
-                # release silently breaks consumer CI. Best-effort install; bump
-                # deliberately per a claude-code release.
-                if npm install -g @anthropic-ai/claude-code@2.1.205 2>&1 | tail -3; then
-                  echo "::notice::claude CLI installed via npm."
-                else
-                  echo "::warning::claude CLI install via npm FAILED — downstream LLM steps will fail LOUD if/when they invoke claude (alpha.1 stub does not invoke it)."
-                fi
-              else
-                echo "::warning::claude CLI not available + npm not available on this runner (e.g. ci-ephemeral pool); downstream LLM steps will fail LOUD if/when they invoke claude. Operator: pre-bake claude CLI on this runner pool to silence this warning."
-              fi
-              ;;
-            codex)
-              if command -v codex >/dev/null 2>&1; then
-                echo "::notice::codex CLI already available."
-              else
-                echo "::warning::codex CLI not available + this workflow does not auto-install it; downstream LLM steps will fail LOUD if/when they invoke codex. Operator: pre-bake codex CLI on this runner pool."
-              fi
-              ;;
-            *)
-              echo "::error::Unknown reviewer: $REVIEWER (expected claude or codex)"
-              exit 1
-              ;;
-          esac
+          set -euo pipefail
+          [ -n "$LITELLM_BASE_URL" ] || { echo "::error::LITELLM_BASE_URL is unset"; exit 1; }
+          [ -n "$LITELLM_API_KEY" ] || { echo "::error::LITELLM_DOC_API_KEY is unset"; exit 1; }
+          [ -n "$LITELLM_MODEL" ] || { echo "::error::LiteLLM model alias is unset"; exit 1; }
 
       - name: Steps 4-7 — Inventory candidates + AI plan + validate + tier-classify
         if: ${{ steps.cfg.outputs.skip != 'true' }}
@@ -324,7 +297,7 @@ jobs:
             --gh-repo "$GH_REPO" \
             --config "$CONFIG_PATH" \
             --conventions "$CONVENTIONS_PATH" \
-            --reviewer "$REVIEWER" \
+            --model "$LITELLM_MODEL" \
             --out-plan .doc-maintainer-plan.json \
             || { echo "::error::planner.py failed — failing LOUD per IPLAN-0025 D12 / Risk 12"; exit 1; }
           # Now safe to read the plan JSON.
@@ -344,7 +317,7 @@ jobs:
             --plan .doc-maintainer-plan.json \
             --tier low_risk \
             --gh-repo "$GH_REPO" \
-            --reviewer "$REVIEWER" \
+            --model "$LITELLM_MODEL" \
             --out-dir .doc-maintainer-proposed \
             || { echo "::error::apply.py failed — failing LOUD per IPLAN-0025 D12 / Risk 12"; exit 1; }
 

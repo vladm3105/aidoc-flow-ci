@@ -129,11 +129,10 @@ what it says + (b) the canonical file path to READ for the full rule.
 MUST run CI on self-hosted runners — never `ubuntu-latest`.** GitHub-hosted
 minutes on a private repo are OPS-0049 billing exposure and against workspace
 policy (founder, 2026-07-11). The canonical private label is the verbose array
-`["self-hosted", "aidoc", "ci-ephemeral"]` (plus `[…, "ai-review"]` for the
-heavy reviewer job on repos with a second pool, e.g. operations).
+`["self-hosted", "ci-runner", "single-use"]` for both AI and non-AI jobs.
 
 - As of `ci/v1.9.0` the `install/templates/workflows/*-private.yml` templates
-  ship the real `["self-hosted","aidoc","ci-ephemeral"]` label. **Earlier**
+  ship the real `["self-hosted","ci-runner","single-use"]` label. **Earlier**
   releases shipped a `"runner-self"` placeholder — NOT a registered label, so a
   caller left on `runner-self` (or on the reusable's `ubuntu-latest` default)
   queues forever. If you see `runner-self` in an installed caller, replace it
@@ -141,7 +140,7 @@ heavy reviewer job on repos with a second pool, e.g. operations).
 - **Never "fix" a bricked private-repo gate by falling back to `ubuntu-latest`.**
   If a private repo has no pool yet, the fix is to **register the pool**
   (`../operations/scripts/ci-runner/run-ephemeral.sh`, labels
-  `self-hosted,aidoc,ci-ephemeral`), not to switch to GitHub-hosted.
+  `self-hosted,ci-runner,single-use`), not to switch to GitHub-hosted.
 - Public repos (engramory, framework, iplan-standard, iplan-runner) stay on
   `ubuntu-latest`. Full routing table + registration steps: `docs/runners.md`.
 

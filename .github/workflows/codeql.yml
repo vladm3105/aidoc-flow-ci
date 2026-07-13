@@ -29,7 +29,7 @@
 #     workflow_dispatch:
 #   jobs:
 #     codeql:
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/codeql.yml@ci/v1.9.5
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/codeql.yml@ci/v2.0.0
 #       with:
 #         languages: '["python","actions"]'
 #       permissions:
@@ -59,7 +59,7 @@ on:
         type: string
         default: ''
       runner_labels:
-        description: 'JSON array (or single-string) of runner labels. Default "ubuntu-latest" — CodeQL is widely tested on it; some compiled-language autobuilds may need macos/windows. PRIVATE consumers per OPS-0049 may override to the self-hosted "ci-ephemeral" pool.'
+        description: 'JSON array (or single-string) of runner labels. Default "ubuntu-latest" — CodeQL is widely tested on it; some compiled-language autobuilds may need macos/windows. PRIVATE consumers per OPS-0049 may override to the self-hosted "ci-runner/single-use" pool.'
         type: string
         default: '"ubuntu-latest"'
 

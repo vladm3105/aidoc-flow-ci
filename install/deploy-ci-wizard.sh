@@ -22,7 +22,7 @@ BOT_ID="294948438"                    # aidoc-reviewer App bot-user id (App-glob
 GH="${GH:-gh}"
 
 # All workflows in dependency order. Format: name:phase
-ALL_WF="pre-commit:1 links:2 markdown-lint:2 labeler:2 secret-scan:3 audit-trail:4 ai-review:5 composition:5 auto-merge-ai-prs:6 docs-sync:7 codeql:8"
+ALL_WF="pre-commit:1 links:2 markdown-lint:2 labeler:2 secret-scan:3 audit-trail:4 ai-review:5 composition:5 auto-merge-ai-prs:6 doc-maintainer:7 docs-sync:7 codeql:8"
 
 c_ok() { printf '  \033[32m🟢 %s\033[0m\n' "$*"; }
 c_no() { printf '  \033[31m🔴 %s\033[0m\n' "$*"; }
@@ -41,14 +41,14 @@ preflight() {
   hdr "1. Runner pool"
   if [ "$vis" = PRIVATE ]; then
     local runners; runners="$($GH api "repos/$repo/actions/runners" --jq '[.runners[]|select(.status=="online")|[.labels[].name]|join(",")]|join(" | ")' 2>/dev/null || echo '')"
-    if echo "$runners" | grep -q 'ci-ephemeral'; then c_ok "self-hosted ci-ephemeral pool online: $runners"
-    else c_no "PRIVATE repo has NO online ci-ephemeral runner → 🔴 founder registers the pool (docs/runners.md). Do NOT use ubuntu-latest."; fi
+    if echo "$runners" | grep -q 'ci-runner' && echo "$runners" | grep -q 'single-use'; then c_ok "self-hosted ci-runner/single-use pool online: $runners"
+    else c_no "PRIVATE repo has NO online ci-runner/single-use pool → 🔴 founder registers the pool (docs/runners.md). Do NOT use ubuntu-latest."; fi
   else c_ok "PUBLIC → ubuntu-latest (no self-hosted pool needed)"; fi
 
   hdr "2. Reviewer App secrets + bot-id (for ai-review + composition)"
   local secs; secs="$($GH secret list -R "$repo" --json name -q '.[].name' 2>/dev/null || echo '')"
   local missing=0
-  for s in APP_REVIEWER_1_ID APP_REVIEWER_1_KEY CLAUDE_CODE_OAUTH_TOKEN; do
+  for s in APP_REVIEWER_1_ID APP_REVIEWER_1_KEY LITELLM_BASE_URL LITELLM_REVIEW_API_KEY LITELLM_DOC_API_KEY; do
     echo "$secs" | grep -qx "$s" && c_ok "secret $s set" || { c_no "secret $s MISSING → 🔴 founder sets it (+ installs the aidoc-reviewer App)"; missing=1; }
   done
   local botid; botid="$($GH variable list -R "$repo" --json name,value -q '.[]|select(.name=="APP_REVIEWER_1_BOT_ID")|.value' 2>/dev/null || echo '')"
@@ -90,9 +90,10 @@ plan() {
    4. audit-trail          (needs skip-audit-trail label)
    5. ai-review + composition   (needs 🔴 App+secrets+ 🟢 bot-id var)
    6. auto-merge-ai-prs    (inert without ai-review)
-   7. docs-sync (dry-run)  (no App needed; live-mode is 🔴)
+   7. doc-maintainer (dry-run)  (LiteLLM required; live-mode App is 🔴)
+      docs-sync is legacy and should not be co-installed on new v2 adopters.
    8. codeql               (skip docs-only repos)
-  Variant: $([ "$vis" = PRIVATE ] && echo 'PRIVATE → runner_labels ["self-hosted","aidoc","ci-ephemeral"]' || echo 'PUBLIC → ubuntu-latest')
+  Variant: $([ "$vis" = PRIVATE ] && echo 'PRIVATE → runner_labels ["self-hosted","ci-runner","single-use"]' || echo 'PUBLIC → ubuntu-latest')
   Each PR: branch-first · pin @$CI_TAG · CHANGELOG entry · OPS-0069 audit phrase · verify green.
   Gotchas: docs/AI_CI_DEPLOYMENT.md §5.  Verify: §6.  Arm: §7.
 EOF
@@ -100,7 +101,7 @@ EOF
 
 scaffold() {
   local repo="$1" dir="$2"; shift 2 || true
-  local wfs="${*:-pre-commit links markdown-lint labeler secret-scan audit-trail ai-review composition auto-merge-ai-prs docs-sync}"
+  local wfs="${*:-pre-commit links markdown-lint labeler secret-scan audit-trail ai-review composition auto-merge-ai-prs doc-maintainer}"
   # FAIL CLOSED: never guess PUBLIC — a private repo scaffolded as public gets
   # ubuntu-latest callers that queue forever (OPS-0049 policy). If visibility is
   # unreadable, stop rather than pick the unsafe variant.
@@ -125,7 +126,7 @@ scaffold() {
       python3 - "$dst" "$wf" "$vis" <<'PY'
 import sys, re
 d, wf, vis = sys.argv[1], sys.argv[2], sys.argv[3]
-LBL = "      runner_labels: '[\"self-hosted\", \"aidoc\", \"ci-ephemeral\"]'"
+LBL = "      runner_labels: '[\"self-hosted\", \"ci-runner\", \"single-use\"]'"
 FOF = "      fail-on-findings: false"
 lines = open(d).read().split('\n')
 out, i, in_jobs = [], 0, False
@@ -155,7 +156,7 @@ PY
     fi
     if python3 -c 'import sys,yaml;yaml.safe_load(open(sys.argv[1]))' "$dst" 2>/dev/null; then c_ok "$wf.yml"; else c_no "$wf.yml — INVALID YAML (or PyYAML not installed), inspect it"; fi
     if [ "$vis" = PRIVATE ] && [ ! -f "$TPL/workflows/$wf-$suffix.yml" ] && ! grep -qE '^\s*runner_labels:' "$dst"; then
-      c_wn "$wf.yml: PRIVATE repo but no runner_labels injected (job has no with: block) — add ci-ephemeral labels manually per §5 item 1"
+      c_wn "$wf.yml: PRIVATE repo but no runner_labels injected (job has no with: block) — add ci-runner + single-use labels manually per §5 item 1"
     fi
     if [ "$wf" = ai-review ] || [ "$wf" = composition ]; then
       grep -q '^permissions:' "$dst" || c_no "$wf.yml MISSING permissions block (would startup_failure) — check template"
@@ -166,6 +167,18 @@ PY
     local from="${pair%%:*}" to="${pair##*:}"
     if [ -f "$TPL/$from" ]; then mkdir -p "$dir/$(dirname "$to")"; cp "$TPL/$from" "$dir/$to"; c_ok "config $to"; fi
   done
+  case " $wfs " in
+    *" ai-review "*|*" composition "*)
+      mkdir -p "$dir/.github/ai-review"
+      python3 - "$TPL/config.json.template" "$dir/.github/ai-review/config.json" "${repo%%/*}" <<'PY'
+import pathlib, sys
+source, destination, owner = sys.argv[1:]
+text = pathlib.Path(source).read_text().replace("${CODEOWNER_HANDLE}", owner)
+pathlib.Path(destination).write_text(text)
+PY
+      c_ok "config .github/ai-review/config.json"
+      ;;
+  esac
   cat <<EOF
 
   ⚠️  REVIEW before committing (docs/AI_CI_DEPLOYMENT.md §4-§5):

@@ -52,7 +52,7 @@ jobs:
   call:
     uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v1.0.0
     with:
-      runner_labels: '["self-hosted", "aidoc", "ci-ephemeral"]'   # PRIVATE override; default is "ubuntu-latest"
+      runner_labels: '["self-hosted", "ci-runner", "single-use"]'   # PRIVATE override; default is "ubuntu-latest"
       globs: |
         **/*.md
         !node_modules
@@ -89,7 +89,7 @@ is the signal described in §5, not an error.
 ### Mode 2: Full replacement (when canonical genuinely doesn't fit)
 
 **When:** Your repo's logic for that workflow genuinely differs
-from the canonical (different reviewer CLI, custom trust-gate
+from the canonical (different AI gateway, custom trust-gate
 algorithm, vendor-specific scanning, etc.).
 
 **How:** Drop the `uses:` call. Write your own jobs/steps in the
@@ -150,8 +150,8 @@ check. No drift to flag.
 
 | Question | Use mode |
 |---|---|
-| "I want the canonical behavior with the self-hosted `ci-ephemeral` pool instead of `ubuntu-latest`" | Mode 1 (parameter override) |
-| "I want a custom reviewer instead of codex" | Mode 2 (full replacement) |
+| "I want the canonical self-hosted `ci-runner` / `single-use` pool instead of `ubuntu-latest`" | Mode 1 (parameter override) |
+| "I want a different LiteLLM model alias" | Mode 1 (`model` input override) |
 | "I want to add a new check `aidoc-flow-ci` doesn't have" | Mode 3 (custom workflow) |
 | "I want to wrap the canonical workflow in some pre/post steps" | Mode 2 (full replacement) — reusable workflows are single-job-call from caller's perspective; you can't insert steps inside the called job |
 | "I want to skip a job under some condition" | Mode 1 (`if:` on the caller job) OR Mode 2 (custom skip logic) |
@@ -197,4 +197,4 @@ for the actual current per-repo adoption, see
 |---|---|---|
 | `aidoc-flow-operations` | Mode 2 (full replacement) for `ai-review` + `composition` | Operations is the reference repo for these workflows — its local files are the historical canonical source |
 | `aidoc-flow-framework` | Mode 1 for `ai-review` | PUBLIC consumer; pins `runner_labels: '"ubuntu-latest"'` (the default) |
-| `aidoc-flow-business` | Mode 1 for `ai-review` + Mode 3 for a custom `plan-gate.yml` | PRIVATE consumer; overrides `runner_labels` to the self-hosted `ci-ephemeral` array; adds a custom plan-gate check |
+| `aidoc-flow-business` | Mode 1 for `ai-review` + Mode 3 for a custom `plan-gate.yml` | PRIVATE consumer; overrides `runner_labels` to the self-hosted `ci-runner` / `single-use` array; adds a custom plan-gate check |

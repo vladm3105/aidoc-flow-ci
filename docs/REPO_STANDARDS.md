@@ -176,13 +176,42 @@ open a normal bot PR subject to the repository's review gates; high-risk edits
 open an issue and are never applied automatically. Live mode additionally
 requires the scoped `aidoc-flow-bot` App and enforces `max_prs_per_day`.
 
+### 4.0b Unified LiteLLM agent gateway
+
+All canonical AI execution (`ai-review` and `doc-maintainer`) goes through one
+OpenAI-compatible LiteLLM proxy. Consumers provide repository or organization
+secrets `LITELLM_BASE_URL`, `LITELLM_REVIEW_API_KEY`, and
+`LITELLM_DOC_API_KEY`; they do not install or log in to vendor CLIs on runners.
+AI review resolves its model alias from caller input
+`model`, then trusted config `litellm.model`. Doc-maintainer uses its caller
+`model` input (default `ai-doc-maintainer`). The proxy owns provider selection,
+fallbacks, budgets, and provider credentials; CI receives only a scoped LiteLLM
+key. Runners must be able to reach the configured proxy. Proxy failures and
+malformed responses fail closed and never become an approving verdict.
+
+The proxy URL MUST use HTTPS. Plain HTTP requires the explicit caller opt-in
+`litellm_allow_insecure_http: true` and is limited to a controlled private
+network. Use separate virtual keys for review and documentation maintenance,
+restricted to their model aliases with spend/rate limits and rotation; never
+use the LiteLLM master key. Disable sensitive prompt/response logging and apply
+an appropriate retention policy: AI review sends a bounded, secret-pattern-
+redacted PR diff to the proxy, which can still contain private source code.
+Doc-maintainer sends redacted PR metadata, patches, repository conventions,
+and redacted current documentation. Secret-shaped source values use opaque
+placeholders during inference and are restored only after the response; missing
+or duplicated placeholders fail closed.
+
+Before a major AI-contract release is tagged, `.github/workflows/litellm-smoke.yml`
+MUST pass against the actual proxy for both canonical aliases. Mocked unit tests
+do not replace this provider/proxy compatibility gate.
+
 ### 4.1 Runner class by visibility (canon)
 
 A workspace repo's runner CLASS follows its visibility, by default:
 
 | Visibility | Default runner | Caller variant |
 | --- | --- | --- |
-| **Private** | self-hosted `["self-hosted", "aidoc", "ci-ephemeral"]` (+ `[…, "ai-review"]` for the heavy job) | `-private.yml` |
+| **Private** | self-hosted `["self-hosted", "ci-runner", "single-use"]` for AI and non-AI jobs | `-private.yml` |
 | **Public** | GitHub-hosted `ubuntu-latest` | `-public.yml` |
 
 This account has **no GitHub-hosted Actions minutes for private repos**
@@ -190,12 +219,12 @@ This account has **no GitHub-hosted Actions minutes for private repos**
 `install.sh --update` auto-detects the repo's visibility (`gh repo view
 isPrivate`) and installs the matching variant; bootstrap selects it from
 `--visibility` (defaults to `private`). **A private consumer MUST register the
-self-hosted `ci-ephemeral` (+ `ai-review`) pool before adopting.** Full detail + the external-adopter
+self-hosted `ci-runner` / `single-use` pool before adopting.** Full detail + the external-adopter
 override (they lack the self-hosted pool → `ubuntu-latest`): `docs/runners.md`
 "Workspace default".
 
 As of `ci/v1.9.0` the `-private.yml` templates ship the **real**
-`["self-hosted", "aidoc", "ci-ephemeral"]` label directly (earlier releases
+`["self-hosted", "ci-runner", "single-use"]` label directly (earlier releases
 shipped a `runner-self` placeholder that resolved to `runs-on: runner-self`,
 matched no runner, and queued every required check — FT-9).
 
@@ -890,7 +919,7 @@ consumers ship a thin caller from one of the canonical templates:
 
 - **Public consumer** (ubuntu-latest runners):
   `install/templates/workflows/auto-merge-ai-prs-public.yml`
-- **Private consumer** (self-hosted ci-ephemeral runners):
+- **Private consumer** (self-hosted `ci-runner` / `single-use` runners):
   `install/templates/workflows/auto-merge-ai-prs-private.yml`
 
 Both templates pin at `@ci/v1.5.1` (bump per this repo's release

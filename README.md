@@ -37,14 +37,14 @@ rationale.
 
 | Workflow | Purpose |
 | --- | --- |
-| `ai-review.yml` | AI code-review gate. Two-job split (trust → reviewer App) — safe-by-design for public repos. Submits a formal review as the reviewer App, sets `ai:review-*` labels, arms auto-merge when appropriate. |
+| `ai-review.yml` | AI code-review gate. Two-job split (trust → LiteLLM reviewer) — safe-by-design for public repos. Submits a formal review as the reviewer App, sets `ai:review-*` labels, and arms auto-merge when appropriate. |
 | `composition.yml` | Authoritative identity gate for **counting** AI approvals (an App can approve but cannot be a CODEOWNER). |
 | `auto-merge-ai-prs.yml` | Server-side enforcer — re-arms native auto-merge for stuck-green AI-opened PRs. |
 | `pre-commit.yml` | `pre-commit run --all-files` runner (Python + caching + pinned pre-commit). |
 | `codeql.yml` | CodeQL static analysis (language-configurable). |
-| `secret-scan.yml` | Secret scanning via `gacts/gitleaks` (MIT — not the org-licensed action). |
-| `markdown-lint.yml` | Markdown lint (`markdownlint-cli2-action`; inline PR annotations). |
-| `links.yml` | Link checking (`lychee-action`; blocking offline + weekly external soft-fail). |
+| `secret-scan.yml` | Secret scanning with a pinned, checksum-verified gitleaks binary. |
+| `markdown-lint.yml` | Markdown lint with pinned `markdownlint-cli2`; inline PR annotations. |
+| `links.yml` | Link checking with a pinned, checksum-verified lychee binary; blocking internal + weekly external soft-fail. |
 | `labeler.yml` | Path-based PR labeling (`actions/labeler@v6`). |
 | `docs-sync.yml` | Mechanical post-merge doc fixer (deterministic version/structure propagation). |
 | `doc-maintainer.yml` | AI-driven post-merge doc-of-record maintainer (supersedes `docs-sync.yml` at `ci/v2.0.0`). |
@@ -61,7 +61,7 @@ detectors in `sync/`, `LABELS.md` (label-namespace conventions), and
 ## Install on a new consumer repo
 
 ```sh
-bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.9.5/install/install.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.0.0/install/install.sh) \
   vladm3105/<consumer-repo> --visibility private
 ```
 
@@ -71,7 +71,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v
 |---|---|---|
 | **Actions allowlist** must include `vladm3105/aidoc-flow-ci/*` | If consumer is in `selected actions` mode, the reusable workflow is blocked → `startup_failure` | [`docs/troubleshooting.md` §13](docs/troubleshooting.md) |
 | **Caller `permissions:` block** if repo-default `workflow_permissions: read` | Reusable can't elevate above caller's grant → `startup_failure` | [`docs/troubleshooting.md` §14](docs/troubleshooting.md) |
-| **Reviewer App + secrets** `APP_REVIEWER_1_ID/KEY` (+ `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) | ai-review needs the reviewer App installed + credentials | See [`docs/REVIEWER_APP_ONBOARDING.md`](docs/REVIEWER_APP_ONBOARDING.md) |
+| **Reviewer App + LiteLLM secrets** `APP_REVIEWER_1_ID/KEY`, `LITELLM_BASE_URL`, `LITELLM_REVIEW_API_KEY`, `LITELLM_DOC_API_KEY` | AI jobs need scoped keys and a reachable LiteLLM proxy | See [`docs/REVIEWER_APP_ONBOARDING.md`](docs/REVIEWER_APP_ONBOARDING.md) |
+| **Private runner pool** `[self-hosted, ci-runner, single-use]` | Private callers intentionally never fall back to GitHub-hosted runners | See [`docs/runners.md`](docs/runners.md) |
 | **Repo variable** `APP_REVIEWER_1_BOT_ID` (after first review) | composition matches App identity by numeric bot id | `gh variable set APP_REVIEWER_1_BOT_ID --repo <consumer> --body "<id>"` |
 | **Branch-protection required checks** | Install runs CI but nothing is enforced until the checks are required | See [`docs/BRANCH_PROTECTION.md`](docs/BRANCH_PROTECTION.md) |
 

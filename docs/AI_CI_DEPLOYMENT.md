@@ -42,7 +42,7 @@ secrets), [`runners.md`](runners.md) (self-hosted pools),
 | 🔴 Founder-only | Why you can't |
 | --- | --- |
 | Install the reviewer **App** on the repo (+ on `aidoc-flow-operations`) | App installation is F5 blast-radius; needs org/repo admin UI |
-| Set the reviewer **secrets** (`APP_REVIEWER_1_ID`, `APP_REVIEWER_1_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`) | You don't hold the App private key / token values |
+| Set the AI **secrets** (`APP_REVIEWER_1_ID`, `APP_REVIEWER_1_KEY`, `LITELLM_BASE_URL`, `LITELLM_REVIEW_API_KEY`, `LITELLM_DOC_API_KEY`) | You don't hold the App private key / token values |
 | Register a self-hosted **runner pool** for a private repo | Provisions infra |
 
 Everything else (caller workflows, config files, non-secret variables, labels,
@@ -62,8 +62,8 @@ gh repo view <owner/repo> --json visibility -q .visibility   # PUBLIC | PRIVATE
 - **PRIVATE** → callers run on the self-hosted pool; use the `*-private.yml`
   templates. **Private repos are self-hosted ONLY — never `ubuntu-latest`**
   (OPS-0049 billing + policy). The canonical private label is the JSON array
-  `["self-hosted", "aidoc", "ci-ephemeral"]` (heavy reviewer jobs on repos
-  with a second pool use `["self-hosted", "aidoc", "ai-review"]`).
+  `["self-hosted", "ci-runner", "single-use"]`. AI jobs use the same
+  disposable pool and authenticate to LiteLLM with scoped repository secrets.
 
 Do NOT trust a stale doc's visibility column — always re-check with `gh`.
 
@@ -72,7 +72,7 @@ Do NOT trust a stale doc's visibility column — always re-check with `gh`.
 ```bash
 gh api repos/<owner/repo>/actions/runners --jq '.runners[]|{name,status,labels:[.labels[].name]}'
 ```
-Expect an online runner with labels `self-hosted,aidoc,ci-ephemeral`. If none:
+Expect an online runner with labels `self-hosted,ci-runner,single-use`. If none:
 **do not fall back to `ubuntu-latest`** — the fix is to register the pool
 (`aidoc-flow-operations/scripts/ci-runner/run-ephemeral.sh`), a 🔴 founder step.
 A private caller left on `ubuntu-latest` or the placeholder `runner-self` queues
@@ -80,20 +80,19 @@ forever. See [`runners.md`](runners.md).
 
 ### 1.3 Reviewer App + secrets + bot-id (needed for ai-review + composition)
 
-A working ai-review repo has THREE repo-level secrets and ONE variable
+A working ai-review repo has FOUR repo-level secrets and ONE variable
 (`vladm3105` is a user account — no org secrets to inherit, so these are
 **per-repo**):
 
 ```bash
-gh secret   list -R <owner/repo> | grep -E 'APP_REVIEWER_1_ID|APP_REVIEWER_1_KEY|CLAUDE_CODE_OAUTH_TOKEN'
+gh secret   list -R <owner/repo> | grep -E 'APP_REVIEWER_1_ID|APP_REVIEWER_1_KEY|LITELLM_BASE_URL|LITELLM_REVIEW_API_KEY|LITELLM_DOC_API_KEY'
 gh variable list -R <owner/repo> | grep APP_REVIEWER_1_BOT_ID
 ```
 
 - **Secrets missing → 🔴 founder** must (a) install the `aidoc-reviewer` App on
-  the repo AND on `aidoc-flow-operations` (the trust-config repo, `contents:read`),
-  then (b) set the 3 secrets. `CLAUDE_CODE_OAUTH_TOKEN` is the token because the
-  workspace `.reviewer` engine is `claude` (verify:
-  `gh api repos/vladm3105/aidoc-flow-operations/contents/.github/ai-review/config.json --jq .content | base64 -d | jq .reviewer`).
+  the repo and trust-config repo, then (b) set the App credentials plus a
+  reachable LiteLLM URL and scoped virtual key. The model alias is
+  `.litellm.model` in the trusted AI-review config.
 - **`APP_REVIEWER_1_BOT_ID` variable → 🟢 you set it.** It's the App's bot-user
   id and is **App-global** (same on every repo): **`294948438`**. Set it
   directly — no need to wait for the first review to capture it:
@@ -138,7 +137,7 @@ pulls a blocked action will `startup_failure` silently.
 
 Deploy in this order — later phases depend on earlier ones. One PR per
 workflow, or batch the independent content-checks. **Pin every caller at the
-current tag** (`ci/v1.9.5` at time of writing — read `../VERSION`).
+current tag** (read `../VERSION`; do not copy a tag from prose).
 
 | # | Phase | Workflow(s) | Depends on | Notes |
 | --- | --- | --- | --- | --- |
@@ -148,7 +147,7 @@ current tag** (`ci/v1.9.5` at time of writing — read `../VERSION`).
 | 4 | Audit | `audit-trail` | `skip-audit-trail` label | renders as `call / verify` |
 | 5 | **Review** | `ai-review` + `composition` | §1.3 App + secrets + bot-id | deploy together; verify (§6) |
 | 6 | Merge | `auto-merge-ai-prs` | ai-review + repo in `auto_merge.repos` allowlist | inert without ai-review |
-| 7 | Mechanical | `docs-sync` (dry-run) | — | live mode needs `aidoc-flow-bot` App (🔴) |
+| 7 | Documentation | `doc-maintainer` (dry-run) | LiteLLM doc key + config/conventions | AI decides which docs the merged PR made stale; live mode needs `aidoc-flow-bot` App (🔴) |
 | 8 | Code-scan | `codeql` | repo has compiled/interpreted code | skip docs-only repos |
 
 **Covered-by-own exception:** if a repo already lints markdown via its own
@@ -166,9 +165,9 @@ For each workflow, per PR:
 1. **Branch first** (never commit to `main` directly).
 2. Copy the caller from `install/templates/workflows/<name>-{public,private}.yml`
    (or the single template for `pre-commit`/`markdown-lint`/`links`/`labeler`/
-   `docs-sync`) to `.github/workflows/<name>.yml`.
+   `doc-maintainer`) to `.github/workflows/<name>.yml`.
 3. **Pin the tag** to the current `ci/vX.Y.Z`; for a PRIVATE repo add
-   `runner_labels: '["self-hosted", "aidoc", "ci-ephemeral"]'` under `with:`.
+   `runner_labels: '["self-hosted", "ci-runner", "single-use"]'` under `with:`.
 4. Add the repo-specific config file(s) (§4).
 5. **Add a CHANGELOG entry** in the same PR if the repo has a `## [Unreleased]`
    section + a doc-currency rule (operations-style repos enforce it — a missing
@@ -195,7 +194,7 @@ re-applies the template body and clobbers `runner_labels`/permissions/triggers
 | `markdown-lint` | `.markdownlint.json` | Copy `install/templates/.markdownlint.json` **only if the repo has none**. If it already has one (or its own pre-commit markdownlint), DO NOT overwrite it — you'll break its gate (see §5). |
 | `links` | `.lychee.toml` | Base on `install/templates/.lychee.toml`. Add repo-specific `exclude`/`exclude_path` for cross-repo `../sibling/` links + debt paths (see §5). |
 | `labeler` | `.github/labeler.yml` | Map the repo's ACTUAL paths → its ACTUAL labels (v5 `changed-files: any-glob-to-any-file:` format). Labels must pre-exist. |
-| `docs-sync` | `.github/docs-sync.json` | Copy `install/templates/docs-sync.json` (ships `dry_run: true`). Disable `changelog_stub` if the repo has no `CHANGELOG.md`. |
+| `doc-maintainer` | `.github/doc-maintainer.json` + `.github/doc-maintainer-conventions.md` | Copy both starter templates, keep `dry_run: true`, and tailor allowed/low-risk paths and repository documentation rules before the first run. |
 | `pre-commit` | `.pre-commit-config.yaml` | Consumer-owned; the workflow just runs it. |
 
 ---
@@ -207,9 +206,9 @@ Every one of these cost real debugging time. They are load-bearing.
 1. **Private repos = self-hosted ONLY.** Never `ubuntu-latest` on a private
    repo. `runner-self` is a placeholder, not a registered label — a caller left
    on it queues forever.
-2. **`runner_labels` must be valid JSON.** `'["self-hosted", "aidoc", "ci-ephemeral"]'`
+2. **`runner_labels` must be valid JSON.** `'["self-hosted", "ci-runner", "single-use"]'`
    — with the double-quotes. A shell heredoc silently strips inner quotes
-   (`'[self-hosted, aidoc, ...]'` → invalid JSON → `fromJSON()` breaks the
+   (`'[self-hosted, ci-runner, ...]'` → invalid JSON → `fromJSON()` breaks the
    workflow). Write caller files with a real editor / quoted heredoc and
    validate: `python3 -c "import yaml,json; print(json.loads(yaml.safe_load(open(F))['jobs']['call']['with']['runner_labels']))"`.
 3. **`ai-review` caller MUST point at the canon reusable**, not at another
@@ -250,9 +249,10 @@ Every one of these cost real debugging time. They are load-bearing.
    hundreds of cosmetic violations. Deploy `fail-on-findings: false` (surfaces
    annotations, doesn't block). Graduating to blocking needs a per-repo
    `markdownlint-cli2 --fix` pass + arming (§7). Tracked as FT-11.
-10. **`docs-sync` dry-run needs NO App.** The `aidoc-flow-bot` App is only used
-    by the live-mode "Apply" step (gated by `dry_run != true`). Deploy it in
-    dry-run everywhere now; live-mode graduation is a separate 🔴 founder step.
+10. **`doc-maintainer` dry-run needs LiteLLM but no bot App.** It requires
+    `LITELLM_BASE_URL` and the model-restricted `LITELLM_DOC_API_KEY`. The
+    `aidoc-flow-bot` App is required only for live-mode PR creation. Inspect
+    several coherent dry-run plans and patches before enabling live mode.
 11. **`pull_request_target` callers (ai-review) don't self-trigger on the adding
     PR.** GitHub runs `pull_request_target` from the BASE branch, which doesn't
     have the caller yet. So the PR that ADDS ai-review won't run it — merge it

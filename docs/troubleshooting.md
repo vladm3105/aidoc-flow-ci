@@ -264,27 +264,15 @@ External mode is **non-blocking** by design (cron + `fail-on-error:
 false`); flaky hosts shouldn't gate PRs anyway. The blocking
 internal mode uses `--offline` and skips all http(s) URLs.
 
-## 10. Public-consumer CLI gap (v1.0.0 known limitation)
+## 10. Public-consumer AI connectivity
 
-**Symptom:** Public consumer with `runner_labels_review:
-'"ubuntu-latest"'` runs ai-review; the heavy reviewer job fails
-with `codex: not found` (or `claude: not found`).
+**Symptom:** ai-review fails with a LiteLLM URL/key error or cannot connect.
 
-**Cause:** `ci/v1.0.0` ships the public ai-review template with
-`runner_labels_review: '"REPLACE-ME-with-runner-having-reviewer-CLI"'`
-as a placeholder. Consumers who set the value to `"ubuntu-latest"`
-hit this — GitHub-hosted runners (including `ubuntu-latest`) don't
-have the reviewer CLI pre-installed.
+**Cause:** `LITELLM_BASE_URL` or the workflow's scoped LiteLLM key is missing, the selected
+model alias is absent, or the runner cannot route to the proxy.
 
-**Fix:** Two options:
-
-1. **Wait for `ci/v1.0.1`** which adds CLI install + auth steps
-   to the reusable workflow gated on `contains(inputs.
-   runner_labels_review, 'ubuntu-latest')`. See operations
-   IPLAN-0017 §4 Phase B.
-2. **Set up a self-hosted runner** with the CLI pre-baked + use
-   `runner_labels_review: '"runner-self"'`. See
-   [`runners.md`](runners.md) §2 for the reference image.
+**Fix:** Set both LiteLLM secrets, ensure `litellm.model` names a configured
+proxy alias, and verify the runner can reach `${LITELLM_BASE_URL}/models`.
 
 ## 11. Markdownlint MD024/no-duplicate-heading
 
@@ -484,7 +472,7 @@ retain the direct retrigger path.
 **ci/v1.3.0+ change (IPLAN-0027 P1, R3 early-exit):** when
 ai-review fires and the reviewer App has **already APPROVED**
 the current HEAD SHA, a new R3 early-exit step skips the heavy
-reviewer CLI and carries the prior approval forward (saves
+LiteLLM request and carries the prior approval forward (saves
 ~$0.10-0.20 + ~2-3 min per redundant re-fire). This means a
 `skip-ai-review` label cycle on an **already-approved** PR (at
 the SAME HEAD) now ends with the R3 carry-forward — **not** a

@@ -3,7 +3,7 @@
 # pre-push hook: verifies every non-exempt PR carries the OPS-0065/0069
 # audit-trail phrase in a commit body. Renders as `call / verify`.
 # Requires the `skip-audit-trail` canon label in the repo (two-signal skip).
-# PRIVATE variant → self-hosted ci-ephemeral pool (OPS-0049; never ubuntu-latest).
+# PRIVATE variant → self-hosted ci-runner/single-use pool (OPS-0049; never ubuntu-latest).
 name: audit-trail
 
 on:
@@ -12,9 +12,9 @@ on:
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/audit-trail-check.yml@ci/v1.9.5
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/audit-trail-check.yml@ci/v2.0.0
     with:
-      runner_labels: '["self-hosted", "aidoc", "ci-ephemeral"]'
+      runner_labels: '["self-hosted", "ci-runner", "single-use"]'
     permissions:
       contents: read
       pull-requests: read

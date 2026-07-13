@@ -3,7 +3,7 @@
 # Single template (works for both PRIVATE + PUBLIC). The reusable installs
 # markdownlint-cli2 via npm (ci/v1.9.4+; no blocked third-party action).
 # PRIVATE consumers per OPS-0049 override runner_labels to
-# '["self-hosted", "aidoc", "ci-ephemeral"]'.
+# '["self-hosted", "ci-runner", "single-use"]'.
 #
 # Companion starter config: copy install/templates/.markdownlint.json
 # to your repo root for sensible rule defaults (or rely on cli2's
@@ -33,7 +33,7 @@ concurrency:
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v1.9.5
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v2.0.0
     with:
       globs: |
         **/*.md
@@ -43,4 +43,4 @@ jobs:
       # Report-only rollout (recommended for a repo with existing lint debt):
       # fail-on-findings: false
       # PRIVATE consumers add this inside the existing `with:` block:
-      # runner_labels: '["self-hosted", "aidoc", "ci-ephemeral"]'
+      # runner_labels: '["self-hosted", "ci-runner", "single-use"]'
