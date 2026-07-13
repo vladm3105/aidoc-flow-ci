@@ -7,7 +7,7 @@ projects/repos. Five parallel review agents (security-auditor, code-reviewer,
 documentation-specialist, system-architect, general-purpose governance-audit)
 returned unanimous SHIP-WITH-FIXES verdicts converging on 5 BLOCKER clusters +
 supporting HIGH findings that must close before elevation.
-**Status:** DRAFT — 2026-07-09 EST
+**Status:** SHIPPED — 2026-07-10 (ci/v1.7.0). A–E slices merged; tag + GitHub release cut. See `CHANGELOG.md` `## ci/v1.7.0`.
 **Depends on:** PLAN-002 (workspace standards rollout — SHIPPED), PLAN-003
 (project-governance-canon — SHIPPED / rollout in-progress). Neither is blocked
 by this plan; this plan extends the canon-source dogfooding surface.

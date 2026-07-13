@@ -137,8 +137,9 @@ jobs:
           set -euo pipefail
           # Pinned-tag fetch so the script matches the reusable's tag exactly.
           TAG="${CI_TAG##*@}"
+          CI_OWNER=$(echo "${CI_TAG}" | cut -d/ -f1)
           mkdir -p .doc-maintainer-scripts
-          curl -fsSL "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${TAG}/scripts/doc-maintainer/reconcile.py" \
+          curl -fsSL "https://raw.githubusercontent.com/${CI_OWNER}/aidoc-flow-ci/${TAG}/scripts/doc-maintainer/reconcile.py" \
             -o .doc-maintainer-scripts/reconcile.py
           chmod +x .doc-maintainer-scripts/reconcile.py
 
@@ -198,13 +199,14 @@ jobs:
           # Per IPLAN-0024 curl-replaces-checkout: fetch the per-tag operation
           # scripts so they match the reusable's pinned tag exactly.
           TAG="${CI_TAG##*@}"
-          BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${TAG}/scripts/doc-maintainer"
+          CI_OWNER=$(echo "${CI_TAG}" | cut -d/ -f1)
+          BASE="https://raw.githubusercontent.com/${CI_OWNER}/aidoc-flow-ci/${TAG}/scripts/doc-maintainer"
           mkdir -p .doc-maintainer-scripts
           for op in planner apply reconcile; do
             curl -fsSL "${BASE}/${op}.py" -o ".doc-maintainer-scripts/${op}.py"
             chmod +x ".doc-maintainer-scripts/${op}.py"
           done
-          curl -fsSL "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${TAG}/scripts/litellm_client.py" \
+          curl -fsSL "https://raw.githubusercontent.com/${CI_OWNER}/aidoc-flow-ci/${TAG}/scripts/litellm_client.py" \
             -o .doc-maintainer-scripts/litellm_client.py
           ls -la .doc-maintainer-scripts/
 

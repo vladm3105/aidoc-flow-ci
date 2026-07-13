@@ -51,20 +51,7 @@ the canon strings, correct §2 + every `branch-protection-*.json`. Doc
 (`BRANCH_PROTECTION.md`) currently mirrors canon faithfully, so it self-
 corrects once canon is fixed.
 
-### FT-3 — `labels.json` `skip-ai-review` description contradicts behavior
-
-**Found:** 2026-07-09, PLAN-004 PR-A3 (`LABELS.md` rewrite).
-**Surface:** `install/templates/labels.json` describes `skip-ai-review` as
-"Operator override to re-fire ai-review", but the actual behavior
-(`ai-review.yml` SKIP_REVIEW + `composition.yml:110-117` carry-forward) is
-**suppress-and-carry-forward** — the label SUPPRESSES the reviewer on
-subsequent pushes and carries the prior approval forward.
-**Effect:** the terse description ships to consumers + is misleading.
-`LABELS.md` documents the correct behavior + flags the discrepancy.
-**Fix sketch:** update the `labels.json` description to
-"Human override: suppress the reviewer on later pushes; composition
-carries the prior approval forward" and PATCH-tag (label description
-change is additive/cosmetic).
+### FT-3 — `labels.json` `skip-ai-review` description corrected \n\n**Found:** 2026-07-09, PLAN-004 PR-A3 (`LABELS.md` rewrite).\n**Status:** RESOLVED — 2026-07-12.\n**Resolution:** `install/templates/labels.json:20` now reads "Operator override:\nsuppress re-review and carry forward a valid prior approval" — matches the actual\nbehavior (`ai-review.yml` SKIP_REVIEW + `composition.yml:110-117` carry-forward).\n`LABELS.md` already documented the correct behavior; the stale description was\ncosmetic only.
 
 ### FT-4 — CHANGELOG back-catalog (v1.1.0–v1.6.0) not cut into per-tag `##` headers
 

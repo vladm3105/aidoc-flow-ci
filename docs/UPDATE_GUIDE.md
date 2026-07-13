@@ -75,3 +75,20 @@ cd <printed-work-dir> && git diff
 
 `--update` is idempotent: re-running with no canon change prints only
 `unchanged` lines and replaces nothing.
+
+## ci/v1.x → ci/v2.0.0 breaking-change migration
+
+The `ci/v2.0.0` release replaces vendor CLIs with a unified LiteLLM proxy.
+This is a breaking change — consumers must complete additional steps beyond
+a normal `--update` or `--repin` cycle. Read the full migration guide:
+
+- [`docs/MIGRATION_v2.0.0.md`](MIGRATION_v2.0.0.md) — complete checklist
+  (new secrets, removed inputs, config changes, repin, smoke test)
+
+Quick-reference:
+
+1. Add `LITELLM_BASE_URL` + `LITELLM_REVIEW_API_KEY` secrets
+2. Add `"litellm": {"model": "ai-reviewer"}` to `.github/ai-review/config.json`
+3. Drop deprecated vendor-CLI secrets (`OPENAI_API_KEY`, etc.)
+4. `CI_TAG=ci/v2.0.0 bash install.sh <owner/repo> --repin` then `--update`
+5. Verify LiteLLM connectivity (smoke test) before merging the consumer PR

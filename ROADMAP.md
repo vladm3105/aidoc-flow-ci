@@ -8,47 +8,56 @@ deferred items belong in `plans/` or `HANDOFF.md` open threads.
 
 ---
 
-## Current phase — PLAN-003 project governance file canon rollout
+## Current phase — ci/v2.0.0 LiteLLM unification + production hardening
 
-Ship the flexible-canonical rule (§16 of `docs/REPO_STANDARDS.md`) + 5
-markdown templates + `--check-governance` parser + Wave 0-5 per-repo
-rollout.
+Unify the AI review and doc-maintainer pipelines behind a single
+OpenAI-compatible LiteLLM proxy (`LITELLM_BASE_URL` + purpose-scoped
+API keys). Runners no longer install vendor CLIs. The change is staged
+as breaking `ci/v2.0.0`. Companion: PLAN-007 production hardening
+(W1 test suite, W2 guardrails, W3 markdown-lint graduation, W5
+Dependabot prune — all DONE). READ `HANDOFF.md` for current open
+threads.
 
-**In flight:**
-
-- **Per-repo Wave 1-5 rollouts** — one PR per non-paused repo per
-  PLAN-003 §5.5. Sequential; within-wave alphabetical. Wave 1 first
-  = framework + iplan-standard.
+| Milestone | Status |
+|---|---|
+| PLAN-007 W4 fleet branch-protection arming | Founder-gated |
+| PLAN-007 W3 docs-sync dry-run → live | Founder-gated (App provisioning or doc-maintainer supersession) |
+| PLAN-008 pre-prod gap closure | In flight |
 
 **Recently landed:**
 
-- 2026-07-08 — PLAN-003 canon layer SHIPPED. PR-V4 (this PR): status
-  flip DRAFT → SHIPPED + `docs/PLAYBOOK_governance-canon-rollout.md`
-  companion doc + inline HANDOFF/ROADMAP updates.
-- 2026-07-08 — PR-V3 (operations #217): CROSS_REPO_PLAYBOOKS §T-D +
-  `OPS-0070` ratification.
-- 2026-07-08 — PR-V2 (this repo #74): `install/parse-governance-table.py`
-  parser + `governance_check` in `install/apply-standards.sh` +
-  `install/install.sh` CLAUDE.md bootstrap.
-- 2026-07-08 — PR-V1 (this repo #73): 5 canon templates + REPO_STANDARDS
-  §16 + Wave 0 self-adoption bundle (11 surfaces under explicit founder
-  OK).
-- 2026-07-08 — PLAN-003 plan document merged (this repo #72).
-- 2026-07-08 — PLAN-002 workspace CI + governance-workflow canon
-  rollout SHIPPED (7 waves completed; ci/v1.6.0 tagged; 5 consumer
-  PRs merged in this session — business #39 + iplanic #232 remain
-  pending founder `--admin`).
+- 2026-07-12 — `feat/unified-litellm-agents` merged (#154): dependency-free
+  LiteLLM adapter, config schema v2, real-proxy smoke workflow. Litellm
+  aliases pending; pre-tag gate before `ci/v2.0.0` is cut.
+- 2026-07-12 — PLAN-007 W3 markdown-lint graduation: canon `.markdownlint.json`
+  relaxed (MD013/MD024/MD036), all 6 consumers graduated to blocking.
+- 2026-07-12 — PLAN-007 W1/W2/W5: test suite (#143), guardrails (#144/#145),
+  Dependabot prune (#137).
+- 2026-07-11 — PLAN-006 W4 content-check population COMPLETE across all active repos.
+- 2026-07-10 — PLAN-004 SHIPPED (`ci/v1.7.0`): company-default elevation with
+  A-series docs, B correctness, C security, D de-brand + trust-root, E
+  install `--update`.
+- 2026-07-10 — PLAN-005 SHIPPED (`ci/v1.7.1` → `v1.8.1`): governance floor,
+  skip carry-forward, trust-root parameterization, App-native trust fetch.
+- 2026-07-08 — PLAN-003 governance-canon SHIPPED: flexible-canonical rule +
+  5 templates + parser + Wave 0 self-adoption.
+- 2026-07-08 — PLAN-002 workspace standards + self-review enforcement SHIPPED.
 
 ---
 
-## Next phase — canon evolution + label sync
+## Next phase — post-v2.0.0 canon evolution
 
-Once PLAN-003 rolls out, next phase evolves the canon based on
-consumer feedback + closes the workspace-wide label sync work
-deferred from PLAN-002.
+Once `ci/v2.0.0` ships and the LiteLLM gateway is the fleet default,
+next phase closes the remaining production-hardening items and evolves
+the canon based on post-v2 consumer feedback.
 
 **Planned initiatives:**
 
+- **W4 fleet branch-protection arming** — arm the now-blocking checks as
+  required across all consumers. Founder-executed; runbook at
+  `docs/FLEET_BRANCH_PROTECTION_ARMING.md`.
+- **W3 docs-sync dry-run → live** — provision `aidoc-flow-bot` App or fold
+  into `doc-maintainer.yml` supersession.
 - **Canon label sync** — reconcile label taxonomies across the 9
   non-paused repos (some use `bug/enhancement/documentation`, others
   use `feat/fix/chore/docs`). Canon should ship a preferred set +
@@ -56,9 +65,6 @@ deferred from PLAN-002.
 - **Reusable branch-protection auditor** — GHA workflow that reports
   drift between each consumer's actual branch-protection rules and
   the canonical templates (`branch-protection-*.json` in `install/`).
-- **Umbrella backlog** — `auto-merge-ai-prs.yml` server-side enforcer
-  per operations HANDOFF; covers OPS-0062 auto-merge cases where the
-  AI session ends before checks settle.
 
 ---
 

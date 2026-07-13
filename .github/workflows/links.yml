@@ -133,7 +133,6 @@ jobs:
           # lychee options (defense-in-depth against argument injection).
           lychee "${args[@]}" -- "${path_args[@]}"
           rc=$?
-          set -e
           # fail-on-error=false (external/scheduled mode) never fails the job.
           [ "${FAIL}" = "true" ] || exit 0
           exit "${rc}"

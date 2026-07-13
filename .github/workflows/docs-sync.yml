@@ -61,7 +61,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: docs-sync
+  group: docs-sync-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -111,9 +111,10 @@ jobs:
           set -euo pipefail
           # The reusable workflow's `github.workflow_ref` looks like:
           # vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v2.0.0
-          # Extract the @<tag> portion to fetch matching scripts.
+          # Extract the @<tag> portion and owner to fetch matching scripts.
           TAG="${CI_TAG##*@}"
-          BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${TAG}/scripts/docs-sync"
+          CI_OWNER=$(echo "${CI_TAG}" | cut -d/ -f1)
+          BASE="https://raw.githubusercontent.com/${CI_OWNER}/aidoc-flow-ci/${TAG}/scripts/docs-sync"
           mkdir -p .docs-sync-scripts
           for op in changelog_stub version_sync cross_ref_repair; do
             curl -fsSL "${BASE}/${op}.py" -o ".docs-sync-scripts/${op}.py"
