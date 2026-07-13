@@ -87,7 +87,7 @@ on:
       LITELLM_BASE_URL:
         description: 'LiteLLM proxy base URL, normally ending in /v1.'
         required: false
-      LITELLM_API_KEY:
+      LITELLM_DOC_API_KEY:
         description: 'Scoped LiteLLM virtual key. Do not use a master key.'
         required: false
 
@@ -176,7 +176,7 @@ jobs:
       LITELLM_MODEL: ${{ inputs.model }}
       DRY_RUN_OVERRIDE: ${{ inputs.dry_run_override }}
       LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
-      LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}
+      LITELLM_API_KEY: ${{ secrets.LITELLM_DOC_API_KEY }}
       LITELLM_ALLOW_INSECURE_HTTP: ${{ inputs.litellm_allow_insecure_http }}
     steps:
       - name: Checkout (full history for git rename detection + doc inventory)
@@ -276,7 +276,7 @@ jobs:
         run: |
           set -euo pipefail
           [ -n "$LITELLM_BASE_URL" ] || { echo "::error::LITELLM_BASE_URL is unset"; exit 1; }
-          [ -n "$LITELLM_API_KEY" ] || { echo "::error::LITELLM_API_KEY is unset"; exit 1; }
+          [ -n "$LITELLM_API_KEY" ] || { echo "::error::LITELLM_DOC_API_KEY is unset"; exit 1; }
           [ -n "$LITELLM_MODEL" ] || { echo "::error::LiteLLM model alias is unset"; exit 1; }
 
       - name: Steps 4-7 — Inventory candidates + AI plan + validate + tier-classify

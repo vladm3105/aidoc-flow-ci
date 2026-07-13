@@ -24,7 +24,8 @@ checklist but does not perform it.
 | Secret | `APP_REVIEWER_1_ID` | the reviewer App's numeric **App ID** | `ai-review.yml` + `auto-merge-ai-prs.yml` (mint installation token) |
 | Secret | `APP_REVIEWER_1_KEY` | the reviewer App's **private key** (full PEM, incl. BEGIN/END lines) | same |
 | Secret | `LITELLM_BASE_URL` | OpenAI-compatible LiteLLM proxy URL, normally ending in `/v1` | AI execution |
-| Secret | `LITELLM_API_KEY` | scoped LiteLLM virtual key | AI execution |
+| Secret | `LITELLM_REVIEW_API_KEY` | virtual key restricted to the review alias | `ai-review` |
+| Secret | `LITELLM_DOC_API_KEY` | virtual key restricted to the documentation alias | `doc-maintainer` |
 | Variable | `APP_REVIEWER_1_BOT_ID` | the App's **bot-user** numeric id (NOT the App ID) | `composition.yml` + the R3 early-exit — matches the App's APPROVED review by `user.id` |
 
 Secrets can be set at the **repo** level (`gh secret set … --repo`) or
@@ -91,9 +92,13 @@ afterward; token loss or duplication fails closed.
    ```bash
    gh secret set APP_REVIEWER_1_ID  --repo <owner>/<repo> --body "<app-id>"
    gh secret set APP_REVIEWER_1_KEY --repo <owner>/<repo> < path/to/private-key.pem
-   gh secret set LITELLM_BASE_URL --repo <owner>/<repo> --body "https://litellm.example/v1"
-   gh secret set LITELLM_API_KEY  --repo <owner>/<repo> --body "<scoped-virtual-key>"
+   gh secret set LITELLM_BASE_URL       --repo <owner>/<repo> --body "https://litellm.example/v1"
+   gh secret set LITELLM_REVIEW_API_KEY --repo <owner>/<repo> --body "<review-scoped-key>"
+   gh secret set LITELLM_DOC_API_KEY    --repo <owner>/<repo> --body "<documentation-scoped-key>"
    ```
+
+   Before cutting or adopting the release, dispatch the `LiteLLM agent smoke`
+   workflow on the target ref. It calls both aliases with their separate keys.
 
 5. **Open a first PR** from an allowlisted author (a login in
    `operations@main` `.github/ai-review/config.json` `trust.ai_review`).

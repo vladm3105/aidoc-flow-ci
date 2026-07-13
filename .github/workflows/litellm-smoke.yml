@@ -1,0 +1,65 @@
+name: LiteLLM agent smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner_labels:
+        description: JSON runner labels; use ubuntu-latest only for a publicly reachable proxy
+        required: true
+        default: '["self-hosted", "aidoc", "ci-ephemeral"]'
+        type: string
+      review_model:
+        description: LiteLLM review model alias
+        required: true
+        default: ai-reviewer
+        type: string
+      doc_model:
+        description: LiteLLM documentation model alias
+        required: true
+        default: ai-doc-maintainer
+        type: string
+      allow_insecure_http:
+        description: Allow HTTP for a controlled private-network proxy
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+
+      - name: Smoke review alias
+        env:
+          LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
+          LITELLM_API_KEY: ${{ secrets.LITELLM_REVIEW_API_KEY }}
+          LITELLM_ALLOW_INSECURE_HTTP: ${{ inputs.allow_insecure_http }}
+          LITELLM_MODEL: ${{ inputs.review_model }}
+        run: |
+          set -euo pipefail
+          printf 'Return JSON only: {"ok":true,"agent":"review"}' \
+            | python3 scripts/litellm_client.py --json --timeout 120 --output /tmp/review-smoke.json
+          jq -e '.ok == true and .agent == "review"' /tmp/review-smoke.json >/dev/null
+
+      - name: Smoke documentation alias
+        env:
+          LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
+          LITELLM_API_KEY: ${{ secrets.LITELLM_DOC_API_KEY }}
+          LITELLM_ALLOW_INSECURE_HTTP: ${{ inputs.allow_insecure_http }}
+          LITELLM_MODEL: ${{ inputs.doc_model }}
+        run: |
+          set -euo pipefail
+          printf 'Reply with exactly: DOC_MAINTAINER_OK' \
+            | python3 scripts/litellm_client.py --timeout 120 --output /tmp/doc-smoke.txt
+          grep -qx 'DOC_MAINTAINER_OK' /tmp/doc-smoke.txt

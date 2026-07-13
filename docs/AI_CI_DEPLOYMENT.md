@@ -42,7 +42,7 @@ secrets), [`runners.md`](runners.md) (self-hosted pools),
 | 🔴 Founder-only | Why you can't |
 | --- | --- |
 | Install the reviewer **App** on the repo (+ on `aidoc-flow-operations`) | App installation is F5 blast-radius; needs org/repo admin UI |
-| Set the reviewer **secrets** (`APP_REVIEWER_1_ID`, `APP_REVIEWER_1_KEY`, `LITELLM_BASE_URL`, `LITELLM_API_KEY`) | You don't hold the App private key / token values |
+| Set the AI **secrets** (`APP_REVIEWER_1_ID`, `APP_REVIEWER_1_KEY`, `LITELLM_BASE_URL`, `LITELLM_REVIEW_API_KEY`, `LITELLM_DOC_API_KEY`) | You don't hold the App private key / token values |
 | Register a self-hosted **runner pool** for a private repo | Provisions infra |
 
 Everything else (caller workflows, config files, non-secret variables, labels,
@@ -85,7 +85,7 @@ A working ai-review repo has FOUR repo-level secrets and ONE variable
 **per-repo**):
 
 ```bash
-gh secret   list -R <owner/repo> | grep -E 'APP_REVIEWER_1_ID|APP_REVIEWER_1_KEY|LITELLM_BASE_URL|LITELLM_API_KEY'
+gh secret   list -R <owner/repo> | grep -E 'APP_REVIEWER_1_ID|APP_REVIEWER_1_KEY|LITELLM_BASE_URL|LITELLM_REVIEW_API_KEY|LITELLM_DOC_API_KEY'
 gh variable list -R <owner/repo> | grep APP_REVIEWER_1_BOT_ID
 ```
 

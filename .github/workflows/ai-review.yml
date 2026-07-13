@@ -28,7 +28,7 @@
 # Asset retrieval: trust gate uses actions/checkout (single checkout in its own job);
 # the ai-review job uses `curl` for cross-repo fetches per IPLAN-0024 (ci/v1.1.5+) —
 # the multi-checkout interaction caused the v1.1.0→v1.1.3 saga.
-# AI auth is unified through LITELLM_BASE_URL + LITELLM_API_KEY. AI_REVIEW_TOKEN
+# AI auth uses LITELLM_BASE_URL + the review-scoped LITELLM_REVIEW_API_KEY. AI_REVIEW_TOKEN
 # remains a scoped read-only PAT for cross-repo PRIVATE asset retrieval.
 # P1/P2 = review + label + block/auto-merge; auto-fix loop + escalation = P3 (deferred, IPLAN-0013).
 name: ai-review
@@ -526,10 +526,11 @@ jobs:
         if: ${{ env.SKIP_REVIEW != '1' }}
         env:
           LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
-          LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}
+          LITELLM_API_KEY: ${{ secrets.LITELLM_REVIEW_API_KEY }}
           LITELLM_ALLOW_INSECURE_HTTP: ${{ inputs.litellm_allow_insecure_http }}
         run: |
           set -euo pipefail
+          [ -n "$LITELLM_API_KEY" ] || { echo "::error::LITELLM_REVIEW_API_KEY is unset"; exit 1; }
           RUBRIC=./reviewer-assets/ai-review/review-prompt.md
           OUT=.ai-review/verdict.json
           rm -f "$OUT"

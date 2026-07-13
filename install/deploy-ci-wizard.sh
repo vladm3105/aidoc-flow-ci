@@ -48,7 +48,7 @@ preflight() {
   hdr "2. Reviewer App secrets + bot-id (for ai-review + composition)"
   local secs; secs="$($GH secret list -R "$repo" --json name -q '.[].name' 2>/dev/null || echo '')"
   local missing=0
-  for s in APP_REVIEWER_1_ID APP_REVIEWER_1_KEY LITELLM_BASE_URL LITELLM_API_KEY; do
+  for s in APP_REVIEWER_1_ID APP_REVIEWER_1_KEY LITELLM_BASE_URL LITELLM_REVIEW_API_KEY LITELLM_DOC_API_KEY; do
     echo "$secs" | grep -qx "$s" && c_ok "secret $s set" || { c_no "secret $s MISSING → 🔴 founder sets it (+ installs the aidoc-reviewer App)"; missing=1; }
   done
   local botid; botid="$($GH variable list -R "$repo" --json name,value -q '.[]|select(.name=="APP_REVIEWER_1_BOT_ID")|.value' 2>/dev/null || echo '')"

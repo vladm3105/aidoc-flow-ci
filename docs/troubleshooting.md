@@ -268,7 +268,7 @@ internal mode uses `--offline` and skips all http(s) URLs.
 
 **Symptom:** ai-review fails with a LiteLLM URL/key error or cannot connect.
 
-**Cause:** `LITELLM_BASE_URL` or `LITELLM_API_KEY` is missing, the selected
+**Cause:** `LITELLM_BASE_URL` or the workflow's scoped LiteLLM key is missing, the selected
 model alias is absent, or the runner cannot route to the proxy.
 
 **Fix:** Set both LiteLLM secrets, ensure `litellm.model` names a configured

@@ -20,7 +20,7 @@
 #     path (P3) does NOT need this — comments use GITHUB_TOKEN.
 #   - secrets AIDOC_FLOW_BOT_ID + AIDOC_FLOW_BOT_KEY set on consumer
 #     (live mode only; dry-run mode runs without them).
-#   - LITELLM_BASE_URL + LITELLM_API_KEY set.
+#   - LITELLM_BASE_URL + LITELLM_DOC_API_KEY set.
 #
 # Phase 1 (this template's purpose): dry-run pilot on operations.
 # Mechanical docs-sync.yml stays LIVE during the pilot. After ≥5 clean

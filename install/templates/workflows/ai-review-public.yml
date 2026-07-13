@@ -4,7 +4,7 @@
 # Secrets required (consumer adds to repo secrets):
 #   APP_REVIEWER_1_ID + APP_REVIEWER_1_KEY  reviewer App credentials
 #   LITELLM_BASE_URL                         proxy base URL (normally .../v1)
-#   LITELLM_API_KEY                          scoped LiteLLM virtual key
+#   LITELLM_REVIEW_API_KEY                   review-scoped LiteLLM virtual key
 #
 # `pull_request_target` (not `pull_request`) is required because the
 # trust gate needs write-capable credentials to apply labels/comments

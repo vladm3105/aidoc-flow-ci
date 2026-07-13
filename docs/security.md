@@ -140,8 +140,8 @@ LiteLLM process.
 
 | Workflow | Secrets required |
 |---|---|
-| `ai-review` | `APP_REVIEWER_1_ID` + `APP_REVIEWER_1_KEY`; `LITELLM_BASE_URL` + review-scoped `LITELLM_API_KEY` |
-| `doc-maintainer` | `LITELLM_BASE_URL` + documentation-scoped `LITELLM_API_KEY`; live mode also requires `AIDOC_FLOW_BOT_ID` + `AIDOC_FLOW_BOT_KEY` |
+| `ai-review` | `APP_REVIEWER_1_ID` + `APP_REVIEWER_1_KEY`; `LITELLM_BASE_URL` + `LITELLM_REVIEW_API_KEY` |
+| `doc-maintainer` | `LITELLM_BASE_URL` + `LITELLM_DOC_API_KEY`; live mode also requires `AIDOC_FLOW_BOT_ID` + `AIDOC_FLOW_BOT_KEY` |
 | `composition` | None beyond `GITHUB_TOKEN` (auto-provided by Actions) |
 | `labeler` | None beyond `GITHUB_TOKEN` |
 | `codeql` | None beyond `GITHUB_TOKEN` |

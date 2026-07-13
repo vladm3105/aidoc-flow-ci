@@ -269,8 +269,9 @@ impossible.
 **Decision**
 
 Canonical AI jobs call one OpenAI-compatible LiteLLM proxy using
-`LITELLM_BASE_URL` and a scoped `LITELLM_API_KEY`. Workflows select only a
-LiteLLM model alias. Provider credentials, provider/model routing, fallback,
+`LITELLM_BASE_URL` and separate `LITELLM_REVIEW_API_KEY` /
+`LITELLM_DOC_API_KEY` virtual keys. Workflows select only a LiteLLM model alias.
+Provider credentials, provider/model routing, fallback,
 budgets, and retries beyond the bounded transport retry remain proxy policy.
 Vendor CLIs and their credentials are no longer part of the CI contract.
 
@@ -282,6 +283,8 @@ gating, governance floors, and composition enforcement are unchanged.
 
 - `litellm.model` supersedes CI-0005's `.reviewer` engine selector.
 - `ai-review` and `doc-maintainer` share a dependency-free HTTP adapter.
+- AI-review configuration is explicitly schema-versioned as v2.
+- A real-proxy smoke run for both aliases is required before tagging.
 - Missing proxy configuration, network errors, and invalid output fail closed.
 - Removing vendor-specific workflow inputs is a breaking `ci/v2.0.0` change.
 

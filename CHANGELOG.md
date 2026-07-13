@@ -8,9 +8,12 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 - `ai-review` and `doc-maintainer` now call one OpenAI-compatible LiteLLM
   proxy through a dependency-free Python adapter. Runners no longer install,
   authenticate, or select Claude/Codex CLIs.
-- The consumer contract is `LITELLM_BASE_URL`, `LITELLM_API_KEY`, and LiteLLM
-  model aliases (`litellm.model` for review; caller `model` for doc-maintainer).
+- The consumer contract is `LITELLM_BASE_URL`, purpose-scoped
+  `LITELLM_REVIEW_API_KEY` / `LITELLM_DOC_API_KEY`, and LiteLLM model aliases
+  (`litellm.model` for review; caller `model` for doc-maintainer).
   Provider credentials, routing, fallback, and budgets stay behind LiteLLM.
+- Adds a versioned AI-review config-v2 JSON Schema and a manual real-proxy smoke
+  workflow that must exercise both canonical aliases before the tag is cut.
 - Proxy errors, missing configuration, malformed JSON, and structurally invalid
   verdicts fail closed. This removes vendor-specific workflow inputs and is a
   breaking interface change targeted for `ci/v2.0.0`.

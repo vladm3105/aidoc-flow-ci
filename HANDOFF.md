@@ -8,18 +8,21 @@ context compaction.
 
 **Unified LiteLLM agent gateway (`feat/unified-litellm-agents`) — implementation
 complete, publication pending.** `ai-review` and `doc-maintainer` now use a
-dependency-free OpenAI-compatible adapter with `LITELLM_BASE_URL`, scoped
-`LITELLM_API_KEY`, and model aliases; vendor CLI paths are removed. The change
+dependency-free OpenAI-compatible adapter with `LITELLM_BASE_URL`, separate
+review/documentation keys, and model aliases; vendor CLI paths are removed. The
+change
 is staged as breaking `ci/v2.0.0`, with templates, installer fallback, wizard,
 standards, security docs, and tests aligned. Safety controls include HTTPS by
 default (explicit private-HTTP opt-in), no redirects, bounded requests and
 responses, secret-pattern redaction, exact verdict schema/semantic validation,
 oversized-diff refusal, total retry deadlines, atomic outputs, and job-scoped
-permissions. Full suite passes (checknames 14, contracts 97, negative 9,
-scripts 24). OPS-0065 review used the maximum 3 cycles: final code/failure
+permissions. Config schema v2 and a real-proxy two-alias smoke workflow are
+included; the live proxy currently lacks both aliases, so its smoke run remains
+a pre-tag requirement. Full suite passes (checknames 14, contracts 100,
+negative 9, scripts 24). OPS-0065 review used the maximum 3 cycles: final code/failure
 reviewers READY; the security reviewer’s final documentation-only finding was
-folded without a prohibited fourth cycle. Next: commit/push/open draft PR, merge,
-then cut `ci/v2.0.0` before repinning consumers.
+folded without a prohibited fourth cycle. Next: configure both LiteLLM aliases,
+pass the real-proxy smoke, then publish the PR; cut `ci/v2.0.0` only after merge.
 
 **PLAN-007 production-hardening — W1/W2/W3(markdown-lint)/W5 DONE; remaining work
 is entirely founder-gated (W4 arming + W3 docs-sync-live).** Completed: W1 test

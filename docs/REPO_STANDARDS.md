@@ -180,8 +180,9 @@ requires the scoped `aidoc-flow-bot` App and enforces `max_prs_per_day`.
 
 All canonical AI execution (`ai-review` and `doc-maintainer`) goes through one
 OpenAI-compatible LiteLLM proxy. Consumers provide repository or organization
-secrets `LITELLM_BASE_URL` and `LITELLM_API_KEY`; they do not install or log in
-to vendor CLIs on runners. AI review resolves its model alias from caller input
+secrets `LITELLM_BASE_URL`, `LITELLM_REVIEW_API_KEY`, and
+`LITELLM_DOC_API_KEY`; they do not install or log in to vendor CLIs on runners.
+AI review resolves its model alias from caller input
 `model`, then trusted config `litellm.model`. Doc-maintainer uses its caller
 `model` input (default `ai-doc-maintainer`). The proxy owns provider selection,
 fallbacks, budgets, and provider credentials; CI receives only a scoped LiteLLM
@@ -199,6 +200,10 @@ Doc-maintainer sends redacted PR metadata, patches, repository conventions,
 and redacted current documentation. Secret-shaped source values use opaque
 placeholders during inference and are restored only after the response; missing
 or duplicated placeholders fail closed.
+
+Before a major AI-contract release is tagged, `.github/workflows/litellm-smoke.yml`
+MUST pass against the actual proxy for both canonical aliases. Mocked unit tests
+do not replace this provider/proxy compatibility gate.
 
 ### 4.1 Runner class by visibility (canon)
 
