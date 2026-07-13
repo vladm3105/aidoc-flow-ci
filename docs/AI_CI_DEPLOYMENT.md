@@ -43,7 +43,8 @@ secrets), [`runners.md`](runners.md) (self-hosted pools),
 | --- | --- |
 | Install the reviewer **App** on the repo (+ on `aidoc-flow-operations`) | App installation is F5 blast-radius; needs org/repo admin UI |
 | Set the AI **secrets** (`APP_REVIEWER_1_ID`, `APP_REVIEWER_1_KEY`, `LITELLM_BASE_URL`, `LITELLM_REVIEW_API_KEY`, `LITELLM_DOC_API_KEY`) | You don't hold the App private key / token values |
-| Register a self-hosted **runner pool** for a private repo | Provisions infra |
+| Register a self-hosted **runner pool** for a private repo | Provisions infra on the runner host; use `scripts/ci-runner/provision-runner.sh` from the operations checkout |
+| Merge the first CI-adoption PR (pull_request_target chicken-and-egg) | ai-review/composition can't self-trigger until the workflows are on `main`; admin-merge the adoption PR, then verify on a follow-up test PR |
 
 Everything else (caller workflows, config files, non-secret variables, labels,
 verification, arming) is 🟢 — you do it.
@@ -73,10 +74,36 @@ Do NOT trust a stale doc's visibility column — always re-check with `gh`.
 gh api repos/<owner/repo>/actions/runners --jq '.runners[]|{name,status,labels:[.labels[].name]}'
 ```
 Expect an online runner with labels `self-hosted,ci-runner,single-use`. If none:
-**do not fall back to `ubuntu-latest`** — the fix is to register the pool
-(`aidoc-flow-operations/scripts/ci-runner/run-ephemeral.sh`), a 🔴 founder step.
-A private caller left on `ubuntu-latest` or the placeholder `runner-self` queues
-forever. See [`runners.md`](runners.md).
+**do not fall back to `ubuntu-latest`** — a private caller left on
+`ubuntu-latest` or the placeholder `runner-self` queues forever.
+
+**Provisioning a runner for a new private repo (🔴 founder, 🟢 AI assistants pre-flight):**
+
+The runner host must already be set up with Docker and the `aidoc-flow-operations`
+checkout. From the runner host, as the user running the CI supervisor:
+
+```bash
+cd /opt/data/aidoc-flow/operations
+TARGET_REPO=<owner/repo> \
+INSTANCE=<short-nick> \
+RUNNER_LABELS=self-hosted,ci-runner,single-use \
+bash scripts/ci-runner/provision-runner.sh
+```
+
+This builds the runner Docker image, installs the systemd unit, writes the
+per-repo environment file, enables lingering, and starts the supervisor. The
+runner self-registers with the requested labels and begins accepting jobs
+immediately. The `INSTANCE` nickname is used for the systemd instance name
+(`ci-runner@<nick>.service`) and the environment file
+(`~/.config/ci-runner/<nick>.env`).
+
+Each private repo needs its own runner instance because GitHub Actions
+self-hosted runners are repo-scoped by default. The supervisor creates a fresh
+single-use container per job — multiple repo instances can run concurrently on
+the same host.
+
+Pass `--dry-run` to the script to inspect what it would do without changing state.
+See [`runners.md`](runners.md) for the underlying run-ephemeral.sh architecture.
 
 ### 1.3 Reviewer App + secrets + bot-id (needed for ai-review + composition)
 
@@ -253,10 +280,12 @@ Every one of these cost real debugging time. They are load-bearing.
     `LITELLM_BASE_URL` and the model-restricted `LITELLM_DOC_API_KEY`. The
     `aidoc-flow-bot` App is required only for live-mode PR creation. Inspect
     several coherent dry-run plans and patches before enabling live mode.
-11. **`pull_request_target` callers (ai-review) don't self-trigger on the adding
-    PR.** GitHub runs `pull_request_target` from the BASE branch, which doesn't
-    have the caller yet. So the PR that ADDS ai-review won't run it — merge it
-    (ai-review isn't required yet), then open a fresh test PR to verify (§6).
+11. **`pull_request_target` callers (ai-review, composition) don't self-trigger on
+    the adoption PR.** GitHub runs `pull_request_target` from the BASE branch,
+    which doesn't have the caller yet. So the PR that ADDS ai-review won't run it.
+    **Workaround:** merge the adoption PR via admin override (the caller workflows
+    aren't required checks yet), then open a fresh test PR to verify (§6). After
+    verification, arm the required checks per §7.
 12. **Doc-currency + `secrets: inherit`.** Repos with the "every PR updates
     CHANGELOG" rule will `CHANGES_REQUESTED` any workflow PR lacking a CHANGELOG
     entry. And match the repo's caller convention — if its other callers use
