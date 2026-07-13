@@ -1,10 +1,10 @@
 {
-  "_comment": "Branch protection for BOOTSTRAP tier per REPO_STANDARDS.md §2. Tier repos: aidoc-flow-interlog (new repos pending CI adoption). Only `Lint / format / security hooks` is required — ai-review + composition are OPT-IN per aidoc-flow-operations/docs/REPO_ONBOARDING.md until the repo joins the CI-consumer set. Once a bootstrap repo adopts ai-review, migrate it to the product-code branch-protection profile.",
+  "_comment": "Branch protection for BOOTSTRAP tier per REPO_STANDARDS.md \u00a72. Tier repos: aidoc-flow-interlog (new repos pending CI adoption). Only `Lint / format / security hooks` is required \u2014 ai-review + composition are OPT-IN per aidoc-flow-operations/docs/REPO_ONBOARDING.md until the repo joins the CI-consumer set. Once a bootstrap repo adopts ai-review, migrate it to the product-code branch-protection profile.",
   "_apply_note": "PR-C2 MUST strip ALL `_`-prefix keys before POST/PUT/PATCH. Use `jq 'del(.._comment, .._apply_note, .._docs, .._endpoint, .._umbrella_note)'` or equivalent. GitHub REST endpoints strictly validate unknown fields.",
   "required_status_checks": {
     "strict": false,
     "contexts": [
-      "Lint / format / security hooks"
+      "call / Lint / format / security hooks"
     ]
   },
   "enforce_admins": true,

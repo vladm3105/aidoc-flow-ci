@@ -29,6 +29,34 @@ ai-review and doc-maintainer; `LITELLM_REVIEW_API_KEY` is the minimum.
 | `LITELLM_REVIEW_API_KEY` | Review-scoped virtual key | ai-review |
 | `LITELLM_DOC_API_KEY` | Doc-scoped virtual key | doc-maintainer (if adopted) |
 
+**Generating virtual keys from a running LiteLLM proxy:**
+
+```bash
+# Review-scoped (only the 'ai-reviewer' model alias)
+curl -s -X POST "$LITELLM_BASE_URL/key/generate" \
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"models": ["ai-reviewer"], "max_budget": 50,
+       "metadata": {"purpose": "ci-review"}}'
+
+# Doc-scoped (only the 'ai-doc-maintainer' model alias)
+curl -s -X POST "$LITELLM_BASE_URL/key/generate" \
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"models": ["ai-doc-maintainer"], "max_budget": 50,
+       "metadata": {"purpose": "ci-docs"}}'
+```
+
+Set the resulting `key` value as the GitHub secret. From inside Dockerized
+CI runner containers, the host LiteLLM proxy is reachable at the Docker
+bridge gateway (`172.17.0.1` by default) rather than `localhost`.
+
+```bash
+gh secret set LITELLM_BASE_URL -R <owner>/<repo>
+gh secret set LITELLM_REVIEW_API_KEY -R <owner>/<repo>
+gh secret set LITELLM_DOC_API_KEY -R <owner>/<repo>
+```
+
 ### 2. Drop deprecated secrets
 
 Remove these from consumer repo settings — they are no longer referenced
