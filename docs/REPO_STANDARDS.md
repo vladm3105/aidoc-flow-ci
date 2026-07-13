@@ -556,7 +556,7 @@ coordinated-merge-window pattern from
    2. **Ops-private** (operations, business, iplanic) — internal-only.
    3. **Product code** (iplan-runner, engramory, aidoc-flow-ci) — most
       of these also need `WORKFLOWS.md` §2.1 gaps closed alongside.
-   4. **Bootstrap** (interlog) — first CI adoption from the standard.
+   4. **Bootstrap** (none currently — all repos have been graduated).
    5. **Umbrella** (aidoc-flow) — apply last; special-case per OPS-0062.
 5. **Server-side settings** (branch protection, security, Actions
    permissions) apply via `--apply` mode as a SEPARATE pass AFTER each
