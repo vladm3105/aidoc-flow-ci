@@ -2,7 +2,7 @@
 #
 # Single template (works for both PRIVATE + PUBLIC). The reusable
 # workflow uses ubuntu-latest by default. PRIVATE consumers per
-# OPS-0049 may override runner_labels to '["self-hosted", "aidoc", "ci-ephemeral"]'.
+# OPS-0049 may override runner_labels to '["self-hosted", "ci-runner", "single-use"]'.
 #
 # Requires .pre-commit-config.yaml in the consumer repo root. The
 # workflow runs all hooks against all files via
@@ -29,4 +29,4 @@ jobs:
       python-version: '3.12'
       # Override examples:
       # extra-deps: '-r tests/conformance/requirements.txt'
-      # runner_labels: '["self-hosted", "aidoc", "ci-ephemeral"]'   # PRIVATE per OPS-0049
+      # runner_labels: '["self-hosted", "ci-runner", "single-use"]'   # PRIVATE per OPS-0049

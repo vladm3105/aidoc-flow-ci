@@ -33,4 +33,4 @@ jobs:
     with:
       languages: '["actions"]'
       # PRIVATE consumers override:
-      # runner_labels: '["self-hosted", "aidoc", "ci-ephemeral"]'
+      # runner_labels: '["self-hosted", "ci-runner", "single-use"]'

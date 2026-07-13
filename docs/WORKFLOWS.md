@@ -28,7 +28,7 @@ Pin at a released tag; never `@main` in a consumer.
 | 8 | `links.yml` | Link checking via the lychee **musl static binary**, installed + SHA-256-verified in a `run:` step — NOT the `lycheeverse/lychee-action` wrapper (allowlist-blocked; fixed `ci/v1.9.4`; musl not gnu, which needs GLIBC 2.38+ and dies on older self-hosted Debian runners). Two modes: blocking (offline / internal-only) + weekly (external / soft-fail). Cross-repo `../sibling/` links need a `.lychee.toml` exclude (they resolve only in the local multi-repo workspace). | ~30-90 s (offline); ~2-5 min (external) | Standard doc-quality gate |
 | 9 | `labeler.yml` | Path-based PR labeling. Reads consumer's `.github/labeler.yml` (v5+ format: `changed-files: any-glob-to-any-file:`) and applies labels. Labels must pre-exist. | ~10 s | Framework `labeler.yml` pattern |
 | 10 | `docs-sync.yml` | Mechanical post-merge doc fixer. Runs deterministic transformations (version-reference propagation, structural bump propagation) + commits + opens PR if changes are made. | ~30-60 s | IPLAN-0018 (operations 2026-06-25) |
-| 11 | `doc-maintainer.yml` | AI-driven post-merge doc-of-record maintainer. **Supersedes** `docs-sync.yml` at the end of Phase 3 (`ci/v2.0.0`). Uses Claude Code sub-agent dispatch to catch semantic drift `docs-sync.yml`'s deterministic transformations miss. | ~2-5 min | IPLAN-0025 (operations 2026-06-28) |
+| 11 | `doc-maintainer.yml` | AI-driven post-merge doc-of-record maintainer. **Supersedes** `docs-sync.yml` in `ci/v2.0.0`. LiteLLM selects the documentation that a merged PR made stale, then proposes bounded edits under the repository's path/risk policy. | ~2-5 min | IPLAN-0025 (operations 2026-06-28) |
 | 12 | `audit-trail-check.yml` | OPS-0069 audit-trail phrase gate. Belt-and-suspenders CI check for the local pre-push hook (REPO_STANDARDS.md §14): verifies every non-exempt PR carries `Multi-agent self-review per OPS-0065` OR `Self-review skipped per founder OK` in some commit body. Exemptions: bot-authored range (dependabot/renovate/github-actions), revert-only range, two-signal `skip-audit-trail` label + body marker. Check-name renders as `call / verify`. `fetch-depth: 0` prevents fork-PR false-pass. | ~10-30 s | PLAN-002 PR-U3 (2026-07-08) |
 
 ## 2. Per-repo applicability matrix
@@ -210,19 +210,21 @@ canonical skip patterns:
 - **Live-mode graduation** (`dry_run: false`) needs the `aidoc-flow-bot` App +
   secrets per repo (🔴 founder) — do this only where mechanical auto-commit
   earns its keep.
-- **Superseded by `doc-maintainer.yml`** at end of Phase 3 (`ci/v2.0.0`; per
-  IPLAN-0025 P8). The dry-run adoptions are the interim layer; migrate them to
-  `doc-maintainer.yml` when it stabilizes rather than graduating each to live.
+- **Superseded by `doc-maintainer.yml`** in `ci/v2.0.0` (IPLAN-0025 P8).
+  Existing dry-run callers may remain during migration, but new consumers
+  should adopt `doc-maintainer.yml`.
 
 ### 3.9 `doc-maintainer.yml`
 
 - **Skip on:** repos where the maintenance burden isn't yet a real problem
   (small repos, low PR volume). Adopt when doc-of-record drift becomes a
   recurring theme in review cycles.
-- **Behavior:** after a merged PR reaches the default branch, the configured
-  Claude or Codex agent receives bounded PR metadata/patches, the repository's
-  Markdown inventory, and `.github/doc-maintainer-conventions.md`. Its JSON
-  plan is schema/path/cap validated. In dry-run mode the plan is posted to the
+- **Behavior:** after a merged PR reaches the default branch, the workflow
+  sends bounded, redacted PR metadata/patches, the repository's Markdown
+  inventory, and `.github/doc-maintainer-conventions.md` to the configured
+  LiteLLM alias (default `ai-doc-maintainer`). The model decides which docs
+  require updates. Its JSON plan is schema/path/cap validated. In dry-run mode
+  the proposed patch is retained as an artifact and the plan is posted to the
   merged PR. In live mode, allowlisted low-risk edits become a bot PR and
   high-risk edits become a `docs` issue for human judgment.
 - **Required consumer files:** `.github/doc-maintainer.json` and
@@ -281,9 +283,9 @@ order — each step depends on the prior:
 
 ## 5. Version pinning
 
-All consumer callers pin at `@ci/vX.Y.Z`; latest release is **`ci/v1.9.5`**
-(see [`../VERSION`](../VERSION)). The content-check callers populated
-2026-07-11 pin `@ci/v1.9.4`/`v1.9.5`. Gate callers (ai-review / composition /
+All consumer callers pin at `@ci/vX.Y.Z`; read the current release from
+[`../VERSION`](../VERSION) rather than duplicating it here. The content-check
+callers populated 2026-07-11 initially pinned `@ci/v1.9.4`/`v1.9.5`. Gate callers (ai-review / composition /
 auto-merge / audit-trail) bump on each consumer's own cadence — read the
 `@ci/vX.Y.Z` string in each repo's `.github/workflows/*.yml` (do NOT hardcode
 a version here; it drifts). Re-pin with `install/install.sh <repo> --repin`

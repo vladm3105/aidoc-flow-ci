@@ -26,7 +26,7 @@
 #     push: { branches: [main] }
 #   jobs:
 #     hooks:
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/pre-commit.yml@ci/v1.9.5
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/pre-commit.yml@ci/v2.0.0
 #       with:
 #         python-version: "3.12"
 #         # extra-deps: |
@@ -54,7 +54,7 @@ on:
         type: string
         default: ''
       runner_labels:
-        description: 'JSON array (or single-string) of runner labels. Default "ubuntu-latest" — pre-commit is lightweight Python. PRIVATE consumers per OPS-0049 may override to the self-hosted "ci-ephemeral" pool.'
+        description: 'JSON array (or single-string) of runner labels. Default "ubuntu-latest" — pre-commit is lightweight Python. PRIVATE consumers per OPS-0049 may override to the self-hosted "ci-runner/single-use" pool.'
         type: string
         default: '"ubuntu-latest"'
 

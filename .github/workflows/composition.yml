@@ -31,7 +31,7 @@ on:
   workflow_call:
     inputs:
       runner_labels:
-        description: 'JSON array of runner labels. Default ubuntu-latest (safe for both public + private consumers; private consumers typically override with their self-hosted ci-ephemeral label set).'
+        description: 'JSON array of runner labels. Default ubuntu-latest (safe for both public + private consumers; private consumers typically override with their self-hosted ci-runner/single-use label set).'
         type: string
         default: '"ubuntu-latest"'
 
@@ -57,7 +57,7 @@ jobs:
     # exactly when composition should re-evaluate). On label events, run only for `skip-ai-review` (other
     # label writes shouldn't re-trigger). Non-label events (pull_request_review, etc.) always run.
     if: ${{ github.event_name == 'workflow_run' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'skip-ai-review' }}
-    # Private repo → ci-ephemeral self-hosted (this account has no GitHub-hosted minutes, OPS-0049);
+    # Private repo → ci-runner/single-use self-hosted (this account has no GitHub-hosted minutes, OPS-0049);
     # public repo → GitHub-hosted. Lightweight: only `gh api` calls, no checkout of PR code.
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
     timeout-minutes: 10

@@ -76,7 +76,8 @@ PYEOF
         if printf '%s' "$inner" | jq -e 'type=="array"' >/dev/null 2>&1; then
           _g "$name: runner_labels is a valid JSON array"
         else _r "$name: runner_labels INVALID ($rl)"; fi
-        assert_contains "$inner" 'ci-ephemeral' "$name: runner_labels targets ci-ephemeral"
+        assert_contains "$inner" 'ci-runner' "$name: runner_labels targets ci-runner"
+        assert_contains "$inner" 'single-use' "$name: runner_labels targets single-use"
       fi ;;
   esac
 done
@@ -101,5 +102,8 @@ assert_ok "jq -e '.allowed_paths | index(\"DECISIONS.md\")' install/templates/do
 assert_ok "jq -e '.version == 2 and .litellm.model == \"ai-reviewer\"' install/templates/config.json.template >/dev/null && jq -e '.properties.version.const == 2 and (.required | index(\"litellm\"))' schemas/ai-review-config-v2.schema.json >/dev/null" "AI-review config and schema share the v2 contract"
 assert_ok "grep -q 'secrets.LITELLM_REVIEW_API_KEY' .github/workflows/ai-review.yml && grep -q 'secrets.LITELLM_DOC_API_KEY' .github/workflows/doc-maintainer.yml" "AI workflows use separate purpose-scoped LiteLLM keys"
 assert_ok "grep -q 'LITELLM_REVIEW_API_KEY' .github/workflows/litellm-smoke.yml && grep -q 'LITELLM_DOC_API_KEY' .github/workflows/litellm-smoke.yml && grep -q 'ai-reviewer' .github/workflows/litellm-smoke.yml && grep -q 'ai-doc-maintainer' .github/workflows/litellm-smoke.yml" "real-proxy smoke workflow covers both canonical aliases and keys"
+assert_ok "jq -e 'length == 16 and ([.[].name | ascii_downcase] | unique | length == 16)' install/templates/labels.json >/dev/null" "canonical PR labels are complete and case-insensitively unique"
+assert_ok "jq -e 'all(.[]; (.description | length) <= 100)' install/templates/labels.json >/dev/null" "canonical PR label descriptions fit GitHub's 100-character limit"
+assert_ok "jq -e '.[] | select(.name == \"skip-ai-review\") | .description | test(\"suppress re-review\")' install/templates/labels.json >/dev/null" "skip-ai-review description matches suppress-and-carry-forward behavior"
 
 suite_summary "contract"

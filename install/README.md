@@ -21,11 +21,11 @@ runners):
 ## Run it
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v1.9.5/install/install.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.0.0/install/install.sh) \
   vladm3105/<consumer-repo> --visibility private
 
 # Or override the tag explicitly:
-CI_TAG=ci/v1.9.5 bash install.sh vladm3105/<consumer-repo> --visibility public
+CI_TAG=ci/v2.0.0 bash install.sh vladm3105/<consumer-repo> --visibility public
 ```
 
 The pinned tag is resolved as **`CI_TAG` env > repo-root `VERSION` file
@@ -48,7 +48,7 @@ templates as they are fetched.
 | `--canon-ci-url <url>` | the `CLAUDE.md` link to this CI canon repo | `../aidoc-flow-ci` |
 
 ```bash
-CI_TAG=ci/v1.9.5 bash install.sh acme/their-repo --visibility private \
+CI_TAG=ci/v2.0.0 bash install.sh acme/their-repo --visibility private \
   --codeowner acme-bot \
   --canon-operations-url https://github.com/acme/ops-canon \
   --canon-ci-url https://github.com/acme/ci-canon
@@ -113,9 +113,9 @@ The additional caller templates that ship in `install/templates/workflows/`
 `auto-merge-ai-prs.yml`) are **not** bootstrapped automatically — the consumer
 chooses which to adopt per
 [`../docs/WORKFLOWS.md`](../docs/WORKFLOWS.md) §4 adoption sequencing.
-(`audit-trail-check.yml` has no distributed caller template yet — adopt it by
-hand-authoring a caller from this repo's own `.github/workflows/audit-trail.yml`
-until the template ships.)
+Use the matching `*-private.yml` / `*-public.yml` variant where both exist.
+Private templates select `[self-hosted, ci-runner, single-use]`; public
+templates select `ubuntu-latest`.
 
 ## What it does NOT do
 

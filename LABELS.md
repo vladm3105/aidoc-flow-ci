@@ -5,12 +5,12 @@ across **two distinct namespaces**: GitHub **PR labels** (applied by
 the ai-reviewer + labeler workflows) and GitHub **runner labels** (used
 in `runs-on:` to select runner pools).
 
-GitHub enforces different rules per namespace:
+The namespaces have different behavior:
 
 | Namespace | Allowed characters | Length | Aliasing |
 |---|---|---|---|
-| PR labels | Any UTF-8 (incl. `:`); GitHub recommends short readable names | ≤ 50 chars | n/a |
-| Runner labels | Alphanumeric + `-` + `_` only — **no colons**; case-insensitive matching | ≤ 25 chars per label; multiple labels allowed via array | GitHub-hosted labels are fixed (`ubuntu-latest`, etc.); cannot be aliased to custom names |
+| PR labels | User-facing issue/PR metadata; names may contain spaces, punctuation, and emoji | Descriptions are limited to 100 characters | n/a |
+| Runner labels | Scheduling selectors; custom-label matching is case-insensitive | Use short lowercase ASCII names as a workspace convention | GitHub-hosted labels are fixed (`ubuntu-latest`, etc.); cannot be aliased to custom names |
 
 The two namespaces therefore use different separator conventions
 intentionally. Don't try to unify them; the constraints differ.
@@ -24,8 +24,9 @@ adds missing, never removes drift). The groups:
 
 ### 1. State / control labels (6)
 
-Applied by the reusable `ai-review.yml` + `audit-trail-check.yml`
-workflows (or by a human, for the two `skip-*` directives).
+The `ai:*` state labels are applied by `ai-review.yml`. The two `skip-*`
+directives are applied by an authorized human/operator; workflows consume
+them but do not create them automatically.
 
 | Label | Color | Kind | Meaning |
 |---|---|---|---|
@@ -42,8 +43,7 @@ workflows (or by a human, for the two `skip-*` directives).
 > `composition.yml` carries the prior APPROVED verdict forward so the
 > gate stays green. Apply it **only by hand** after a clean review, for a
 > trivial follow-up that doesn't change reviewed code — auto-applying
-> would defeat the gate. (The terse `labels.json` description is being
-> reconciled to this wording.)
+> would defeat the gate. Remove the label to request a fresh review.
 
 ### 2. Diff-class labels (8) — auto-applied by `labeler.yml`
 
@@ -111,43 +111,47 @@ remove drifted labels — only adds missing canonical ones. To reconcile:
 add useful extras to `labels.json` + PATCH-tag, or delete stale ones via
 `gh label delete <name> -R <repo>`.
 
-## 2. Runner labels — per-origin convention
+## 2. Runner labels — composable scheduling convention
 
 Used in the reusable workflow's `runs-on:` expressions (consumer
 caller templates set the `runner_labels_*` inputs to one of these):
 
-| Label | Origin | What's installed | Where it resolves |
+| Label | Dimension | Contract | Where it resolves |
 |---|---|---|---|
-| `runner-self` | Our self-hosted runners | standard tools + LiteLLM network route | Operations' `aidoc-flow-runner:latest` Docker pool |
-| `ubuntu-latest` | GitHub-hosted | standard tools + public LiteLLM network route | GitHub's fixed `ubuntu-latest` runner image |
-| Reserved: `runner-azure`, `runner-aws`, `runner-fargate`, … | Future origins | Per-provider | Per-provider runner pool |
+| `self-hosted` | Runner class | GitHub-managed default label for self-hosted runners | Any registered self-hosted runner unless configured without default labels |
+| `ci-runner` | Purpose | General CI workload with standard tools and a LiteLLM network route | Any conforming CI pool |
+| `single-use` | Lifecycle | Accept exactly one job, then de-register and destroy the runner | JIT/single-use supervisor |
+| `project-<name>` | Optional isolation | Restrict a job to a deliberately project-specific pool | Only runners registered for that project |
+| `ubuntu-latest` | GitHub-hosted selector | GitHub-managed Ubuntu image; public LiteLLM reachability is still required for AI jobs | GitHub-hosted runner pool |
 
 ### Naming convention
 
-Asymmetric — driven by the underlying constraint (GitHub-hosted
-labels are fixed):
+Runner labels describe independent scheduling dimensions:
 
-- **`runner-<origin>`** — our custom labels for self-hosted runner
-  pools we register and manage (alphanumeric + hyphen; **no colons**
-  — GitHub Actions rejects them on runner labels)
+- **Purpose:** `ci-runner` says what workload the pool accepts.
+- **Lifecycle:** `single-use` guarantees one job per runner registration.
+- **Optional isolation:** `project-<name>` is appended only when a project
+  must not share the general pool. It is not part of the default selector.
+- **Provider/origin is intentionally omitted** from the canonical selector.
+  Moving the pool between hosts or clouds must not require caller changes.
 - **GitHub's fixed labels** (`ubuntu-latest`, `ubuntu-22.04`,
   `windows-latest`, `macos-latest`, …) — used as-is. We cannot
   alias a GitHub-hosted runner to a custom label name.
 
-### Why not `runner:self` (matching the PR-label `ai:*` style)?
+The canonical private selector is therefore:
 
-Two reasons:
+```json
+["self-hosted", "ci-runner", "single-use"]
+```
 
-1. **Colons are invalid in GitHub Actions runner labels.** The
-   allowed character set is alphanumeric + hyphen + underscore.
-2. **GitHub-hosted runners cannot be aliased.** A workflow with
-   `runs-on: runner-github` would queue indefinitely because no
-   such runner label exists in GitHub's pool. We must use
-   `ubuntu-latest` directly.
+Do not add `aidoc`, a repository name, host name, cloud provider, or model name
+to the default selector. Add `project-<name>` only when isolation is an
+explicit requirement and the matching runner registration already exists.
 
-This was caught the hard way on operations PR #121 — an earlier
-draft used `runner:self` / `runner:github` and would have shipped
-unrunnable templates.
+Custom labels are case-insensitive. Register them in lowercase so workflow
+YAML, operational tooling, and UI output remain consistent. GitHub deletes
+unused custom labels automatically after 24 hours, so runner registration—not
+a separately pre-created label record—is the source of truth.
 
 ### Routing rule (per repo visibility)
 
@@ -155,12 +159,13 @@ Per-visibility defaults in `install/templates/workflows/`:
 
 | Visibility | Default `runner_labels_*` value |
 |---|---|
-| PRIVATE | `'["self-hosted", "aidoc", "ci-ephemeral"]'` (+ `[…, "ai-review"]` heavy job) |
+| PRIVATE | `'["self-hosted", "ci-runner", "single-use"]'` |
 | PUBLIC | `'"ubuntu-latest"'` |
 
 > Pre-`ci/v1.9.0` the PRIVATE templates shipped a `'"runner-self"'` placeholder
 > (a non-registered label → jobs queued forever, FT-9). v1.9.0+ ship the real
-> `ci-ephemeral` array directly.
+> retired `ci-ephemeral` array directly. `ci/v2.0.0` replaces that combined
+> label with the separate purpose/lifecycle labels `ci-runner` + `single-use`.
 
 Rationale:
 
@@ -173,20 +178,21 @@ Rationale:
   (untrusted fork PRs could execute arbitrary code on the runner).
   Public consumers default to `ubuntu-latest` accordingly.
 
-Consumers can override either default via the
-`runner_labels_routine` / `runner_labels_review` inputs in their
-caller workflow (`with:` block).
+Consumers can override the relevant `runner_labels` input in their caller
+workflow. `ai-review` exposes separate `runner_labels_routine` and
+`runner_labels_review` inputs, but private templates intentionally set both to
+the same unified selector.
 
-### Adding a new runner origin
+### Adding a specialized pool
 
-1. **Register the runner pool** with the appropriate label (e.g.,
-   `runner-azure` for an Azure-hosted self-registered runner pool).
-2. **Add a row** to the per-origin table in section 2 above with
-   the install + capability notes.
-3. **Update the routing rule** in section 2 if visibility coverage
-   changes (e.g., a new origin becomes the default for a third
-   visibility class).
-4. **PATCH-tag** `aidoc-flow-ci` per `CHANGELOG.md` semver rules
+1. Decide which capability or isolation property the shared pool lacks.
+2. Choose a descriptive lowercase label, normally `project-<name>` for
+   isolation or a capability such as `gpu`.
+3. Register the runner with the base labels plus the specialized label.
+4. Override only the callers that require that pool; general callers retain
+   `["self-hosted", "ci-runner", "single-use"]`.
+5. Add the label contract to this table if it becomes workspace-wide.
+6. **PATCH-tag** `aidoc-flow-ci` per `CHANGELOG.md` semver rules
    (additive — no consumer template changes needed unless the
    default routing rule changes).
 

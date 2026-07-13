@@ -5,19 +5,15 @@ How to register self-hosted runner pools with the right labels so
 tradeoffs and operational notes.
 
 For label conventions, see [`../LABELS.md`](../LABELS.md) §2. For
-the routing rule (PRIVATE → self-hosted `["self-hosted","aidoc","ci-ephemeral"]`;
+the routing rule (PRIVATE → self-hosted `["self-hosted","ci-runner","single-use"]`;
 PUBLIC → `ubuntu-latest`), see [`../LABELS.md`](../LABELS.md) §2 "Routing rule
 (per repo visibility)". For the bigger architectural picture, see
 [`architecture.md`](architecture.md) §5 ("Inputs that vary per
 consumer").
 
-> **`runner-self` is a deprecated placeholder, not a routing target.** As of
-> `ci/v1.9.0` the `*-private.yml` templates ship the real
-> `["self-hosted","aidoc","ci-ephemeral"]` label directly. **Earlier** releases
-> shipped the literal string `"runner-self"` — a non-registered label, so
-> `runs-on: runner-self` matched no runner and jobs queued forever (FT-9). If
-> you find `runner-self` in an already-installed caller, replace it with the
-> real pool array.
+> **Migration:** `runner-self` was an unroutable placeholder and
+> `ci-ephemeral` was the v1 combined label. `ci/v2.0.0` replaces both with the
+> purpose/lifecycle pair `ci-runner` + `single-use`.
 
 ## Workspace policy — private repos are self-hosted ONLY (mandatory, canon)
 
@@ -27,7 +23,7 @@ self-hosted runners — `ubuntu-latest` is never acceptable for a private repo**
 
 | Repo visibility | Default runner | Caller variant |
 | --- | --- | --- |
-| **Private** | **self-hosted** — `["self-hosted", "aidoc", "ci-ephemeral"]` (and `[…, "ai-review"]` for the heavy reviewer job) | the `-private.yml` templates (ship `ci-ephemeral` as of v1.9.0) |
+| **Private** | **self-hosted** — `["self-hosted", "ci-runner", "single-use"]` | the `-private.yml` templates |
 | **Public** | GitHub-hosted `ubuntu-latest` | the `-public.yml` templates |
 
 Rationale: this account has **no GitHub-hosted Actions minutes for private
@@ -42,13 +38,13 @@ actual visibility** (`gh repo view isPrivate`) and installs the matching
 bootstrapped with `--visibility public`, or it gets the self-hosted variant).
 
 > ⚠️ **Prerequisite for a private consumer:** register the
-> `["self-hosted", "aidoc", "ci-ephemeral"]` (+ `ai-review`) runner pool
+> `["self-hosted", "ci-runner", "single-use"]` runner pool
 > **before** adopting — otherwise the correctly-installed self-hosted callers
 > queue forever with no matching runner. See §2 for the reference image.
 
-**External adopters** outside the aidoc-flow workspace have no `runner-self`
-pool, so they override this default — see §2 option 1 (`ubuntu-latest`, if their
-private repos have GitHub-hosted minutes) or option 2 (build their own pool).
+**External adopters** can use the same generic labels for their own pool, or
+override the selector — see §2 option 1 (`ubuntu-latest`, if their private repos
+have GitHub-hosted minutes) or option 2 (build their own pool).
 
 ## 0. Terminology — runner CLASS vs runner LABEL (canonical)
 
@@ -58,7 +54,7 @@ runners have two distinct CLASSES and many possible LABELS:
 | Concept | Definition | Examples |
 |---|---|---|
 | **Runner CLASS** | Who provisions + manages the runner machine | "GitHub-hosted runners" (managed by GitHub) · "self-hosted runners" (operator-provisioned) |
-| **Runner LABEL** | String matched by `runs-on:` to identify a specific runner image / pool within a class | `ubuntu-latest`, `ubuntu-22.04`, `windows-latest` (GitHub-hosted images) · `[self-hosted, aidoc, ci-ephemeral]`, `[self-hosted, aidoc, ai-review]` (custom self-hosted pools) |
+| **Runner LABEL** | String matched by `runs-on:` to identify a specific runner image / pool within a class | `ubuntu-latest` (GitHub-hosted image) · `[self-hosted, ci-runner, single-use]` (custom self-hosted pool) |
 
 **Common terminology mistakes to AVOID** (these conflate class and label):
 
@@ -73,22 +69,24 @@ The distinction matters because:
 
 - **Class** determines billing model (GitHub-hosted = metered for PRIVATE / free for PUBLIC; self-hosted = your infra cost)
 - **Class** determines lifecycle (GitHub-hosted = fresh VM per job; self-hosted = persistent state unless ephemeral-by-design)
-- **Label** determines which runner image / pool gets the job (`ubuntu-latest` resolves to GitHub's latest Ubuntu LTS image; `[self-hosted, aidoc, ai-review]` resolves to your reviewer-CLI-pre-baked pool)
+- **Label** determines which runner pool gets the job (`ci-runner` = purpose;
+  `single-use` = one job then destroy). Add `project-<name>` only for intentional
+  project-specific isolation.
 
 Workflow YAML uses labels (e.g. `runs-on: ubuntu-latest`); prose
 should use class names when talking about the runner category, and
 label names when talking about a specific image / pool. Example:
 
-> "Operations uses self-hosted runners labeled `[self-hosted, aidoc,
-> ci-ephemeral]` for the trust job and `[self-hosted, aidoc, ai-review]`
-> for the heavy reviewer; framework uses GitHub-hosted runners
-> (`ubuntu-latest`) for both."
+> "Private consumers use self-hosted runners labeled
+> `[self-hosted, ci-runner, single-use]`; public consumers use GitHub-hosted
+> runners (`ubuntu-latest`)."
 
 ## 1. The runner-label convention recap
 
 | Label | Origin | What's installed |
 |---|---|---|
-| `runner-self` | Our self-hosted pool | Python, gh, jq, curl, git; network route to LiteLLM |
+| `ci-runner` | General CI workload purpose | Python, gh, jq, curl, git; network route to LiteLLM |
+| `single-use` | One-job lifecycle | Fresh container is destroyed after its job |
 | `ubuntu-latest` | GitHub-hosted | Standard tools; network route to LiteLLM required |
 | *(future)* `runner-azure`, `runner-aws`, `runner-fargate` | Other origins (reserved namespace) | Per-provider |
 
@@ -100,11 +98,9 @@ custom names.
 ## 2. Reference image — `aidoc-flow-runner:latest`
 
 > **External adopters — this is aidoc-flow-operations infrastructure.**
-> The `runner-self` label, the `aidoc-flow-runner:latest` image, and the
-> `scripts/ci-runner/` build live in `aidoc-flow-operations` and resolve
-> only to the aidoc-flow workspace's own self-hosted pool. A different
-> company/org adopting this CI standard does NOT have access to them. You
-> have two paths:
+> The `aidoc-flow-runner:latest` image and `scripts/ci-runner/` build live in
+> `aidoc-flow-operations`. External adopters can reproduce the generic labels
+> on their own pool. They have two paths:
 >
 > 1. **Use `ubuntu-latest` (recommended default for EXTERNAL adopters** — the
 >    aidoc-flow *workspace* default is self-hosted for private repos, see
@@ -116,8 +112,8 @@ custom names.
 >    (e.g., private repos with no GitHub-hosted minutes). Use the
 >    operations `Dockerfile` below as a **template** — it shows exactly
 >    what to bake in (see the table) — build + register your own pool with
->    your **own** label, and point the caller `runner_labels_*` inputs at
->    it. Do not expect `runner-self` to resolve outside aidoc-flow.
+>    the canonical `ci-runner` + `single-use` labels, and point caller
+>    `runner_labels_*` inputs at that pool.
 
 The reference self-hosted runner image lives in
 [`aidoc-flow-operations/scripts/ci-runner/`](https://github.com/vladm3105/aidoc-flow-operations/tree/main/scripts/ci-runner)
@@ -146,13 +142,9 @@ multi-repo workspace like aidoc-flow.
 
 1. Settings → Actions → Runners → New runner (org level)
 2. Follow GitHub's install instructions on the runner host
-3. **Add the `runner-self` label** during configuration (or
-   afterwards via `Settings → Actions → Runners → <name> → Labels`)
-4. The runner's existing labels (`self-hosted`, OS-specific labels
-   like `linux`/`x64`) remain — `runner-self` is **additive**, not
-   a replacement. Existing workflows that use
-   `runs-on: [self-hosted, aidoc, ci-ephemeral]` continue to work
-   alongside ones using `runs-on: runner-self`.
+3. **Add both `ci-runner` and `single-use`** during JIT registration.
+4. The GitHub-provided `self-hosted` label remains; the complete selector is
+   `[self-hosted, ci-runner, single-use]`.
 
 ### 3.2 Repo-level registration (fallback)
 
@@ -162,8 +154,8 @@ registration) but acceptable for small workspaces.
 
 ### 3.3 Verifying the label
 
-After registration, a workflow that uses
-`runs-on: runner-self` should pick up the runner without queuing:
+After registration, a workflow using
+`runs-on: [self-hosted, ci-runner, single-use]` should pick up the runner:
 
 ```bash
 # From the consumer repo, after opening a test PR:
@@ -178,15 +170,14 @@ registered correctly. Check the runner's labels via
 
 | Origin | Cost | Latency | CLI availability | Fork-PR safety |
 |---|---|---|---|---|
-| `runner-self` | Fixed (your infrastructure) | Low (warm container; ephemeral spawn ~5-10s) | Standard tools + LiteLLM reachability | **Trust gate required** for PUBLIC repos (untrusted PR code on self-hosted is GitHub's documented anti-pattern) |
+| `ci-runner` + `single-use` | Fixed (your infrastructure) | Low (ephemeral spawn ~5-10s) | Standard tools + LiteLLM reachability | **Trust gate required** for PUBLIC repos (untrusted PR code on self-hosted is GitHub's documented anti-pattern) |
 | `ubuntu-latest` (GitHub-hosted) | Free for PUBLIC; metered for PRIVATE (per OPS-0049 this account has zero GitHub-hosted minutes for PRIVATE) | High (~30-60s VM cold-start) | Standard tools + public LiteLLM reachability | Safe by default (GitHub-isolated VMs; fork PRs sandboxed) |
-| `runner-azure`/`runner-aws`/etc. | Per-provider | Per-provider | Per-image | Same trust-gate concern as `runner-self` if shared with PUBLIC repos |
+| `runner-azure`/`runner-aws`/etc. | Per-provider | Per-provider | Per-image | Same trust-gate concern as any self-hosted pool if shared with PUBLIC repos |
 
 **For PRIVATE consumers:** a self-hosted pool is the practical choice
 (no GitHub-hosted minutes; low latency). Inside aidoc-flow
-that pool is `runner-self`; **external adopters** substitute their own
-self-hosted label per the §2 callout — `runner-self` resolves only to
-aidoc-flow's pool.
+that pool uses the generic `ci-runner` + `single-use` selector; external
+adopters may reproduce it on their own infrastructure.
 
 **For PUBLIC consumers:** `ubuntu-latest` is GitHub's documented
 recommendation (no self-hosted-on-public security concern). Slower

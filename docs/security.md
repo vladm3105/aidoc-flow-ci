@@ -98,7 +98,7 @@ repos:
 **Our routing rule (per [`../LABELS.md`](../LABELS.md) §2 +
 [`runners.md`](runners.md) §4) follows GitHub's recommendation:**
 
-- **PRIVATE repos** use self-hosted `["self-hosted","aidoc","ci-ephemeral"]` — no
+- **PRIVATE repos** use self-hosted `["self-hosted","ci-runner","single-use"]` — no
   fork concern; safe per GitHub's guidance.
 - **PUBLIC repos** use `ubuntu-latest` (GitHub-hosted) — GitHub's
   recommended path; no self-hosted exposure.
@@ -149,14 +149,13 @@ LiteLLM process.
 | `links` | None beyond `GITHUB_TOKEN` (passed to lychee to avoid GH rate limits on github.com URLs) |
 | `secret-scan` | None beyond `GITHUB_TOKEN` |
 
-### 4.3 Secret-name convention (v1.0.0 limitation)
+### 4.3 Reviewer App secret-name convention
 
-The `APP_REVIEWER_1_*` names are **hardcoded** in
-`ai-review.yml`'s body. Consumers using non-default names would
-need to fork. v1.0.1+ may add `app_id_secret_name` /
-`app_key_secret_name` inputs IF consumers actually need
-non-default names. See
-[`../README.md`](../README.md) "v1.0.0 known limitations".
+The `APP_REVIEWER_1_*` names are the canonical reviewer-App contract and are
+declared explicitly by `ai-review.yml`. LiteLLM credentials deliberately use
+separate purpose-scoped names: `LITELLM_REVIEW_API_KEY` for review and
+`LITELLM_DOC_API_KEY` for documentation maintenance. Never reuse the proxy
+master key or one unrestricted virtual key for both agents.
 
 ## 5. `pull_request_target` vs `pull_request` — why `_target`
 

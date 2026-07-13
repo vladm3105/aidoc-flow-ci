@@ -164,7 +164,7 @@ Common inputs across workflows:
 
 - `runner_labels` (or `runner_labels_routine` / `runner_labels_review`
   for `ai-review`): default `"ubuntu-latest"`; PRIVATE consumers
-  override to the self-hosted `["self-hosted","aidoc","ci-ephemeral"]` array per
+  override to the self-hosted `["self-hosted","ci-runner","single-use"]` array per
   [`../LABELS.md`](../LABELS.md) §2 routing rule
 - `model` (`ai-review` only): LiteLLM model alias (trusted config or caller override)
 - `config-file` / `config-path`: pointer to the per-repo policy file

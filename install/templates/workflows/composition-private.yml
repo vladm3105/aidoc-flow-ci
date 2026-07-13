@@ -41,5 +41,5 @@ jobs:
   call:
     uses: vladm3105/aidoc-flow-ci/.github/workflows/composition.yml@ci/v2.0.0
     with:
-      runner_labels: '["self-hosted", "aidoc", "ci-ephemeral"]'
+      runner_labels: '["self-hosted", "ci-runner", "single-use"]'
     secrets: inherit  # pragma: allowlist secret

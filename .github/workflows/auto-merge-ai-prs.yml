@@ -42,7 +42,7 @@ on:
         required: false
         default: ""
       runner_labels:
-        description: 'JSON array of runner labels (matches IPLAN-0017 convention). Default ubuntu-latest. Private consumers pass `["self-hosted","aidoc","ci-ephemeral"]`.'
+        description: 'JSON array of runner labels (matches IPLAN-0017 convention). Default ubuntu-latest. Private consumers pass `["self-hosted","ci-runner","single-use"]`.'
         type: string
         required: false
         default: '"ubuntu-latest"'

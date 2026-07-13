@@ -6,7 +6,7 @@ on:
       runner_labels:
         description: JSON runner labels; use ubuntu-latest only for a publicly reachable proxy
         required: true
-        default: '["self-hosted", "aidoc", "ci-ephemeral"]'
+        default: '["self-hosted", "ci-runner", "single-use"]'
         type: string
       review_model:
         description: LiteLLM review model alias

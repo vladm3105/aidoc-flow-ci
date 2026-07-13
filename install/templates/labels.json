@@ -17,18 +17,18 @@
   {
     "name": "skip-ai-review",
     "color": "5319e7",
-    "description": "Operator override to re-fire ai-review (canon §5.1 required state label)"
+    "description": "Operator override: suppress re-review and carry forward a valid prior approval"
   },
   {
     "name": "ai:autofix-applied",
     "color": "1d76db",
-    "description": "AI autofix applied (IPLAN-0014 operational label; not canon §5.1 required — optional but recommended for repos consuming ai-review with autofix)"
+    "description": "AI autofix applied; optional for repositories that enable ai-review autofix"
   },
 
   {
     "name": "governance",
     "color": "8b6914",
-    "description": "PR touches CLAUDE.md, ops/DECISIONS.md, .claude/agents/, .claude/skills/, or .github/ai-review/ (canon §5.2 diff-class: governance-docs-root + agents-and-skills + ai-review-config)"
+    "description": "PR touches governance docs, agent definitions, skills, or AI-review configuration"
   },
   {
     "name": "docs",
@@ -48,7 +48,7 @@
   {
     "name": "agents",
     "color": "d4c5f9",
-    "description": "PR touches .claude/agents/, .claude/skills/, or .claude/workflows/ (canon §5.2 diff-class: agents-and-skills + workflow-js)"
+    "description": "PR touches agent definitions, skills, or agent workflow files"
   },
   {
     "name": "tests",
@@ -58,12 +58,12 @@
   {
     "name": "config",
     "color": "fef2c0",
-    "description": "PR touches Dockerfile, pyproject.toml, requirements*.txt, package*.json, uv.lock, or .pre-commit-config.yaml (canon §5.2 diff-class: deps-config)"
+    "description": "PR touches dependency, build, package, container, or pre-commit configuration"
   },
   {
     "name": "plans",
     "color": "e99695",
-    "description": "PR touches ops/iplans/IPLAN-*.md or plans/PLAN-*.md (canon §5.2 diff-class: plans / verified-planning)"
+    "description": "PR touches implementation or verified-planning documents"
   },
 
   {
@@ -79,6 +79,6 @@
   {
     "name": "skip-audit-trail",
     "color": "d876e3",
-    "description": "Two-signal override for the OPS-0069 audit-trail CI check (must be paired with '[skip-audit-trail]' in a commit body per REPO_STANDARDS.md §14.2 / PLAN-002 §4.6)"
+    "description": "Audit override; requires a matching [skip-audit-trail] commit-body marker"
   }
 ]

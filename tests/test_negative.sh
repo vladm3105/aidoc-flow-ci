@@ -19,8 +19,8 @@ assert_ok   "allowed_use 'github/codeql-action/upload-sarif'" "github/* allowed"
 assert_ok   "allowed_use 'vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml'" "own reusable allowed"
 
 echo "== runner_labels JSON validation rejects malformed input =="
-assert_fail "printf '%s' '[self-hosted, aidoc, ci-ephemeral]' | jq -e . >/dev/null 2>&1" "unquoted array rejected (the heredoc-quote-strip bug)"
-assert_ok   'printf %s '"'"'["self-hosted", "aidoc", "ci-ephemeral"]'"'"' | jq -e "type==\"array\"" >/dev/null 2>&1' "valid JSON array accepted"
+assert_fail "printf '%s' '[self-hosted, ci-runner, single-use]' | jq -e . >/dev/null 2>&1" "unquoted array rejected (the heredoc-quote-strip bug)"
+assert_ok   'printf %s '"'"'["self-hosted", "ci-runner", "single-use"]'"'"' | jq -e "type==\"array\"" >/dev/null 2>&1' "valid JSON array accepted"
 
 echo "== permissions-block presence check catches an omission =="
 tmp="$(mktemp)"; printf 'name: x\non:\n  workflow_call:\njobs:\n  j:\n    runs-on: ubuntu-latest\n' > "$tmp"

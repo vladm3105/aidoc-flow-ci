@@ -211,7 +211,7 @@ A workspace repo's runner CLASS follows its visibility, by default:
 
 | Visibility | Default runner | Caller variant |
 | --- | --- | --- |
-| **Private** | self-hosted `["self-hosted", "aidoc", "ci-ephemeral"]` (+ `[…, "ai-review"]` for the heavy job) | `-private.yml` |
+| **Private** | self-hosted `["self-hosted", "ci-runner", "single-use"]` for AI and non-AI jobs | `-private.yml` |
 | **Public** | GitHub-hosted `ubuntu-latest` | `-public.yml` |
 
 This account has **no GitHub-hosted Actions minutes for private repos**
@@ -219,12 +219,12 @@ This account has **no GitHub-hosted Actions minutes for private repos**
 `install.sh --update` auto-detects the repo's visibility (`gh repo view
 isPrivate`) and installs the matching variant; bootstrap selects it from
 `--visibility` (defaults to `private`). **A private consumer MUST register the
-self-hosted `ci-ephemeral` (+ `ai-review`) pool before adopting.** Full detail + the external-adopter
+self-hosted `ci-runner` / `single-use` pool before adopting.** Full detail + the external-adopter
 override (they lack the self-hosted pool → `ubuntu-latest`): `docs/runners.md`
 "Workspace default".
 
 As of `ci/v1.9.0` the `-private.yml` templates ship the **real**
-`["self-hosted", "aidoc", "ci-ephemeral"]` label directly (earlier releases
+`["self-hosted", "ci-runner", "single-use"]` label directly (earlier releases
 shipped a `runner-self` placeholder that resolved to `runs-on: runner-self`,
 matched no runner, and queued every required check — FT-9).
 
@@ -919,7 +919,7 @@ consumers ship a thin caller from one of the canonical templates:
 
 - **Public consumer** (ubuntu-latest runners):
   `install/templates/workflows/auto-merge-ai-prs-public.yml`
-- **Private consumer** (self-hosted ci-ephemeral runners):
+- **Private consumer** (self-hosted `ci-runner` / `single-use` runners):
   `install/templates/workflows/auto-merge-ai-prs-private.yml`
 
 Both templates pin at `@ci/v1.5.1` (bump per this repo's release

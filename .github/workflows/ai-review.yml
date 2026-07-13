@@ -2,7 +2,7 @@
 #
 # TWO-JOB SPLIT (safe-by-design for PUBLIC repos):
 #   job `trust`     → PUBLIC repo: GitHub-hosted (ubuntu-latest). PRIVATE repo: self-hosted
-#                     ci-ephemeral (no GitHub-hosted minutes on this account — OPS-0049). The
+#                     ci-runner/single-use (no GitHub-hosted minutes on this account — OPS-0049). The
 #                     author-trust DECISION only — reads the allowlist from operations@main +
 #                     PR metadata (never PR code); fork/untrusted → `ai:human-review-required`
 #                     label + comment and STOP. Emits the `ai_review_ok` job output.
@@ -15,7 +15,7 @@
 # public; a self-hosted throwaway container for private) reading config + PR metadata only
 # (never PR code); the self-hosted reviewer job is gated behind `needs.trust`, so untrusted
 # fork PRs never reach the reviewer at all. (Public repos get free GitHub-hosted minutes; the
-# private path uses the ci-ephemeral runner because this account's GitHub-hosted minutes are
+# private path uses the ci-runner/single-use runner because this account's GitHub-hosted minutes are
 # exhausted — and private repos have no untrusted forks to keep off-box anyway.)
 #
 # Trust boundary: "we trust only ourself" — config-driven login allowlists in
@@ -82,7 +82,7 @@ jobs:
   # Runner by repo VISIBILITY (this account has NO GitHub-hosted Actions minutes — see OPS-0049):
   #   PUBLIC  → ubuntu-latest — free GitHub-hosted minutes AND keeps untrusted fork PRs
   #             entirely off our box (the safe-by-design guarantee that matters for forks).
-  #   PRIVATE → self-hosted ci-ephemeral — no GitHub-hosted minutes available on this
+  #   PRIVATE → self-hosted ci-runner/single-use — no GitHub-hosted minutes available on this
   #             account; private repos have no untrusted forks, and this job reads only our
   #             config + PR metadata (never PR code), so a self-hosted disposable container
   #             is safe here. (Served by the JIT ephemeral supervisor; reverts to ubuntu-latest

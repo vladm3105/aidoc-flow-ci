@@ -23,8 +23,8 @@
 #                                 [--codeowner <handle>] [--canon-*-url <url>]
 #   Re-pin (version-only tag bump; preserves all customization — use this for a
 #   re-pin, NEVER --update which re-applies the template body; FT-9):
-#   CI_TAG=ci/v1.9.5 bash install.sh <owner/repo> --repin
-#   CI_TAG=ci/v1.9.5 bash install.sh <owner/repo> --visibility private
+#   CI_TAG=ci/v2.0.0 bash install.sh <owner/repo> --repin
+#   CI_TAG=ci/v2.0.0 bash install.sh <owner/repo> --visibility private
 #
 # De-branding flags (PLAN-004 D2) let an external org adopt the canon
 # without vladm3105/aidoc-flow-operations hardcoded. Placeholders in the
