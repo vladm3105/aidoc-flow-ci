@@ -108,7 +108,7 @@ jobs:
           # a single string; eval runs a multi-command build in one consistent
           # shell within this step (executing an arbitrary consumer build
           # command is this step's intended purpose).
-          eval "$BUILD_COMMAND"
+          bash -c "$BUILD_COMMAND"
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@87557b9c84dde89fdd9b10e88954ac2f4248e463 # v4.36.1

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | DRAFT (rev 2 — 2026-07-10 EST) — re-baselined onto shipped `ci/v1.7.1`; PR-B SHIPPED |
+| **Status** | SHIPPED — 2026-07-10 (ci/v1.7.1 → v1.8.1). 7/7 PRs complete; exit condition met. |
 | **Owner** | aidoc-flow-ci (canon) |
 | **Trigger** | 2026-07-09 five-lens pre-prod review of the ai-review pipeline (security / correctness / docs / portability / governance) |
 | **Relationship to PLAN-004** | PLAN-004 (company-default elevation) is **SHIPPED** (`ci/v1.7.0`, 2026-07-10). This plan closes the ai-review *pipeline* gaps that elevation assumed but did not verify. Overlaps are cross-referenced, not duplicated. |

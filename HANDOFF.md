@@ -229,21 +229,14 @@ enforcement, PR-U1/U2/U3/U4, 2026-07-08).
 
 ## Open threads
 
-- **PLAN-004 SHIPPED (A–E + `ci/v1.7.0` tag/release, 2026-07-10).** All A–E
-  slices landed under the one cut (VERSION = `ci/v1.7.0`; the plan's per-slice
-  `v1.8.0`/`v1.9.0` numbers were aspirational — D2 + FT-7 + E are
-  additive/byte-identical, not breaking). The `curl …/ci/v1.7.0/…` install URLs
-  now resolve. Remaining verification: a live end-to-end `install.sh --update`
-  against a real consumer (e.g. interlog).
-- **`plans/FRAMEWORK-TODO.md`** — FT-1 (branch-protection templates lag
-  REPO_STANDARDS §2 on `call / verify`), FT-2 (verify `pre-commit`/`secret-scan`
-  emitted context names), FT-3 (`labels.json` `skip-ai-review` description),
-  FT-4 (CHANGELOG back-catalog per-tag cut), FT-5 (drift job needs
-  `administration: read`), FT-6 (composition trust-source not parameterized —
-  reads `$GH_REPO@main`; fails safe), FT-8 (migrate `sync/check-drift.sh` onto
-  `manifest.json` = PLAN-004 E2). FT-1..FT-6 + FT-8 are now open backlog (the
-  elevation shipped without them; none block adoption). **FT-7 (CODEOWNERS
-  de-brand) RESOLVED 2026-07-09.**
+- **PLAN-008 pre-prod gap closure** — 5-lens review (2026-07-13) of the
+  `ci/v2.0.0` surface found 29 findings across documentation staleness,
+  missing migration/release collateral, and code corrections. Grouped into
+  5 PRs (plan in `plans/PLAN-008_pre-prod-gap-closure.md`).
+
+- **PLAN-004 SHIPPED (A–E + `ci/v1.7.0` tag/release, 2026-07-10).**
+- **`plans/FRAMEWORK-TODO.md`** — FT-3 RESOLVED 2026-07-12 (labels.json description
+  corrected). FT-1, FT-2, FT-4, FT-5, FT-6, FT-8 remain open backlog.
 - **PLAN-003 per-repo rollout waves** — one PR per non-paused repo per
   PLAN-003 §5.5 / operations `docs/CROSS_REPO_PLAYBOOKS.md` §T-D. Wave status
   is tracked there (do not hardcode a "next wave" here — it drifts). Validation
@@ -275,18 +268,25 @@ enforcement, PR-U1/U2/U3/U4, 2026-07-08).
 
 See `DECISIONS.md` for the full CI-NNNN record. Latest:
 
-- **CI-0004** (2026-07-09) — workflow-policy delegation table: this repo's
-  workflow behaviors implement OPS-0062/0065/0066/0067/0061/0069; change
-  policy in operations, implementation here.
-- **CI-0003** (2026-07-08) — 3-cycle review circuit-breaker (OPS-0066)
-  confirmed canonical for this repo's plan review.
+- **CI-0006** (2026-07-12) — LiteLLM unification: all AI jobs route through
+  one OpenAI-compatible LiteLLM proxy via a dependency-free Python adapter.
+  Vendor CLI paths, credentials, and workflow inputs are removed. Breaking
+  interface change targeted for `ci/v2.0.0`.
+- **CI-0005** (2026-07-10) — trust boundary: `trust_config_repo` and
+  `trust_config_ref` inputs on ai-review and auto-merge-ai-prs parameterize
+  the trust source. External adopters point at their own ops/config repo;
+  default is byte-identical to the prior hardcoded `vladm3105/aidoc-flow-
+  operations@main`.
+- **CI-0004** (2026-07-09) — workflow-policy delegation table.
+- **CI-0003** (2026-07-08) — 3-cycle review circuit-breaker (OPS-0066).
 - **CI-0002** (2026-07-08) — bundle PR-V1 canon with Wave 0 self-adoption.
 - **CI-0001** (2026-07-08) — flexible-canonical (Option B) governance files.
 
-Recent merges: PLAN-003 PR-V1/V2/V4 (#73/#74/#75) + canon follow-ups
-(#76 template row / #77 parser suffix / #78 rubric / #79 canonical-source
-disambiguation / #80 REPO_STANDARDS §17 auto-merge canon); PLAN-004 #82
-(plan) + #83–#90 (A-series A1–A6, complete).
+Recent merges: `feat/unified-litellm-agents` (#154 — LiteLLM unification for
+`ci/v2.0.0`); PLAN-007 W1/W2/W3/W5 (test suite + guardrails + markdown-lint
+graduation + Dependabot prune); PLAN-006 W4 content-check population.
+Earlier: PLAN-003 PR-V1/V2/V4 (#73/#74/#75) + canon follow-ups; PLAN-004
+#82-#99; PLAN-005 #108-#114.
 
 ---
 

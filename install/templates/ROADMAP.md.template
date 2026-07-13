@@ -52,3 +52,12 @@ here.>
 - Do NOT accumulate — a roadmap that grows longer every quarter is a
   backlog in disguise.
 - Cross-reference plans by ID + path (e.g., `plans/PLAN-XXX_slug.md`).
+
+---
+
+**OPS compliance:**
+- Every ROADMAP update commit in a PR must carry the OPS-0069 audit-trail
+  phrase (`Multi-agent self-review per OPS-0065` or `Self-review skipped
+  per founder OK`) in the commit message body.
+- Roadmap changes follow the OPS-0066 3-cycle review cap on multi-agent
+  review passes.

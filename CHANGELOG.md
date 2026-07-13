@@ -3,6 +3,8 @@
 Notable releases of the shared CI library. SemVer per `ci/vX.Y.Z`
 tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
+## Unreleased — targeting ci/v2.0.0
+
 ### Added — canonical branching standard (unreleased)
 
 - Added `docs/BRANCHING.md` as the technical contract for working-branch

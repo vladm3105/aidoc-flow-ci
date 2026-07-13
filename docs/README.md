@@ -8,6 +8,8 @@ docs cover consumer-facing intro, install, and release notes:
 | [`../README.md`](../README.md) | Consumer-facing intro: what ships, how to install, override modes, drift detection |
 | [`../install/README.md`](../install/README.md) | `install/install.sh` usage + next steps |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | Release notes per `ci/vX.Y.Z` tag |
+| [`MIGRATION_v2.0.0.md`](MIGRATION_v2.0.0.md) | Migration guide from `ci/v1.x` to `ci/v2.0.0` (LiteLLM unification — breaking change) |
+| [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) | Pre-tag checklist for cutting a `ci/vX.Y.Z` release |
 
 This `docs/` tree covers reference + design topics.
 
@@ -33,8 +35,9 @@ question, an incident, or a release that motivates the page) rather
 than preemptively — so we document real usage, not hypothetical
 patterns. All previously-listed planned docs (`architecture`, `runners`,
 `overrides`, `security`) now exist under "Available now". No docs are
-currently queued; a per-release migration guide will be added if/when a
-MAJOR (`ci/v2.0.0`) ships with breaking changes.
+currently queued; per-release migration guidance lives in
+[`docs/MIGRATION_v2.0.0.md`](MIGRATION_v2.0.0.md) for the
+`ci/v2.0.0` LiteLLM unification (breaking change).
 
 ## How to contribute a new doc
 

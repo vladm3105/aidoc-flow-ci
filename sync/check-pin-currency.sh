@@ -62,11 +62,13 @@ audit_repo() {  # $1 = "local" | owner/repo ; $2 = canon
       done < <(grep -oE '@ci/v[0-9]+\.[0-9]+\.[0-9]+' "$f" 2>/dev/null | sort -u | sed "s#@#$(basename "$f" .yml) #")
     done
   else
-    local list; list="$($GH api "repos/$repo/contents/.github/workflows?ref=main" --jq '.[].name' 2>/dev/null)" || { echo "  $repo: unreadable"; return; }
+    local default_branch; default_branch="$($GH api "repos/$repo" -q '.default_branch' 2>/dev/null)"
+    [ -n "$default_branch" ] || default_branch=main
+    local list; list="$($GH api "repos/$repo/contents/.github/workflows?ref=$default_branch" --jq '.[].name' 2>/dev/null)" || { echo "  $repo: unreadable"; return; }
     local worst="$canon" any=0
     for wf in $list; do
       [[ "$wf" == *.yml ]] || continue
-      pin="$($GH api "repos/$repo/contents/.github/workflows/$wf?ref=main" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null | grep -oE 'vladm3105/aidoc-flow-ci/[^@]+@ci/v[0-9]+\.[0-9]+\.[0-9]+|@[0-9a-f]{40} # ci/v[0-9.]+' | grep -oE 'ci/v[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+      pin="$($GH api "repos/$repo/contents/.github/workflows/$wf?ref=$default_branch" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null | grep -oE 'vladm3105/aidoc-flow-ci/[^@]+@ci/v[0-9]+\.[0-9]+\.[0-9]+|@[0-9a-f]{40} # ci/v[0-9.]+' | grep -oE 'ci/v[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
       [ -z "$pin" ] && continue
       pin="ci/v${pin#ci/v}"; any=1; total=$((total+1))
       if [ "$(ver_cmp "$pin" "$canon")" = "-1" ]; then

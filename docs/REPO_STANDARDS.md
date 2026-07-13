@@ -587,7 +587,7 @@ coordinated-merge-window pattern from
 
 ## 13. Cross-references
 
-- [`WORKFLOWS.md`](WORKFLOWS.md) — workflow registry (11 reusables +
+- [`WORKFLOWS.md`](WORKFLOWS.md) — workflow registry (12 reusables +
   per-repo applicability matrix)
 - [`architecture.md`](architecture.md) — reusable-workflow model + trust
   flow
@@ -942,7 +942,7 @@ consumers ship a thin caller from one of the canonical templates:
 - **Private consumer** (self-hosted `ci-runner` / `single-use` runners):
   `install/templates/workflows/auto-merge-ai-prs-private.yml`
 
-Both templates pin at `@ci/v1.5.1` (bump per this repo's release
+Both templates pin at `@ci/v2.0.0` (bump per this repo's release
 cadence). Consumer copies the template verbatim into its
 `.github/workflows/auto-merge-ai-prs.yml`.
 
@@ -956,9 +956,10 @@ cadence). Consumer copies the template verbatim into its
   with a downgrade warning (workflow_run triggers won't fire from the
   merge commit per GHA anti-recursion, but merges still succeed).
 - **ai-review + composition callers must be present** as the
-  workflow_run triggers. Bootstrap-tier repos without CI adoption
-  (interlog as of 2026-07-08) get auto-merge as part of full CI
-  adoption, not standalone.
+workflow_run triggers. Bootstrap-tier repos without CI adoption
+get auto-merge as part of full CI adoption, not standalone. (No
+bootstrap-tier repos currently exist — interlog was promoted to
+ops-private tier as of PLAN-006 W4.)
 
 ### 17.4 Non-goals
 

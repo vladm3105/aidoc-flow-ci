@@ -16,7 +16,7 @@ reusable's job renders as **`call / <job-name>`** in the checks list:
 | `call / ai-review` | `ai-review.yml` | the AI review verdict |
 | `call / composition` | `composition.yml` | that the App's approval is COUNTED (identity gate) |
 | `call / verify` | `audit-trail.yml` → `audit-trail-check.yml` | the OPS-0069 audit-trail phrase |
-| `Lint / format / security hooks` | `pre-commit.yml` (adopted) | mechanical hygiene |
+| `call / Lint / format / security hooks` | `pre-commit.yml` (adopted) | mechanical hygiene |
 | `Secret scan (gitleaks)` | `secret-scan.yml` (adopted) | leaked-credential scan |
 
 `ai-review` + `composition` are a **pair** — require both, or neither
@@ -33,11 +33,11 @@ on **`call / verify`** — see the note below the table.
 
 | Tier | What the shipped template requires today | §2 target adds |
 |---|---|---|
-| **Governance** (public) | `call / ai-review`, `call / composition`, `Lint / format / security hooks` | `call / verify` |
+| **Governance** (public) | `call / ai-review`, `call / composition`, `call / Lint / format / security hooks` | `call / verify` |
 | **Product** (public) | above **+** `Secret scan (gitleaks)` | `call / verify` |
-| **Ops** (private) | `call / ai-review`, `call / composition`, `Lint / format / security hooks`, `Secret scan (gitleaks)` | `call / verify` |
+| **Ops** (private) | `call / ai-review`, `call / composition`, `call / Lint / format / security hooks`, `Secret scan (gitleaks)` | `call / verify` |
 | **Umbrella** (private) | **none** — submodule-pointer repo; `required_status_checks: null` by design. `call / verify` runs **advisory** only; do not add it. Merges use `--admin` (OPS-0062). | — |
-| **Bootstrap** | `Lint / format / security hooks` | `call / verify` deferred until the repo adopts the CI reusable (per §14.3) |
+| **Bootstrap** | `call / Lint / format / security hooks` | `call / verify` deferred until the repo adopts the CI reusable (per §14.3) |
 
 > **`call / verify` reconciliation.** REPO_STANDARDS §2 lists
 > `call / verify` in the baseline, but the `branch-protection-{governance,

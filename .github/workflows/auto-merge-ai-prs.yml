@@ -192,6 +192,7 @@ jobs:
           # so operator can fix the config instead of seeing silent no-ops.
           if ! echo "$CONFIG" | jq -e '
               (.trust.ai_review | type == "array") and
+              (.trust.auto_fix | type == "array") and
               (.auto_merge.repos | type == "array")
             ' >/dev/null 2>&1; then
             CONFIG_PARSE_ERR=$(echo "$CONFIG" | jq -e '.' 2>&1 | head -3 || echo "(jq error)")

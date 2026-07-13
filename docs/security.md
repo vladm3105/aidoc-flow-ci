@@ -224,8 +224,13 @@ with the version tag in a trailing comment:
 ```yaml
 - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 - uses: github/codeql-action/init@21eb7f7842f33eafc83782b56fff2a2c43e9696f # v4.36.1
-- uses: gacts/gitleaks@c9a0338361dc45a01aa7ebaaa5330179f3c62873 # v1.3.2
-- uses: lycheeverse/lychee-action@885c65f3dc543b57c898c8099f4e08c8afd178a2 # v2.6.1
+# gitleaks installed as a direct binary (SHA-256 verified), not a
+# marketplace wrapper — per the allowed-actions policy (only actions/*,
+# github/*, and vladm3105/aidoc-flow-ci/* are permitted):
+#   run: |
+#     curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz" | tar xz
+#     echo "551f6fc...  gitleaks" | sha256sum -c -
+#     ./gitleaks git .
 ```
 
 This protects against compromised-action attacks (a malicious
@@ -249,7 +254,7 @@ stack:
 | Layer | Tool | Speed | Coverage |
 |---|---|---|---|
 | Pre-commit (local) | gitleaks `protect --staged` | Sub-second | Diff only; offline |
-| **PR CI gate (this workflow)** | **`gacts/gitleaks` (MIT)** | ~30-60s | Full clone; blocks merge |
+| **PR CI gate (this workflow)** | **gitleaks (direct binary, SHA-256 verified)** | ~30-60s | Full clone; blocks merge |
 | Scheduled | trufflehog | Slower | Adds live-credential verification (kills false positives) |
 | Platform | GitHub Secret Scanning + push protection | Real-time | Provider-partner program auto-revokes leaked tokens |
 
@@ -257,15 +262,15 @@ Consumers ideally enable all 4 layers. `aidoc-flow-ci` only ships
 the CI-gate layer (`secret-scan.yml`); the others are per-consumer
 infra.
 
-### Why `gacts/gitleaks` not `gitleaks/gitleaks-action`?
+### Why a direct binary, not a marketplace wrapper?
 
 The official `gitleaks/gitleaks-action` switched to a proprietary
 EULA at v2.0.0 (May 2026). Org-owned repos (including OSS)
-require a paid license key. `gacts/gitleaks` is the **MIT-licensed
-community wrapper** — same `gitleaks` binary underneath, no
-license key, no signup. The CMS OSPO guide
-([dsacms.github.io](https://dsacms.github.io/ospo-guide/resources/gitleaks-action-license/))
-explicitly points to `gacts/gitleaks` for this use case.
+require a paid license key. The `aidoc-flow-ci` solution installs the
+same `gitleaks` binary directly (MIT-licensed, no key, no signup),
+with SHA-256 verification at install time. The binary is not wrapped
+in a third-party action, satisfying the allowed-actions policy
+(`actions/*`, `github/*`, `vladm3105/aidoc-flow-ci/*` only).
 
 ## 8. Reporting security issues
 

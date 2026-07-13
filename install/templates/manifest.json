@@ -121,6 +121,27 @@
       "auto_install": false
     },
     {
+      "path": ".markdownlint.json",
+      "template": ".markdownlint.json",
+      "substitute": [],
+      "safe_to_replace": false,
+      "auto_install": false
+    },
+    {
+      "path": ".lychee.toml",
+      "template": ".lychee.toml",
+      "substitute": [],
+      "safe_to_replace": false,
+      "auto_install": false
+    },
+    {
+      "path": ".github/docs-sync.json",
+      "template": "docs-sync.json",
+      "substitute": [],
+      "safe_to_replace": false,
+      "auto_install": false
+    },
+    {
       "path": ".github/ai-review/config.json",
       "template": "config.json.template",
       "substitute": ["CODEOWNER_HANDLE"],
