@@ -53,7 +53,7 @@ Legend: ✅ emitted green · ⚠ armed-but-suspect · ✗ armed-phantom (never g
 | iplan-standard | governance | **none (unprotected)** | needs full protection |
 | iplan-runner | product | own tests (Lint, Conformance, Engine tests, `Secret scan (gitleaks)`)✅ | canon `call / ai-review`=skipped, `call / gitleaks`=**failure** — incomplete canon adoption |
 | engramory | product | **none (unprotected)** | needs full protection; clean canon adopter |
-| operations | ops | `Lint / format / security hooks`✅(standalone), `Secret scan (gitleaks)`✅, `call / ai-review`✅, `call / composition`✅ | missing `call / verify` |
+| operations | ops | `call / Lint / format / security hooks`✅, `call / gitleaks`✅, `call / ai-review`✅, `call / composition`✅, `call / verify`✅ | fully armed, all canon checks green |
 | business | ops | `call / ai-review`✅, `call / trust`✅, `Lint / format / security hooks`✗, `Secret scan (gitleaks)`✅ | armed **bare** lint but emits `call / Lint …`; missing composition/verify |
 | iplanic | ops | `call / ai-review`✅, `call / trust`✅, `Lint / format / security hooks`✗, `Secret scan (gitleaks)`✅ | same bare-lint phantom; missing composition/verify |
 | interlog | ops | `Secret scan (gitleaks)`✅, `call / verify`✅, `call / Lint / format / security hooks`✅, `call / ai-review`✅, `call / composition`⚠ | composition did **not** emit on latest PR — verify it runs before keeping armed |
@@ -81,7 +81,7 @@ to minimize change.
 | iplan-standard | `call / ai-review`, `call / composition`, `call / verify`, `call / Lint / format / security hooks` |
 | iplan-runner | `call / verify` (green + independent of the broken canon callers), `Lint / format / security hooks`, `Lint + types (ruff, mypy --strict)`, `Conformance (vectors + isolation + spec parity)`, `Secret scan (gitleaks)`, `Engine tests (claude / py3.11)`, `Engine tests (claude / py3.12)`, `Engine tests (hermes / py3.11)`, `Engine tests (hermes / py3.12)` — **do NOT arm** `call / ai-review`/`call / gitleaks`/`call / composition` until canon adoption is fixed (FT-12) |
 | engramory | `call / ai-review`, `call / composition`, `call / verify`, `call / Lint / format / security hooks`, `call / gitleaks` |
-| operations | `call / ai-review`, `call / composition`, `call / verify`, `Lint / format / security hooks`, `Secret scan (gitleaks)` |
+| operations | `call / ai-review`, `call / composition`, `call / verify`, `call / Lint / format / security hooks`, `call / gitleaks` |
 | business | `call / ai-review`, `call / composition`, `call / verify`, `call / trust`, `call / Lint / format / security hooks`, `Secret scan (gitleaks)` |
 | iplanic | `call / ai-review`, `call / composition`, `call / verify`, `call / trust`, `call / Lint / format / security hooks`, `Secret scan (gitleaks)` |
 | interlog | `call / ai-review`, `call / verify`, `call / Lint / format / security hooks`, `Secret scan (gitleaks)` (+ `call / composition` **only after** verifying it posts on every PR) |

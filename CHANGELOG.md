@@ -3,9 +3,22 @@
 Notable releases of the shared CI library. SemVer per `ci/vX.Y.Z`
 tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
-## Unreleased — targeting ci/v2.0.0
+## Unreleased
 
-### Added — canonical branching standard (unreleased)
+### Fixed — post-cutover documentation sync (2026-07-13)
+
+- **BRANCH_PROTECTION.md**: `Secret scan (gitleaks)` → `call / gitleaks` across
+  all tiers (matching the v2 reusable workflow output name).
+- **MIGRATION_v2.0.0.md**: added LiteLLM virtual key generation examples with
+  Docker bridge gateway note (consumer-facing cutover lesson).
+- **branch-protection-bootstrap.json**: `Lint / format / security hooks` →
+  `call / Lint / format / security hooks` (matching the v2 reusable output).
+- **FLEET_BRANCH_PROTECTION_ARMING.md**: updated operations entry to reflect
+  completed v2 cutover (all five canon checks armed and green).
+
+## ci/v2.0.0 — 2026-07-13
+
+### Added — canonical branching standard
 
 - Added `docs/BRANCHING.md` as the technical contract for working-branch
   naming, lifecycle, safe updates, squash merges, cleanup, hotfixes, release
@@ -13,7 +26,7 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 - Expanded strict standards-drift checks to detect missing PR protection and
   drift in update-branch and squash-title/body repository settings.
 
-### Changed — unified LiteLLM gateway for all AI jobs (unreleased)
+### Changed — unified LiteLLM gateway for all AI jobs
 
 - `ai-review` and `doc-maintainer` now call one OpenAI-compatible LiteLLM
   proxy through a dependency-free Python adapter. Runners no longer install,
@@ -26,7 +39,7 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   workflow that must exercise both canonical aliases before the tag is cut.
 - Proxy errors, missing configuration, malformed JSON, and structurally invalid
   verdicts fail closed. This removes vendor-specific workflow inputs and is a
-  breaking interface change targeted for `ci/v2.0.0`.
+  breaking interface change.
 
 ### Added — fleet branch-protection arming runbook + markdown-lint graduation complete (PLAN-007 W3/W4) (2026-07-12)
 
@@ -44,7 +57,7 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   own repo (business/interlog/engramory/iplan-runner/iplanic/iplan-standard).
   Only the founder-executed W4 arming remains to make them merge-blocking.
 
-### Added — functional doc-maintainer and production CI hardening (unreleased)
+### Added — functional doc-maintainer and production CI hardening
 
 - Replaced the doc-maintainer planner/apply/reconciler stubs with a bounded AI
   documentation-impact planner, validated low-risk edit generation, bot PR
