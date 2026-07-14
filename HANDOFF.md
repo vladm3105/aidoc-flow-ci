@@ -4,10 +4,28 @@ Live cross-session resume point for the workspace CI + governance-workflow
 canon library. Read at session start; refresh at milestones and before
 context compaction.
 
-## Current state (2026-07-12)
+## Current state (2026-07-14)
 
-**Unified LiteLLM agent gateway (`feat/unified-litellm-agents`) — implementation
-complete, publication pending.** `ai-review` and `doc-maintainer` now use a
+**Fleet v2 cutover (PLAN-009) — PLANNING-COMPLETE; Phase 0 founder runbook
+staged, awaiting founder.** `ci/v2.0.0` is published (resolves to
+`d3f4b0320b831e38b91c4b85bb5e8b26e62296f7`) and `operations` cut over
+(IPLAN-0033, PRs #258/#259/#260). `plans/PLAN-009_fleet-v2-cutover.md` syncs the
+other **7 consumers** (still `@ci/v1.9.5`) to v2.0.0. Live `gh` check 2026-07-14:
+**none of the 7 has LiteLLM secrets** (only operations + this repo do), and
+business/iplanic/interlog have only the v1 `aidoc,ci-ephemeral` runner. The 🔴
+Phase 0 prerequisites (per-repo LiteLLM secrets — **no org inheritance** on a
+personal account; `ci-runner,single-use` pools; public-reachability GO/NO-GO
+smoke) are staged as the founder runbook
+`../operations/ops/inbox/2026-07-14_founder_flow-ci-v2-fleet-cutover-prereqs.md`.
+**Nothing in PLAN-009 Phase 1+ (engramory pilot → propagate) starts until Phase 0
+is confirmed live.** This session also did canon housekeeping: `docs/WORKFLOWS.md`
+§2 stale gap-cells flipped to ✅ (the "missing" ai-review/composition/pre-commit/
+audit-trail callers all exist live), PLAN-009 finalized with corrections
+(per-repo secrets, `--tier` valid set, hybrid-then-narrow runner labels, SHA).
+
+**Unified LiteLLM agent gateway (`feat/unified-litellm-agents`) — SHIPPED as
+`ci/v2.0.0`.** *(2026-07-12 note, now historical — the implementation below was
+published and consumed by operations.)* Implementation: `ai-review` and `doc-maintainer` now use a
 dependency-free OpenAI-compatible adapter with `LITELLM_BASE_URL`, separate
 review/documentation keys, and model aliases; vendor CLI paths are removed. The
 change
@@ -16,13 +34,14 @@ standards, security docs, and tests aligned. Safety controls include HTTPS by
 default (explicit private-HTTP opt-in), no redirects, bounded requests and
 responses, secret-pattern redaction, exact verdict schema/semantic validation,
 oversized-diff refusal, total retry deadlines, atomic outputs, and job-scoped
-permissions. Config schema v2 and a real-proxy two-alias smoke workflow are
-included; the live proxy currently lacks both aliases, so its smoke run remains
-a pre-tag requirement. Full suite passes (checknames 14, contracts 100,
-negative 9, scripts 24). OPS-0065 review used the maximum 3 cycles: final code/failure
-reviewers READY; the security reviewer’s final documentation-only finding was
-folded without a prohibited fourth cycle. Next: configure both LiteLLM aliases,
-pass the real-proxy smoke, then publish the PR; cut `ci/v2.0.0` only after merge.
+permissions. Config schema v2 and a real-proxy two-alias smoke workflow were
+included; both LiteLLM aliases were configured and the real-proxy smoke passed
+(green for `ai-reviewer` + `ai-doc-maintainer`), the PR was published + merged,
+and `ci/v2.0.0` was cut (resolves to `d3f4b0320b831e38b91c4b85bb5e8b26e62296f7`).
+Full suite passed (checknames 14, contracts 100, negative 9, scripts 24).
+OPS-0065 review used the maximum 3 cycles: final code/failure reviewers READY;
+the security reviewer’s final documentation-only finding was folded without a
+prohibited fourth cycle.
 
 **PLAN-007 production-hardening — W1/W2/W3(markdown-lint)/W5 DONE; remaining work
 is entirely founder-gated (W4 arming + W3 docs-sync-live).** Completed: W1 test

@@ -49,17 +49,23 @@ Rows = workspace repos. Columns = the 12 workflows. Cell values:
 
 Actual state audited **2026-07-11** via `gh api repos/*/contents/.github/workflows`
 + `gh repo view --json visibility` against every workspace repo (post
-content-check population; `ci/v1.9.5`).
+content-check population; `ci/v1.9.5`). **The ai-review / composition / pre-commit /
+audit-trail cells were re-verified live 2026-07-14** (PLAN-009 exploration): every
+previously-flagged `⚠️ GAP`/`inert` caller now exists at `@ci/v1.9.5` — business
+`audit-trail.yml`, iplan-runner `composition.yml`, engramory `pre-commit.yml`,
+iplan-standard `ai-review.yml`/`composition.yml`/`pre-commit.yml` — so those cells
+are now ✅. Remaining `⚠️ GAP` cells (e.g. engramory/iplanic/interlog `codeql`
+Python-maturing) are genuine, not stale.
 
 | Repo (visibility) | ai-review | composition | auto-merge | pre-commit | codeql | secret-scan | markdown-lint | links | labeler | docs-sync | doc-maintainer | audit-trail |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `aidoc-flow-operations` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (scripts/*.py) | ✅ | 🕳 custom (`docs-lint.yml`) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `aidoc-flow-framework` (public) | ✅ | ✅ | ⏸ (spec tier — human-merge) | ✅ | ✅ | ✅ | 🕳 own (pre-commit markdownlint) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
-| `aidoc-flow-business` (private) | ✅ | ✅ | ✅ | ✅ | N/A (docs-only) | 🕳 custom (`security.yml`) | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ⚠️ GAP |
+| `aidoc-flow-business` (private) | ✅ | ✅ | ✅ | ✅ | N/A (docs-only) | 🕳 custom (`security.yml`) | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
 | `aidoc-flow-iplanic` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (runtime Python) | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
-| `iplan-runner` (public) | ✅ | **⚠️ GAP (missing composition.yml — ai-review verdict not authoritatively gated)** | ✅ | ✅ | ✅ | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
-| `aidoc-flow-engramory` (public) | ✅ | ✅ | ✅ | **⚠️ GAP** (only `ci.yml`) | ⚠️ GAP (Python maturing) | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
-| `aidoc-flow-iplan-standard` (public) | ⚠️ GAP (planned) | ⚠️ GAP (planned) | ⚠️ inert (caller + allowlisted, but no `ai-review` → no `ai:review-passed` label to act on) | ⚠️ GAP | N/A (docs-only) | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
+| `iplan-runner` (public) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
+| `aidoc-flow-engramory` (public) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (Python maturing) | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
+| `aidoc-flow-iplan-standard` (public) | ✅ | ✅ | ✅ | ✅ | N/A (docs-only) | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
 | `aidoc-flow-interlog` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (Python-planned) | 🕳 custom (`security.yml`) | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
 | `aidoc-flow-ci` (public — ships the reusables) | ⏸ (self-ref) | ⏸ (self-ref) | ⏸ (gov tier) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (ships) | ✅ (ships) | ✅ |
 | `aidoc-flow` (umbrella; private) | ⏸ (pointer PRs only) | ⏸ (same) | ⏸ (admin-merge per OPS-0062) | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | ⏸ advisory (umbrella `required_status_checks: null`) |
@@ -104,13 +110,13 @@ open graduations:
 
 **Remaining true gaps (non-content-check):**
 
-- **Critical:** `iplan-runner` MISSING `composition.yml` — the ai-review
-  verdict is announced but not composed as a required check (needs the
-  reviewer-App composition wiring).
-- `aidoc-flow-iplan-standard` MISSING `ai-review` + `composition` +
-  `pre-commit` (planned per its Phase D onboarding).
-- `aidoc-flow-engramory` MISSING `pre-commit.yml` (only ships `ci.yml`).
-- `aidoc-flow-business` MISSING `audit-trail` caller.
+> **Re-verified live 2026-07-14 (PLAN-009):** the ai-review / composition /
+> pre-commit / audit-trail callers previously listed here as missing all now
+> exist at `@ci/v1.9.5` — `iplan-runner composition.yml`, `aidoc-flow-iplan-standard`
+> `ai-review.yml`/`composition.yml`/`pre-commit.yml`, `aidoc-flow-engramory
+> pre-commit.yml`, `aidoc-flow-business audit-trail.yml`. Those gaps are CLOSED;
+> only the `codeql` + custom→reusable-migration items below remain.
+
 - `codeql.yml` missing on Python repos still lacking it: operations
   (`scripts/*.py`), iplanic, engramory, interlog.
 - **Migration candidates (custom → reusable):** operations `docs-lint.yml`
@@ -126,12 +132,12 @@ Both previously-bootstrap repos are now fully CI-adopted:
 - `aidoc-flow-interlog` — adopted the full gate + content-check surface
   (ai-review, composition, auto-merge, pre-commit, audit-trail, links,
   markdown-lint, docs-sync, labeler; secret-scan via own `security.yml`).
-- `aidoc-flow-iplan-standard` — adopted the content-check surface +
-  audit-trail; ships the `auto-merge-ai-prs` caller (and is in the
-  `auto_merge.repos` allowlist) but it is **inert** until `ai-review` lands
-  (nothing emits the `ai:review-passed` label it keys off).
-  `ai-review`/`composition`/`pre-commit` remain planned per its Phase D
-  onboarding (per operations `docs/REPO_ONBOARDING.md`).
+- `aidoc-flow-iplan-standard` — now adopts the full gate: `ai-review`,
+  `composition`, `pre-commit` callers all present at `@ci/v1.9.5` (verified
+  2026-07-14), plus the content-check surface + audit-trail + the
+  `auto-merge-ai-prs` caller (in the `auto_merge.repos` allowlist). Its
+  auto-merge is functional now that `ai-review` emits the `ai:review-passed`
+  label the enforcer keys off.
 
 ## 3. Skip guidance — legitimate reasons per workflow
 
@@ -155,8 +161,8 @@ canonical skip patterns:
   `operations/.github/ai-review/config.json` `auto_merge.repos` allowlist —
   currently only `aidoc-flow-framework` (verified against the live config
   2026-07-11). Rationale: a human merges spec/schema changes intentionally.
-  (`aidoc-flow-iplan-standard` IS in the allowlist + ships the caller, but
-  auto-merge stays **inert** there until `ai-review` lands to emit the
+  (`aidoc-flow-iplan-standard` IS in the allowlist + ships the caller, and its
+  auto-merge is functional now that `ai-review` is present and emits the
   `ai:review-passed` label the enforcer keys off — see the §2 matrix.)
 - **Skip on:** the CI library repo itself (governance tier).
 - **Skip on:** the `aidoc-flow` umbrella — even though it IS in the
@@ -312,6 +318,14 @@ warning is the operator's opportunity to reconcile intent.
 
 ## 7. Change log
 
+- 2026-07-14 — **§2 stale ai-review/composition/pre-commit/audit-trail cells
+  corrected (PLAN-009 exploration).** Live re-verification confirmed the callers
+  flagged "missing/planned/inert" in the 2026-07-11 audit now all exist at
+  `@ci/v1.9.5` — iplan-runner `composition.yml`, iplan-standard
+  `ai-review.yml`/`composition.yml`/`pre-commit.yml`, engramory `pre-commit.yml`,
+  business `audit-trail.yml`. Those cells flipped ✅ and §2.1/§2.2/§3.2 prose was
+  reconciled. Remaining `⚠️ GAP` cells are the genuine `codeql` (Python-maturing)
+  ones only.
 - 2026-07-11 — **Content-check population complete + catalog corrected.**
   Re-audited all 12 columns × every repo (+ visibility). `secret-scan` /
   `markdown-lint` / `links` / `labeler` / `docs-sync` now cover every active

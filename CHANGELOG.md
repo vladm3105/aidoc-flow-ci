@@ -5,6 +5,20 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — finalize PLAN-009 fleet v2 cutover + correct WORKFLOWS.md §2 (2026-07-14)
+
+- **PLAN-009**: DRAFT → PLANNING-COMPLETE. Phase 0 founder runbook staged in
+  `../operations/ops/inbox/`. Corrections from live verification: LiteLLM secrets
+  are **per-repo** (no org inheritance — `vladm3105` is a personal account); the
+  v2 `check-standards-drift.sh` `--tier` set is
+  `{governance|product|ops|umbrella|bootstrap}`; runner-pool cutover uses the
+  operations **hybrid-then-narrow** label transition; `ci/v2.0.0` SHA
+  `d3f4b032…` pinned for the standards-drift curl edit.
+- **docs/WORKFLOWS.md §2**: flipped stale `⚠️ GAP`/`inert` cells to ✅ — the
+  ai-review/composition/pre-commit/audit-trail callers on iplan-runner,
+  iplan-standard, engramory, business all exist live at `@ci/v1.9.5`
+  (re-verified 2026-07-14); refreshed the audited note + §2.1/§2.2/§3.2 prose.
+
 ### Fixed — post-cutover documentation sync (2026-07-13)
 
 - **BRANCH_PROTECTION.md**: `Secret scan (gitleaks)` → `call / gitleaks` across
