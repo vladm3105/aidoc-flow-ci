@@ -5,6 +5,14 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — set-litellm-secrets.sh `--mint` endpoint (2026-07-15)
+
+- **`install/set-litellm-secrets.sh`**: `--mint` posted to `$LITELLM_BASE_URL/key/generate`,
+  but LiteLLM's management endpoint is at the **root**, not under `/v1` — so a
+  canonical `…/v1` base URL minted against the wrong path. Now derives a root
+  `MGMT_URL` (strips a trailing `/v1` + slash) and mints against
+  `MGMT_URL/key/generate`. Verified against `…/v1`, `…/v1/`, root, and `…/api/v1`.
+
 ### Added — LiteLLM fleet secret-provisioning helper (2026-07-15)
 
 - **`install/set-litellm-secrets.sh`** — batch-sets the repository-level LiteLLM

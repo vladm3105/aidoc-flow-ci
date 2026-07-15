@@ -74,6 +74,11 @@ case "$LITELLM_BASE_URL" in
   http://*)  echo "WARN: HTTP base URL — the bearer key travels in cleartext. Prefer HTTPS / a private mesh." >&2 ;;
   *) echo "ERROR: LITELLM_BASE_URL must be an http(s) URL" >&2; exit 1 ;;
 esac
+# LiteLLM MANAGEMENT endpoints (/key/generate) live at the ROOT, NOT under /v1
+# (the /v1 path is the OpenAI-compat surface). Derive the root from the base URL
+# so a canonical `…/v1` base URL still mints against `…/key/generate`.
+MGMT_URL="${LITELLM_BASE_URL%/}"; MGMT_URL="${MGMT_URL%/v1}"
+
 if [ "$MINT" -eq 1 ]; then
   command -v jq   >/dev/null || { echo "ERROR: jq required for --mint" >&2; exit 1; }
   command -v curl >/dev/null || { echo "ERROR: curl required for --mint" >&2; exit 1; }
@@ -89,7 +94,7 @@ put() {  # put SECRET_NAME REPO   (value on stdin; never echoed)
 }
 
 mint() {  # mint REPO PURPOSE MODEL_ALIAS  -> prints the scoped key
-  curl -fsS -X POST "$LITELLM_BASE_URL/key/generate" \
+  curl -fsS -X POST "$MGMT_URL/key/generate" \
     -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H "Content-Type: application/json" \
     -d "{\"models\":[\"$3\"],\"max_budget\":$BUDGET,\"metadata\":{\"purpose\":\"$2\",\"repo\":\"$1\"}}" \
     | jq -er '.key'
