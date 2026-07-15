@@ -274,26 +274,31 @@ jobs:
         run: |
           set -uo pipefail
 
-          # A `pull_request_review` event never changes code: the App's verdict at this HEAD already
-          # stands from the push-triggered run, and the separate `composition` workflow recomputes
-          # the merge gate on the review event. Re-running the reviewer here adds zero signal and
-          # risks a false-red when a transient asset/config fetch fails on the redundant fire. Skip
-          # the heavy review (the job still concludes SUCCESS via the skip-notice step). This fires
-          # regardless of App config, so it also covers spec-tier PRs (which never get an App
-          # APPROVED review and so never matched the SHA-tied query below).
-          if [ "${GITHUB_EVENT_NAME:-}" = "pull_request_review" ]; then
-            echo "::notice::R3 early-exit: pull_request_review event — verdict at this HEAD already stands; skipping the reviewer CLI (composition handles the gate)."
-            echo "SKIP_REVIEW=1" >> "$GITHUB_ENV"
-            echo "SKIP_REASON=review-event" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
-          # INERT until armed — no App configured means no prior approval to carry forward; proceed.
+          # INERT until armed — no App configured means `composition` is INERT too, so it cannot be
+          # relied on as the merge gate. This guard MUST run BEFORE the pull_request_review skip
+          # below: when unarmed, concluding a fresh SUCCESS on a review event would SUPERSEDE a prior
+          # `request_changes` at this HEAD (branch protection keeps the latest run for a required
+          # context) and open a review-event bypass. So on ANY event — including pull_request_review
+          # — proceed to a full review while unarmed. (ci/v2.0.1: reordered to close that bypass.)
           if [ -z "${EXPECTED_ID:-}" ]; then
             echo "::notice::R3 early-exit skipped: vars.APP_REVIEWER_1_BOT_ID unset (App not wired); proceeding to full review."
             exit 0
           fi
           case "$EXPECTED_ID" in ''|*[!0-9]*) echo "::error::APP_REVIEWER_1_BOT_ID must be the App bot-user NUMERIC id (got '$EXPECTED_ID')"; exit 1;; esac
+
+          # ARMED path only. A `pull_request_review` event never changes code: the App's verdict at
+          # this HEAD already stands from the push-triggered run, and the (now-armed) `composition`
+          # workflow recomputes the merge gate on the review event. Re-running the reviewer here adds
+          # zero signal and risks a false-red when a transient asset/config fetch fails on the
+          # redundant fire. Skip the heavy review (the job still concludes SUCCESS via the skip-notice
+          # step) — safe because composition, being armed, is the real gate. Spec-tier PRs (no App
+          # APPROVED review) are governed by the human-merge governance floor, so skipping here is safe.
+          if [ "${GITHUB_EVENT_NAME:-}" = "pull_request_review" ]; then
+            echo "::notice::R3 early-exit: pull_request_review event — verdict at this HEAD already stands; skipping the reviewer (composition handles the gate)."
+            echo "SKIP_REVIEW=1" >> "$GITHUB_ENV"
+            echo "SKIP_REASON=review-event" >> "$GITHUB_ENV"
+            exit 0
+          fi
 
           # Same query shape composition.yml uses (line 189). Retry on transient API blips —
           # fail-OPEN (proceed to full review) on persistent failure so we never SILENTLY skip a
@@ -532,6 +537,9 @@ jobs:
         run: |
           set -euo pipefail
           [ -n "$LITELLM_API_KEY" ] || { echo "::error::LITELLM_REVIEW_API_KEY is unset"; exit 1; }
+          # ci/v2.0.1: name the cause if the runner image lacks python3 (the LiteLLM client needs it)
+          # rather than failing mid-heredoc with a cryptic 127. INFRASTRUCTURE error, not a verdict.
+          command -v python3 >/dev/null 2>&1 || { echo "::error::python3 not found on the runner — rebuild the runner image with python3 (the dependency-free LiteLLM client requires it). This is an INFRASTRUCTURE error, not a review verdict."; exit 1; }
           RUBRIC=./reviewer-assets/ai-review/review-prompt.md
           OUT=.ai-review/verdict.json
           rm -f "$OUT"
@@ -647,7 +655,7 @@ jobs:
               (.path | type == "string") and
               (.line | type == "number") and (.line == (.line | floor)) and
               (.fix | type == "string") and
-              ((.severity == "critical" or .severity == "medium") | not or (.fix | length > 0))) and
+              (((.severity == "critical" or .severity == "medium") | not) or (.fix | length > 0))) and
             ((([.findings[].severity] | any(. == "critical" or . == "medium")) and .decision == "request_changes") or
              (([.findings[].severity] | any(. == "critical" or . == "medium") | not) and .decision == "approve"))
           ' "$F" >/dev/null 2>&1; then
