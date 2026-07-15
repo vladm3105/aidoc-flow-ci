@@ -5,6 +5,16 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — LiteLLM fleet secret-provisioning helper (2026-07-15)
+
+- **`install/set-litellm-secrets.sh`** — batch-sets the repository-level LiteLLM
+  Actions secrets (`LITELLM_BASE_URL`, `LITELLM_REVIEW_API_KEY`, optional
+  `LITELLM_DOC_API_KEY`) across the PLAN-009 consumer fleet. Reads values from env
+  (never argv), pipes to `gh secret set` via stdin, HTTPS-checks the URL. Flags:
+  `--dry-run`, `--pilot` (engramory), `--repos "…"`, `--doc`, and `--mint` (mints a
+  per-repo, revocable, review-scoped virtual key from the master key — the master
+  key never lands in any repo). Referenced from `MIGRATION_v2.0.0.md` §1.
+
 ## ci/v2.0.1 — 2026-07-15
 
 Patch: fixes the three verified ai-review-v2 blockers from the LiteLLM-switch

@@ -57,6 +57,12 @@ gh secret set LITELLM_REVIEW_API_KEY -R <owner>/<repo>
 gh secret set LITELLM_DOC_API_KEY -R <owner>/<repo>
 ```
 
+**Fleet batch (aidoc-flow):** to provision all consumers at once, use the helper
+`install/set-litellm-secrets.sh` — it reads values from env (never argv), pipes
+them to `gh` via stdin, supports `--dry-run`, `--pilot`, and a `--mint` mode that
+generates a per-repo review-scoped virtual key from the master key. See its header
+for usage.
+
 ### 2. Drop deprecated secrets
 
 Remove these from consumer repo settings — they are no longer referenced
