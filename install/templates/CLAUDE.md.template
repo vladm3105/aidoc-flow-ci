@@ -103,6 +103,27 @@ context — the file path does. When in doubt, open the linked path.
   audit-trail, governance file canon per §16).
   → `${CANON_CI_URL}/docs/REPO_STANDARDS.md`.
 
+## AI review — required repo secrets (LiteLLM gateway)
+
+The `ai-review` gate runs every canonical AI job through the workspace
+**LiteLLM proxy** — the default, API-based LLM gateway (it replaces the old
+per-runner vendor CLIs; one endpoint fronts many providers). For the gate to
+function, this repo MUST have these secrets set. **Set them as
+repository-level secrets** — organization-level secrets require an org account
+and are not available on a personal-account owner, so each repo carries its own:
+
+| Secret | Purpose |
+| --- | --- |
+| `LITELLM_BASE_URL` | the LiteLLM proxy endpoint (HTTPS) the reviewer calls |
+| `LITELLM_REVIEW_API_KEY` | the review-scoped LiteLLM virtual key |
+| `APP_REVIEWER_1_ID` / `APP_REVIEWER_1_KEY` | the reviewer-App identity (posts the verdict / gates composition) |
+| `AI_REVIEW_TOKEN` | cross-repo read of the trust-config repo (unless the reviewer App is installed there) |
+
+Without the LiteLLM secrets the gate **fails closed** — a red check, never a
+false approve. The self-hosted reviewer runner MUST have **network egress to
+`LITELLM_BASE_URL`**. Full setup: `${CANON_CI_URL}/docs/AI_CI_DEPLOYMENT.md`
+and `${CANON_CI_URL}/docs/REPO_STANDARDS.md` §4.0b.
+
 ## Repo-specific rules (author these — not covered by canon)
 
 <Consumer authors any rules that ARE specific to this repo — e.g.

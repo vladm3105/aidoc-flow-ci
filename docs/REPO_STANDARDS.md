@@ -197,9 +197,12 @@ requires the scoped `aidoc-flow-bot` App and enforces `max_prs_per_day`.
 ### 4.0b Unified LiteLLM agent gateway
 
 All canonical AI execution (`ai-review` and `doc-maintainer`) goes through one
-OpenAI-compatible LiteLLM proxy. Consumers provide repository or organization
-secrets `LITELLM_BASE_URL`, `LITELLM_REVIEW_API_KEY`, and
-`LITELLM_DOC_API_KEY`; they do not install or log in to vendor CLIs on runners.
+OpenAI-compatible LiteLLM proxy — the default, API-based LLM gateway (it
+replaces per-runner vendor CLIs and fronts many providers behind one endpoint).
+Consumers provide **repository-level** secrets `LITELLM_BASE_URL`,
+`LITELLM_REVIEW_API_KEY`, and `LITELLM_DOC_API_KEY` (set them **per repo** —
+organization-level secrets require an org account and are unavailable on a
+personal-account owner). They do not install or log in to vendor CLIs on runners.
 AI review resolves its model alias from caller input
 `model`, then trusted config `litellm.model`. Doc-maintainer uses its caller
 `model` input (default `ai-doc-maintainer`). The proxy owns provider selection,
