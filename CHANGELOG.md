@@ -5,7 +5,13 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-### Fixed — ai-review v2 blockers (targets ci/v2.0.1, 2026-07-15)
+## ci/v2.0.1 — 2026-07-15
+
+Patch: fixes the three verified ai-review-v2 blockers from the LiteLLM-switch
+pre-prod review, plus the per-repo LiteLLM-secret governance instruction and the
+PLAN-009 finalize / WORKFLOWS §2 docs that landed after `ci/v2.0.0`.
+
+### Fixed — ai-review v2 blockers (2026-07-15)
 
 From the pre-prod review of the LiteLLM switch. All fail-closed on the merge axis,
 but each broke correct behaviour:
