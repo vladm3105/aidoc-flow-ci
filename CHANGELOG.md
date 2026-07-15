@@ -5,6 +5,32 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — ai-review v2 blockers (targets ci/v2.0.1, 2026-07-15)
+
+From the pre-prod review of the LiteLLM switch. All fail-closed on the merge axis,
+but each broke correct behaviour:
+
+- **`ai-review.yml` — `request_changes` verdict validation (jq precedence).** The
+  finding-fix predicate `((.severity==critical or medium) | not or (.fix|length>0))`
+  parsed with `|` binding loosest, so `.fix` indexed a boolean and **errored on
+  every `request_changes` verdict** → the verdict was mishandled as "malformed",
+  discarding the findings comment + App review and inviting an operator
+  `skip-ai-review` bypass. Parenthesized: `(((…)|not) or (.fix|length>0))`.
+- **`ai-review.yml` — `pull_request_review` skip could flip RED→GREEN pre-arming.**
+  The review-event early-exit concluded a fresh SUCCESS **before** the
+  `EXPECTED_ID` (App-armed) check, so on an unarmed repo (composition inert) a
+  comment-review superseded a prior `request_changes` at the same HEAD. Reordered
+  so the unarmed guard runs first (full review on all events while unarmed); the
+  skip now applies only when armed (composition is the real gate).
+- **`ai-review.yml` — `python3` preflight.** Added a `command -v python3` guard
+  that names the cause (rebuild the runner image) instead of a cryptic mid-heredoc
+  127 — closing the recurrence of the "required binary missing from runner" class.
+- **`MIGRATION_v2.0.0.md`** — removed the `install.sh --update` cutover step
+  (clobbers `runner_labels`/permissions/triggers, FT-9); `--repin` is the correct,
+  complete cutover.
+- **`troubleshooting.md` §10** — fixed the dead TOC anchor and mapped the
+  `reviewer CLI / codex not found on runner` symptom → cut over to ci/v2.0.0.
+
 ### Added — LiteLLM secret setup as a per-repo governance instruction (2026-07-15)
 
 - **CLAUDE.md.template**: new "AI review — required repo secrets (LiteLLM

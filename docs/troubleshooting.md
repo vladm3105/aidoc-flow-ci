@@ -23,7 +23,8 @@ For the broader architecture, see
 | Azure SWA "max staging environments" build failure | [§7 Azure SWA quota](#7-azure-swa-max-staging-environments) |
 | `actions/labeler` says "label does not exist" | [§8 Labels not bootstrapped](#8-labeler-label-does-not-exist) |
 | External lychee link check flakes on twitter/linkedin | [§9 Bot-hostile hosts](#9-lychee-flakes-on-bot-hostile-hosts) |
-| Reviewer CLI not installed on `ubuntu-latest` | [§10 Public-consumer CLI gap](#10-public-consumer-cli-gap-v100-known-limitation) |
+| Reviewer CLI / `codex` not found on runner (ci/v1.x) | [§10 Cut over to LiteLLM (ci/v2.0.0)](#10-public-consumer-ai-connectivity) |
+| ai-review LiteLLM URL/key error or cannot connect | [§10 Public-consumer AI connectivity](#10-public-consumer-ai-connectivity) |
 | Markdownlint says MD024/no-duplicate-heading | [§11 Markdownlint MD024](#11-markdownlint-md024no-duplicate-heading) |
 | Rebase conflict on shared CHANGELOG.md | [§12 CHANGELOG rebase conflicts](#12-changelog-rebase-conflicts-on-stacked-prs) |
 | Reusable workflow `startup_failure` (no logs, empty jobs) | [§13 Actions allowlist blocks reusable](#13-startup_failure--reusable-workflow-blocked-by-consumers-actions-allowlist) |
@@ -266,7 +267,15 @@ internal mode uses `--offline` and skips all http(s) URLs.
 
 ## 10. Public-consumer AI connectivity
 
-**Symptom:** ai-review fails with a LiteLLM URL/key error or cannot connect.
+**Symptom A — `reviewer CLI 'codex' not found on runner` (or another vendor CLI):**
+the caller is still pinned to **ci/v1.x**, whose ai-review resolved an on-runner
+vendor CLI. **Fix:** cut over to **ci/v2.0.0** per
+[`MIGRATION_v2.0.0.md`](MIGRATION_v2.0.0.md) — v2 replaces the runner CLI with the
+dependency-free `litellm_client.py` (an HTTP call to the LiteLLM proxy), so there
+is no per-runner vendor CLI to install. Until you cut over, `skip-ai-review` (or
+`--admin`) unblocks individual PRs.
+
+**Symptom B — ai-review fails with a LiteLLM URL/key error or cannot connect:**
 
 **Cause:** `LITELLM_BASE_URL` or the workflow's scoped LiteLLM key is missing, the selected
 model alias is absent, or the runner cannot route to the proxy.

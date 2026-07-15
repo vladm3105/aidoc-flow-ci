@@ -98,12 +98,15 @@ CI_TAG=ci/v2.0.0 bash install.sh <owner/repo> --repin
 ```
 
 `--repin` does a version-only pin bump (`@ci/vX.Y.Z` → `@ci/v2.0.0` on every
-`uses:` line) without replacing files. Pair with `--update` to refresh the
-caller templates:
+`uses:` line) without replacing files — this is the correct, complete cutover
+step.
 
-```bash
-CI_TAG=ci/v2.0.0 bash install.sh <owner/repo> --update
-```
+> **Do NOT run `install.sh --update` to cut over.** `--update` re-applies the
+> caller template bodies and **clobbers per-repo customizations** —
+> `runner_labels`, `permissions`, triggers (FT-9) — which bricks a private
+> consumer's gate (jobs queue forever on the wrong runner label). Re-pin only.
+> If a body refresh is ever genuinely needed, reconcile each customized field by
+> hand afterward.
 
 ### 6. Verify LiteLLM connectivity
 
