@@ -1,12 +1,19 @@
-# PLAN-009 — Sync the aidoc-flow fleet to CI canon `ci/v2.0.0`
+# PLAN-009 — Sync the aidoc-flow fleet to CI canon `ci/v2.0.1`
 
 > Status: PLANNING-COMPLETE — Phase 0 founder runbook staged
 > (`operations/ops/inbox/2026-07-14_founder_flow-ci-v2-fleet-cutover-prereqs.md`),
 > awaiting founder execution before Phase 1. Owning repo: `aidoc-flow-ci` (fleet
 > CI canon). Per-consumer execution lands as `IPLAN-NNNN` in each consumer repo,
 > mirroring `operations/ops/iplans/IPLAN-0033`. Verified against live files +
-> live `gh` state (secrets/runners, names only) 2026-07-14; `ci/v2.0.0` resolves
-> to commit **`d3f4b0320b831e38b91c4b85bb5e8b26e62296f7`**.
+> live `gh` state (secrets/runners, names only) 2026-07-14.
+>
+> **Retargeted to `ci/v2.0.1` (2026-07-15, commit
+> `819d148e366f4f469f3645d1bfb249e3a1e9cf13`).** v2.0.1 is a patch superseding
+> v2.0.0 that fixes 3 verified ai-review blockers from the pre-prod review — the
+> `request_changes` jq-validation bug, the `pull_request_review` RED→GREEN bypass,
+> and the `python3` preflight (`CHANGELOG.md` § ci/v2.0.1). The fleet now pins
+> **`@ci/v2.0.1`**; v2.0.0 remains the breaking v1→v2 release (unchanged config
+> schema / secrets / runner-label contract — v2.0.1 is a drop-in re-pin).
 
 ## Context
 
@@ -19,16 +26,17 @@ secret-scan/links/markdown-lint, and (for private repos) replaces the v1 runner
 label `["self-hosted","aidoc","ci-ephemeral"]` with
 `["self-hosted","ci-runner","single-use"]`.
 
-**`operations` already cut over to v2.0.0** (PRs #258/#259/#260, IPLAN-0033).
-The other **seven** consumers are still on `@ci/v1.9.5`. "Sync them up with
-flow-ci" = bring those seven to v2.0.0 parity. Because v2.0.0 is breaking, a
+**`operations` already cut over to v2.0.0** (PRs #258/#259/#260, IPLAN-0033) and
+re-pins to **v2.0.1** for the blocker fixes (a version-only `--repin`). The other
+**seven** consumers are still on `@ci/v1.9.5`. "Sync them up with flow-ci" = bring
+those seven to **v2.0.1** parity. Because the v1→v2 step is breaking, a
 naive re-pin sweep would **brick every AI gate** (ai-review hard-exits with no
 LiteLLM secret — `ai-review.yml:534`; private callers relabelled without a
 registered pool queue forever). So the cutover sequences founder-gated (🔴)
 prerequisites first, then pilots one repo to a **live-green** gate, then
 propagates.
 
-Decisions: **full v2.0.0 cutover**; **pilot one repo, verify live green, then
+Decisions: **full v2.0.1 cutover**; **pilot one repo, verify live green, then
 propagate**.
 
 ## What this migration is — and ISN'T (both drafts verified against live files)
@@ -49,9 +57,9 @@ CANNOT do** (it only rewrites `uses:` lines, `install.sh:329-339`):
 
 | Edit | Repos | `--repin` handles it? |
 |---|---|---|
-| A. Bump `uses:` pins `@ci/v1.9.5`→`@ci/v2.0.0` | all 7 | ✅ yes |
+| A. Bump `uses:` pins `@ci/v1.9.5`→`@ci/v2.0.1` | all 7 | ✅ yes |
 | B. Runner-label swap `aidoc,ci-ephemeral`→`ci-runner,single-use` (**two tokens**) | business, iplanic, interlog — **every** private caller (~9/14/9 files) | ❌ manual |
-| C. `standards-drift` curl-URL source → v2.0.0 **SHA** (it's a `run:` curl, not `uses:`) | framework, iplanic (SHA `e15ec7d4`); engramory, iplan-runner, iplan-standard (**mutable** `ci/v1.6.0`) | ❌ manual |
+| C. `standards-drift` curl-URL source → v2.0.1 **SHA** (it's a `run:` curl, not `uses:`) | framework, iplanic (SHA `e15ec7d4`); engramory, iplan-runner, iplan-standard (**mutable** `ci/v1.6.0`) | ❌ manual |
 | D. Add `litellm_allow_insecure_http: true` to private ai-review callers (HTTP Docker-bridge) | business, iplanic, interlog | ❌ manual |
 | E. Add missing `permissions:` block to **interlog** `composition.yml` | interlog | ❌ manual |
 
@@ -59,7 +67,7 @@ CANNOT do** (it only rewrites `uses:` lines, `install.sh:329-339`):
 
 | Repo | Active `uses:` pin | Runner | Vis | Repo-specific edits |
 |---|---|---|---|---|
-| operations | `@ci/v2.0.0` ✅ | `ci-runner,single-use` | priv | done (reference impl) |
+| operations | `@ci/v2.0.0` (→ re-pin v2.0.1) | `ci-runner,single-use` | priv | reference impl; version-only `--repin` to v2.0.1 |
 | framework | `@ci/v1.9.5` | `ubuntu-latest` | pub | C (SHA); own md-lint tooling; server-side human-merge floor |
 | business | `@ci/v1.9.5` | `aidoc,ci-ephemeral` | priv | B, D; phantom branch-protection context |
 | iplanic | `@ci/v1.9.5` | `aidoc,ci-ephemeral` | priv | B, C (SHA), D; delete duplicate `standard-drift.yml`; phantom context |
@@ -71,8 +79,9 @@ CANNOT do** (it only rewrites `uses:` lines, `install.sh:329-339`):
 All active `uses:` pins are uniformly `@ci/v1.9.5` (no stragglers; the
 `v1.9.4`/`v1.5.1`/`v1.6.0` strings are comment-only or the drift-curl URL).
 
-Canon refs: `MIGRATION_v2.0.0.md`, `install/install.sh` (`--repin`), `docs/runners.md`,
-`docs/FLEET_BRANCH_PROTECTION_ARMING.md`, `CHANGELOG.md` (v2.0.0). Precedent:
+Canon refs: `MIGRATION_v2.0.0.md` (the v1→v2 migration; still current for v2.0.1),
+`install/install.sh` (`--repin`), `docs/runners.md`,
+`docs/FLEET_BRANCH_PROTECTION_ARMING.md`, `CHANGELOG.md` (v2.0.0 + v2.0.1). Precedent:
 `operations/.github/workflows/ai-review.yml` (v2 private caller) +
 `operations/ops/iplans/IPLAN-0033`.
 
@@ -127,11 +136,11 @@ Nothing merges until these are confirmed live (`feedback_writes_to_other_repos_i
 ### Phase 1 — Pilot (public **engramory**, pending Phase 0 #2)
 
 On a feature branch:
-- **A** — `install.sh --repin` bump all `uses:` → `@ci/v2.0.0` (FT-9-safe;
+- **A** — `install.sh --repin` bump all `uses:` → `@ci/v2.0.1` (FT-9-safe;
   never `--update`). The `reviewer:` input is already commented out in every
   caller, so no active removed-input trips the bump.
 - **C** — hand-edit the `standards-drift.yml` curl URL from `ci/v1.6.0` (mutable
-  tag) to the `ci/v2.0.0` **commit SHA `d3f4b0320b831e38b91c4b85bb5e8b26e62296f7`**.
+  tag) to the `ci/v2.0.1` **commit SHA `819d148e366f4f469f3645d1bfb249e3a1e9cf13`**.
   Confirm `sync/check-standards-drift.sh` exists at that SHA and that the
   consumer's `standards-drift.yml` still passes a **valid v2 `--tier`** — the v2
   interface is `--tier {governance|product|ops|umbrella|bootstrap}` + optional
@@ -156,11 +165,17 @@ On a feature branch:
 - Open PR; **watch to LIVE green** — ai-review v2 actually ran + passed (not just
   YAML parse). Go/no-go gate for propagation (6/6 criteria,
   `verify_one_layer_before_propagating`).
+- **v2.0.1 residual verification (do it here — the pilot is the first armed
+  consumer):** land one synthetic `request_changes` PR to confirm the blocker
+  fixes work LIVE — the reviewer posts the findings comment (B1 no longer errors
+  as "malformed") and a subsequent comment-review does NOT skip-supersede the RED
+  (B2). This is the end-to-end check deferred at the v2.0.1 tag cut (it was
+  unit-tested + source-verified, not run against a live armed gate).
 
 ### Phase 2 — Remaining public (framework, iplan-runner, iplan-standard)
 
 Repeat A + C (+ secret-scan audit) per repo. **No caller additions** (all exist).
-- framework: C is the SHA `e15ec7d4`→v2.0.0-SHA bump; keep `ubuntu-latest`
+- framework: C is the SHA `e15ec7d4`→v2.0.1-SHA bump; keep `ubuntu-latest`
   (IPLAN-0012); human-merge is enforced server-side (`composition.yml:225` +
   omission from `auto_merge.repos`), so no `tier:` change needed.
 - iplan-runner, iplan-standard: C is mutable-tag→SHA.
@@ -228,7 +243,7 @@ ai-review/composition runs).
    curl URL is the v2 SHA; `sync/check-pin-currency.sh` reports current.
 6. HANDOFF/CHANGELOG + IPLAN evidence updated.
 
-Fleet-wide: re-run inventory (pins uniform v2.0.0; labels correct by visibility;
+Fleet-wide: re-run inventory (pins uniform v2.0.1; labels correct by visibility;
 no duplicate/again-drifted drift workflows; WORKFLOWS.md §2 corrected).
 
 ## Follow-up (memory)
