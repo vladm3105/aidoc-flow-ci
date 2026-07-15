@@ -5,6 +5,18 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — LiteLLM secret setup as a per-repo governance instruction (2026-07-15)
+
+- **CLAUDE.md.template**: new "AI review — required repo secrets (LiteLLM
+  gateway)" section — every repo's governance file now instructs setting the
+  repository-level `LITELLM_BASE_URL` + `LITELLM_REVIEW_API_KEY` (plus the
+  reviewer-App + `AI_REVIEW_TOKEN`), states the gate fails closed without them,
+  and notes the runner-egress-to-proxy requirement. Makes the API-based LiteLLM
+  gateway an explicit standing setup requirement, not just a migration-doc step.
+- **REPO_STANDARDS.md §4.0b**: corrected "repository or organization secrets" →
+  **repository-level, per-repo** (org secrets require an org account; unavailable
+  on a personal-account owner) — matching the 2026-07-14 live-verification note.
+
 ### Changed — finalize PLAN-009 fleet v2 cutover + correct WORKFLOWS.md §2 (2026-07-14)
 
 - **PLAN-009**: DRAFT → PLANNING-COMPLETE. Phase 0 founder runbook staged in
