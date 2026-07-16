@@ -67,7 +67,7 @@ CANNOT do** (it only rewrites `uses:` lines, `install.sh:329-339`):
 
 | Repo | Active `uses:` pin | Runner | Vis | Repo-specific edits |
 |---|---|---|---|---|
-| operations | `@ci/v2.0.0` (→ re-pin v2.0.1) | `ci-runner,single-use` | priv | reference impl; version-only `--repin` to v2.0.1 |
+| operations | `@ci/v2.0.0` (→ advance v2.0.1) | `ci-runner,single-use` | priv | reference impl; v2.0.1 advance is a **contract-lock edit, NOT a mechanical `--repin`** — see note below |
 | framework | `@ci/v1.9.5` | `ubuntu-latest` | pub | C (SHA); own md-lint tooling; server-side human-merge floor |
 | business | `@ci/v1.9.5` | `aidoc,ci-ephemeral` | priv | B, D; phantom branch-protection context |
 | iplanic | `@ci/v1.9.5` | `aidoc,ci-ephemeral` | priv | B, C (SHA), D; delete duplicate `standard-drift.yml`; phantom context |
@@ -78,6 +78,18 @@ CANNOT do** (it only rewrites `uses:` lines, `install.sh:329-339`):
 
 All active `uses:` pins are uniformly `@ci/v1.9.5` (no stragglers; the
 `v1.9.4`/`v1.5.1`/`v1.6.0` strings are comment-only or the drift-curl URL).
+
+> **operations v2.0.1 advance is NOT a mechanical re-pin.** Unlike the 7
+> consumers (Edit A `--repin` touches only `uses:` lines), operations carries a
+> pre-commit contract-lock `scripts/check-ci-contract.sh` that hard-pins the
+> accepted flow-ci tag to **exactly `ci/v2.0.0`** (lines 37 + 61) — a naive
+> caller re-pin fails the local guard. Advancing operations to `v2.0.1` requires
+> editing the contract-lock + `standards-drift.yml` (`ref:` **and** `--ci-tag`)
+> in lockstep with the caller pins — a governance change, budgeted as its own
+> step. Exact edits + a synthetic-PR live-verify are staged as the founder
+> runbook `operations/ops/inbox/2026-07-16_founder_operations-ci-v2.0.1-advance-and-verify.md`
+> (operations PR #264), 🔴 inbox-first. This advance also serves as the B1/B2/HIGH
+> live-verification on the only fully-armed consumer before Phase 1 propagates.
 
 Canon refs: `MIGRATION_v2.0.0.md` (the v1→v2 migration; still current for v2.0.1),
 `install/install.sh` (`--repin`), `docs/runners.md`,
