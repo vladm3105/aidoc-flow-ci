@@ -104,26 +104,32 @@ Nothing merges until these are confirmed live (`feedback_writes_to_other_repos_i
    **pilot-first** (engramory, then the rest after the pilot is green).
    `LITELLM_DOC_API_KEY` only when doc-maintainer is adopted (deferred).
    `AIDOC_FLOW_BOT_*` unchanged (docs-sync stays dry-run).
-2. **⚠️ Public-reachability GO/NO-GO (architecture decision).** The pilot and 3
-   other public repos run ai-review on **`ubuntu-latest`**. `litellm-smoke.yml`
-   only exercises the **private** self-hosted path (defaults `runner_labels` to
-   `ci-runner,single-use`, `allow_insecure_http:false`). If `LITELLM_BASE_URL`
-   is the private Docker-bridge gateway (`172.17.0.1`) or any RFC-1918 host, **no
-   GitHub-hosted public runner can reach it → public-repo ai-review cannot run at
-   all.** Before the engramory pilot, run a **second smoke with
-   `runner_labels='["ubuntu-latest"]'`** and the correct scheme. Outcomes:
-   - reachable (public HTTPS endpoint) → proceed with engramory (public) pilot.
-   - not reachable → **founder decision**: expose a public HTTPS proxy endpoint
-     for public repos, OR switch the pilot to a **private** repo (iplanic — has
-     an online runner) and treat public-repo ai-review as a separate track.
+2. **Public-reachability — RESOLVED (2026-07-15): keep LiteLLM private; run each
+   public repo's ai-review REVIEW job on the ephemeral self-hosted pool.** The
+   proxy is host-local (`http://172.17.0.1:4001`, private per founder) — GitHub-
+   hosted `ubuntu-latest` runners cannot reach it, but self-hosted runners on the
+   proxy host can. So instead of exposing a public endpoint, each public repo sets
+   **`runner_labels_review: '["self-hosted","ci-runner","single-use"]'`** and keeps
+   the fork-facing `trust` job + every other check on `ubuntu-latest`. This is
+   **safe** — forks are hard-set untrusted so the review job is skipped for them,
+   and the review job runs **no PR code** (it curls the diff → LiteLLM). Rationale
+   + wiring: `docs/runners.md` §5a + `CLAUDE.md` "Runner policy". **No public HTTPS
+   endpoint or tunnel needed.** Consequence: the **engramory pilot stays a public
+   repo** — it just needs a self-hosted *review* runner on the proxy host + its
+   LiteLLM secret; the private tier can proceed in parallel once its pools exist.
 3. **Verify pre-existing secrets/vars** didn't lapse: `APP_REVIEWER_1_ID`/`_KEY`,
    `APP_REVIEWER_1_BOT_ID` (var — also gates whether `composition` enforces),
    `AI_REVIEW_TOKEN`.
-4. **v2 runner pools** for **business, iplanic, interlog**: register
-   `self-hosted,ci-runner,single-use` (`operations/scripts/ci-runner/run-ephemeral.sh`
-   + `provision-runner.sh`; `docs/runners.md` §3). Live check 2026-07-14 confirmed
-   all three currently have **only** the v1 `["self-hosted","aidoc","ci-ephemeral"]`
-   runner online — the new pool is genuinely missing on each. Use the operations
+4. **v2 runner pools** for **business, iplanic, interlog** (+ a shared pool for
+   the public review jobs, Edit F): register `self-hosted,ci-runner,single-use`
+   (`operations/scripts/ci-runner/run-ephemeral.sh` + `provision-runner.sh`;
+   `docs/runners.md` §3). Live check 2026-07-15: only `ci-runner@operations` +
+   `ci-runner@llm-router` supervisors are up — the three private repos have **no**
+   ci-runner pool. **Size for concurrency:** one supervisor instance runs jobs
+   SERIALLY, and a private-repo PR fans out to ~8 jobs, so run **N instances per
+   repo** (~6–8, `docs/runners.md` §5) or PR feedback serializes. All these
+   runners must be on the **proxy host** (to reach `172.17.0.1:4001`). Use the
+   operations **two-stage label transition** (C6): Stage A register a **hybrid** Use the operations
    **two-stage label transition** (C6): Stage A register a **hybrid**
    `self-hosted,aidoc,ci-ephemeral,ci-runner,single-use` pool during the migration
    PR so old-label (base) and new-label (PR) jobs both find a runner, then Stage B
@@ -174,11 +180,21 @@ On a feature branch:
 
 ### Phase 2 — Remaining public (framework, iplan-runner, iplan-standard)
 
-Repeat A + C (+ secret-scan audit) per repo. **No caller additions** (all exist).
-- framework: C is the SHA `e15ec7d4`→v2.0.1-SHA bump; keep `ubuntu-latest`
-  (IPLAN-0012); human-merge is enforced server-side (`composition.yml:225` +
-  omission from `auto_merge.repos`), so no `tier:` change needed.
-- iplan-runner, iplan-standard: C is mutable-tag→SHA.
+Repeat A + C (+ secret-scan audit) per repo, plus the new **Edit F** below.
+- **F — `runner_labels_review` → self-hosted** on the ai-review caller (Phase 0
+  #2 resolution): set `runner_labels_review: '["self-hosted","ci-runner","single-use"]'`
+  so the LiteLLM-facing review job reaches the private proxy; keep
+  `runner_labels_routine: '"ubuntu-latest"'` (fork-facing trust job) and every
+  other check on `ubuntu-latest`. Needs a self-hosted review runner registered on
+  the proxy host (shared with the private tier's pool). Safe per `runners.md` §5a.
+- framework: C is the SHA `e15ec7d4`→v2.0.1-SHA bump; F as above; human-merge is
+  enforced server-side (`composition.yml:225` + omission from `auto_merge.repos`),
+  so no `tier:` change needed.
+- iplan-runner, iplan-standard: C is mutable-tag→SHA; F as above.
+
+(Pre-requisite for F: the proxy-host self-hosted pool must have capacity for the
+public review jobs on top of the private tier — size supervisor instances
+accordingly, `runners.md` §5.)
 
 ### Phase 3 — Private (business, iplanic, interlog) — needs Phase 0 pools live
 
