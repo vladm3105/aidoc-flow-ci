@@ -1,11 +1,15 @@
 # PLAN-009 — Sync the aidoc-flow fleet to CI canon `ci/v2.0.1`
 
-> Status: PLANNING-COMPLETE — Phase 0 founder runbook staged
-> (`operations/ops/inbox/2026-07-14_founder_flow-ci-v2-fleet-cutover-prereqs.md`),
-> awaiting founder execution before Phase 1. Owning repo: `aidoc-flow-ci` (fleet
+> Status: EXECUTING — **Phase 0 partially done**; `operations` advanced to
+> `@ci/v2.0.1` + live-verified 2026-07-16 (PR #265; runbook
+> `operations/ops/inbox/2026-07-16_founder_operations-ci-v2.0.1-advance-and-verify.md`,
+> PR #264). Remaining 🔴 Phase-0 items (LiteLLM secrets on the 4 **public** repos;
+> `ci-runner,single-use` pools on business/iplanic/interlog) are staged in
+> `operations/ops/inbox/2026-07-14_founder_flow-ci-v2-fleet-cutover-prereqs.md`
+> and gate Phase 1. Owning repo: `aidoc-flow-ci` (fleet
 > CI canon). Per-consumer execution lands as `IPLAN-NNNN` in each consumer repo,
 > mirroring `operations/ops/iplans/IPLAN-0033`. Verified against live files +
-> live `gh` state (secrets/runners, names only) 2026-07-14.
+> live `gh` state (secrets/runners/vars, names only) 2026-07-16.
 >
 > **Retargeted to `ci/v2.0.1` (2026-07-15, commit
 > `819d148e366f4f469f3645d1bfb249e3a1e9cf13`).** v2.0.1 is a patch superseding
@@ -27,7 +31,10 @@ label `["self-hosted","aidoc","ci-ephemeral"]` with
 `["self-hosted","ci-runner","single-use"]`.
 
 **`operations` already cut over to v2.0.0** (PRs #258/#259/#260, IPLAN-0033) and
-re-pins to **v2.0.1** for the blocker fixes (a version-only `--repin`). The other
+**advanced to `@ci/v2.0.1` on 2026-07-16** (PR #265) — **not** a version-only
+`--repin`: its `check-ci-contract.sh` contract-lock hard-pinned v2.0.0, so the
+lock + `standards-drift.yml` (`ref` + `--ci-tag`) + `config.json` `$schema` moved
+in lockstep (see the note under Current state). The other
 **seven** consumers are still on `@ci/v1.9.5`. "Sync them up with flow-ci" = bring
 those seven to **v2.0.1** parity. Because the v1→v2 step is breaking, a
 naive re-pin sweep would **brick every AI gate** (ai-review hard-exits with no
@@ -67,7 +74,7 @@ CANNOT do** (it only rewrites `uses:` lines, `install.sh:329-339`):
 
 | Repo | Active `uses:` pin | Runner | Vis | Repo-specific edits |
 |---|---|---|---|---|
-| operations | `@ci/v2.0.0` (→ advance v2.0.1) | `ci-runner,single-use` | priv | reference impl; v2.0.1 advance is a **contract-lock edit, NOT a mechanical `--repin`** — see note below |
+| operations | `@ci/v2.0.1` ✅ | `ci-runner,single-use` | priv | reference impl; **advanced + live-verified 2026-07-16** (PR #265) — see note below |
 | framework | `@ci/v1.9.5` | `ubuntu-latest` | pub | C (SHA); own md-lint tooling; server-side human-merge floor |
 | business | `@ci/v1.9.5` | `aidoc,ci-ephemeral` | priv | B, D; phantom branch-protection context |
 | iplanic | `@ci/v1.9.5` | `aidoc,ci-ephemeral` | priv | B, C (SHA), D; delete duplicate `standard-drift.yml`; phantom context |
@@ -86,10 +93,13 @@ All active `uses:` pins are uniformly `@ci/v1.9.5` (no stragglers; the
 > caller re-pin fails the local guard. Advancing operations to `v2.0.1` requires
 > editing the contract-lock + `standards-drift.yml` (`ref:` **and** `--ci-tag`)
 > in lockstep with the caller pins — a governance change, budgeted as its own
-> step. Exact edits + a synthetic-PR live-verify are staged as the founder
-> runbook `operations/ops/inbox/2026-07-16_founder_operations-ci-v2.0.1-advance-and-verify.md`
-> (operations PR #264), 🔴 inbox-first. This advance also serves as the B1/B2/HIGH
-> live-verification on the only fully-armed consumer before Phase 1 propagates.
+> step. Runbook: `operations/ops/inbox/2026-07-16_founder_operations-ci-v2.0.1-advance-and-verify.md`
+> (operations PR #264). **DONE 2026-07-16 — operations PR #265 merged** (12 pins +
+> drift `ref`/`--ci-tag` + contract-lock + `config.json` `$schema`; OPS-0065
+> 3-agent review SHIP). **The v2.0.1 armed-consumer live-verification is BANKED
+> here, not deferred to the pilot** — throwaway PR #266 confirmed the v2.0.1
+> reviewer posts a proper `CHANGES_REQUESTED` naming a `[critical]` finding
+> (the v2.0.0 "verdict malformed" discard is gone).
 
 Canon refs: `MIGRATION_v2.0.0.md` (the v1→v2 migration; still current for v2.0.1),
 `install/install.sh` (`--repin`), `docs/runners.md`,
@@ -111,8 +121,11 @@ Nothing merges until these are confirmed live (`feedback_writes_to_other_repos_i
    is a personal account, not an org; the org-secrets API 404s, so there is no
    org-level secret to inherit). `secrets: inherit` in the
    callers still works — it passes each calling repo's own repo-level secrets to
-   the reusable. Live check confirmed **none of the 7 consumers has any LiteLLM
-   secret** (only operations + aidoc-flow-ci, set 2026-07-13). Set them
+   the reusable. Live check **2026-07-16**: the **private trio has them**
+   (business/iplanic/interlog — `LITELLM_BASE_URL` + `LITELLM_REVIEW_API_KEY`, set
+   2026-07-15); the **4 public repos still have none** (engramory, framework,
+   iplan-standard, iplan-runner) — plus operations + aidoc-flow-ci (2026-07-13).
+   So this item is **3/7 done**; the remaining work is the 4 public repos. Set them
    **pilot-first** (engramory, then the rest after the pilot is green).
    `LITELLM_DOC_API_KEY` only when doc-maintainer is adopted (deferred).
    `AIDOC_FLOW_BOT_*` unchanged (docs-sync stays dry-run).
@@ -151,7 +164,7 @@ Nothing merges until these are confirmed live (`feedback_writes_to_other_repos_i
    `CLAUDE_CODE_OAUTH_TOKEN`) post-cutover.
 6. **Smoke:** private + (per #2) public `gh workflow run litellm-smoke.yml` both green.
 
-### Phase 1 — Pilot (public **engramory**, pending Phase 0 #2)
+### Phase 1 — Pilot (public **engramory**, pending Phase 0 #1)
 
 On a feature branch:
 - **A** — `install.sh --repin` bump all `uses:` → `@ci/v2.0.1` (FT-9-safe;
@@ -183,12 +196,28 @@ On a feature branch:
 - Open PR; **watch to LIVE green** — ai-review v2 actually ran + passed (not just
   YAML parse). Go/no-go gate for propagation (6/6 criteria,
   `verify_one_layer_before_propagating`).
-- **v2.0.1 residual verification (do it here — the pilot is the first armed
-  consumer):** land one synthetic `request_changes` PR to confirm the blocker
-  fixes work LIVE — the reviewer posts the findings comment (B1 no longer errors
-  as "malformed") and a subsequent comment-review does NOT skip-supersede the RED
-  (B2). This is the end-to-end check deferred at the v2.0.1 tag cut (it was
-  unit-tested + source-verified, not run against a live armed gate).
+- **v2.0.1 residual verification — B1 DONE, B2 still open here.** Corrects an
+  earlier premise: **operations, not the pilot, is the first armed consumer**, so
+  the armed half was banked there on 2026-07-16.
+  - ✅ **B1 verified LIVE on operations** (throwaway PR #266, closed): a synthetic
+    auth-bypass diff drew a proper `CHANGES_REQUESTED` naming the `[critical]`
+    finding + fix — no "verdict malformed" discard. The armed `request_changes`
+    blocking path works.
+  - ⚠️ **B2 — source-verified only; ACCEPTED-UNVERIFIED live, and NOT reachable at
+    any PLAN-009 venue.** B2's bypass exists **only while UNARMED**: the v2.0.1
+    guard (`ai-review.yml:277-286` @`819d148`) early-exits when
+    `vars.APP_REVIEWER_1_BOT_ID` is empty, *before* the `pull_request_review` skip.
+    **Live check 2026-07-16: every consumer is ARMED** (engramory, operations,
+    framework, interlog all have `APP_REVIEWER_1_BOT_ID` set), so all take the
+    armed early-exit and **never enter the B2 path**. Consequence: the obvious
+    pilot test (land a RED → submit a COMMENT review → confirm no GREEN flip)
+    would pass **vacuously via the armed skip** — it would have passed on buggy
+    v2.0.0 too — so it must NOT be booked as B2's closure.
+    **Disposition:** accepted-unverified. Residual risk is low *because* the
+    bypass is unreachable while armed. To actually exercise it you need a
+    deliberately **unarmed fixture** (unset `APP_REVIEWER_1_BOT_ID` on a throwaway
+    repo/branch, land a RED, then comment-review). Do that only if a consumer is
+    ever intentionally run unarmed.
 
 ### Phase 2 — Remaining public (framework, iplan-runner, iplan-standard)
 

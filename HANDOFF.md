@@ -4,24 +4,44 @@ Live cross-session resume point for the workspace CI + governance-workflow
 canon library. Read at session start; refresh at milestones and before
 context compaction.
 
-## Current state (2026-07-14)
+## Current state (2026-07-16)
 
-**Fleet v2 cutover (PLAN-009) — PLANNING-COMPLETE; Phase 0 founder runbook
-staged, awaiting founder.** `ci/v2.0.0` is published (resolves to
-`d3f4b0320b831e38b91c4b85bb5e8b26e62296f7`) and `operations` cut over
-(IPLAN-0033, PRs #258/#259/#260). `plans/PLAN-009_fleet-v2-cutover.md` syncs the
-other **7 consumers** (still `@ci/v1.9.5`) to v2.0.0. Live `gh` check 2026-07-14:
-**none of the 7 has LiteLLM secrets** (only operations + this repo do), and
-business/iplanic/interlog have only the v1 `aidoc,ci-ephemeral` runner. The 🔴
-Phase 0 prerequisites (per-repo LiteLLM secrets — **no org inheritance** on a
-personal account; `ci-runner,single-use` pools; public-reachability GO/NO-GO
-smoke) are staged as the founder runbook
-`../operations/ops/inbox/2026-07-14_founder_flow-ci-v2-fleet-cutover-prereqs.md`.
-**Nothing in PLAN-009 Phase 1+ (engramory pilot → propagate) starts until Phase 0
-is confirmed live.** This session also did canon housekeeping: `docs/WORKFLOWS.md`
-§2 stale gap-cells flipped to ✅ (the "missing" ai-review/composition/pre-commit/
-audit-trail callers all exist live), PLAN-009 finalized with corrections
-(per-repo secrets, `--tier` valid set, hybrid-then-narrow runner labels, SHA).
+**Fleet v2 cutover (PLAN-009) — target is now `ci/v2.0.1`; Phase 0 partially
+done, still 🔴-gated.** `ci/v2.0.1` is published (tag → `819d148`) and is the
+fleet target; it patches `ci/v2.0.0` (→ `d3f4b03`) with the 3 ai-review blocker
+fixes. **`operations` is advanced to `@ci/v2.0.1` and LIVE-VERIFIED (2026-07-16,
+PR #265).** `plans/PLAN-009_fleet-v2-cutover.md` syncs the other **7 consumers**
+(still `@ci/v1.9.5`).
+
+**v2.0.1 verification banked on operations, not deferred to the pilot** —
+operations (not the pilot) is the first armed consumer. Throwaway PR #266
+confirmed **B1 live**: a synthetic auth-bypass diff drew a proper
+`CHANGES_REQUESTED` naming the `[critical]` finding (no "verdict malformed"
+discard) → the armed blocking path works. **B2 is source-verified only and
+ACCEPTED-UNVERIFIED live** — its bypass exists *only while UNARMED*, and a live
+check on 2026-07-16 found **every consumer ARMED** (`APP_REVIEWER_1_BOT_ID` set on
+engramory/operations/framework/interlog), so none can enter the B2 path. The
+obvious pilot test would pass **vacuously via the armed skip** (it would have
+passed on buggy v2.0.0 too) — do NOT book it as B2 closure. Exercising B2 needs a
+deliberately **unarmed fixture**. Residual risk is low precisely because the
+bypass is unreachable while armed. **The `python3` preflight (HIGH) is likewise
+not live-exercised.**
+
+**Phase 0 status (verified live 2026-07-16):**
+
+- ✅ LiteLLM secrets on the **private trio** (business/iplanic/interlog, set
+  2026-07-15). ❌ still absent on the **4 public repos** (engramory, framework,
+  iplan-standard, iplan-runner) — **no org inheritance** on a personal account,
+  so each needs them set individually.
+- ❌ `ci-runner,single-use` pools on business/iplanic/interlog (only operations
+  has one; they still carry the v1 `aidoc,ci-ephemeral` runner).
+- ✅ **public-reachability RESOLVED** — no public endpoint needed. Public repos
+  run only the ai-review *review* job on the ephemeral self-hosted pool via
+  `runner_labels_review` (PLAN-009 **Edit F**); LiteLLM stays private.
+
+Runbook: `../operations/ops/inbox/2026-07-14_founder_flow-ci-v2-fleet-cutover-prereqs.md`.
+**Nothing in PLAN-009 Phase 1+ (engramory pilot → propagate) starts until the
+remaining 🔴 items (public-repo secrets + private pools) are confirmed live.**
 
 **Unified LiteLLM agent gateway (`feat/unified-litellm-agents`) — SHIPPED as
 `ci/v2.0.0`.** *(2026-07-12 note, now historical — the implementation below was
