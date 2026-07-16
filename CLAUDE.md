@@ -141,8 +141,47 @@ policy (founder, 2026-07-11). The canonical private label is the verbose array
   If a private repo has no pool yet, the fix is to **register the pool**
   (`../operations/scripts/ci-runner/run-ephemeral.sh`, labels
   `self-hosted,ci-runner,single-use`), not to switch to GitHub-hosted.
-- Public repos (engramory, framework, iplan-standard, iplan-runner) stay on
-  `ubuntu-latest`. Full routing table + registration steps: `docs/runners.md`.
+- Public repos (engramory, framework, iplan-standard, iplan-runner) run on
+  `ubuntu-latest` — **except** the ai-review *review* job, which may run on the
+  ephemeral self-hosted pool (see below). Full routing table + registration
+  steps: `docs/runners.md`.
+
+## Ephemeral single-use runners — what a fresh AI session must know
+
+The self-hosted pool is **ephemeral single-use** (`operations/scripts/ci-runner/run-ephemeral.sh`):
+a fresh `--rm` container per job — no host mounts, no docker socket, non-root,
+CPU/mem/PID caps — runs **one** job, then is destroyed. Consequences a fresh
+session must not re-derive or get wrong:
+
+- **No state carries between jobs.** Every job is independent; the reusables
+  `curl`-fetch assets into a fresh workspace — never assume prior-job files.
+- **Tools are baked into `aidoc-flow-runner:latest`** (`python3`, `gh`, `jq`,
+  `curl`, `git`, `ripgrep`; verified present). ai-review v2 hard-needs `python3`
+  (the LiteLLM client); the `ci/v2.0.1` preflight names the cause if an image
+  lacks it. The image is built **per host** (no registry push) — rebuild when
+  tools update. A missing tool ≠ a code failure — check the image first.
+- **Concurrency = one job per supervisor instance (SERIAL).** A PR fans out to
+  ~8 jobs; on a private repo (all jobs self-hosted) a single `ci-runner@<repo>`
+  instance runs them **one at a time**. Run **N parallel instances per repo**
+  (sized to peak PR job-count, ~6–8) to parallelize — else PR feedback serializes.
+  Do NOT "fix" slow feedback by moving jobs to `ubuntu-latest` on a private repo.
+- **LiteLLM route:** the container uses the default docker bridge, so it reaches
+  the host proxy at **`http://172.17.0.1:4001`** (the `LITELLM_BASE_URL` secret).
+  It is HTTP on the private bridge → private callers set
+  `litellm_allow_insecure_http: true`.
+
+**PUBLIC repos MAY use the ephemeral self-hosted pool — for the ai-review
+*review* job ONLY. This is safe and is NOT the "untrusted code on self-hosted"
+anti-pattern.** Two independent reasons: (a) the `trust` job runs on
+`ubuntu-latest` and **forks are hard-set untrusted → the self-hosted review job
+is SKIPPED for forks** (only allowlisted authors reach it); (b) the review job
+runs **no PR code** — it `curl`s the diff and sends it to LiteLLM. So neither a
+fork nor any PR-code execution ever touches the self-hosted runner. Wire it by
+setting `runner_labels_review: '["self-hosted","ci-runner","single-use"]'` on the
+public repo's ai-review caller while keeping `runner_labels_routine:
+'"ubuntu-latest"'` (the fork-facing trust job) and every other public check on
+`ubuntu-latest`. **NEVER** move the trust job — or any code-executing / fork-facing
+job — to self-hosted on a public repo. Full rationale: `docs/runners.md` §5a.
 
 ## Repo-specific rules (canon-source discipline)
 
