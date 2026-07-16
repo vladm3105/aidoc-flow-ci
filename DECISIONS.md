@@ -295,6 +295,97 @@ doc-maintainer, 2026-07-12.
 
 ---
 
+## CI-0007: Runner-label naming — defer any rename to a future major; rule out `private-*` (2026-07-16)
+
+**Context**
+
+Founder proposed renaming the canonical self-hosted runner labels for more
+meaningful naming: `ci-runner` → `private-ci-runner` and `single-use` →
+`isolated-ci-runner`, then offered `sandbox-*` as a further candidate. Raised
+explicitly as **naming planning only** — no migration intended now. All three
+candidates are analysed below so the question is not re-derived later.
+
+Current canonical selector: `[self-hosted, ci-runner, single-use]`, adopted at
+the breaking `ci/v2.0.0` (replacing the v1 `aidoc,ci-ephemeral`). `LABELS.md`
+§2 defines the scheme as **orthogonal scheduling dimensions** — purpose
+(`ci-runner`), lifecycle (`single-use`), optional isolation (`project-<name>`) —
+with provider/origin **intentionally omitted** so the pool can move hosts or
+clouds without caller changes. PLAN-009's fleet cutover to those labels is
+mid-flight: 7 consumers are still on `@ci/v1.9.5`.
+
+**Decision**
+
+Keep `[self-hosted, ci-runner, single-use]` unchanged. **No rename, no
+migration now.** Defer any label rename to a future **breaking** release
+(earliest `ci/v3.0.0`), and only once the whole fleet is unified on v2.
+
+Two constraints bind any future proposal:
+
+1. **`private-*` is ruled out permanently** — not merely deferred. Public repos
+   **may** use this pool for the ai-review **review** job (`CLAUDE.md` — "PUBLIC
+   repos MAY use the ephemeral self-hosted pool … for the ai-review *review* job
+   ONLY"; wired by PLAN-009 **Edit F**). That is a *permission*, not today's
+   state — as of 2026-07-16 all four public repos still ship
+   `runner_labels_review: '"ubuntu-latest"'` and Edit F is unexecuted — so a
+   `private-` label would not be false *yet*; it would **become** false the
+   moment the public trio cuts over, which the plan intends. Independently of
+   that timing, `private-` encodes visibility/origin, which §2's naming
+   convention deliberately excludes from the selector — that alone is
+   disqualifying.
+2. **`isolated-*` collides with an already-occupied dimension** — §2 assigns
+   "optional isolation" to `project-<name>`. Naming the *lifecycle* label
+   `isolated-` overloads a term the scheme uses for a different dimension. It is
+   also vaguer than `single-use`, which names the actual mechanism (accept
+   exactly one job, then de-register and destroy); a persistent sandboxed runner
+   can equally be "isolated". Repeating `-ci-runner` across two labels of one
+   selector (`[self-hosted, private-ci-runner, isolated-ci-runner]`) further
+   collapses the purpose/lifecycle split into two nouns for the same thing.
+
+**`sandbox-*` (founder, same session) — the strongest candidate; carried
+forward, not adopted.** Unlike `private-*` it is **accurate**: the pool genuinely
+is sandboxed (`run-ephemeral.sh` gives each job a fresh `--rm` container — no
+host mounts, no docker socket, non-root, CPU/mem/PID caps), and it avoids the §2
+word-collision that sinks `isolated-*`. Two reasons it is still not adopted here:
+
+- **It names confinement, not lifecycle** — so it cannot *replace* `single-use`,
+  which guarantees "accept one job, then de-register and destroy". A long-lived
+  runner can be sandboxed and never single-use. Swapping the two drops a
+  guarantee rather than renaming it; keeping both would add a 4th selector
+  dimension, which costs more than it returns.
+- **Security-suggestive labels overclaim.** A runner label is a *scheduling
+  selector*, not an enforced property: nothing stops a non-conforming runner
+  registering with a `sandbox-*` label, after which jobs route to it under a name
+  asserting a posture the label cannot guarantee. `single-use` states an
+  operational contract instead — a weaker claim, and one the supervisor actually
+  keeps. If `sandbox-*` is ever adopted, pair it with a conformance check rather
+  than trusting the name.
+
+Recorded as valid but **not acted on**: `ci-runner` is a weak, near-tautological
+purpose label. A future rename should encode the pool's genuinely
+distinguishing trait (its LiteLLM / private-network reachability, or its
+sandboxed shape per above), keep the purpose and lifecycle dimensions
+orthogonal, and avoid the duplicate suffix.
+
+**Consequences**
+
+- No caller, template, runbook, or pool-registration change. The staged Phase-0
+  runbook (`../operations/ops/inbox/2026-07-14_founder_flow-ci-v2-fleet-cutover-prereqs.md`)
+  stays valid exactly as written.
+- Renaming now would force a **second** breaking migration one release after the
+  first: a new major tag, re-registering every pool (including the three not yet
+  created on business/iplanic/interlog), another hybrid-then-narrow cutover, and
+  it would invalidate that unexecuted runbook — for zero functional gain.
+- **Revisit trigger:** the next breaking canon release, once every consumer is
+  on v2. Re-open this entry rather than re-deriving the analysis.
+
+**Origin**
+
+Founder naming proposal + AI analysis, 2026-07-16 (the session that advanced
+operations to `ci/v2.0.1`). Scope limited by the founder to tracking the
+decision only: "we do not need migration now just track the decision."
+
+---
+
 <!-- Append new entries above this line; append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
 and update the superseded entry's "Consequences" section to reference

@@ -138,7 +138,7 @@ Runner labels describe independent scheduling dimensions:
   `windows-latest`, `macos-latest`, …) — used as-is. We cannot
   alias a GitHub-hosted runner to a custom label name.
 
-The canonical private selector is therefore:
+The canonical selector for the self-hosted tier is therefore:
 
 ```json
 ["self-hosted", "ci-runner", "single-use"]
@@ -147,6 +147,17 @@ The canonical private selector is therefore:
 Do not add `aidoc`, a repository name, host name, cloud provider, or model name
 to the default selector. Add `project-<name>` only when isolation is an
 explicit requirement and the matching runner registration already exists.
+
+> **…and do not rename it either without reading
+> [`DECISIONS.md`](DECISIONS.md) CI-0007 (2026-07-16) first.** A rename was
+> considered and deferred: the selector stays `[self-hosted, ci-runner,
+> single-use]` until a future breaking release, and then only once the whole
+> fleet is on v2. Any candidate must respect the dimensions above.
+> `private-*` is **ruled out permanently** — public repos *may* use this pool
+> for the ai-review *review* job (PLAN-009 Edit F, not yet executed), so the
+> label would become false. `isolated-*` collides with the `project-<name>`
+> isolation dimension. `sandbox-*` is accurate but names confinement rather
+> than lifecycle, so it cannot replace `single-use`.
 
 Custom labels are case-insensitive. Register them in lowercase so workflow
 YAML, operational tooling, and UI output remain consistent. GitHub deletes
