@@ -5,6 +5,20 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Decision — runner-label naming deferred to a future major (CI-0007, 2026-07-16)
+
+- **`DECISIONS.md` CI-0007** + a **`LABELS.md`** §2 pointer: a proposed rename of
+  the canonical selector (`ci-runner` → `private-ci-runner`, `single-use` →
+  `isolated-ci-runner`, plus a `sandbox-*` candidate) is **tracked and deferred**
+  — no rename, no migration. `[self-hosted, ci-runner, single-use]` is unchanged;
+  callers, templates, and the staged Phase-0 runbook are untouched. `private-*`
+  is ruled out permanently (public repos *may* use this pool for the ai-review
+  *review* job — PLAN-009 Edit F, not yet executed — so the label would become
+  false; and it encodes visibility/origin, which the selector deliberately
+  omits); `isolated-*` collides with the `project-<name>` isolation dimension;
+  `sandbox-*` is accurate but names confinement, not lifecycle. Revisit at the
+  next breaking release once the fleet is unified on v2.
+
 ### Docs — ephemeral-runner governance for AI sessions (2026-07-15)
 
 - **`CLAUDE.md`** (Runner policy) + **`docs/runners.md`** §5/§5a: explain the
