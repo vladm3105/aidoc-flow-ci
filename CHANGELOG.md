@@ -5,6 +5,18 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Docs — ephemeral-runner governance for AI sessions (2026-07-15)
+
+- **`CLAUDE.md`** (Runner policy) + **`docs/runners.md`** §5/§5a: explain the
+  ephemeral single-use runner model for a fresh AI session — no state carry-over,
+  tools baked per-host, **one supervisor instance = serial jobs** (run N per repo,
+  sized to peak PR job-count), and the LiteLLM bridge route (`172.17.0.1:4001`).
+  Documents that **public repos MAY use the ephemeral self-hosted pool for the
+  ai-review *review* job only** — safe (forks are gated off on the `ubuntu-latest`
+  trust job; the review job runs no PR code) — which lets a **private-only**
+  LiteLLM proxy serve public repos with no public endpoint. Wiring:
+  `runner_labels_review: self-hosted`, trust job + all else on `ubuntu-latest`.
+
 ### Fixed — set-litellm-secrets.sh `--mint` endpoint (2026-07-15)
 
 - **`install/set-litellm-secrets.sh`**: `--mint` posted to `$LITELLM_BASE_URL/key/generate`,

@@ -183,16 +183,58 @@ adopters may reproduce it on their own infrastructure.
 recommendation (no self-hosted-on-public security concern). Slower
 cold-start is the tradeoff.
 
-## 5. Scaling the runner pool
+## 5. Scaling the runner pool — one supervisor is SERIAL
 
-If a single runner becomes the bottleneck (multiple concurrent PRs
-queueing), spin additional runners with the same labels. GitHub
-distributes jobs round-robin across runners matching the requested
-labels. For ephemeral container-based pools (the
-`aidoc-flow-runner:latest` shape), the operations supervisor
-manages concurrent container spawn — see
+**A single ephemeral supervisor instance runs one job at a time.**
+`run-ephemeral.sh` is a loop: generate a JIT config → `docker run` a fresh
+`--rm` container for **one** job (blocking) → destroy it → loop. So per
+`ci-runner@<repo>` systemd instance there is exactly **one live runner**, and a
+repo's jobs execute **serially**.
+
+This matters most on **private repos**, where *every* job is self-hosted: a
+single PR fans out to ~8 jobs (ai-review `trust` + `review`, composition,
+`verify`, links, markdown-lint, pre-commit, secret-scan) that then run
+**one-at-a-time** on a single instance — slow feedback, and concurrent PRs
+compete for the one runner.
+
+**To parallelize, run N supervisor instances** with the same labels (e.g.
+`ci-runner@iplanic-1 … ci-runner@iplanic-N`), sized to the **peak concurrent
+job count of a single PR (~6–8)**. GitHub distributes queued jobs round-robin
+across the matching runners. Reference supervisor + systemd template:
 [operations `scripts/ci-runner/`](https://github.com/vladm3105/aidoc-flow-operations/tree/main/scripts/ci-runner)
-for the reference implementation.
+(`run-ephemeral.sh`, `ci-runner@.service`). Never relieve the bottleneck by
+moving private-repo jobs to `ubuntu-latest`.
+
+### 5a. Public repos on the ephemeral self-hosted pool — review job ONLY (safe)
+
+A **public** repo may run its ai-review **review** job on the ephemeral
+self-hosted pool, and this is **not** the "untrusted code on a self-hosted
+runner" anti-pattern. Two independent guarantees:
+
+1. **Forks never reach it.** The `trust` job runs on `ubuntu-latest` for every
+   PR and **hard-sets forks untrusted**; the review job is gated
+   `if: needs.trust.outputs.ai_review_ok == 'true'`, so a fork PR **skips** the
+   self-hosted review job entirely — only allowlisted authors reach it.
+2. **No PR code executes on it.** The review job does not check out or run PR
+   head code — it `curl`s the diff and sends it to LiteLLM. So even for a trusted
+   author, nothing from the PR runs on the runner.
+
+Combined with single-use isolation (`--rm`, no mounts, no socket, non-root), the
+worst case is a throwaway container that only ever forwards a redacted diff.
+
+**Wiring:** on the public repo's ai-review caller keep the fork-facing trust job
+on GitHub-hosted and move only the review job:
+
+```yaml
+runner_labels_routine: '"ubuntu-latest"'                          # trust job (all PRs, incl. forks)
+runner_labels_review:  '["self-hosted","ci-runner","single-use"]' # review job (trusted authors, reaches LiteLLM)
+```
+
+Keep every other public check (composition, links, markdown-lint, pre-commit,
+secret-scan, codeql) on `ubuntu-latest`. **NEVER** move the trust job — or any
+job that checks out / runs PR code, or that processes fork PRs — to self-hosted
+on a public repo. This is the mechanism that lets a **private-only** LiteLLM
+proxy serve public repos without any public endpoint.
 
 ## 6. Adding a new runner origin
 
