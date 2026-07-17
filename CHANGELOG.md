@@ -5,7 +5,15 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-_(nothing yet)_
+### Dogfooding — canon runs its own secret-scan gate (2026-07-17)
+
+- **`.github/workflows/self-secret-scan.yml`** (new): canon now calls the
+  `secret-scan` reusable on its own PRs, at the released `@ci/v2.1.0` tag. It
+  shipped the gate to every consumer but never ran it on itself — the pre-prod
+  G3 finding ("canon deploys 1 of 5 canon callers"). Separate filename because
+  `secret-scan.yml` is the reusable; non-redundant with `tests.yml` (which lints
+  but runs no gitleaks); verified clean at adoption (195 commits, no leaks). Also
+  moves canon from 2 to 3 emitted checks, toward being safely self-protectable.
 
 ## ci/v2.1.0 — 2026-07-17
 
