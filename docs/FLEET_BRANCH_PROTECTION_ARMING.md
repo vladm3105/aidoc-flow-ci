@@ -43,7 +43,32 @@ branch-protection *templates* only name real reusable jobs — but the templates
 carry the canon `call / …` names; a repo on standalone workflows needs the bare
 names instead. This runbook reconciles template ↔ per-repo reality.
 
-## Current fleet state (survey 2026-07-12, read-only)
+## Pre-prod re-measurement (2026-07-17) — survey below still holds, plus canon itself
+
+The 2026-07-17 pre-prod review re-measured live and **confirms the 2026-07-12
+survey below**, with one addition it predates:
+
+- **`aidoc-flow-ci` (canon itself) is unprotected** — `Branch not protected`.
+  The canon-source must self-adopt before consumers pull (Wave 0). Its tier is
+  product; arm from `branch-protection-product.json` — BUT canon emits only
+  `call / verify` + `suite` today (it deploys 1 of 5 canon callers), so the
+  product template's 5 required contexts would brick every canon PR. Either
+  adopt the missing callers first, or arm with only the emitted contexts
+  (`call / verify`, `suite`) + `enforce_admins`. Do **not** apply the template
+  blind. (Same class as the pre-prod `composition`-required finding for
+  business/iplanic below.)
+- **`engramory`, `iplan-standard` still unprotected**; **`business`, `iplanic`
+  still require the phantom bare `Lint / format / security hooks`** (not
+  `call / composition`) — so they merge via `--admin` with no real review gate.
+  These are the pre-prod server-side BLOCKERs; they gate the *rollout*, not the
+  `ci/v2.1.0` tag (which is cut).
+- **Repin target is now `ci/v2.1.0`** (cut 2026-07-17; it fixes the
+  `composition` malformed-config bypass + the `--repin`-backwards bug). Any
+  `install.sh <repo> --repin` in this runbook should target `CI_TAG=ci/v2.1.0`.
+  A repin is version-string-only and safe; it does NOT clobber runner labels
+  (that is `--update`).
+
+## Current fleet state (survey 2026-07-12, read-only — reconfirmed 2026-07-17)
 
 Legend: ✅ emitted green · ⚠ armed-but-suspect · ✗ armed-phantom (never green).
 
