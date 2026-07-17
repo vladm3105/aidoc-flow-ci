@@ -15,11 +15,18 @@ name: audit-trail
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    # `labeled, unlabeled` are load-bearing, not cosmetic: the reusable's
+    # documented escape hatch is the two-signal override (the `skip-audit-trail`
+    # LABEL + a commit-body marker). Without a `labeled` trigger, applying the
+    # label fires no event, so the check never re-runs and the red check never
+    # clears — the operator is told to apply a label that cannot take effect and
+    # has to push an empty commit instead. ai-review's callers already include
+    # these; audit-trail was the outlier.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/audit-trail-check.yml@ci/v2.0.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/audit-trail-check.yml@ci/v2.0.1
     with:
       runner_labels: '"ubuntu-latest"'
     permissions:

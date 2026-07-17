@@ -5,6 +5,88 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Security — `composition`: a malformed trust config passed the gate for EVERY author (2026-07-17)
+
+- **`.github/workflows/composition.yml`** + **`docs/REPO_STANDARDS.md` §4.3b**:
+  the trust-gate exemption fired on **any** non-zero `jq` exit. `jq -e` exits 1
+  when the query is false/null but **4** when the input does not parse — so a
+  malformed `config.json` on the default branch, or one whose
+  `.trust.ai_review` key was renamed, satisfied `! jq -e` and hit
+  `exit 0`/"composition not enforced (pass)". Reproduced: `malformed → jq_rc=4
+  → gate PASSES`, for trusted authors too.
+- **Why it mattered:** `composition` is the *sole* App-approval enforcement, and
+  the tier templates set `required_approving_review_count: 0` — so on every repo
+  where it is a required check, one bad hand-edit to `config.json` silently
+  removed the review gate fleet-wide, simultaneously, while staying green.
+- The file's fail-closed contract covered a broken **read** (`[ -s "$CFG" ]` +
+  a 7-attempt retry); the **parse** had no equivalent. It now schema-validates
+  before trusting the parse and treats failure as fail-closed = ENFORCE,
+  mirroring `auto-merge-ai-prs.yml`'s existing check. **Note the polarity
+  differs between the two gates** (there fail-closed is `exit 0` = refuse to
+  merge; here it is enforce = refuse to exempt) — §4.3b records this.
+- **`jq`'s array `contains()` substring-matches** (§4.3c): `composition` used
+  `contains(["skip-ai-review"])` while `auto-merge-ai-prs` used `index()`, so
+  the two classified the same PR differently and a label named
+  `skip-ai-review-exempt` set the skip flag with nobody applying the real label.
+  Now `index()` in both. (Residual risk was narrow — the carry-forward branch
+  still demands an App-approved tree-matching commit — but the divergence was
+  real.)
+
+### Fixed — release pointers named the wrong version of canon (2026-07-17)
+
+- **`VERSION`** + **`install/install.sh`**: both said `ci/v2.0.0` while
+  `ci/v2.0.1` was the live fleet target (operations pinned + verified). The
+  v2.0.1 cut never bumped them. `install.sh` resolves `CI_TAG env > VERSION >
+  CI_TAG_FALLBACK`, so **every documented `--repin` without an explicit
+  `CI_TAG` wrote `ci/v2.0.0`** — pinning consumers *backwards* onto the three
+  ai-review blockers v2.0.1 exists to fix, on the one armed live consumer, while
+  PLAN-009 is actively re-pinning 7 repos. `sync-version-refs.sh --check`
+  reported green throughout: it proves the refs agree with `VERSION`, not that
+  `VERSION` is right.
+- `CI_TAG_FALLBACK` was documented as "hand-bumped per release" — a release step
+  that can be forgotten will be. **`scripts/sync-version-refs.sh` now rewrites
+  it mechanically**, and **`tests/test_version_sync.sh`** asserts
+  `VERSION == CI_TAG_FALLBACK == the latest published ci/v* tag`. Verified the
+  guard fails on the pre-fix state and passes on the fixed one.
+- **`sync-version-refs.sh` TARGETS coverage**: `docs/{overrides,architecture,
+  security,MIGRATION_v2.0.0,UPDATE_GUIDE,AI_CI_DEPLOYMENT}.md` and
+  `install/templates/config.json.template` carry the pin shapes the script
+  rewrites but were outside its list — matching `VERSION` by coincidence and due
+  to drift silently at the next bump. Now covered.
+- **`tests/test_scripts.sh`** hardcoded `@ci/v2.0.0` — the same hand-bump class.
+  It now reads `VERSION`, so it asserts the invariant ("the wizard scaffolds at
+  the current release") instead of freezing a tag string.
+
+### Fixed — half-provisioned repos, label triggers, bash-4 guard (2026-07-17)
+
+- **`.github/workflows/ai-review.yml`**: `APP_KEY_PRESENT` tested only
+  `APP_REVIEWER_1_KEY` in the review job while the trust job tested KEY **and**
+  ID. A repo with KEY set and ID pending — exactly the state a fleet
+  secret-provisioning sweep passes through, and PLAN-009 Phase 0 is doing that
+  now — had the trust job skip the mint cleanly while the review job minted with
+  `app-id: ''`, got an empty token, and hit the fail-closed "mint failed" exit:
+  every routine PR deterministically blocked, with an error naming the wrong
+  cause. Now symmetric.
+- **`install/templates/workflows/audit-trail-{public,private}.yml`** +
+  `.github/workflows/audit-trail.yml`: added `labeled, unlabeled` triggers. The
+  reusable's documented escape hatch is the two-signal override
+  (`skip-audit-trail` label + a commit-body marker), but applying the label
+  fired no event, so the check never re-ran and the red check never cleared —
+  the operator was told to apply a label that could not take effect. `ai-review`
+  already had these; audit-trail was the outlier.
+- **`sync/check-drift.sh`**: added the bash-4 guard its three sibling scripts
+  already have. It uses `declare -A` under `set -uo pipefail` (no `-e`), so on
+  bash 3.2 (macOS system bash) the `declare` error is non-fatal and every
+  `MANIFEST_CACHE[$pin]` subscript arithmetic-evaluates to 0 — collapsing all
+  pins into one slot, so a consumer mid-bump silently gets the wrong tag's
+  manifest. That is precisely the per-caller pin frame the script exists to
+  preserve.
+- **`.github/workflows/secret-scan.yml`**: removed a no-op
+  `sed -i 's/^          //'` whose comment claimed it stripped heredoc
+  indentation — YAML's block scalar had already stripped it, so it matched
+  nothing. The indentation itself is load-bearing (a column-0 line ends the
+  block scalar) and is now documented as such.
+
 ### Security — `secret-scan` proves the consumer's gitleaks config can detect (2026-07-16)
 
 - **`.github/workflows/secret-scan.yml`** + **`docs/REPO_STANDARDS.md` §4.3a**:

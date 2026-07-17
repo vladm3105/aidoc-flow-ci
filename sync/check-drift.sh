@@ -55,6 +55,18 @@
 
 set -uo pipefail
 
+# bash 4+ required for `declare -A` (the per-pin manifest cache). Without this
+# guard, bash 3.2 (macOS system bash) prints a non-fatal `declare: -A: invalid
+# option` under `set -uo pipefail` (no -e), then arithmetic-evaluates every
+# MANIFEST_CACHE[$pin] subscript to 0 — collapsing all pins into one slot, so a
+# consumer mid-bump silently gets the WRONG tag's manifest. That is exactly the
+# per-caller pin frame this script exists to preserve. check-standards-drift.sh
+# guards the same way; this one did not.
+if (( BASH_VERSINFO[0] < 4 )); then
+  echo "::warning::drift-check: bash 4+ required (found ${BASH_VERSION:-unknown}) — install a newer bash (macOS: brew install bash). Skipping; drift is UNKNOWN, not absent."
+  exit 0
+fi
+
 if [ ! -d .github/workflows ]; then
   echo "drift-check: no .github/workflows/ directory here — is this a consumer repo root? nothing to check"
   exit 0

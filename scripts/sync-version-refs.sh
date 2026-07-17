@@ -44,10 +44,25 @@ TARGETS=(
   "docs/PLAYBOOK_governance-canon-rollout.md"
   "docs/REVIEWER_APP_ONBOARDING.md"
   "docs/BRANCH_PROTECTION.md"
-  # install.sh carries a `CI_TAG=ci/vX.Y.Z bash install.sh` usage EXAMPLE in its
-  # header (the CI_TAG= shape below). The authoritative CI_TAG_FALLBACK= line is
-  # NOT the CI_TAG= shape, so it is untouched and stays hand-bumped per release.
+  # install.sh carries BOTH a `CI_TAG=ci/vX.Y.Z bash install.sh` usage EXAMPLE in
+  # its header AND the authoritative `CI_TAG_FALLBACK=` line. Both shapes are
+  # rewritten below. The fallback was previously hand-bumped per release and the
+  # ci/v2.0.1 cut forgot it — so a CI_TAG-less `--repin` wrote ci/v2.0.0 onto
+  # consumers already on v2.0.1, pinning the fleet BACKWARDS. A release step that
+  # can be forgotten will be; it is mechanical now.
   "install/install.sh"
+  # These carry the raw-URL / uses:@tag / CI_TAG= shapes the sed program rewrites
+  # but were outside TARGETS — they matched VERSION only by coincidence and would
+  # drift silently at the next bump (the exact class PLAN-004 BL-4 built this for).
+  "docs/overrides.md"
+  "docs/architecture.md"
+  "docs/security.md"
+  "docs/MIGRATION_v2.0.0.md"
+  "docs/UPDATE_GUIDE.md"
+  "docs/AI_CI_DEPLOYMENT.md"
+  # Pins the $schema URL at a tag; safe_to_replace:false so --update never repairs
+  # a consumer's stale copy either.
+  "install/templates/config.json.template"
 )
 # Every shipped caller template pins aidoc-flow-ci reusables — keep them all at
 # the current release tag so a fresh consumer install gets a coherent pin set.
@@ -118,6 +133,7 @@ sed_program() {
 s#(raw\.githubusercontent\.com/vladm3105/aidoc-flow-ci/)ci/v[0-9]+\.[0-9]+\.[0-9]+#\1${TAG}#g
 s#(vladm3105/aidoc-flow-ci/[^@[:space:]]*@)ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?#\1${TAG}#g
 s#(^|[^A-Za-z0-9_])(CI_TAG=)ci/v[0-9]+\.[0-9]+\.[0-9]+#\1\2${TAG}#g
+s#(CI_TAG_FALLBACK=")ci/v[0-9]+\.[0-9]+\.[0-9]+#\1${TAG}#g
 SED
 }
 

@@ -388,6 +388,54 @@ rule-less configs and proves nothing. Build canary credentials by
 concatenation at runtime so the workflow source carries no matchable secret,
 and confirm the fixture fires under `useDefault` before trusting it.
 
+#### 4.3b A gate MUST fail closed on a broken PARSE, not only a broken READ
+
+A canon gate that reads a trust/config file MUST validate the parse before
+acting on it. Reading bytes is not reading config.
+
+**`jq`'s exit code does not mean what the calling shell usually assumes.**
+`jq -e 'query'` exits **1** when the query yields false/null AND **4** (or
+other non-zero) when the input does not parse. So
+
+```bash
+if ! jq -e --arg a "$AUTHOR" '(.trust.ai_review // []) | index($a)' "$CFG"; then
+  exempt   # WRONG: fires on malformed JSON and on a renamed key, not just "author absent"
+fi
+```
+
+treats *"this file is garbage"* as *"this author is not allowlisted"*. Measured
+on `composition.yml` (fixed 2026-07-17): a malformed `config.json` on the
+default branch exited 4, satisfied `! jq -e`, and exempted **every author on
+every PR** — including trusted ones — turning the sole App-approval enforcement
+green fleet-wide. The read had succeeded; only the parse failed, and the
+fail-closed contract only covered the read.
+
+**Rule:** schema-validate first, treat validation failure as fail-closed, and
+only then interpret a non-zero `jq` as the semantic answer:
+
+```bash
+if [ -n "$cfg_ok" ] && ! jq -e '(.trust.ai_review | type == "array")' "$CFG" >/dev/null 2>&1; then
+  echo "::warning::config failed schema validation — fail-closed"
+  cfg_ok=            # fall through to ENFORCE
+fi
+```
+
+**Fail-closed has opposite polarity in different gates — state which you mean.**
+In `composition.yml` fail-closed = **enforce** (refuse to exempt); in
+`auto-merge-ai-prs.yml` fail-closed = `exit 0` (refuse to merge). Both are
+"safe"; a reviewer who pattern-matches on the `exit` code alone will
+misread one of them.
+
+#### 4.3c `jq`'s array `contains()` substring-matches — use `index()` for names
+
+`["no-skip-ai-review-here"] | contains(["skip-ai-review"])` is **true**: jq's
+array `contains` does substring matching on string elements. For exact
+membership — every label, author, and repo-name check — use
+`index("x") != null`. Verified on jq 1.7 (2026-07-17): `composition.yml` used
+`contains()` while `auto-merge-ai-prs.yml` used `index()`, so the two workflows
+classified the same PR differently and a label named `skip-ai-review-exempt`
+set the skip flag without anyone applying the real label.
+
 ### 4.4 `markdown-lint` config template (`install/templates/.markdownlint.json`)
 
 The canon `.markdownlint.json` is the recommended ruleset consumers **copy**

@@ -226,7 +226,13 @@ jobs:
     # private key (IPLAN-0016 §2a-v3 A2); empty until then → the gate stays in its pre-activation
     # (comment-only) behaviour.
     env:
-      APP_KEY_PRESENT: ${{ secrets.APP_REVIEWER_1_KEY != '' && '1' || '' }}
+      # MUST test BOTH id and key, matching the trust job's identical expression. Testing only the KEY
+      # made a half-provisioned repo (KEY set, ID still pending) fail HARD instead of falling back: the
+      # trust job saw '' and skipped the mint cleanly, while this job saw '1', minted with `app-id: ''`,
+      # got an empty token, and hit the fail-closed "token mint failed" exit — deterministically blocking
+      # every routine PR with an error naming the wrong cause. KEY-set/ID-pending is exactly the state a
+      # fleet secret-provisioning sweep passes through.
+      APP_KEY_PRESENT: ${{ secrets.APP_REVIEWER_1_KEY != '' && secrets.APP_REVIEWER_1_ID != '' && '1' || '' }}
       # `skip-ai-review` label → the reviewer was already approved on this PR; subsequent pushes that only
       # fix OTHER checks (lint/links/CI) should not re-run this long-running gate. When the label is
       # present, every heavy step below is skipped and the job ends green (prior approval carried forward).

@@ -110,7 +110,13 @@ jobs:
           # on persistent failure — fail-closed enforces the App-approval requirement.
           SKIP_REVIEW=""
           for n in 1 2 3 4; do
-            SKIP_REVIEW=$(gh api "repos/$GH_REPO/pulls/$PR" --jq '[.labels[].name] | contains(["skip-ai-review"]) | if . then "1" else "" end' 2>/dev/null) && break
+            # `index("x")` — NOT `contains(["x"])`. jq's array `contains` does SUBSTRING matching on string
+            # elements, so a label merely CONTAINING the name (`skip-ai-review-exempt`,
+            # `no-skip-ai-review-here`) set SKIP_REVIEW=1 without anyone applying the real label — and
+            # auto-merge-ai-prs.yml already uses `index()`, so the two workflows classified the same PR
+            # differently. `index()` is exact. (Residual risk was narrow because the carry-forward branch
+            # below still demands an App-approved tree-matching commit, but the mismatch itself is a bug.)
+            SKIP_REVIEW=$(gh api "repos/$GH_REPO/pulls/$PR" --jq '[.labels[].name] | index("skip-ai-review") | if . != null then "1" else "" end' 2>/dev/null) && break
             [ "$n" -lt 4 ] && sleep $((n*3))
           done
 
@@ -196,17 +202,37 @@ jobs:
             echo "::warning::config.json read attempt $n failed: ${cfg_reason:-(no stderr captured)} — retrying"
             [ "$n" -lt 7 ] && sleep $(( n*3 < 20 ? n*3 : 20 ))
           done
+          # SCHEMA-VALIDATE BEFORE TRUSTING THE PARSE. `cfg_ok` above proves only that the READ returned
+          # non-empty BYTES — not that they parse. Without this gate the exemption below fires on ANY non-zero
+          # jq exit, and jq exits non-zero for reasons that are not "author absent":
+          #   author absent from a valid list -> exit 1  (the ONLY intended exemption)
+          #   malformed JSON                  -> exit 4  -> exemption fired -> PASS
+          #   valid JSON, .trust.ai_review renamed/absent -> exit 1 -> exemption fired -> PASS
+          # So one bad hand-edit to config.json on the default branch exempted EVERY author on EVERY PR —
+          # including trusted ones — silently turning this gate (the sole App-approval enforcement) green
+          # fleet-wide. The file's fail-closed contract above covers a broken READ; a broken PARSE is the
+          # same threat and must fail the same way. Mirrors auto-merge-ai-prs.yml's schema check, which
+          # already distinguishes "config malformed" from "PR genuinely not allowlisted".
+          # NB fail-closed here means ENFORCE (fall through), the OPPOSITE polarity to auto-merge's
+          # fail-closed `exit 0` — there "safe" is refuse-to-merge, here "safe" is refuse-to-exempt.
+          if [ -n "$cfg_ok" ] && ! jq -e '(.trust.ai_review | type == "array")' "$CFG" >/dev/null 2>&1; then
+            cfg_parse_err=$(jq -e '.' "$CFG" 2>&1 | head -3 | tr '\n' ' ' || echo "(jq error)")
+            echo "::warning::trusted config.json on '$DEFAULT_BRANCH' failed schema validation (expected .trust.ai_review to be an array) — fail-closed (enforcing the App-approval requirement). Fix the config; jq: ${cfg_parse_err}"
+            cfg_ok=
+          fi
           if [ -n "$cfg_ok" ]; then
             # Exempt (pass) ONLY a non-empty author who is not in the allowlist. An EMPTY author (the
             # workflow_run gh-api fetch exhausted its retries) must NOT earn the exemption — it falls through
             # to ENFORCE below, matching this file's fail-closed philosophy (a broken read never grants a
             # pass; a trusted author's real App approval still arrives and clears the check).
+            # Safe to treat a non-zero jq here as "author absent": the schema gate above has already proven
+            # the file parses AND that .trust.ai_review is an array, so exit 4 / missing-key are excluded.
             if [ -n "${AUTHOR:-}" ] && ! jq -e --arg a "$AUTHOR" '(.trust.ai_review // []) | index($a)' "$CFG" >/dev/null 2>&1; then
               echo "::notice::author ${AUTHOR} not in trust.ai_review — human-review-only; composition not enforced (pass)."
               exit 0
             fi
           else
-            echo "::warning::could not read trusted config.json from '$DEFAULT_BRANCH' after retries — fail-closed (enforcing the App-approval requirement)."
+            echo "::warning::could not read OR validate trusted config.json from '$DEFAULT_BRANCH' — fail-closed (enforcing the App-approval requirement). See the preceding warning for the specific cause (read miss vs schema failure)."
           fi
 
           # GOVERNANCE FLOOR (same globs as the ai-review gate). Governance-locked PRs are human-merge; this
