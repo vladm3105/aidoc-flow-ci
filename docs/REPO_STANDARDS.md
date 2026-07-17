@@ -484,11 +484,14 @@ shapes.
 | --- | --- | --- |
 | `ai:review-passed` | `ai-review.yml` | verdict = APPROVED; auto-merge armed |
 | `ai:review-changes` | `ai-review.yml` | verdict = CHANGES_REQUESTED; blocks merge |
+| `ai:review-infra-error` | `ai-review.yml` | Reviewer infrastructure failure — no verdict produced (not a code finding; re-run). `ci/v2.1.1`+ |
 | `ai:human-review-required` | `ai-review.yml` trust job | Fork PR or non-allowlisted author |
 | `skip-ai-review` | Operator (manual) | Re-fire the gate; carry-forward safe |
 
-Every tier that adopts `ai-review.yml` MUST create these 4 labels first
-(the workflow does not create them).
+Every tier that adopts `ai-review.yml` MUST create these 5 labels first
+(the workflow does not create them). The three verdict-outcome labels
+(`review-passed` / `review-changes` / `review-infra-error`) are mutually
+exclusive — the gate clears the other two whenever it sets one.
 
 ### 5.2 Diff-class labels (path-based, from OPS-0065 table)
 

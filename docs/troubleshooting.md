@@ -25,6 +25,7 @@ For the broader architecture, see
 | External lychee link check flakes on twitter/linkedin | [§9 Bot-hostile hosts](#9-lychee-flakes-on-bot-hostile-hosts) |
 | Reviewer CLI / `codex` not found on runner (ci/v1.x) | [§10 Cut over to LiteLLM (ci/v2.0.0)](#10-public-consumer-ai-connectivity) |
 | ai-review LiteLLM URL/key error or cannot connect | [§10 Public-consumer AI connectivity](#10-public-consumer-ai-connectivity) |
+| ai-review fails on a *large* PR with `ResponseShapeError` | [§10 Public-consumer AI connectivity](#10-public-consumer-ai-connectivity) |
 | Markdownlint says MD024/no-duplicate-heading | [§11 Markdownlint MD024](#11-markdownlint-md024no-duplicate-heading) |
 | Rebase conflict on shared CHANGELOG.md | [§12 CHANGELOG rebase conflicts](#12-changelog-rebase-conflicts-on-stacked-prs) |
 | Reusable workflow `startup_failure` (no logs, empty jobs) | [§13 Actions allowlist blocks reusable](#13-startup_failure--reusable-workflow-blocked-by-consumers-actions-allowlist) |
@@ -282,6 +283,28 @@ model alias is absent, or the runner cannot route to the proxy.
 
 **Fix:** Set both LiteLLM secrets, ensure `litellm.model` names a configured
 proxy alias, and verify the runner can reach `${LITELLM_BASE_URL}/models`.
+
+**Symptom C — ai-review fails on a *large* PR with `litellm: proxy request
+failed after 3 attempts: ResponseShapeError` (small PRs pass):**
+
+**Cause:** the reviewer model's *reasoning* tokens count against the completion
+`max_tokens`. On a big diff the model spends the budget reasoning and gets cut
+off mid-JSON; the strict verdict parser (fail-closed by design) rejects the
+truncated response, retries 3×, and `exit 1` — an opaque red required check that
+blocks merge even when every other check is green. This is a reviewer-
+infrastructure limit, **not** a code finding.
+
+**Fixed in `ci/v2.1.1`+ (budget raised to 24576 in `ci/v2.1.2`).** The verdict-
+mode `max_tokens` default was raised (4096 → 8192 → 24576) so the completion
+finishes on diffs up to the 400 KB input ceiling. **Re-pin the consumer to
+`ci/v2.1.2` or later** — that resolves it fleet-wide.
+
+**If it recurs on `ci/v2.1.1`+** (a diff whose verdict genuinely needs more than
+the budget): the gate now surfaces it *honestly* as the `ai:review-infra-error`
+label + a "re-run" comment (not a fake `CHANGES_REQUESTED`). Options:
+`skip-ai-review` (or `--admin`) to unblock the individual PR; raise the budget
+per-repo without a canon edit via the `LITELLM_MAX_TOKENS` env (client validator
+caps it at 32768); or split the PR. See `plans/PLAN-011_ai-review-large-diff-hardening.md`.
 
 ## 11. Markdownlint MD024/no-duplicate-heading
 
