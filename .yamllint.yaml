@@ -1,0 +1,22 @@
+# Canon's yamllint profile — the single source of truth for BOTH the CI lint
+# gate (tests/test_lint.sh) and the local pre-push hook
+# (scripts/pre_push_check.sh, which reads `.yamllint.yaml` when present).
+#
+# Relaxed to match how canon's CI has always run: workflow + SDD YAML carries
+# long lines (descriptions, JSON-array runner_labels) and comment/indentation
+# styles yamllint's defaults flag. Without this file the pre-push hook ran BARE
+# yamllint (80-char default) and FAILED on canon's own main — stricter than the
+# CI gate it is supposed to mirror (FT-14). This file makes the hook and CI
+# agree.
+extends: relaxed
+rules:
+  line-length: disable
+  document-start: disable
+  truthy: disable
+  comments: disable
+  comments-indentation: disable
+  empty-lines: disable
+  trailing-spaces: disable
+  indentation: disable
+  brackets: disable
+  new-line-at-end-of-file: disable
