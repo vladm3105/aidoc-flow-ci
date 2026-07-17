@@ -61,7 +61,14 @@ SH
 chmod +x "$TMP/wizard-gh"
 GH="$TMP/wizard-gh" bash "$ROOT/install/deploy-ci-wizard.sh" scaffold owner/repo "$TMP/scaffold" ai-review composition doc-maintainer >/dev/null
 assert_ok "jq -e '.litellm.model == \"ai-reviewer\" and .trust.ai_review == [\"owner\"]' '$TMP/scaffold/.github/ai-review/config.json' >/dev/null" "wizard renders trusted LiteLLM config without placeholders"
-assert_ok "grep -q '@ci/v2.0.0' '$TMP/scaffold/.github/workflows/ai-review.yml' && grep -q 'model: ai-doc-maintainer' '$TMP/scaffold/.github/workflows/doc-maintainer.yml'" "wizard emits coherent v2 LiteLLM callers"
+# Read the expected pin from VERSION rather than hardcoding it: a literal
+# `@ci/vX.Y.Z` here is the same hand-bump-per-release drift class that left
+# VERSION + CI_TAG_FALLBACK at v2.0.0 after the v2.0.1 cut (see
+# tests/test_version_sync.sh). Asserting against VERSION makes this test verify
+# the invariant that matters — "the wizard scaffolds at the current release" —
+# instead of freezing one tag string that must be remembered.
+_EXPECT_TAG="$(tr -d '[:space:]' < "$ROOT/VERSION")"
+assert_ok "grep -q '@${_EXPECT_TAG}' '$TMP/scaffold/.github/workflows/ai-review.yml' && grep -q 'model: ai-doc-maintainer' '$TMP/scaffold/.github/workflows/doc-maintainer.yml'" "wizard emits coherent v2 LiteLLM callers (pinned at VERSION=${_EXPECT_TAG})"
 
 echo "== LiteLLM OpenAI-compatible adapter =="
 assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'

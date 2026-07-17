@@ -23,8 +23,8 @@
 #                                 [--codeowner <handle>] [--canon-*-url <url>]
 #   Re-pin (version-only tag bump; preserves all customization — use this for a
 #   re-pin, NEVER --update which re-applies the template body; FT-9):
-#   CI_TAG=ci/v2.0.0 bash install.sh <owner/repo> --repin
-#   CI_TAG=ci/v2.0.0 bash install.sh <owner/repo> --visibility private
+#   CI_TAG=ci/v2.0.1 bash install.sh <owner/repo> --repin
+#   CI_TAG=ci/v2.0.1 bash install.sh <owner/repo> --visibility private
 #
 # De-branding flags (PLAN-004 D2) let an external org adopt the canon
 # without vladm3105/aidoc-flow-operations hardcoded. Placeholders in the
@@ -107,8 +107,12 @@ done
 
 # Resolve the pinned CI tag. Precedence (PLAN-004 §4.4): CI_TAG env >
 # VERSION file (repo-local only) > hardcoded fallback. The fallback is
-# bumped on every release cut so consumers who don't set CI_TAG get a
-# frozen tag (not the moving `main`).
+# kept at the current release by `scripts/sync-version-refs.sh` (it is NOT
+# hand-bumped — it was, and the ci/v2.0.1 cut forgot it, leaving every
+# CI_TAG-less `--repin` writing ci/v2.0.0 onto consumers already on v2.0.1,
+# i.e. silently pinning the fleet BACKWARDS onto known-fixed bugs).
+# `tests/test_version_sync.sh` asserts VERSION == CI_TAG_FALLBACK == the
+# latest published ci/v* tag, so the drift cannot recur silently.
 #
 # VERSION is read ONLY from the script's own directory when running from a
 # checkout. In process-substitution mode (`bash <(curl …)`) $0/BASH_SOURCE
@@ -116,7 +120,7 @@ done
 # and the hardcoded fallback is authoritative — that is expected and correct.
 # The startup log below names the winning source so a stale CI_TAG env var in
 # a consumer's CI caller silently overriding VERSION is diagnosable.
-CI_TAG_FALLBACK="ci/v2.0.0"
+CI_TAG_FALLBACK="ci/v2.0.1"
 if [ -n "${CI_TAG:-}" ]; then
   CI_TAG_SOURCE="CI_TAG env"
 else

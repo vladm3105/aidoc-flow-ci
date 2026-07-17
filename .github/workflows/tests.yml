@@ -26,6 +26,12 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          # fetch-tags so tests/test_version_sync.sh can compare VERSION against
+          # the latest published ci/v* tag. Without it the default shallow clone
+          # has no tags, that assertion silently skips, and the guard greens on
+          # the exact VERSION/tag drift it exists to catch — a check that checks
+          # nothing. fetch-depth: 0 pulls full history + all tags.
+          fetch-depth: 0
 
       - name: Install lint tools
         run: |
