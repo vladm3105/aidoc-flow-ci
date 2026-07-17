@@ -5,7 +5,16 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-_(nothing yet)_
+### Changed — ai-review verdict budget raised 8192 → 24576 (PLAN-011 follow-up, 2026-07-17)
+
+- **`scripts/litellm_client.py`:** the verdict-mode `max_tokens` default is now
+  **24576** (was 8192). Live-probed: `deepseek-v4-pro` accepts far more (32768 and
+  65536 both return HTTP 200), so the practical ceiling is this client's own
+  32768 validator. A typical complex 45-file verdict uses only ~2.3k tokens, but
+  reasoning-token counts spike non-deterministically — the extra headroom covers a
+  heavy-reasoning spike on a near-400 KB diff. Costs nothing extra (per-actual-token
+  billing; `finish_reason` is normally `stop`); `LITELLM_MAX_TOKENS` can still
+  reach the 32768 cap. Verified end-to-end against the live model.
 
 ## ci/v2.1.1 — 2026-07-17
 

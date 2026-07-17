@@ -160,13 +160,13 @@ os.environ['LITELLM_BASE_URL'] = 'https://proxy.example/v1'
 os.environ['LITELLM_API_KEY'] = 'test-key'
 os.environ.pop('LITELLM_MAX_TOKENS', None)
 module.completion('r', model='ai-reviewer', json_mode=True, timeout=30, verdict_mode=True)
-assert seen['payload']['max_tokens'] == 8192, seen['payload']['max_tokens']
+assert seen['payload']['max_tokens'] == 24576, seen['payload']['max_tokens']
 module.completion('r', model='ai-reviewer', json_mode=True, timeout=30)
 assert seen['payload']['max_tokens'] == 4096, seen['payload']['max_tokens']
 os.environ['LITELLM_MAX_TOKENS'] = '3000'
 module.completion('r', model='ai-reviewer', json_mode=True, timeout=30, verdict_mode=True)
 assert seen['payload']['max_tokens'] == 3000, seen['payload']['max_tokens']
-PY" "verdict mode budgets 8192 tokens (vs 4096 plain); LITELLM_MAX_TOKENS overrides"
+PY" "verdict mode budgets 24576 tokens (vs 4096 plain); LITELLM_MAX_TOKENS overrides"
 
 # PLAN-011 F1/F2 (SECURITY LOCK): the strict parser was NOT loosened. It must
 # still REJECT prose-wrapped and multi-object completions — a reasoning model's

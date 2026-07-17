@@ -206,7 +206,7 @@ confirmed correct.**
 - **PC-1 (model output cap) — PASS.** `max_tokens=8192` with `response_format:
   json_object` → **HTTP 200**, `finish_reason: stop`, clean JSON in `content`. No
   non-retryable 400. The one assumption that could red-check every PR is
-  disproven; 8192 is safe (could go higher, but 8192 is confirmed-good).
+  disproven. Follow-up (2026-07-17): probed higher — 32768 and 65536 also return HTTP 200, so the model's cap is above this client's 32768 validator; the verdict default was raised 8192 → 24576 for headroom against reasoning spikes on large diffs.
 - **PC-2 (completion time) — PASS.** A 205 KB / 45-file diff verdict completed in
   **31–42s** — well inside `--timeout 900` (≈300s/attempt). Ample margin.
 - **Exit criterion — PASS.** The actual client (`--verdict`, 8192 default) produced
