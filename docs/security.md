@@ -128,7 +128,7 @@ Consumer callers typically use:
 ```yaml
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.0.1
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.1.0
     secrets: inherit   # passes all consumer-repo secrets to reusable
 ```
 

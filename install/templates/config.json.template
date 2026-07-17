@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.0.1/schemas/ai-review-config-v2.schema.json",
+  "$schema": "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.1.0/schemas/ai-review-config-v2.schema.json",
   "version": 2,
   "_note": "ENFORCED: trust.ai_review, trust.auto_fix, litellm.model, auto_merge.repos. The LiteLLM model alias, auto_merge.repos, and trust.auto_fix are resolved from the TRUST-CONFIG repo (operations@main by default), not the PR branch. See DECISIONS.md CI-0005.",
   "litellm": {
