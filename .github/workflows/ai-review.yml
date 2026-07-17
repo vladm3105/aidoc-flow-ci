@@ -804,7 +804,7 @@ jobs:
                 # The `if cmd; then ...; else ...; fi` form exempts the cmd from
                 # set -e (bash documented behavior) so non-zero exits flow into the
                 # fallback branch cleanly.
-                if merge_err=$(GH_TOKEN="$APP_TOKEN" gh pr merge "$PR" --auto --merge 2>&1); then
+                if merge_err=$(GH_TOKEN="$APP_TOKEN" gh pr merge "$PR" --auto --squash 2>&1); then
                   merge_rc=0
                 else
                   merge_rc=$?
@@ -819,7 +819,7 @@ jobs:
                 # Capture the actual failure reason so operators don't have to dig.
                 reason=$(printf '%s' "$merge_err" | head -3 | tr '\n' ' ' | head -c 240)
                 echo "::warning::auto-merge falling back to GITHUB_TOKEN (App-path rc=$merge_rc, reason: ${reason:-unknown}). Downstream push: workflows (docs-sync.yml, etc.) will NOT fire on the merge commit per GitHub anti-recursion. To restore push: workflow firing, grant the reviewer App \`contents: write\` permission at https://github.com/settings/apps/aidoc-reviewer (Permissions → Repository permissions → Contents: Read and write)."
-                gh pr merge "$PR" --auto --merge || true
+                gh pr merge "$PR" --auto --squash || true
                 echo "Review clean — auto-merge enabled (GITHUB_TOKEN fallback; push: workflows suppressed)."
               fi
             else

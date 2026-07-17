@@ -5,6 +5,149 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Security — `secret-scan` proves the consumer's gitleaks config can detect (2026-07-16)
+
+- **`.github/workflows/secret-scan.yml`** + **`docs/REPO_STANDARDS.md` §4.3a**:
+  `config-path` was passed straight to `gitleaks --config` with **no
+  validation**. A consumer `.gitleaks.toml` declaring an `[allowlist]` but
+  neither `[extend] useDefault = true` nor its own `[[rules]]` has **zero
+  rules** — it finds zero secrets and exits 0: **a green required check that
+  scans nothing**. The failure is silent and inverted: a consumer wires
+  `config-path` to quiet a red gate, the gate goes green, and the repo ends up
+  with *less* scanning than the default it replaced. Rule-less gitleaks configs
+  do occur here — the iplan-runner note in `plans/FRAMEWORK-TODO.md` records a
+  repo whose standalone gitleaks was already rule-less and no-op.
+- **Fix:** before the real scan, `secret-scan` now runs the resolved config
+  against a planted-credential canary and **fails the job if the config detects
+  nothing**. New **`validate-config`** input (default `true`) opts out, for a
+  repo whose custom `[[rules]]` deliberately don't cover AWS/GitHub credentials.
+- **Scope of the claim:** this proves the ruleset is non-empty. It does NOT
+  prove the scan covers the repo — real rules plus a broad `[allowlist] paths`
+  can still hide a live secret, which is a deliberate consumer choice canon does
+  not override. The pass message and §4.3a say so rather than implying the gate
+  is proven to scan.
+- **gitleaks' exit codes are ambiguous, so the canary reads the log too.** A
+  missing or malformed config exits **1** — identical to "leaks found" — so
+  treating any non-zero as success would report a broken config as a passing
+  canary; that case is now a hard error quoting gitleaks' own message. And
+  `rc=0` plus a `global allowlist` debug line means the consumer's allowlist
+  matched the canary's own path: that proves nothing about the ruleset, so it is
+  reported **INCONCLUSIVE** rather than failed. Red-gating a correct config
+  would predictably drive consumers to `validate-config: false`, leaving them
+  worse off than before this check existed.
+- **Behaviour is validated, not TOML text.** Measured against gitleaks 8.30.1, a
+  `grep -qE '^\[extend\]|^\[\[rules\]\]'` guard fails **both** ways: it rejects
+  the valid inline form `extend = { useDefault = true }` (which detects fine) and
+  admits `[extend]` + `disabledRules` with no `useDefault` (which detects
+  nothing). Only executing the scanner separates them. Recorded in §4.3a so the
+  cheaper-looking fix isn't re-proposed.
+- **Canary fixtures must be verified-detectable:** `AKIA…7EXAMPLE` is allowlisted
+  by gitleaks' *own* default ruleset and is NOT detected even under
+  `useDefault` — a canary built from it silently passes rule-less configs. The
+  shipped fixtures are built by runtime concatenation (so this workflow's source
+  carries no matchable secret) and are verified to fire.
+- Consumer impact: a repo passing `config-path` to a rule-less config sees
+  `call / gitleaks` go **red** with a message naming the fix. That check was
+  never scanning anything.
+
+### Fixed — `check-drift.sh` covered 2 of 12 reusables (FT-8, 2026-07-16)
+
+- **`sync/check-drift.sh`**: the loop was hardcoded to
+  `for wf in ai-review composition`, so a consumer's `labeler`, `links`,
+  `pre-commit`, `secret-scan`, `codeql`, `audit-trail`, `doc-maintainer`,
+  `auto-merge-ai-prs`, `markdown-lint` and `docs-sync` callers were **never**
+  compared against canon — drift was structurally invisible to the tool whose
+  job is finding drift. The loop is now driven by the consumer's own pinned
+  callers and resolved through `manifest.json` **fetched at each caller's own
+  pin**, preserving the PR-A2 per-caller pin frame and the warning-only
+  contract. A newly-added canon workflow needs no edit here.
+- Verified: on a consumer carrying three real drifts, the old script reported
+  **"no drift"**; the new one flags all three.
+- **`install/templates/manifest.json`: `audit-trail` was never manifested.** It
+  ships `-public`/`-private` templates and is deployed on every consumer (it is
+  the OPS-0069 gate), but had no manifest entry — so manifest-driven tooling
+  (`install.sh --update` and now `check-drift.sh`) skipped it entirely. It was
+  the only such omission across the template set. Coverage is the manifest's
+  workflow surface, **not** "every canon workflow"; the header says so rather
+  than restating an unmeasured claim.
+- **Skips are now loud.** A drift tool that reports a pass over files it never
+  opened is the same defect class as a secret-scan that greens while scanning
+  nothing, so: every uncompared caller emits a `::warning::` and increments a
+  skip counter; the verdict carries its denominator
+  (`compared N of M canon caller(s); S skipped`); and the words "no drift" are
+  gated on `SKIPPED == 0`. Previously "no drift" printed even when zero files
+  were compared — byte-identical to a healthy repo, under a green check.
+- **A canon caller pinned to a branch or bare SHA is now reported**, not
+  silently treated as consumer-owned, and the outer guard matches `@<anything>`
+  so a repo whose callers are *all* branch-pinned no longer exits "nothing to
+  check". No consumer is in that state today (every canon `uses:` across the
+  fleet is clean semver) — this closes the path, it does not fix a live break.
+  Note it does NOT cover iplanic's unresolvable pin (FT-13): that reference is a
+  `curl` inside a `run:` step, not a `uses:`, so there is no `@ref` to scan.
+- Scope limits now stated in the header instead of being silent: non-pinned
+  surfaces (`CODEOWNERS`, `CLAUDE.md`, `pre_push_check.sh`, …) have no tag for a
+  per-pin tool to resolve and are `apply-standards.sh --check`'s job; templates
+  with `substitute` placeholders are skipped (a raw diff would false-flag them);
+  callers pinned below `ci/v1.7.0` predate `manifest.json` and are reported as
+  skipped, never as clean.
+
+### Fixed — `audit-trail-check` bot exemption now precedes the git guard (2026-07-16)
+
+- **`.github/workflows/audit-trail-check.yml`**: the `exit 1` on an unreachable
+  `BASE_SHA` ran **before** the trusted-bot exemption, so a bot PR could fail a
+  check it was meant to skip entirely. Bot identity comes purely from GitHub PR
+  metadata (`pull_request.user.type`) and does not depend on git history, so the
+  exemption now runs first — matching the documented priority ("trusted bot →
+  skip check entirely"). Narrow in practice (it needs a bot PR *and* an
+  unreachable base, and trusted bots open same-repo PRs), and the old behaviour
+  was fail-closed with a diagnostic, not a hole.
+
+### Docs — §4.3 allowed-actions rule corrected; two stale headers fixed (2026-07-16)
+
+- **`docs/REPO_STANDARDS.md` §4.3**: stated that the three-pattern canon rule was
+  "the same allowed-actions allowlist every consumer sets" and that a reusable
+  wrapping **ANY** third-party action is "BLOCKED at run-init →
+  `startup_failure`". Both are false against the template the same sentence
+  cites: `install/templates/actions-permissions.json:17` also sets
+  `verified_allowed: true`, so the **deployed** boundary is
+  `github_owned_allowed + verified_allowed + patterns_allowed` — the whole
+  GitHub-verified marketplace. A **non-verified** creator's action is blocked at
+  run-init (web-UI-only, no logs); a **verified** creator's action is **admitted
+  and runs**. The three incidents that produced the rule (`gacts/*`,
+  `lycheeverse/*`, `DavidAnson/*`) are all non-verified, so the rule held by
+  accident of which actions were tried. §4.3 now separates the **canon authoring
+  rule** (deliberately stricter — keep it) from the **deployed boundary**, and
+  warns that reasoning "third-party ⇒ startup_failure" misdiagnoses failures.
+- **The same false universal is corrected everywhere it appeared**, not just in
+  §4.3: `secret-scan.yml` + `markdown-lint.yml` headers, `docs/WORKFLOWS.md`,
+  `docs/security.md`, `docs/AI_CI_DEPLOYMENT.md`, `docs/troubleshooting.md` §13.
+- **`docs/troubleshooting.md` §13 prescribed a fix that drifts consumers OFF
+  canon.** Its unblock command set `-F verified_allowed=false` while the shipped
+  `actions-permissions.json` sets `true`, so following the runbook produced
+  drift that `apply-standards.sh --check` would then flag. It also dropped
+  `actions/*` + `github/*` from `patterns_allowed`. The command now matches the
+  template exactly, and §13 explains that selected-actions fields are additive —
+  a `startup_failure` means the action matched *none* of the three, not that
+  third-party actions are blocked in general.
+- **`sync/check-standards-drift.sh`**: header said it "ALWAYS exits 0",
+  contradicting `--strict` and the §4.3 rule that adoption validation MUST use
+  it. The stale line led a reader to conclude canon ships no way to gate on
+  drift; it already does.
+- **`install/apply-standards.sh`**: header still said "PR-B2 ships the
+  NON-MUTATING modes only … PR-C adds `--apply`". PR-C landed; `--apply` is
+  implemented.
+- **`.github/workflows/standards-drift.yml`**: the fleet pin-currency step
+  claimed private repos are "covered by their OWN weekly standards-drift run,
+  which chains check-pin-currency.sh in-repo". That is true for `operations`
+  (`check-standards-drift.sh` chains pin-currency itself, so a caller gets it
+  transitively) and false for the other three: `business` + `interlog` have no
+  caller, and `iplanic`'s pins `e15ec7d…` — the annotated TAG OBJECT of
+  `ci/v1.6.0`, not a commit, which raw.githubusercontent has never served, so
+  that caller has never worked. Measured 2026-07-16 —
+  every private run has been failing since 2026-07-13, so none is presently
+  producing a signal, for differing reasons. Comment now states the measurement;
+  tracked as **FT-13**.
+
 ### Decision — runner-label naming deferred to a future major (CI-0007, 2026-07-16)
 
 - **`DECISIONS.md` CI-0007** + a **`LABELS.md`** §2 pointer: a proposed rename of

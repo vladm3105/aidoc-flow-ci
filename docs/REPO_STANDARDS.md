@@ -264,14 +264,41 @@ template body, reviewing each drift.
 ### 4.3 Reusable workflows install tools as BINARIES, never third-party actions
 
 **Canon reusable workflows may `uses:` only `actions/*`, `github/*`, and
-`vladm3105/aidoc-flow-ci/*`** — the same allowed-actions allowlist every
-consumer sets (§4, `install/templates/actions-permissions.json`). A reusable
-that wraps ANY third-party marketplace action (`gacts/gitleaks`,
-`lycheeverse/lychee-action`, `DavidAnson/markdownlint-cli2-action`, …) is
-**BLOCKED at run-init → `startup_failure`** on every consumer — no logs, no
-API error (the message is web-UI-only; `actionlint` does NOT catch it). This
-silently bricked `secret-scan` (fixed v1.9.2), `links`, and `markdown-lint`
-(both fixed v1.9.4).
+`vladm3105/aidoc-flow-ci/*`.** This is a **canon-side authoring rule**, and it
+is deliberately **stricter than the boundary the fleet actually enforces** —
+do not "relax" it to match the deployed allowlist.
+
+**The deployed boundary is wider.** `install/templates/actions-permissions.json`
+sets three _additive_ fields, not one list:
+
+| Field | Value | Admits |
+| --- | --- | --- |
+| `github_owned_allowed` | `true` | every `actions/*` + `github/*` action |
+| `verified_allowed` | `true` | **every action by a GitHub-verified creator** (`aquasecurity`, `docker`, `hashicorp`, …) |
+| `patterns_allowed` | 3 patterns | `vladm3105/aidoc-flow-ci/*`, `actions/*`, `github/*` |
+
+So a third-party action's fate at run-init depends on **who publishes it**:
+
+- **Non-verified creator** (`gacts/gitleaks`, `lycheeverse/lychee-action`,
+  `DavidAnson/markdownlint-cli2-action`) → **BLOCKED at run-init →
+  `startup_failure`** — no logs, no API error (the message is web-UI-only;
+  `actionlint` does NOT catch it). This silently bricked `secret-scan` (fixed
+  v1.9.2), `links`, and `markdown-lint` (both fixed v1.9.4).
+- **Verified creator** → **admitted, and runs.** It does not `startup_failure`.
+  Any later failure (a bad tag, a runtime error) surfaces normally, with logs.
+
+**Do not reason from "third-party ⇒ `startup_failure`" — that generalization is
+false, and it misdiagnoses failures.** A verified-creator action that fails at
+tag resolution produces `##[error]Unable to resolve action …`, which looks
+nothing like the allowlist block and is not one. Read the repo's actual
+`actions/permissions/selected-actions` before attributing any failure to the
+allowlist.
+
+The canon authoring rule stands on its own merits — it keeps canon's supply
+chain to sources this workspace controls or GitHub itself owns, without relying
+on GitHub's verification programme as a trust boundary. Widening canon to the
+verified marketplace is a **decision to take deliberately**, not a conclusion to
+reach from the fact that the deployed allowlist already permits it.
 
 **Pattern:** install the tool directly in a `run:` step —
 
@@ -285,8 +312,10 @@ silently bricked `secret-scan` (fixed v1.9.2), `links`, and `markdown-lint`
 
 Map every consumer-controlled input to `env:` (never interpolate `${{ }}`
 into the shell) so a hostile input value cannot inject an expression. When
-authoring or reviewing a canon workflow, verify every `uses:` is on the
-allowlist.
+authoring or reviewing a canon workflow, verify every `uses:` is on the **canon
+authoring allowlist** above (`actions/*`, `github/*`,
+`vladm3105/aidoc-flow-ci/*`) — NOT the wider deployed allowlist. A verified-
+creator action passing run-init is not evidence that it belongs in canon.
 
 Downloaded executables MUST be version-pinned and checked against a hard-coded
 upstream SHA-256 before extraction or execution. Language-installed CI tools
@@ -304,6 +333,60 @@ single pattern works on GitHub-hosted and self-hosted ephemeral runners.
 `sync/check-standards-drift.sh` remains warning-only for scheduled observation,
 but release and adoption validation MUST invoke `--strict`, which fails on
 settings drift, stale pins, fetch errors, or controls that cannot be verified.
+
+#### 4.3a A consumer `.gitleaks.toml` MUST declare rules — canon proves the ruleset is non-empty
+
+A gitleaks config that declares an `[allowlist]` but neither `[extend]
+useDefault = true` nor its own `[[rules]]` has **zero rules**. It finds zero
+secrets and exits 0: a **green required check that scans nothing**. The failure
+is silent and inverted — a consumer wires `config-path` to quiet a red gate, the
+gate goes green, and the repo now has _less_ scanning than the default it
+replaced.
+
+**Rule:** any `.gitleaks.toml` passed to `secret-scan.yml`'s `config-path` MUST
+declare `[extend] useDefault = true` (keeping the consumer's `[allowlist]`
+alongside it) or its own `[[rules]]`. `secret-scan.yml` enforces this: before
+the real scan it runs the resolved config against a planted-credential canary
+and fails the job if the config detects nothing. `validate-config: false` opts
+out, and is defensible ONLY for a repo whose custom `[[rules]]` deliberately do
+not cover AWS/GitHub credentials — record the reason on the caller.
+
+**Scope of the guarantee — state it precisely.** The canary proves the ruleset
+is **non-empty**. It does NOT prove the scan covers the repository: a config
+with real rules plus a broad `[allowlist] paths` can still hide a live secret,
+and canon does not override that — a repo-owned allowlist is the documented,
+supported way to suppress a false positive. So "the canary passed" means "this
+config can detect something", not "this gate would catch your leak". Both the
+pass message and the workflow comment say so; do not paraphrase them into the
+stronger claim.
+
+**Three outcomes, not two.** gitleaks' exit codes do not separate these on
+their own, so `secret-scan` reads the debug log as well:
+
+| Outcome | Meaning | Job |
+| --- | --- | --- |
+| **passed** | the config detected the planted credential | continues |
+| **INCONCLUSIVE** | the consumer's `[allowlist]` matches even a randomized canary path, i.e. it is effectively universal — rule-effectiveness is unprovable | continues, with a `::warning::` |
+| **error** | the config is missing/malformed (`unable to load gitleaks config`), or it detected nothing at a randomized path | fails |
+
+The INCONCLUSIVE case must **not** fail. A correct config whose allowlist
+happens to match the canary would otherwise be red-gated, and the predictable
+consumer response is `validate-config: false` — which disables the check
+permanently and leaves the repo worse off than before it existed. A guard whose
+false-positive drives people to switch it off is a net negative.
+
+**Validate config BEHAVIOUR, never config TEXT.** Grepping the TOML for
+`^\[extend\]` was measured (gitleaks 8.30.1) to fail in both directions: it
+rejects the valid inline form `extend = { useDefault = true }`, which detects
+correctly, and admits `[extend]` + `disabledRules` with no `useDefault`, which
+detects nothing. Only executing the scanner distinguishes them.
+
+**Canary fixtures must be verified-detectable.** The well-known
+`AKIA…7EXAMPLE` key is allowlisted by gitleaks' own default ruleset and is NOT
+detected even under `useDefault = true` — a canary built from it passes
+rule-less configs and proves nothing. Build canary credentials by
+concatenation at runtime so the workflow source carries no matchable secret,
+and confirm the fixture fires under `useDefault` before trusting it.
 
 ### 4.4 `markdown-lint` config template (`install/templates/.markdownlint.json`)
 

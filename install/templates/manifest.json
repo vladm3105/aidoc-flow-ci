@@ -34,6 +34,15 @@
       "auto_install": true
     },
     {
+      "path": ".github/workflows/audit-trail.yml",
+      "template": "workflows/audit-trail-public.yml",
+      "visibility_variants": {"public": "workflows/audit-trail-public.yml", "private": "workflows/audit-trail-private.yml"},
+      "substitute": [],
+      "safe_to_replace": true,
+      "_note": "OPS-0069 gate. Shipped as a template but NOT manifested until 2026-07-16, so manifest-driven tooling (install.sh --update, sync/check-drift.sh) skipped it entirely. auto_install=false matches every non-bootstrap surface (bootstrap installs only ai-review+composition); adoption is via deploy-ci-wizard. Absence is therefore NOT evidence of consumer choice for this surface the way it is for optional ones — nothing currently checks that.",
+      "auto_install": false
+    },
+    {
       "path": ".github/workflows/auto-merge-ai-prs.yml",
       "template": "workflows/auto-merge-ai-prs-public.yml",
       "visibility_variants": {"public": "workflows/auto-merge-ai-prs-public.yml", "private": "workflows/auto-merge-ai-prs-private.yml"},

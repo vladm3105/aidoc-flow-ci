@@ -170,6 +170,45 @@ step to `install.sh` (fetch + `substitute_placeholders` + write
 
 ### FT-8 — migrate `sync/check-drift.sh` onto `manifest.json` (PLAN-004 PR-E2)
 
+**RESOLVED (2026-07-16).** `sync/check-drift.sh` no longer hardcodes
+`for wf in ai-review composition`. The loop is now driven by the consumer's own
+pinned callers under `.github/workflows/*.yml` and resolved through
+`manifest.json` **fetched at each caller's own pin** (preserving the PR-A2
+per-caller pin frame — a mid-bump consumer must not be judged against a newer
+caller's canon), with the warning-only contract intact. A newly-manifested canon
+workflow is drift-checked without editing the script.
+
+Verified against a simulated consumer: the old script reported **"no drift"** on
+a consumer carrying three real drifts (`labeler` + `secret-scan` `concurrency`
+block dropped, `pre-commit` `push:main` trigger dropped — the exact drifts the
+filing reported as invisible); the new script flags all three by name.
+
+**Coverage is the manifest's workflow surface, not "every canon workflow"** —
+and the distinction was load-bearing: `audit-trail` shipped `-public`/`-private`
+templates but had **no manifest entry**, so the OPS-0069 gate (deployed on 9/9
+repos) resolved to nothing and was reported as an unknown caller. It was the only
+such omission across the template set; `install/templates/manifest.json` now
+manifests it, which also brings it into `install.sh --update`'s walk. Do not
+restate coverage as complete without re-measuring against `manifest.json`.
+
+The reporting contract was tightened in the same pass, because a drift tool that
+reports a pass over files it never opened is the same defect class as the
+secret-scan that greens while scanning nothing: every uncompared caller now
+emits a `::warning::` and increments a skip counter, the verdict carries its
+denominator (`compared N of M; S skipped`), and the words "no drift" are gated
+on `SKIPPED == 0`. A canon caller pinned to a branch or bare SHA — previously
+classified as consumer-owned and skipped in total silence — is now reported as
+an unpinned canon caller. (This does not reach FT-13's unresolvable iplanic pin:
+that is a `curl` in a `run:` step, not a `uses:`, so no `@ref` exists to scan.)
+
+Scope limits are stated in the script header rather than left silent: non-pinned
+canon surfaces (`.markdownlint.json`, `CODEOWNERS`, `CLAUDE.md`,
+`scripts/pre_push_check.sh`, …) carry no tag for this per-pin tool to resolve
+them at and are `apply-standards.sh --check`'s job; templates with `substitute`
+placeholders are skipped (a raw diff would false-flag them); callers pinned
+below `ci/v1.7.0` predate `manifest.json` and are reported as skipped, never as
+clean.
+
 **Found:** 2026-07-09, PLAN-004 PR-E (update path). PR-E shipped
 `install/templates/manifest.json` + `install.sh --update` consuming it, but
 scoped OUT the `sync/check-drift.sh` rewrite to keep the PR reviewable.
@@ -324,3 +363,119 @@ independent of the arming act:
 - **interlog `call / composition` conditionality.** Armed but did not emit on
   its latest PR (path-filtered?). Confirm composition posts on every PR or
   reclassify it non-required.
+
+### FT-13 — private-repo standards-drift callers are broken; one pins an unresolvable SHA
+
+**Found:** 2026-07-16, triaging the `llm-router` flowci-feedback filing.
+**Surfaces:** `.github/workflows/standards-drift.yml` (fleet pin-currency step);
+the consumer-side callers in operations / business / iplanic / interlog.
+
+**The mechanism exists.** `sync/check-standards-drift.sh` chains
+`check-pin-currency.sh` itself (uses `sync/check-pin-currency.sh` if present
+locally, else `curl`s it from `${CI_TAG}`), so a private repo running
+standards-drift gets pin-currency transitively without naming it in the caller.
+Canon's own fleet audit cannot cover the private repos — `GITHUB_TOKEN` cannot
+read private repo contents — so the per-repo run is the intended path.
+
+**Verified facts (2026-07-16). Only these; see the caution below.**
+
+1. **`business` and `interlog` have no `standards-drift.yml` at all** — so they
+   get no drift and no pin-currency signal from any source.
+2. **`iplanic`'s caller pins a SHA that can never resolve.**
+   `e15ec7d44234726195da316a740ad1684a2c5abd` is the **annotated tag object** of
+   `ci/v1.6.0`, not a commit: `gh api repos/…/commits/e15ec7d…` returns `422 No
+   commit found`, and raw.githubusercontent has never served it (HTTP 404). The
+   commit the tag dereferences to is `e827ab8268917ea4a81a0b8ddbc59eace702f7ed`,
+   which serves HTTP 200 today. So this is a **permanent authoring bug, not
+   decay** — the caller has never worked, and "re-pin it to a live tag" is the
+   wrong fix. The right one is to deref the tag
+   (`gh api repos/<r>/git/refs/tags/<tag> --jq '.object.sha'` returns the TAG
+   object for an annotated tag; dereference via `git/tags/<sha> --jq
+   '.object.sha'`, or just pin the tag name).
+3. **Every private standards-drift run on record has failed** (latest:
+   2026-07-13). None is presently producing a signal.
+
+**Caution — this entry has now been wrong three times; do not add a fourth
+without measuring.** (a) The original comment claimed the private four were
+"covered by their OWN weekly run, which chains check-pin-currency.sh in-repo" —
+true for operations, false for the rest. (b) Its first correction over-swung to
+"none of them chains pin-currency" — false for operations; that measurement
+grepped only the caller YAML and missed the chain one level down, inside the
+script the caller invokes. (c) Its second correction attributed operations'
+2026-07-13 failure to its current checkout-based caller — but that caller was
+authored **2026-07-16**, after the run. At the time of the failure operations
+was `curl`-ing the same unresolvable `e15ec7d…` URL as iplanic, so the two had
+the *same* bug, not different ones. **operations' current caller has never run**;
+whether its chain works is unproven by inspection alone.
+
+The checks each miss would have needed: grep the transitive path, not just the
+caller; and confirm the cited run actually executed the caller you are
+describing (`gh api "repos/<r>/commits?path=<workflow>"` vs the run's
+`createdAt`).
+
+**Why it matters:** a consumer that cannot fetch its drift script has no drift
+signal and no indication that it has none — the same absent-feedback-loop shape
+as the fleet-wide `enforce_admins` drift. Note this specific shape is NOT caught
+by `sync/check-drift.sh`, even after the 2026-07-16 coverage work: iplanic
+references canon via a `curl` inside a `run:` step, not a `uses:`, so there is no
+`@ref` for the caller-scan to see. Reporting unresolvable canon references in
+`run:` steps is unsolved.
+
+**Fix sketch (needs a decision, hence a plan not a patch):** the filing proposed
+adding `sync/*.sh` to `manifest.json` so every consumer gets a copy. Copying a
+script into every consumer manufactures another drifting surface — and the
+hand-rolled callers above are what that looks like in practice. The alternative
+is a canon reusable + a thin caller template that resolves the scripts at the
+consumer's pinned tag, matching how every other canon surface is consumed and
+getting version-pinning (and drift-checking, now that callers are
+manifest-resolved) for free — and removing the class of bug in (2) entirely,
+since a `uses:` pin cannot be an unresolvable tag object. Choosing between them —
+and deciding whether `install.sh` should apply server-side standards at all (🔴:
+it mutates consumer repos) — is the scope of the adoption-model plan (next free
+PLAN number). Consumer-side callers are cross-repo work and go through the
+ops/inbox runbook, never a direct edit from a canon session.
+
+### FT-14 — `pre_push_check.sh`'s yamllint is stricter than canon's own CI gate, so canon fails its own hook
+
+**Found:** 2026-07-16, running `scripts/pre_push_check.sh` while closing the
+flowci-feedback findings.
+**Surfaces:** `scripts/pre_push_check.sh` §2 (yamllint); `tests/test_lint.sh:20-23`;
+the absent `install/templates/.yamllint.yaml`.
+
+**Two invocations of the same tool disagree:**
+
+- `tests/test_lint.sh:22` — canon's **authoritative** gate (runs in `tests.yml`
+  on every PR) invokes yamllint with an explicit relaxed profile:
+  `line-length: disable, document-start: disable, truthy: disable, …`. Its own
+  comment says *"yamllint relaxed (no line-length…)"*. It is green on `main`.
+- `scripts/pre_push_check.sh:98-101` — falls back to a **bare `yamllint`** when
+  no `.yamllint.yaml` exists. Canon has none, so the hook enforces line-length
+  and every rule the CI gate deliberately disabled.
+
+**Effect:** measured 2026-07-16 on pristine `main`, bare yamllint reports **172
+issues** across `.github/workflows/`, so `pre_push_check.sh` **exits non-zero on
+an unmodified canon checkout**. Anyone with yamllint installed who runs the hook
+is told not to push work that canon's own CI accepts. The hook is not currently
+installed as a git hook in every checkout, which is the only reason this has not
+blocked anyone — i.e. the local gate is inert where it is wrong, and wrong where
+it is not inert.
+
+**Relation to the filing.** This is flowci-feedback's *"install.sh ships no
+default `.yamllint.yaml`"* finding. That entry was assessed as **inert for
+consumers** and that assessment holds — `install.sh` never installs yamllint, so
+a fresh consumer's check 2 skips-with-notice and no consumer-facing CI runs
+yamllint at all. But it is **not** inert for **canon**, which has yamllint
+available and no config. The filing reasoned from consumer symptoms and reached
+the right fix shape for the wrong repo.
+
+**Fix sketch (a decision, not a patch — hence not done here):** the profile is
+already chosen and proven; `tests/test_lint.sh:22` is the de-facto canon
+yamllint config. Either (a) extract that inline `-d` profile into a repo-root
+`.yamllint.yaml` and have both call sites read it — one source of truth, and
+`pre_push_check.sh`'s existing `-f .yamllint.yaml` branch (dead code today,
+never exercised in canon) starts working; or (b) leave canon's config absent and
+make the hook's fallback match the relaxed profile. Prefer (a). Whether the same
+file also ships to consumers via `install/templates/` + `manifest.json` is the
+separable question the filing actually asked, and it should be settled with the
+adoption-model plan rather than as a drive-by: shipping a lint config to repos
+that do not run the linter adds a drift surface for no signal.

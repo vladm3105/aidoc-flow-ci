@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # aidoc-flow-ci install/apply-standards.sh — apply the repo-standards
-# canon (docs/REPO_STANDARDS.md) to a consumer repo. PR-B2 ships the
-# NON-MUTATING modes only (--check, --dry-run, --report). PR-C adds
-# --apply (server-side mutations require F5 blast-radius per
-# REPO_ONBOARDING.md).
+# canon (docs/REPO_STANDARDS.md) to a consumer repo. Ships the
+# NON-MUTATING modes (--check, --dry-run, --report) AND the mutating
+# --apply (see Modes below).
 #
 # Runs from a checked-out consumer repo (`cd <consumer-repo> && bash
 # <path-to>/apply-standards.sh`). Compares local content-surface files

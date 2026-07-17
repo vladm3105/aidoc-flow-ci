@@ -6,6 +6,49 @@ context compaction.
 
 ## Current state (2026-07-16)
 
+**IN FLIGHT — `fix/flowci-feedback-canon-fixes` (unmerged).** Closes the
+verified subset of the `llm-router` flowci-feedback filing (that file lives in
+`/opt/data/llm_router/plans/flowci-feedback.md`; it is NOT this repo's and was
+not edited). Of 14 filed findings, **5 were real** and are fixed here; 7 were
+verified FALSE or by-design (markdownlint config auto-discovery, the
+markdown-lint filename "duplication", the `runner_labels`/FT-9 attribution,
+`codeql` "missing" from install, silently-skipped shellcheck/actionlint, the
+missing `.yamllint.yaml`); 2 had true facts but fixes that were rejected on
+inspection (the `pre_push_check.sh` merge-base range is deliberate and
+documented `"Broken; do not revert."`; the pre-push-hook verifier already exists
+in `apply-standards.sh --check` — nothing runs it, which is really a symptom of
+the adoption-model gap).
+
+What landed: `secret-scan` config canary (a rule-less `.gitleaks.toml` produced
+a green check that scanned nothing — reproduced with the pinned binary);
+`check-drift.sh` manifest-derived coverage + loud skip accounting (FT-8 closed);
+`audit-trail` manifested (it was the only template with no manifest entry);
+`audit-trail-check` bot-exemption ordering; REPO_STANDARDS §4.3 corrected (the
+deployed allowlist sets `verified_allowed: true`, so "third-party ⇒
+startup_failure" was never universal) + new §4.3a; `troubleshooting.md` §13's
+unblock command no longer prescribes `verified_allowed=false`, which drifted
+consumers OFF canon. New **FT-13**. Net semver: **MINOR** (`validate-config` is
+an additive input) → `ci/v2.1.0`.
+
+**Read before touching FT-13.** Its claim has been wrong three times in three
+directions; the entry documents each miss and the check that would have caught
+it. Verified: iplanic's standards-drift caller pins `e15ec7d…`, the **annotated
+tag object** of `ci/v1.6.0` rather than a commit, so raw has never served it —
+a permanent authoring bug, not decay (deref: `git/tags/<sha> --jq '.object.sha'`
+→ `e827ab82…`, HTTP 200). The same trap as the SHA-pin lesson in FT-10's
+neighbourhood: `git/refs/tags/<tag>` returns the TAG object for annotated tags.
+
+**NOT started: the adoption-model plan (next free PLAN number).** This is the
+filing's root finding and the one with fleet-wide consequences — `install.sh`
+only *prints* a branch-protection reminder (`:602`) and never invokes
+`apply-standards.sh`; no consumer receives either `sync/` script (absent from
+`manifest.json`); 5 of 6 consumers deviate identically on `enforce_admins` and
+canon itself is unprotected. It needs a decision (ship drift detection by
+copying the scripts vs. a canon reusable + caller template that resolves them at
+the consumer's pin) and it has a 🔴 half (making `install.sh` apply server-side
+settings mutates consumer repos). Consumer-side callers go via the ops/inbox
+runbook.
+
 **Fleet v2 cutover (PLAN-009) — target is now `ci/v2.0.1`; Phase 0 partially
 done, still 🔴-gated.** `ci/v2.0.1` is published (tag → `819d148`) and is the
 fleet target; it patches `ci/v2.0.0` (→ `d3f4b03`) with the 3 ai-review blocker

@@ -274,10 +274,15 @@ Every one of these cost real debugging time. They are load-bearing.
    `ci/v1.7.1`/`v1.9.5` — verify they're present after copying.
 5. **`composition` needs `vars.APP_REVIEWER_1_BOT_ID`** (= `294948438`) or it
    runs INERT (passes without enforcing). Set it in preflight (§1.3).
-6. **Content-checks install tools directly, never third-party actions.** The
-   allowed-actions policy blocks `gacts/gitleaks`, `lycheeverse/lychee-action`,
-   `DavidAnson/markdownlint-cli2-action`, etc. → silent `startup_failure` (the
-   error is web-UI-only; `actionlint` does NOT catch it). The reusables already
+6. **Content-checks install tools directly, never third-party actions.** Canon
+   may `uses:` only `actions/*`, `github/*`, `vladm3105/aidoc-flow-ci/*`
+   (REPO_STANDARDS §4.3). `gacts/gitleaks`, `lycheeverse/lychee-action` and
+   `DavidAnson/markdownlint-cli2-action` are additionally published by
+   **non-verified** creators, so they are blocked at run-init → silent
+   `startup_failure` (the error is web-UI-only; `actionlint` does NOT catch
+   it). This is not a universal rule about third-party actions: the deployed
+   allowlist sets `verified_allowed: true`, so a verified creator's action IS
+   admitted and would fail later and loudly, if at all. The reusables already
    install binaries/npm — you don't touch this, but know the failure signature.
    `continue-on-error` is ILLEGAL on a reusable-call job — for report-only, use
    the reusable's `fail-on-findings: false` input, not `continue-on-error`.

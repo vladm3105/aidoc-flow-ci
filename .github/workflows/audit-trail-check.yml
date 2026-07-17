@@ -100,6 +100,28 @@ jobs:
           # failure branches.
           set -euo pipefail
 
+          # --- F1-sec fold: Exemption 1 — PR opened by trusted BOT ---
+          # Verified via GitHub's authoritative `pull_request.user.type`
+          # + `.user.login`. Commit `%an` is NOT used (attacker-spoofable
+          # on forks). Local pre-push hook uses %an by design — it
+          # enforces author discipline, not authorization; CI must trust
+          # only GitHub-verified identity.
+          #
+          # ORDERING (flowci-feedback): this runs BEFORE the git fetch +
+          # cat-file guard below. Bot identity comes purely from GitHub PR
+          # metadata and does not depend on git history, so an unreachable
+          # BASE_SHA must not fail a PR the gate would have exempted
+          # outright. Keeps the documented exemption priority honest:
+          # "trusted bot → skip check entirely".
+          if [ "$PR_USER_TYPE" = "Bot" ]; then
+            case "$PR_USER_LOGIN" in
+              "dependabot[bot]"|"renovate[bot]"|"github-actions[bot]")
+                echo "::notice::audit-trail: PR opened by trusted bot ($PR_USER_LOGIN, type=Bot) — SKIPPED per PLAN-002 §4.6 (CI-side identity check)."
+                exit 0
+                ;;
+            esac
+          fi
+
           # Fetch the base ref explicitly so `git log base_sha..head_sha`
           # can walk the range. With fetch-depth: 0 the initial checkout
           # already has full history, but fork PRs' base is on the base
@@ -126,21 +148,6 @@ jobs:
 
           RANGE="${BASE_SHA}..${HEAD_SHA}"
           echo "audit-trail: range=$RANGE"
-
-          # --- F1-sec fold: Exemption 1 — PR opened by trusted BOT ---
-          # Verified via GitHub's authoritative `pull_request.user.type`
-          # + `.user.login`. Commit `%an` is NOT used (attacker-spoofable
-          # on forks). Local pre-push hook uses %an by design — it
-          # enforces author discipline, not authorization; CI must trust
-          # only GitHub-verified identity.
-          if [ "$PR_USER_TYPE" = "Bot" ]; then
-            case "$PR_USER_LOGIN" in
-              "dependabot[bot]"|"renovate[bot]"|"github-actions[bot]")
-                echo "::notice::audit-trail: PR opened by trusted bot ($PR_USER_LOGIN, type=Bot) — SKIPPED per PLAN-002 §4.6 (CI-side identity check)."
-                exit 0
-                ;;
-            esac
-          fi
 
           # --- F2-sec fold: revert exemption REMOVED CI-side ---
           # Local pre-push hook still exempts revert-only ranges for

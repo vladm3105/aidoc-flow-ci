@@ -5,11 +5,17 @@
 # 0 fetch/scope error(s) when run in that repo's CI"). Runs
 # `bash sync/check-standards-drift.sh --tier product` on schedule.
 #
-# WARNING-ONLY per canon §3.1b — script always exits 0; drift emits
-# `::warning::` annotations for operator visibility, never blocks.
+# WARNING-ONLY per canon §3.1b on the scheduled run — drift emits
+# `::warning::` annotations for operator visibility and never blocks. The
+# script is not unconditionally non-blocking, though: `workflow_dispatch`
+# below exposes `strict`, which makes it exit non-zero on drift (for
+# release/adoption validation).
+#
+# SCOPE — this run checks THIS repo only. The script auto-detects its target
+# via `gh repo view --json nameWithOwner`, so it reports on whatever repo it
+# is checked out in. It does NOT survey the fleet.
 #
 # aidoc-flow-ci self-tier = product (per REPO_STANDARDS.md §1 taxonomy).
-# The script auto-detects the repo via `gh repo view --json nameWithOwner`.
 
 name: standards-drift
 
@@ -49,9 +55,22 @@ jobs:
 
       - name: Fleet pin-currency audit (public repos)
         # Central weekly view of stale @ci/v* pins. GITHUB_TOKEN can read public
-        # repos' contents; PRIVATE repos (operations/business/iplanic/interlog)
-        # are covered by their OWN weekly standards-drift run, which chains
-        # check-pin-currency.sh in-repo. Warning-only.
+        # repos' contents, so this step covers the PUBLIC fleet only.
+        #
+        # PRIVATE repos are NOT covered here. They are meant to be covered by
+        # their own standards-drift run: check-standards-drift.sh chains
+        # check-pin-currency.sh itself (see its tail), so a private repo running
+        # it transitively gets pin-currency without naming it in the caller.
+        #
+        # That mechanism is real but is NOT currently delivering. Verified
+        # 2026-07-16: business + interlog have no caller at all; iplanic's pins
+        # `e15ec7d…`, which is the ANNOTATED TAG OBJECT of ci/v1.6.0 rather than
+        # a commit, so raw.githubusercontent has never served it (404) and that
+        # caller has never worked; every private standards-drift run on record
+        # has failed. Tracked as FT-13 in plans/FRAMEWORK-TODO.md — read it
+        # before restating anything here: this comment has been wrong three
+        # times, in three different directions. Fixing the callers is
+        # consumer-side work and goes via the ops/inbox runbook. Warning-only.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
