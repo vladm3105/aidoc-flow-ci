@@ -225,8 +225,8 @@ with the version tag in a trailing comment:
 - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 - uses: github/codeql-action/init@21eb7f7842f33eafc83782b56fff2a2c43e9696f # v4.36.1
 # gitleaks installed as a direct binary (SHA-256 verified), not a
-# marketplace wrapper — per the allowed-actions policy (only actions/*,
-# github/*, and vladm3105/aidoc-flow-ci/* are permitted):
+# marketplace wrapper — per canon's authoring allowlist (actions/*,
+# github/*, vladm3105/aidoc-flow-ci/*; REPO_STANDARDS §4.3):
 #   run: |
 #     curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz" | tar xz
 #     echo "551f6fc...  gitleaks" | sha256sum -c -
@@ -269,8 +269,10 @@ EULA at v2.0.0 (May 2026). Org-owned repos (including OSS)
 require a paid license key. The `aidoc-flow-ci` solution installs the
 same `gitleaks` binary directly (MIT-licensed, no key, no signup),
 with SHA-256 verification at install time. The binary is not wrapped
-in a third-party action, satisfying the allowed-actions policy
-(`actions/*`, `github/*`, `vladm3105/aidoc-flow-ci/*` only).
+in a third-party action, satisfying canon's authoring allowlist
+(`actions/*`, `github/*`, `vladm3105/aidoc-flow-ci/*`). Per REPO_STANDARDS
+§4.3 that authoring rule is deliberately stricter than the boundary the fleet
+deploys, which also admits GitHub-verified creators.
 
 ## 8. Reporting security issues
 

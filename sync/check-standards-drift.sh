@@ -5,7 +5,12 @@
 #
 # Reads the current repo's actual server-side settings via `gh api` and
 # compares against the canon templates for the specified tier. Emits
-# `::warning::` for each drift; ALWAYS exits 0.
+# `::warning::` for each drift.
+#
+# EXIT: warning-only BY DEFAULT (exit 0 on drift, per IPLAN-0017 §3.1b) —
+# but `--strict` (see the STRICT handling at the tail of this script) exits
+# non-zero on drift or an uncheckable control. The gating primitive already
+# exists; a caller opts into it.
 #
 # Companion to sync/check-drift.sh (workflow-file drift) — this one
 # handles server-side settings (branch protection, labels, repo settings,

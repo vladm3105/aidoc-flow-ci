@@ -1,7 +1,7 @@
 # auto-merge-ai-prs — IPLAN-0030 (server-side enforcer for AI-opened PRs). OPS-0062 deferred companion.
 #
 # WHY THIS EXISTS: ai-review.yml's "Gate · comment · label · merge" step ARMS GitHub's native auto-merge
-# (`gh pr merge --auto --merge` under the reviewer App's token) on routine PRs. Most of the time native
+# (`gh pr merge --auto --squash` under the reviewer App's token) on routine PRs. Most of the time native
 # auto-merge fires once all required checks are green and the PR merges with the App as commit author
 # (which lets downstream push-triggered workflows like docs-sync.yml fire — ci/v1.1.6 anti-recursion fix).
 # But the arming step can fail silently in two cases (per IPLAN-0030 §1 narrow scope cases 1+2):
@@ -17,7 +17,7 @@
 # DETECTION FILTER (per §2.1 step 3): state=OPEN ∧ label=ai:review-passed ∧ mergeStateStatus=CLEAN ∧
 # autoMergeRequest is null ∧ updatedAt > 2 min ago.
 #
-# RECOVERY ACTION (per §2.1 step 5 + D3): re-arm `gh pr merge --auto --merge` under the SAME reviewer App's
+# RECOVERY ACTION (per §2.1 step 5 + D3): re-arm `gh pr merge --auto --squash` under the SAME reviewer App's
 # token. `--auto` preserves GitHub's required-check-green gate (idempotent re-arming is a no-op).
 # `--merge` method aligns with ai-review.yml:703 (Pass-2 C3). App identity keeps merge-commit-author
 # App-attributed → downstream push workflows fire.
@@ -402,7 +402,7 @@ jobs:
           #       composition required is the consumer's branch-protection responsibility
           #       (docs/BRANCH_PROTECTION.md); this enforcer's refusal covers the re-arm path.
 
-          # ── Step 5: Re-arm `gh pr merge --auto --merge` ──────────────────────────
+          # ── Step 5: Re-arm `gh pr merge --auto --squash` ──────────────────────────
           # PR is stuck: green + ai:review-passed + trusted + allowlisted + not-armed + >2 min old.
           # Pass 6 fold (silent CRITICAL + security MINOR-3): no more re-running `gh pr merge` to capture
           # stderr — retry() already exposed RETRY_LAST_STDERR. Eliminates the false-positive-on-late-
@@ -424,8 +424,8 @@ jobs:
           fi
 
           # Re-arm. retry() captures stderr cleanly + exposes it via RETRY_LAST_STDERR on failure.
-          if GH_TOKEN="$MERGE_TOKEN" retry gh pr merge "$PR" --auto --merge; then
-            audit "stuck → re-armed via $TOKEN_KIND (gh pr merge --auto --merge); native auto-merge will fire on the next required-check evaluation"
+          if GH_TOKEN="$MERGE_TOKEN" retry gh pr merge "$PR" --auto --squash; then
+            audit "stuck → re-armed via $TOKEN_KIND (gh pr merge --auto --squash); native auto-merge will fire on the next required-check evaluation"
             exit 0
           fi
 

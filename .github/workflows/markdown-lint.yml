@@ -3,12 +3,16 @@
 # CRITICAL: this installs + runs `markdownlint-cli2` from npm directly, NOT
 # the `DavidAnson/markdownlint-cli2-action` marketplace wrapper. Reason (same
 # defect class that broke secret-scan + links, fixed ci/v1.9.2 / v1.9.4):
-#   - allowed-actions policy: the aidoc-flow workspace restricts Actions to
-#     `actions/*`, `github/*`, and `vladm3105/aidoc-flow-ci/*` (+ verified). A
-#     third-party wrapper is BLOCKED at run-init → `startup_failure` (this is
-#     why markdown-lint never deployed on any consumer). Installing the npm
-#     package in a `run:` step needs no action allowlist; `actions/setup-node`
-#     IS allowlisted (`actions/*`) and guarantees Node on self-hosted runners.
+#   - allowed-actions policy: canon may `uses:` only `actions/*`, `github/*`,
+#     and `vladm3105/aidoc-flow-ci/*` (REPO_STANDARDS §4.3).
+#     `DavidAnson/markdownlint-cli2-action` is published by a NON-verified
+#     creator, so it is also BLOCKED at run-init → `startup_failure` (this is
+#     why markdown-lint never deployed on any consumer). This does not
+#     generalize — the deployed allowlist sets `verified_allowed: true`, so a
+#     VERIFIED creator's action is admitted and runs; see §4.3. Installing the
+#     npm package in a `run:` step needs no action allowlist;
+#     `actions/setup-node` IS allowlisted (`actions/*`) and guarantees Node on
+#     self-hosted runners.
 #
 # Design decisions (ci/v1.9.4):
 #   - `markdownlint-cli2` (the maintained successor to markdownlint-cli),

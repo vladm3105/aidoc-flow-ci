@@ -5,7 +5,7 @@
 # The reusable is the server-side enforcer for AI-opened PRs
 # (OPS-0062 deferred companion). It detects stuck-green PRs
 # (label=ai:review-passed + mergeStateStatus=CLEAN + autoMergeRequest
-# is null + updatedAt > 2 min) + re-arms `gh pr merge --auto --merge`
+# is null + updatedAt > 2 min) + re-arms `gh pr merge --auto --squash`
 # under the reviewer App's token. Narrow scope cases 1+2 per plan §1.
 #
 # Trigger architecture per IPLAN-0030 §2.2 + Pass-2 C1 finding:

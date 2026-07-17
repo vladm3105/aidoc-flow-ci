@@ -353,10 +353,17 @@ file issue."
 
 **Cause:** The consumer repo's Actions permissions are set to
 `selected actions` mode (`allowed_actions: "selected"`) with
-`github_owned_allowed: true` only — third-party reusable workflows
+`github_owned_allowed: true` only — reusable workflows
 like `vladm3105/aidoc-flow-ci/.github/workflows/*.yml` are NOT in
 the `patterns_allowed` list, so GitHub blocks them at workflow-load
 time.
+
+Note the selected-actions fields are **additive**: an action is admitted if it
+is GitHub-owned, OR published by a verified creator, OR matches
+`patterns_allowed`. So this `startup_failure` means the action matched **none**
+of the three — it is not evidence that "third-party actions are blocked" in
+general. A verified creator's action is admitted by canon's own settings and
+fails (if at all) later and loudly. See REPO_STANDARDS §4.3.
 
 **Diagnose:**
 
@@ -373,10 +380,20 @@ gh api repos/<owner>/<consumer-repo>/actions/permissions/selected-actions
 gh api repos/<owner>/<consumer-repo>/actions/permissions/selected-actions \
   -X PUT \
   -F github_owned_allowed=true \
-  -F verified_allowed=false \
-  -f "patterns_allowed[]=vladm3105/aidoc-flow-ci/*"
-# (To preserve existing patterns_allowed entries, fetch them first + merge.)
+  -F verified_allowed=true \
+  -f "patterns_allowed[]=vladm3105/aidoc-flow-ci/*" \
+  -f "patterns_allowed[]=actions/*" \
+  -f "patterns_allowed[]=github/*"
+# (To preserve any other existing patterns_allowed entries, fetch them first + merge.)
 ```
+
+This payload matches `install/templates/actions-permissions.json` exactly —
+including `verified_allowed: true`. **Do not set `verified_allowed=false` here**
+(as this runbook did until 2026-07-16): it drifts the repo off the canon
+template, which `apply-standards.sh --check` and `check-standards-drift.sh` will
+then report as drift. If narrowing the fleet's supply-chain boundary to the
+three patterns is wanted, that is a canon decision to take in
+`actions-permissions.json`, not a side effect of unblocking one repo.
 
 After the change, re-trigger the workflow via label cycle (add then
 remove `skip-ai-review`) — `gh run rerun` does NOT work for

@@ -3,12 +3,14 @@
 # CRITICAL: this installs + runs the upstream `lychee` BINARY directly, NOT
 # the `lycheeverse/lychee-action` marketplace wrapper. Reason (same defect
 # class that broke secret-scan, fixed ci/v1.9.2):
-#   - allowed-actions policy: the aidoc-flow workspace restricts Actions to
-#     `actions/*`, `github/*`, and `vladm3105/aidoc-flow-ci/*` (+ verified).
-#     `lycheeverse/lychee-action` is a third-party action → BLOCKED at
-#     run-init → `startup_failure` (proven live: links ran startup_failure on
-#     operations + business). The message is web-UI-only; `actionlint` does
-#     NOT catch it. Running the binary needs no action allowlist.
+#   - allowed-actions policy: canon may `uses:` only `actions/*`, `github/*`,
+#     and `vladm3105/aidoc-flow-ci/*` (REPO_STANDARDS §4.3).
+#     `lycheeverse/lychee-action` is published by a NON-verified creator, so it
+#     is also BLOCKED at run-init → `startup_failure` (proven live: links ran
+#     startup_failure on operations + business). The message is web-UI-only;
+#     `actionlint` does NOT catch it. Note this does not generalize: the
+#     deployed allowlist sets `verified_allowed: true`, so a VERIFIED creator's
+#     action is admitted and runs. Running the binary needs no action allowlist.
 #
 # Design decisions (ci/v1.9.4):
 #   - Curl the pinned lychee release. Use the **musl** static build
