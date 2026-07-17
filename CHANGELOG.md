@@ -5,6 +5,37 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Docs — adopter cold-start was broken; fixed the on-ramp (2026-07-17)
+
+The reference docs were rigorous but the first ten minutes of adoption failed
+three ways, disqualifying for a company-default. All from the pre-prod docs lens.
+
+- **`install/README.md`**: added a "You must ALREADY have" block — a reachable
+  LiteLLM proxy (yours to operate; `ai-review` `exit 1`s without it), the
+  reviewer App, a private-repo runner pool, and the per-repo secrets + bot-id —
+  before the install command. None of it was stated, so an adopter completed
+  every documented step and ai-review was still permanently red with no doc
+  naming the missing piece. Added the public-repo LiteLLM-reachability caveat.
+- **`install/install.sh`** printed next-steps: reordered so **secrets come
+  before the PR** (was: open PR → add secrets, guaranteeing a red first PR),
+  added the three `LITELLM_*` secrets it omitted, set the bot-id directly
+  (`294948438`, App-global) instead of "after first review" (waiting leaves
+  `composition` INERT), and cited `docs/BRANCH_PROTECTION.md` (adopter-facing)
+  instead of the private-sibling `IPLAN-0016 §2a-v3`.
+- **`README.md`**: linked `docs/AI_CI_DEPLOYMENT.md` + `deploy-ci-wizard.sh
+  preflight` as the **front door** (the real cold-start playbook was linked from
+  nowhere); corrected the "after first review" bot-id timing; replaced two stale
+  hardcoded counts ("15 caller templates" / "12 docs" — now 23 / 19 and
+  drifting) with descriptions that don't rot.
+- **`docs/README.md`**: indexed all 19 docs (was 9); promoted
+  `AI_CI_DEPLOYMENT` / `REVIEWER_APP_ONBOARDING` / `BRANCH_PROTECTION` to a
+  "Start here" section.
+- **`CLAUDE.md`**: dropped `standards-drift` from the "ships reusable workflows"
+  list — it has no `workflow_call` trigger, so an agent that believed it could
+  `uses:` it would hit `startup_failure`.
+- **`install/README.md`** dead link (`MIGRATION_v2.0.0.md` missing `../docs/`)
+  and **`docs/troubleshooting.md`** machine-local `file:///home/...` link fixed.
+
 ### Fixed — every workflow surface now has a `-private` variant; `--update` is safe on private repos (2026-07-17)
 
 - **`install/templates/workflows/{links,markdown-lint,pre-commit,secret-scan,labeler,docs-sync}-private.yml`** (new) + **`manifest.json`** `visibility_variants` + **`REPO_STANDARDS.md` §4.1**:

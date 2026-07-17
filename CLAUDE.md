@@ -7,7 +7,7 @@ canon** library. Auto-loaded every session. Keep it short and current.
 
 The **canonical source** for the CI + governance-workflow rules the
 aidoc-flow workspace shares. Ships reusable workflows (`ai-review`,
-`composition`, `audit-trail-check`, `standards-drift`, `secret-scan`,
+`composition`, `audit-trail-check`, `secret-scan`,
 etc.), canonical config templates (CODEOWNERS, dependabot, branch
 protection), canonical scripts (`pre_push_check.sh`, `apply-standards.sh`,
 `parse-governance-table.py`), governance-file templates

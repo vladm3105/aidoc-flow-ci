@@ -13,11 +13,24 @@ docs cover consumer-facing intro, install, and release notes:
 
 This `docs/` tree covers reference + design topics.
 
+## Start here (new adopter)
+
+| Doc | Scope |
+| --- | --- |
+| [`AI_CI_DEPLOYMENT.md`](AI_CI_DEPLOYMENT.md) | **The cold-start playbook.** Dependency-ordered: §1 preflight (LiteLLM proxy, reviewer App, runner pool, secrets), §2 deploy sequence, §5 gotchas, §6 verification, §7 arming. Fronts `install/deploy-ci-wizard.sh preflight`. Read this before the first adoption PR. |
+| [`REVIEWER_APP_ONBOARDING.md`](REVIEWER_APP_ONBOARDING.md) | Standing up the reviewer GitHub App + the secrets `ai-review` needs |
+| [`BRANCH_PROTECTION.md`](BRANCH_PROTECTION.md) | Per-tier required-checks + arming; the adopter-facing equivalent of the private IPLAN branch-protection spec |
+
 ## Available now
 
 | Doc | Scope |
 | --- | --- |
 | [`../LABELS.md`](../LABELS.md) | PR + runner label conventions (three namespaces: state, area, runner; separator rules; routing rule by visibility; processes for adding labels / runner origins) |
+| [`UPDATE_GUIDE.md`](UPDATE_GUIDE.md) | `install.sh --update` walkthrough — re-fetch canon into an already-adopted repo; keep/replace/diff per surface; why `--repin` (not `--update`) is the sanctioned version-only bump |
+| [`BRANCHING.md`](BRANCHING.md) | Branch + PR conventions the canon workflows assume |
+| [`ai-review-assets.md`](ai-review-assets.md) | The ai-review rubric + verdict-schema assets and how the reusable fetches them at the consumer's pin |
+| [`FLEET_BRANCH_PROTECTION_ARMING.md`](FLEET_BRANCH_PROTECTION_ARMING.md) | Fleet-wide branch-protection arming survey + runbook (founder-executed) |
+| [`PLAYBOOK_governance-canon-rollout.md`](PLAYBOOK_governance-canon-rollout.md) | Rollout playbook for the project-governance-file canon (PLAN-003) |
 | [`troubleshooting.md`](troubleshooting.md) | Common issues + fixes (composition race; skip-ai-review carry-forward; runner-not-found; fabricated SHA pins; `gh: not found`; label install errors; Azure SWA quota; lychee bot-hostile hosts; v1.0.0 public-CLI gap; MD024; CHANGELOG rebase conflicts) |
 | [`multi-project-guide.md`](multi-project-guide.md) | aidoc-flow-ci as company-wide CI library — three-layer architecture (library / project-governance / consumer); onboarding flow for new company projects; per-project decision boundaries |
 | [`local-pre-push.md`](local-pre-push.md) | Canonical pre-push self-check pattern for consumers — bash-only OPS-0069 audit-trail phrase check + 4 mechanical linters (markdownlint / yamllint / actionlint / shellcheck); no CLI dependency; wired via `.pre-commit-config.yaml default_install_hook_types`; belt-and-suspendered by CI reusable `call / verify` |
