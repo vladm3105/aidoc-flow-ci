@@ -5,6 +5,18 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — canon's pre-push hook now matches its CI yamllint profile (FT-14, 2026-07-17)
+
+- **`.yamllint.yaml`** (new, repo root) + **`tests/test_lint.sh`**: canon's
+  pre-push hook ran BARE `yamllint` (80-char default) and failed on canon's own
+  `main` (179 line-length errors), while the CI gate runs a relaxed profile
+  (`line-length: disable`, …). The hook already had a dead
+  `if [ -f .yamllint.yaml ]` branch; this adds the file (activating it) and
+  refactors `test_lint.sh` to read the same file instead of an inline `-d`
+  duplicate — one source of truth for hook + CI. Canon-only (not shipped to
+  consumers via the manifest); a consumer's own `.yamllint.yaml` remains its own
+  concern.
+
 ### Fixed — remaining pre-prod correctness minors (M4 + L3, 2026-07-17)
 
 - **M4 — `concurrency` added to the `audit-trail` + `codeql` callers.** They

@@ -19,7 +19,10 @@ else printf '  \033[33mskip\033[0m shellcheck not installed\n'; fi
 
 echo "== yamllint (workflows + templates, relaxed) =="
 if command -v yamllint >/dev/null 2>&1; then
-  out="$(yamllint -d '{extends: relaxed, rules: {line-length: disable, document-start: disable, truthy: disable, comments: disable, comments-indentation: disable, empty-lines: disable, trailing-spaces: disable, indentation: disable, brackets: disable, new-line-at-end-of-file: disable}}' .github/workflows/ install/templates/workflows/ 2>&1)" \
+  # Read the repo-root .yamllint.yaml — the SAME profile the pre-push hook uses
+  # (single source of truth; FT-14). Previously an inline -d duplicate here that
+  # the hook did not share, so the hook ran bare-strict and failed on canon main.
+  out="$(yamllint -c .yamllint.yaml .github/workflows/ install/templates/workflows/ 2>&1)" \
     && _g "yamllint: clean" || { _r "yamllint issues:"; printf '%s\n' "$out" | sed 's/^/      /'; }
 elif [ "${CI:-}" = "true" ]; then _r "yamllint missing in CI"
 else printf '  \033[33mskip\033[0m yamllint not installed\n'; fi
