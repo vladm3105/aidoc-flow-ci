@@ -142,6 +142,60 @@ for value in invalid:
     raise AssertionError(value)
 PY" "verdict validator rejects schema violations fail-closed"
 
+# PLAN-011 T1: verdict mode gets a larger max_tokens default than a plain call,
+# and LITELLM_MAX_TOKENS overrides both.
+assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
+import importlib.util, json, os, sys
+spec = importlib.util.spec_from_file_location('litellm_client', sys.argv[1])
+module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+seen = {}
+class Response:
+    def __enter__(self): return self
+    def __exit__(self, *_a): pass
+    def read(self, _l): return json.dumps({'choices':[{'message':{'content':'{\"decision\":\"approve\",\"summary\":\"ok\",\"findings\":[]}'}}]}).encode()
+def fake(request, timeout):
+    seen['payload'] = json.loads(request.data); return Response()
+module.open_no_redirect = fake
+os.environ['LITELLM_BASE_URL'] = 'https://proxy.example/v1'
+os.environ['LITELLM_API_KEY'] = 'test-key'
+os.environ.pop('LITELLM_MAX_TOKENS', None)
+module.completion('r', model='ai-reviewer', json_mode=True, timeout=30, verdict_mode=True)
+assert seen['payload']['max_tokens'] == 8192, seen['payload']['max_tokens']
+module.completion('r', model='ai-reviewer', json_mode=True, timeout=30)
+assert seen['payload']['max_tokens'] == 4096, seen['payload']['max_tokens']
+os.environ['LITELLM_MAX_TOKENS'] = '3000'
+module.completion('r', model='ai-reviewer', json_mode=True, timeout=30, verdict_mode=True)
+assert seen['payload']['max_tokens'] == 3000, seen['payload']['max_tokens']
+PY" "verdict mode budgets 8192 tokens (vs 4096 plain); LITELLM_MAX_TOKENS overrides"
+
+# PLAN-011 F1/F2 (SECURITY LOCK): the strict parser was NOT loosened. It must
+# still REJECT prose-wrapped and multi-object completions — a reasoning model's
+# preamble, or a diff-planted verdict quoted before the real one, must fail
+# closed, not be extracted. If a future edit loosens normalize_json_object, this
+# test goes red.
+assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location('litellm_client', sys.argv[1])
+module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+# bare + fenced still accepted (regression)
+assert module.normalize_json_object('{\"decision\":\"approve\"}') == '{\"decision\":\"approve\"}'
+fence = chr(96) * 3
+assert '\"decision\"' in module.normalize_json_object(fence + 'json\n{\"decision\":\"approve\"}\n' + fence)
+# prose-wrapped and multi-object must FAIL CLOSED (not be extracted)
+must_reject = [
+    'Here is my review: {\"decision\":\"approve\"}',                 # leading prose
+    '{\"decision\":\"approve\"} — done.',                            # trailing prose
+    '{\"decision\":\"approve\"}\\n{\"decision\":\"request_changes\"}',# two objects
+    'reasoning...\\n{\"decision\":\"approve\",\"findings\":[]}',      # CoT preamble
+]
+for text in must_reject:
+    try:
+        module.normalize_json_object(text)
+    except module.ResponseShapeError:
+        continue
+    raise AssertionError('parser accepted what it must reject: ' + repr(text))
+PY" "strict JSON parser stays strict — rejects prose-wrapped + multi-object (PLAN-011 F1/F2 lock)"
+
 assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location('litellm_client', sys.argv[1])

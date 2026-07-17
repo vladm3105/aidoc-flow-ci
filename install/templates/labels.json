@@ -10,6 +10,11 @@
     "description": "AI reviewer verdict: CHANGES_REQUESTED (canon §5.1 required state label)"
   },
   {
+    "name": "ai:review-infra-error",
+    "color": "e8a33d",
+    "description": "Reviewer infrastructure failure — no verdict produced (not a code finding; re-run). PLAN-011 F4"
+  },
+  {
     "name": "ai:human-review-required",
     "color": "fbca04",
     "description": "Fork PR or non-allowlisted author (canon §5.1 required state label)"
@@ -24,7 +29,6 @@
     "color": "1d76db",
     "description": "AI autofix applied; optional for repositories that enable ai-review autofix"
   },
-
   {
     "name": "governance",
     "color": "8b6914",
@@ -65,7 +69,6 @@
     "color": "e99695",
     "description": "PR touches implementation or verified-planning documents"
   },
-
   {
     "name": "dependencies",
     "color": "0366d6",
