@@ -7,7 +7,7 @@ attempts: ResponseShapeError` → `exit 1`, blocking merge of large coherent
 changes even when every other check is green. Diagnosed as a reviewer-
 infrastructure limitation (strict verdict-JSON parsing at scale), not a code
 finding.
-**Status:** DRAFT — 2026-07-17 EST
+**Status:** READY — PC-1/PC-2 VERIFIED against the live proxy 2026-07-17; implemented (#185) — see Live verification. Tag `ci/v2.1.1` unblocked.
 **Depends on:** none (bug is live on `ci/v2.1.0` and every prior tag — the client
 is byte-identical at `ci/v2.0.0` and `main`, Claims 2/5).
 **Exit:** a ~130 KB / 45-file PR either produces a valid verdict without a
@@ -196,6 +196,37 @@ governance-locked (Claim 21) → human-merge, correct for a change to the gate.
    the fleet repin (founder-tracked in operations #268) picks it up. `labels.json`
    is not auto-applied to consumers by a tag — note that consumers get the new
    label on their next `install.sh` label step (or a manual `gh label create`).
+
+## Live verification (2026-07-17, against the running LiteLLM proxy)
+
+Ran the real pre-checks + exit criterion against `ai-reviewer` → `deepseek-v4-pro`
+on the live proxy (`localhost:4001`). **All pass; the two placeholder numbers are
+confirmed correct.**
+
+- **PC-1 (model output cap) — PASS.** `max_tokens=8192` with `response_format:
+  json_object` → **HTTP 200**, `finish_reason: stop`, clean JSON in `content`. No
+  non-retryable 400. The one assumption that could red-check every PR is
+  disproven; 8192 is safe (could go higher, but 8192 is confirmed-good).
+- **PC-2 (completion time) — PASS.** A 205 KB / 45-file diff verdict completed in
+  **31–42s** — well inside `--timeout 900` (≈300s/attempt). Ample margin.
+- **Exit criterion — PASS.** The actual client (`--verdict`, 8192 default) produced
+  a valid, schema-conformant verdict on a 205 KB / 45-file diff.
+- **T1 mechanism + fix — PROVEN (differential).** SAME complex diff (45 files ×
+  10 distinct security bugs): **`max_tokens=4096` → `ResponseShapeError` after 3
+  attempts (168s)**; **`max_tokens=8192` → valid verdict, 10 findings (42s)**. The
+  reported bug reproduced, the fix proven, on the live model. Root cause confirmed:
+  `deepseek-v4-pro`'s **reasoning tokens count against `max_tokens`** (usage showed
+  reasoning_tokens separate but billed to completion), so a complex diff's heavy
+  reasoning exhausts 4096 before the verdict JSON finishes.
+- **Validates a rejected fix.** `reasoning_content` came back **present and
+  separate** from `content` — confirming Pass-2 F1: the verdict is in `content`, so
+  the dropped "mine `reasoning_content`" fix would have read the model's *thinking*,
+  not its decision.
+
+Not live-exercised (no code path to drive without a full PR run): the F4
+signalling step's end-to-end behaviour on a real gate — covered by the
+security-auditor + silent-failure-hunter reviews on #185 and the client unit
+tests. A throwaway consumer PR at the tagged ref would exercise it post-`ci/v2.1.1`.
 
 ## Claim ledger
 
