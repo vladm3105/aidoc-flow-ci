@@ -5,6 +5,10 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+_(nothing yet)_
+
+## ci/v2.1.1 — 2026-07-17
+
 ### Fixed — ai-review no longer fails opaquely on large diffs (PLAN-011, 2026-07-17)
 
 Consumer bug: the required `ai-review` gate failed on large PRs with
