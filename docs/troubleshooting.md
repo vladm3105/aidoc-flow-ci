@@ -25,6 +25,7 @@ For the broader architecture, see
 | External lychee link check flakes on twitter/linkedin | [§9 Bot-hostile hosts](#9-lychee-flakes-on-bot-hostile-hosts) |
 | Reviewer CLI / `codex` not found on runner (ci/v1.x) | [§10 Cut over to LiteLLM (ci/v2.0.0)](#10-public-consumer-ai-connectivity) |
 | ai-review LiteLLM URL/key error or cannot connect | [§10 Public-consumer AI connectivity](#10-public-consumer-ai-connectivity) |
+| ai-review fails on a *large* PR with `ResponseShapeError` | [§10 Public-consumer AI connectivity](#10-public-consumer-ai-connectivity) |
 | Markdownlint says MD024/no-duplicate-heading | [§11 Markdownlint MD024](#11-markdownlint-md024no-duplicate-heading) |
 | Rebase conflict on shared CHANGELOG.md | [§12 CHANGELOG rebase conflicts](#12-changelog-rebase-conflicts-on-stacked-prs) |
 | Reusable workflow `startup_failure` (no logs, empty jobs) | [§13 Actions allowlist blocks reusable](#13-startup_failure--reusable-workflow-blocked-by-consumers-actions-allowlist) |
