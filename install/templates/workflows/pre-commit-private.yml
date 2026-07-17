@@ -1,0 +1,38 @@
+# Caller template for aidoc-flow-ci's reusable pre-commit workflow.
+# PRIVATE variant → self-hosted ci-runner/single-use pool (OPS-0049; never
+# ubuntu-latest). PUBLIC consumers use pre-commit.yml. Generated to match the wizard's
+# runner_labels injection so install.sh --update resolves a labeled file for
+# private repos instead of the label-less generic (which would revert to
+# ubuntu-latest and queue forever).
+#
+#
+# Single template (works for both PRIVATE + PUBLIC). The reusable
+# workflow uses ubuntu-latest by default. PRIVATE consumers per
+# OPS-0049 may override runner_labels to '["self-hosted", "ci-runner", "single-use"]'.
+#
+# Requires .pre-commit-config.yaml in the consumer repo root. The
+# workflow runs all hooks against all files via
+# `pre-commit run --all-files`.
+
+name: pre-commit
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  call:
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/pre-commit.yml@ci/v2.0.1
+    with:
+      runner_labels: '["self-hosted", "ci-runner", "single-use"]'
+      python-version: '3.12'
+      # Override example:
+      # extra-deps: '-r tests/conformance/requirements.txt'

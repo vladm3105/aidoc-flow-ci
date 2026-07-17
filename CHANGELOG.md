@@ -5,6 +5,25 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — every workflow surface now has a `-private` variant; `--update` is safe on private repos (2026-07-17)
+
+- **`install/templates/workflows/{links,markdown-lint,pre-commit,secret-scan,labeler,docs-sync}-private.yml`** (new) + **`manifest.json`** `visibility_variants` + **`REPO_STANDARDS.md` §4.1**:
+  6 of 11 manifest workflow surfaces were generic templates with no `-private`
+  variant, carrying `runner_labels` only as a commented hint. `install.sh
+  --update` resolves each surface through `visibility_variants`, so on a private
+  consumer it re-applied the label-less generic → the reusable's `ubuntu-latest`
+  default → jobs queue forever (OPS-0049). This is FT-9's live residual: the
+  deploy wizard injected the labels at scaffold time, but `--update` reverted
+  them, and `--repin` (the sanctioned path) can't touch a stale label. So the
+  fleet cutover had no tool-supported way to migrate a private repo's runner
+  labels — it was hand-editing 6 files per repo.
+- Each variant bakes `["self-hosted","ci-runner","single-use"]` into every
+  reusable-call job (verified: `links` gets both its jobs), mirroring the
+  wizard's injection. `--update` on a private repo now writes a labeled file for
+  all 6, so it is safe without hand-editing; the wizard path is now
+  belt-and-suspenders. `check-drift.sh` drift-checks the variants automatically
+  (manifest-driven since the FT-8 rewrite).
+
 ### Security — `composition`: a malformed trust config passed the gate for EVERY author (2026-07-17)
 
 - **`.github/workflows/composition.yml`** + **`docs/REPO_STANDARDS.md` §4.3b**:

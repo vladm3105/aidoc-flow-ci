@@ -249,6 +249,19 @@ As of `ci/v1.9.0` the `-private.yml` templates ship the **real**
 shipped a `runner-self` placeholder that resolved to `runs-on: runner-self`,
 matched no runner, and queued every required check — FT-9).
 
+**Every manifest workflow surface now has a `-private` variant** (as of the
+ci/v2.1.0 cut). Previously only 5 of 11 did; the other 6 (`links`,
+`markdown-lint`, `pre-commit`, `secret-scan`, `labeler`, `docs-sync`) were
+generic templates carrying `runner_labels` only as a commented hint. That made
+`install.sh --update` unsafe on a private consumer: `--update` resolves each
+surface through `manifest.json`'s `visibility_variants`, and with no private
+variant it re-applied the label-less generic → the reusable's `ubuntu-latest`
+default → jobs queue forever on a private repo (OPS-0049). The variants close
+this: `--update` now writes a labeled file for private repos, so it is safe
+without hand-editing. The `deploy-ci-wizard.sh` injection path (which added the
+labels at scaffold time) still works and is now belt-and-suspenders rather than
+the only thing standing between a private consumer and a bricked gate.
+
 ### 4.2 Re-pinning consumers (version-only) — `install.sh --repin`
 
 **A re-pin is a version-string-only change.** To move a consumer to a newer

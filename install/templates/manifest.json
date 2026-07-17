@@ -83,6 +83,7 @@
     {
       "path": ".github/workflows/docs-sync.yml",
       "template": "workflows/docs-sync.yml",
+      "visibility_variants": {"public": "workflows/docs-sync.yml", "private": "workflows/docs-sync-private.yml"},
       "substitute": [],
       "safe_to_replace": true,
       "auto_install": false
@@ -90,6 +91,7 @@
     {
       "path": ".github/workflows/labeler.yml",
       "template": "workflows/labeler.yml",
+      "visibility_variants": {"public": "workflows/labeler.yml", "private": "workflows/labeler-private.yml"},
       "substitute": [],
       "safe_to_replace": true,
       "auto_install": false
@@ -97,6 +99,7 @@
     {
       "path": ".github/workflows/links.yml",
       "template": "workflows/links.yml",
+      "visibility_variants": {"public": "workflows/links.yml", "private": "workflows/links-private.yml"},
       "substitute": [],
       "safe_to_replace": true,
       "auto_install": false
@@ -104,6 +107,7 @@
     {
       "path": ".github/workflows/markdown-lint.yml",
       "template": "workflows/markdown-lint.yml",
+      "visibility_variants": {"public": "workflows/markdown-lint.yml", "private": "workflows/markdown-lint-private.yml"},
       "substitute": [],
       "safe_to_replace": true,
       "auto_install": false
@@ -111,6 +115,7 @@
     {
       "path": ".github/workflows/pre-commit.yml",
       "template": "workflows/pre-commit.yml",
+      "visibility_variants": {"public": "workflows/pre-commit.yml", "private": "workflows/pre-commit-private.yml"},
       "substitute": [],
       "safe_to_replace": true,
       "auto_install": false
@@ -118,6 +123,7 @@
     {
       "path": ".github/workflows/secret-scan.yml",
       "template": "workflows/secret-scan.yml",
+      "visibility_variants": {"public": "workflows/secret-scan.yml", "private": "workflows/secret-scan-private.yml"},
       "substitute": [],
       "safe_to_replace": true,
       "auto_install": false
