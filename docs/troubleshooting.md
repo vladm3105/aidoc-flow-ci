@@ -194,7 +194,7 @@ environments. Please remove one and try again.`
 (varies by plan). Stale environments from closed PRs accumulate.
 
 **Fix (per operations memory
-[`reference_azure_swa_staging_env_quota`](file:///home/ya/.claude/projects/-opt-data-aidoc-flow/memory/reference_azure_swa_staging_env_quota.md)):**
+the Azure SWA staging-env quota runbook (operator memory; not a repo doc)):**
 
 ```bash
 # Find the static webapp + list envs
