@@ -77,11 +77,18 @@ def completion(
     # big PRs, which surfaces as ResponseShapeError. Verdict mode defaults higher;
     # plain callers keep 4096. The LITELLM_MAX_TOKENS override wins for both, so an
     # operator can tune per-model without a code edit (model-agnostic).
-    # PLACEHOLDER (PLAN-011 PC-1): 8192 is a conservative 2x within DeepSeek chat
-    # models' historical cap. CONFIRM the target model accepts it without a
-    # non-retryable HTTP 400 (or that LiteLLM clamps) before relying on it; raise
-    # only once a higher cap is verified.
-    verdict_default_max_tokens = "8192"  # PLAN-011 PC-1 — verify against the live model
+    # PLAN-011 PC-1 (VERIFIED live 2026-07-17): deepseek-v4-pro (the ai-reviewer
+    # alias) accepts max_tokens well past this — 32768 and even 65536 return HTTP
+    # 200 — so the practical ceiling is this client's own 1..32768 validator, not
+    # the model. A typical complex 45-file verdict USES only ~2.3k completion
+    # tokens, but reasoning-token counts are NON-DETERMINISTIC and spike; the
+    # reported ResponseShapeError was a reasoning spike truncating at the old 4096
+    # default. 24576 (3x the first 8192 pick) covers a heavy-reasoning spike on a
+    # near-400KB diff with wide margin. Higher costs nothing extra (billing is per
+    # ACTUAL output token; finish_reason is normally `stop`), and LITELLM_MAX_TOKENS
+    # can raise it to the 32768 cap if a residual truncation ever surfaces (the F4
+    # infra signal would show it).
+    verdict_default_max_tokens = "24576"
     default_max_tokens = verdict_default_max_tokens if verdict_mode else "4096"
     try:
         max_tokens = int(os.environ.get("LITELLM_MAX_TOKENS", default_max_tokens))
