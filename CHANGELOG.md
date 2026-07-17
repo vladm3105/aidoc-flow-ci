@@ -5,6 +5,44 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Governance — repo records synced to reality; FT-5 correctly re-opened (2026-07-17)
+
+- **`plans/FRAMEWORK-TODO.md` FT-5**: was marked RESOLVED (PLAN-007 W2) but the
+  gap is live — `standards-drift.yml` grants only `contents: read`, so
+  branch-protection/actions-permissions reads `warn_uncheckable`-skip and the
+  drift check never verifies the settings PLAN-001 governs. The obvious fix
+  (`administration: read` on the job) was attempted and **rejected by actionlint**:
+  `administration` is not a grantable `GITHUB_TOKEN` scope, so those reads need a
+  PAT/App token, not a permissions line. FT-5 re-opened with the real (🔴,
+  secrets-provisioning) fix, folded into PLAN-010.
+- **`ROADMAP.md`**: was ~4 releases stale ("Current phase — ci/v2.0.0", "before
+  v2.0.0 is cut", PLAN-008 "In flight"). v2.0.0/v2.0.1 shipped; current phase is
+  v2.1.0 fleet-readiness; PLAN-009/010 added to the milestone table.
+- **`HANDOFF.md`**: described the merged `fix/flowci-feedback-canon-fixes` branch
+  as "IN FLIGHT (unmerged)" and PLAN-010 as "NOT started". Rewritten to the real
+  state (v2.1.0 staged + ready to cut; server-side blockers remain).
+- **`plans/PLAN-008`**: `DRAFT` → `COMPLETE` (all 29 findings closed, v2.0.0 cut
+  — it had been stale since 2026-07-13).
+- **`plans/FRAMEWORK-TODO.md` FT-10**: named `aidoc,ci-ephemeral` as "the real
+  labels" — that nickname is retired too; corrected to the CI-0007 canonical
+  `["self-hosted","ci-runner","single-use"]` so the doc-fix TODO doesn't install
+  a second wrong nickname.
+
+### Docs — adopter cold-start was broken; fixed the on-ramp (2026-07-17)
+
+- **`ROADMAP.md`**: was ~4 releases stale ("Current phase — ci/v2.0.0", "before
+  v2.0.0 is cut", PLAN-008 "In flight"). v2.0.0/v2.0.1 shipped; current phase is
+  v2.1.0 fleet-readiness; PLAN-009/010 added to the milestone table.
+- **`HANDOFF.md`**: described the merged `fix/flowci-feedback-canon-fixes` branch
+  as "IN FLIGHT (unmerged)" and PLAN-010 as "NOT started". Rewritten to the real
+  state (v2.1.0 staged + ready to cut; server-side blockers remain).
+- **`plans/PLAN-008`**: `DRAFT` → `COMPLETE` (all 29 findings closed, v2.0.0 cut
+  — it had been stale since 2026-07-13).
+- **`plans/FRAMEWORK-TODO.md` FT-10**: named `aidoc,ci-ephemeral` as "the real
+  labels" — that nickname is retired too; corrected to the CI-0007 canonical
+  `["self-hosted","ci-runner","single-use"]` so the doc-fix TODO doesn't install
+  a second wrong nickname.
+
 ### Docs — adopter cold-start was broken; fixed the on-ramp (2026-07-17)
 
 The reference docs were rigorous but the first ten minutes of adoption failed

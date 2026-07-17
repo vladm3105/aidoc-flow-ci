@@ -75,9 +75,36 @@ its commit range → the entries in that range), promote each inline-tagged
 doc-only entries to the release whose commit range contains them. Verify no
 entry is dropped or duplicated (line-count + entry-count before/after).
 
-### FT-5 — `standards-drift` can't verify branch-protection / actions-permissions (needs `administration: read`)
+### FT-5 — `standards-drift` can't verify branch-protection / actions-permissions — STILL OPEN (needs a PAT/App token, NOT a permissions line)
 
-**RESOLVED (2026-07-12, PLAN-007 W2):** `check-standards-drift.sh` now distinguishes a 403/permission failure (needs `administration: read` — emits a best-effort `uncheckable` warning) from genuinely-absent protection, so a scoped token no longer false-alarms.
+**STILL OPEN (re-checked 2026-07-17), and the "one-line fix" does not exist.**
+PLAN-007 W2 (2026-07-12) was marked RESOLVED but only made the 403 *legible* —
+it never granted the scope, so the gap stayed live and the banner hid it until
+the pre-prod governance review. The obvious fix — add `administration: read` to
+the drift job's `permissions:` — was **attempted 2026-07-17 and rejected by
+actionlint**: `administration` is not a grantable `GITHUB_TOKEN` workflow-
+permission scope at all (the enum is actions/attestations/checks/contents/
+deployments/discussions/id-token/issues/packages/pages/pull-requests/
+repository-projects/security-events/statuses). So `branches/*/protection` reads
+**cannot** be authorized via the workflow token; they require a PAT or a GitHub
+App installation token with `administration:read`, provided as a secret.
+
+**Effect (still live):** `.github/workflows/standards-drift.yml` grants only
+`contents: read`, so `check-standards-drift.sh`'s branch-protection +
+actions-permissions reads `warn_uncheckable`-skip. The drift check does NOT
+verify the exact server-side settings PLAN-001 governs. Load-bearing for
+PLAN-010's detector.
+
+**Fix (real):** mint an App installation token (or a fine-grained PAT) with
+`administration:read` + `actions:read`, store it as a repo/org secret, and have
+the workflow use it for the `gh api` reads instead of `GITHUB_TOKEN`. That is a
+provisioning task (🔴, touches secrets), not a canon-code one-liner — which is
+why it belongs with the PLAN-010 adoption-model work, not a drive-by.
+
+**Lesson:** "made the error legible" ≠ "fixed the error"; and a fix sketch's own
+caveat ("confirm GITHUB_TOKEN can read another repo's branch protection") is
+worth executing before marking anything RESOLVED. actionlint caught the bad fix
+in one run.
 
 **Found:** 2026-07-09, PLAN-004 C1 review.
 **Surface:** `.github/workflows/standards-drift.yml` job grants `contents: read`;
@@ -282,8 +309,11 @@ in several places: `docs/runners.md` §0/§2 pool tables + registration steps
 (~lines 91, 103, 122, 152-191), `docs/troubleshooting.md:95-96/286`,
 `LABELS.md:121`. Not a contradiction with the template change (the genuine
 "templates ship runner-self" claims were fixed in v1.9.0), but `runner-self` is
-**not registered on any runner** (real labels: `self-hosted,aidoc,ci-ephemeral`
-[+ `ai-review`]).
+**not registered on any runner**. The **canonical label is
+`["self-hosted","ci-runner","single-use"]`** (CI-0007, since v2.0.0 — see
+`DECISIONS.md`). NB the older `aidoc,ci-ephemeral` nickname is ALSO retired; this
+entry previously named it as "the real labels", which would have made this
+doc-fix install a second wrong nickname — fix the docs to the CI-0007 labels.
 **Effect:** a reader following runners.md registration steps would register a
 `runner-self` label no caller targets. Educational drift, not a live break.
 **Fix sketch:** reconcile the nickname — rewrite the reference docs to the real

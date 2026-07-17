@@ -5,7 +5,9 @@
 portability / governance) of `aidoc-flow-ci` ahead of the `ci/v2.0.0` tag cut.
 The LiteLLM unification implementation is complete; the 5-lens review returned
 SHIP-WITH-FIXES with 29 findings (7 BLOCKER, 10 HIGH, 8 MEDIUM, 4 LOW).
-**Status:** DRAFT — 2026-07-13 EST
+**Status:** COMPLETE — 2026-07-13 EST. All 29 findings closed; `ci/v2.0.0` cut
+(tag `d3f4b03`). (Was stale-marked DRAFT until 2026-07-17 — ironically PLAN-008's
+own PR#1 fixed the same stale-DRAFT drift on PLAN-004/005 and left its own.)
 **Depends on:** `feat/unified-litellm-agents` merged to main (PR #154).
 **Exit:** All 29 findings closed across 5 governance/correction PRs +
 LiteLLM smoke pass → `ci/v2.0.0` tag cut.

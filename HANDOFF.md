@@ -4,31 +4,51 @@ Live cross-session resume point for the workspace CI + governance-workflow
 canon library. Read at session start; refresh at milestones and before
 context compaction.
 
-## Current state (2026-07-16)
+## Current state (2026-07-17)
 
-**IN FLIGHT — `fix/flowci-feedback-canon-fixes` (unmerged).** Closes the
-verified subset of the `llm-router` flowci-feedback filing (that file lives in
-`/opt/data/llm_router/plans/flowci-feedback.md`; it is NOT this repo's and was
-not edited). Of 14 filed findings, **5 were real** and are fixed here; 7 were
-verified FALSE or by-design (markdownlint config auto-discovery, the
-markdown-lint filename "duplication", the `runner_labels`/FT-9 attribution,
-`codeql` "missing" from install, silently-skipped shellcheck/actionlint, the
-missing `.yamllint.yaml`); 2 had true facts but fixes that were rejected on
-inspection (the `pre_push_check.sh` merge-base range is deliberate and
-documented `"Broken; do not revert."`; the pre-push-hook verifier already exists
-in `apply-standards.sh --check` — nothing runs it, which is really a symptom of
-the adoption-model gap).
+**`ci/v2.1.0` is staged on `main` and READY to cut — founder go/no-go.** A
+5-lens pre-prod review (security/correctness/docs/portability/governance) of the
+canon as company-default source of truth returned BLOCKER; the **canon-side
+blockers are all closed** on `main` (merged, unreleased):
 
-What landed: `secret-scan` config canary (a rule-less `.gitleaks.toml` produced
-a green check that scanned nothing — reproduced with the pinned binary);
-`check-drift.sh` manifest-derived coverage + loud skip accounting (FT-8 closed);
-`audit-trail` manifested (it was the only template with no manifest entry);
-`audit-trail-check` bot-exemption ordering; REPO_STANDARDS §4.3 corrected (the
-deployed allowlist sets `verified_allowed: true`, so "third-party ⇒
-startup_failure" was never universal) + new §4.3a; `troubleshooting.md` §13's
-unblock command no longer prescribes `verified_allowed=false`, which drifted
-consumers OFF canon. New **FT-13**. Net semver: **MINOR** (`validate-config` is
-an additive input) → `ci/v2.1.0`.
+- **#175** — 3 security/correctness blockers: `composition` exempted every
+  author on a malformed trust config (`jq -e` exits 4 on a parse error, not just
+  1 on author-absent → `! jq -e` fired → `exit 0`; it is the SOLE App-approval
+  enforcement, and tier templates set `required_approving_review_count: 0`);
+  `VERSION`/`CI_TAG_FALLBACK` said `ci/v2.0.0` while `v2.0.1` was live, so every
+  CI_TAG-less `--repin` pinned consumers BACKWARDS (now mechanically synced +
+  `tests/test_version_sync.sh` guards it); `ai-review` `APP_KEY_PRESENT` tested
+  KEY-only in the review job → half-provisioned repos hard-bricked.
+- **#176** — 6 `-private` template variants (`links`, `markdown-lint`,
+  `pre-commit`, `secret-scan`, `labeler`, `docs-sync`): `--update` on a private
+  repo used to revert them to the label-less generic → `ubuntu-latest` → queue
+  forever. `--update` is now safe on private repos.
+- **#177** — adopter cold-start: LiteLLM-proxy prerequisite stated, secrets
+  ordered before the PR, `AI_CI_DEPLOYMENT.md` linked as the front door.
+
+Also earlier (flowci-feedback triage, merged #173): `secret-scan` config canary,
+`check-drift.sh` manifest coverage (FT-8), `audit-trail` manifested,
+REPO_STANDARDS §4.3/§4.3a/§4.3b/§4.3c, FT-13/FT-14.
+
+**To cut v2.1.0** (do NOT bump `VERSION` before the tag — `test_version_sync.sh`
+asserts `VERSION == latest published tag`, so the bump and the tag must land
+together): promote CHANGELOG `## Unreleased` → `## ci/v2.1.0`, `VERSION` →
+`ci/v2.1.0`, run `scripts/sync-version-refs.sh`, commit, `git tag ci/v2.1.0` +
+GitHub release. `docs/RELEASE_CHECKLIST.md` is the checklist. Net semver MINOR
+(`validate-config` additive input + new templates).
+
+**Sequencing caveat:** PLAN-009 is mid-cutover to `ci/v2.0.1` (operations live,
+7 consumers pending). Cutting v2.1.0 now gives two moving targets — decide
+whether the fleet goes to v2.0.1 first or straight to v2.1.0.
+
+**Server-side pre-prod blockers remain (founder + ops/inbox — NOT canon code):**
+`composition` is not a required check on `business` + `iplanic` (they run the
+phantom bare `Lint / format / security hooks` context per FT-12, so they merge
+via `--admin`); `aidoc-flow-ci` itself, `engramory`, and `iplan-standard` have
+**no branch protection at all**; business/iplanic/interlog are still on the
+retired `aidoc,ci-ephemeral` runner pool (now tool-migratable via the #176
+variants + `--update`, but still needs executing). These gate the *rollout*, not
+the tag.
 
 **Read before touching FT-13.** Its claim has been wrong three times in three
 directions; the entry documents each miss and the check that would have caught
@@ -38,16 +58,16 @@ a permanent authoring bug, not decay (deref: `git/tags/<sha> --jq '.object.sha'`
 → `e827ab82…`, HTTP 200). The same trap as the SHA-pin lesson in FT-10's
 neighbourhood: `git/refs/tags/<tag>` returns the TAG object for annotated tags.
 
-**NOT started: the adoption-model plan (next free PLAN number).** This is the
-filing's root finding and the one with fleet-wide consequences — `install.sh`
-only *prints* a branch-protection reminder (`:602`) and never invokes
-`apply-standards.sh`; no consumer receives either `sync/` script (absent from
-`manifest.json`); 5 of 6 consumers deviate identically on `enforce_admins` and
-canon itself is unprotected. It needs a decision (ship drift detection by
-copying the scripts vs. a canon reusable + caller template that resolves them at
-the consumer's pin) and it has a 🔴 half (making `install.sh` apply server-side
-settings mutates consumer repos). Consumer-side callers go via the ops/inbox
-runbook.
+**Adoption-model root finding: `plans/PLAN-010_adoption-model.md` — DRAFT, NOT
+READY.** `install.sh` only *prints* a branch-protection reminder (`:602`) and
+never invokes `apply-standards.sh`; no consumer receives either `sync/` script;
+5 of 6 consumers deviate identically on `enforce_admins` and canon itself is
+unprotected. PLAN-010 exists but two independent reviews each invalidated its
+lead phase (see its Review log); the recommended disposition is to SPLIT the
+detector + consumer-caller half (evidence-producing, decision-free once D1 is
+answered) from the D3/enforcement half (founder decision, unanswerable from
+canon today). It has a 🔴 half (making `install.sh` apply server-side settings
+mutates consumer repos); consumer-side callers go via the ops/inbox runbook.
 
 **Fleet v2 cutover (PLAN-009) — target is now `ci/v2.0.1`; Phase 0 partially
 done, still 🔴-gated.** `ci/v2.0.1` is published (tag → `819d148`) and is the
