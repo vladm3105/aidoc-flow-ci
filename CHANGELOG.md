@@ -5,6 +5,10 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+_(nothing yet)_
+
+## ci/v2.1.0 — 2026-07-17
+
 ### Governance — repo records synced to reality; FT-5 correctly re-opened (2026-07-17)
 
 - **`plans/FRAMEWORK-TODO.md` FT-5**: was marked RESOLVED (PLAN-007 W2) but the

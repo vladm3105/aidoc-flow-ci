@@ -39,7 +39,7 @@ permissions:
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/composition.yml@ci/v2.0.1
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/composition.yml@ci/v2.1.0
     with:
       runner_labels: '["self-hosted", "ci-runner", "single-use"]'
     secrets: inherit  # pragma: allowlist secret
