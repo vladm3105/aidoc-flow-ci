@@ -5,6 +5,10 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+_(nothing yet)_
+
+## ci/v2.1.2 — 2026-07-17
+
 ### Changed — ai-review verdict budget raised 8192 → 24576 (PLAN-011 follow-up, 2026-07-17)
 
 - **`scripts/litellm_client.py`:** the verdict-mode `max_tokens` default is now
