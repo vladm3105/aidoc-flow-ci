@@ -8,30 +8,39 @@ deferred items belong in `plans/` or `HANDOFF.md` open threads.
 
 ---
 
-## Current phase — ci/v2.1.0 fleet-readiness (pre-prod blockers closed)
+## Current phase — v2.1.x shipped; founder-gated fleet rollout
 
-`ci/v2.0.0` (LiteLLM unification) and `ci/v2.0.1` (ai-review v2 blocker fixes)
-**shipped** (2026-07-13 / 07-15). The current phase is making the canon
-production-ready as the company-default source of truth for all repos: a 5-lens
-pre-prod review (2026-07-17) returned BLOCKER, and the **canon-side blockers are
-now closed** on `main`, unreleased, awaiting the `ci/v2.1.0` cut. READ
-`HANDOFF.md` for the live cut/rollout state.
+`ci/v2.1.2` is cut + released (Latest). The pre-prod hardening that made the
+canon production-ready as the company-default source of truth is done and
+released, together with the ai-review large-diff fix a consumer hit live. The
+only remaining work is the **founder-gated fleet rollout** (re-pin the fleet to
+`ci/v2.1.2` + arm branch protection on the 5 unprotected/phantom-context repos)
+— 🔴 cross-repo, tracked in operations #268. READ
+`HANDOFF.md` for the live rollout state.
 
 | Milestone | Status |
 |---|---|
-| Pre-prod canon-side blockers (composition parse-bypass, backwards-repin, half-provisioned brick, `-private` variants, adopter docs) | DONE — on main (#175–#177), awaiting v2.1.0 cut |
-| `ci/v2.1.0` tag cut | Founder go/no-go (sequencing vs PLAN-009's in-flight v2.0.1 cutover) |
+| Pre-prod canon-side blockers (composition parse-bypass, backwards-repin, half-provisioned brick, `-private` variants, adopter docs) | DONE — shipped in `ci/v2.1.0` (#175–#177) |
+| ai-review large-diff hardening (PLAN-011: `max_tokens` budget + honest `ai:review-infra-error` signal) | DONE — shipped in `ci/v2.1.1` (`max_tokens` 4096→8192) + `ci/v2.1.2` (→24576) |
+| Fleet re-pin to `ci/v2.1.2` | Founder + ops/inbox (🔴 cross-repo; operations #268) |
 | Server-side pre-prod blockers (composition-required on business/iplanic; branch protection on the 3 unprotected repos incl. canon) | Founder + ops/inbox (cross-repo) |
 | PLAN-007 W4 fleet branch-protection arming | Founder-gated |
 | PLAN-007 W3 docs-sync dry-run → live | Founder-gated (App provisioning or doc-maintainer supersession) |
 | PLAN-008 pre-prod gap closure | COMPLETE (v2.0.0 cut) |
-| PLAN-009 fleet v2 cutover | In flight (Phase 0 🔴-gated) |
+| PLAN-009 fleet v2 cutover | In flight (Phase 0 🔴-gated; target now `ci/v2.1.2`) |
 | PLAN-010 adoption model | DRAFT — NOT READY (split recommended; see the plan) |
+| PLAN-011 ai-review large-diff hardening | SHIPPED (`ci/v2.1.1` + `v2.1.2`) |
 
 **Recently landed:**
 
-- 2026-07-17 — pre-prod canon-side blockers closed (#175–#177): composition
-  malformed-config bypass, `--repin`-backwards + version-sync guard,
+- 2026-07-17 — `ci/v2.1.2` cut: ai-review verdict budget raised 8192→24576
+  (PLAN-011 follow-up; live-verified headroom for reasoning-token spikes).
+- 2026-07-17 — `ci/v2.1.1` cut: ai-review large-diff fix (PLAN-011) — verdict
+  `max_tokens` 4096→8192 so reasoning tokens no longer truncate the verdict
+  JSON, plus a new `ai:review-infra-error` label/comment so a residual reviewer
+  failure surfaces honestly instead of as a fake `CHANGES_REQUESTED`.
+- 2026-07-17 — `ci/v2.1.0` cut: pre-prod canon-side blockers closed (#175–#177):
+  composition malformed-config bypass, `--repin`-backwards + version-sync guard,
   half-provisioned brick, 6 `-private` variants, adopter cold-start docs.
 - 2026-07-15 — `ci/v2.0.1` cut: ai-review v2 blocker fixes (request_changes jq,
   review-event bypass, python3 preflight).
@@ -54,11 +63,11 @@ now closed** on `main`, unreleased, awaiting the `ci/v2.1.0` cut. READ
 
 ---
 
-## Next phase — post-v2.1.0 canon evolution
+## Next phase — post-v2.1.x canon evolution
 
-Once `ci/v2.1.0` is cut and the fleet is on it, next phase closes the
-server-side pre-prod items (branch protection, required-check parity) and
-evolves the canon based on consumer feedback.
+Once the fleet is on `ci/v2.1.2`, next phase closes the server-side pre-prod
+items (branch protection, required-check parity) and evolves the canon based on
+consumer feedback.
 
 **Planned initiatives:**
 

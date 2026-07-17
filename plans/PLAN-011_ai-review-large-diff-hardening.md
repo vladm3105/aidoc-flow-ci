@@ -7,7 +7,7 @@ attempts: ResponseShapeError` → `exit 1`, blocking merge of large coherent
 changes even when every other check is green. Diagnosed as a reviewer-
 infrastructure limitation (strict verdict-JSON parsing at scale), not a code
 finding.
-**Status:** READY — PC-1/PC-2 VERIFIED against the live proxy 2026-07-17; implemented (#185) — see Live verification. Tag `ci/v2.1.1` unblocked.
+**Status:** SHIPPED — PC-1/PC-2 VERIFIED against the live proxy 2026-07-17; implemented (#185); released as `ci/v2.1.1` (verdict `max_tokens` 4096→8192 + `ai:review-infra-error` signal) and `ci/v2.1.2` (budget headroom → 24576, live-verified). See Live verification.
 **Depends on:** none (bug is live on `ci/v2.1.0` and every prior tag — the client
 is byte-identical at `ci/v2.0.0` and `main`, Claims 2/5).
 **Exit:** a ~130 KB / 45-file PR either produces a valid verdict without a

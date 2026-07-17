@@ -6,49 +6,68 @@ context compaction.
 
 ## Current state (2026-07-17)
 
-**`ci/v2.1.0` is staged on `main` and READY to cut — founder go/no-go.** A
-5-lens pre-prod review (security/correctness/docs/portability/governance) of the
-canon as company-default source of truth returned BLOCKER; the **canon-side
-blockers are all closed** on `main` (merged, unreleased):
+**`ci/v2.1.2` is cut + released (Latest) — the pre-prod-hardened canon plus the
+ai-review large-diff fix.** Three tags shipped this session, in order:
 
-- **#175** — 3 security/correctness blockers: `composition` exempted every
-  author on a malformed trust config (`jq -e` exits 4 on a parse error, not just
-  1 on author-absent → `! jq -e` fired → `exit 0`; it is the SOLE App-approval
-  enforcement, and tier templates set `required_approving_review_count: 0`);
-  `VERSION`/`CI_TAG_FALLBACK` said `ci/v2.0.0` while `v2.0.1` was live, so every
-  CI_TAG-less `--repin` pinned consumers BACKWARDS (now mechanically synced +
-  `tests/test_version_sync.sh` guards it); `ai-review` `APP_KEY_PRESENT` tested
-  KEY-only in the review job → half-provisioned repos hard-bricked.
-- **#176** — 6 `-private` template variants (`links`, `markdown-lint`,
-  `pre-commit`, `secret-scan`, `labeler`, `docs-sync`): `--update` on a private
-  repo used to revert them to the label-less generic → `ubuntu-latest` → queue
-  forever. `--update` is now safe on private repos.
-- **#177** — adopter cold-start: LiteLLM-proxy prerequisite stated, secrets
-  ordered before the PR, `AI_CI_DEPLOYMENT.md` linked as the front door.
+- **`ci/v2.1.0`** — a 5-lens pre-prod review (security/correctness/docs/
+  portability/governance) of the canon as company-default source of truth
+  returned BLOCKER; all canon-side blockers closed (#175–#177):
+  - **#175** — 3 security/correctness blockers: `composition` exempted every
+    author on a malformed trust config (`jq -e` exits 4 on a parse error, not
+    just 1 on author-absent → `! jq -e` fired → `exit 0`; it is the SOLE
+    App-approval enforcement, and tier templates set
+    `required_approving_review_count: 0`); `VERSION`/`CI_TAG_FALLBACK` said
+    `ci/v2.0.0` while `v2.0.1` was live, so every CI_TAG-less `--repin` pinned
+    consumers BACKWARDS (now mechanically synced + `tests/test_version_sync.sh`
+    guards it); `ai-review` `APP_KEY_PRESENT` tested KEY-only in the review job
+    → half-provisioned repos hard-bricked.
+  - **#176** — 6 `-private` template variants (`links`, `markdown-lint`,
+    `pre-commit`, `secret-scan`, `labeler`, `docs-sync`): `--update` on a
+    private repo used to revert them to the label-less generic →
+    `ubuntu-latest` → queue forever. `--update` is now safe on private repos.
+  - **#177** — adopter cold-start: LiteLLM-proxy prerequisite stated, secrets
+    ordered before the PR, `AI_CI_DEPLOYMENT.md` linked as the front door.
+  - Earlier flowci-feedback triage (merged #173): `secret-scan` config canary,
+    `check-drift.sh` manifest coverage (FT-8), `audit-trail` manifested,
+    REPO_STANDARDS §4.3/§4.3a/§4.3b/§4.3c, FT-13/FT-14.
+- **`ci/v2.1.1`** — ai-review large-diff fix (**PLAN-011**, from consumer bug
+  report llm-router PR #7: the required gate failed on large PRs with
+  `ResponseShapeError` → `exit 1`, blocking merge even when every other check
+  was green). Root cause, live-verified: `deepseek-v4-pro` reasoning tokens
+  count against `max_tokens`, and at 4096 the reasoning exhausts the budget
+  mid-JSON → the strict verdict parser rejects the truncation. Fix: verdict-mode
+  `max_tokens` default 4096→8192; a residual infra failure now surfaces honestly
+  as the new `ai:review-infra-error` label + comment (F4) instead of a fake
+  `CHANGES_REQUESTED`. Proven against the live model — 4096 reproduces the
+  failure on a complex 45-file diff, 8192 produces a valid verdict.
+- **`ci/v2.1.2`** — verdict-budget headroom bump 8192→24576 (PLAN-011
+  follow-up). Live-probed the model accepts ≥65536; the practical ceiling is the
+  client's own 32768 validator. A typical complex verdict uses only ~2.3k
+  tokens, but reasoning spikes non-deterministically — the headroom covers a
+  heavy-reasoning spike on a near-400 KB diff, and costs nothing extra
+  (per-actual-token billing).
 
-Also earlier (flowci-feedback triage, merged #173): `secret-scan` config canary,
-`check-drift.sh` manifest coverage (FT-8), `audit-trail` manifested,
-REPO_STANDARDS §4.3/§4.3a/§4.3b/§4.3c, FT-13/FT-14.
+**All canon work for this session is landed + released; both `aidoc-flow-ci` and
+`operations` have 0 open PRs.** PLAN-011 is SHIPPED (see
+`plans/PLAN-011_ai-review-large-diff-hardening.md`).
 
-**To cut v2.1.0** (do NOT bump `VERSION` before the tag — `test_version_sync.sh`
-asserts `VERSION == latest published tag`, so the bump and the tag must land
-together): promote CHANGELOG `## Unreleased` → `## ci/v2.1.0`, `VERSION` →
-`ci/v2.1.0`, run `scripts/sync-version-refs.sh`, commit, `git tag ci/v2.1.0` +
-GitHub release. `docs/RELEASE_CHECKLIST.md` is the checklist. Net semver MINOR
-(`validate-config` additive input + new templates).
+**What remains — founder-gated fleet rollout (🔴 cross-repo, NOT canon code).**
+Runbook: `../operations/ops/inbox/2026-07-17_cto-platform_flow-ci-v2.1.0-cut-and-preprod-closure.md`
+(operations #268, retargeted to `ci/v2.1.2`):
 
-**Sequencing caveat:** PLAN-009 is mid-cutover to `ci/v2.0.1` (operations live,
-7 consumers pending). Cutting v2.1.0 now gives two moving targets — decide
-whether the fleet goes to v2.0.1 first or straight to v2.1.0.
+1. **Re-pin the fleet to `ci/v2.1.2`** — version-only `--repin` with an explicit
+   `CI_TAG` (safe; a re-pin never clobbers `runner_labels` — that is `--update`).
+2. **Arm branch protection** — `aidoc-flow-ci` itself (canon), `engramory`, and
+   `iplan-standard` have **no branch protection at all**; `business` + `iplanic`
+   require only the phantom bare `Lint / format / security hooks` context per
+   FT-12, so `composition` is not a required check and they merge via `--admin`
+   (no real review gate — this is the pre-prod security finding).
+3. business/iplanic/interlog are still on the retired `aidoc,ci-ephemeral`
+   runner pool (now tool-migratable via the #176 `-private` variants +
+   `--update`, but still needs executing).
 
-**Server-side pre-prod blockers remain (founder + ops/inbox — NOT canon code):**
-`composition` is not a required check on `business` + `iplanic` (they run the
-phantom bare `Lint / format / security hooks` context per FT-12, so they merge
-via `--admin`); `aidoc-flow-ci` itself, `engramory`, and `iplan-standard` have
-**no branch protection at all**; business/iplanic/interlog are still on the
-retired `aidoc,ci-ephemeral` runner pool (now tool-migratable via the #176
-variants + `--update`, but still needs executing). These gate the *rollout*, not
-the tag.
+These gate the *rollout*, not the tags — the tags are cut. Arming runbook:
+`docs/FLEET_BRANCH_PROTECTION_ARMING.md`.
 
 **Read before touching FT-13.** Its claim has been wrong three times in three
 directions; the entry documents each miss and the check that would have caught
@@ -69,10 +88,12 @@ answered) from the D3/enforcement half (founder decision, unanswerable from
 canon today). It has a 🔴 half (making `install.sh` apply server-side settings
 mutates consumer repos); consumer-side callers go via the ops/inbox runbook.
 
-**Fleet v2 cutover (PLAN-009) — target is now `ci/v2.0.1`; Phase 0 partially
-done, still 🔴-gated.** `ci/v2.0.1` is published (tag → `819d148`) and is the
-fleet target; it patches `ci/v2.0.0` (→ `d3f4b03`) with the 3 ai-review blocker
-fixes. **`operations` is advanced to `@ci/v2.0.1` and LIVE-VERIFIED (2026-07-16,
+**Fleet v2 cutover (PLAN-009) — target SUPERSEDED `ci/v2.0.1` → `ci/v2.1.2`
+(operations #268); Phase 0 partially done, still 🔴-gated.** `ci/v2.0.1` was the
+original fleet target (tag → `819d148`; patches `ci/v2.0.0` → `d3f4b03` with the
+3 ai-review blocker fixes), but `ci/v2.1.2` is strictly better (it *contains*
+v2.0.1's fixes plus the pre-prod hardening and PLAN-011), so the fleet re-pins
+straight to `ci/v2.1.2` per the runbook above — do not re-pin to v2.0.1. **`operations` is advanced to `@ci/v2.0.1` and LIVE-VERIFIED (2026-07-16,
 PR #265).** `plans/PLAN-009_fleet-v2-cutover.md` syncs the other **7 consumers**
 (still `@ci/v1.9.5`).
 
@@ -180,7 +201,8 @@ audited 2026-07-11 (see `docs/WORKFLOWS.md` §2):
 - **iplan-runner** (a 9th active submodule, initially missed) populated with all
   three content-checks (PR #79).
 
-**Graduations status (SUPERSEDED by the 2026-07-12 current-state above):**
+**Graduations status (history — 2026-07-12; W4 arming still founder-gated per
+current state above):**
 1. **markdown-lint report-only → blocking — DONE 2026-07-12** (all 6 consumers
    merged; the "259 residual/repo + `--fix`" framing was superseded by relaxing
    the canon `.markdownlint.json` per the founder decision). Only the
