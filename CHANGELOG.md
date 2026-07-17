@@ -5,6 +5,24 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — remaining pre-prod correctness minors (M4 + L3, 2026-07-17)
+
+- **M4 — `concurrency` added to the `audit-trail` + `codeql` callers.** They
+  lacked it, so on the serial single-use private runner pool a stale run from a
+  rapid re-push occupied a slot ahead of the live one. Added
+  `group: ${{ github.workflow }}-${{ github.ref }}` + `cancel-in-progress: true`
+  to the CALLERS (`.github/workflows/audit-trail.yml`,
+  `install/templates/workflows/audit-trail-{public,private}.yml`, and the
+  `codeql` consumer caller template) — **never the reusables**: a caller and its
+  called workflow sharing a `concurrency.group` makes GitHub self-cancel the run
+  (the pre-push review caught a first pass that wrongly put it on the `codeql`
+  reusable). `audit-trail`'s reusable (`audit-trail-check.yml`) is untouched.
+- **L3 — ai-review `tier` now fails CLOSED.** The auto-merge branch keyed on
+  `tier == "spec"` exactly, so any other non-routine value (`Spec`, `governance`,
+  a typo) fell through to auto-merge instead of human-merge. Changed to
+  `tier != "routine"` — only `routine` auto-merges; everything else is
+  human-merge. Latent today (no caller passes `tier`), armed the moment one does.
+
 ### Dogfooding — canon runs its own secret-scan gate (2026-07-17)
 
 - **`.github/workflows/self-secret-scan.yml`** (new): canon now calls the

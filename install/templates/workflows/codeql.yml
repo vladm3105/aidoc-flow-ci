@@ -23,6 +23,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   call:
     uses: vladm3105/aidoc-flow-ci/.github/workflows/codeql.yml@ci/v2.1.0

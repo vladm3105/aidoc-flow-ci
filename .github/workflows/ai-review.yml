@@ -771,8 +771,12 @@ jobs:
             in_automerge() { jq -e --arg r "$GH_REPO" '(.auto_merge.repos // []) | index($r)' .github/ai-review/config.json >/dev/null 2>&1; }
             if [ "${GOV_LOCKED:-true}" = "true" ]; then
               echo "Review clean — governance floor (gate / .github / governance / framework): a human merges (no auto-merge)."
-            elif [ "${TIER:-routine}" = "spec" ]; then
-              echo "Review clean — spec/governance tier: a human merges (no auto-merge)."
+            elif [ "${TIER:-routine}" != "routine" ]; then
+              # Fail CLOSED on ANY non-routine tier, not just the exact string "spec":
+              # a typo'd/unknown value (e.g. "Spec", "governance") must go to
+              # human-merge, never silently fall through to the auto-merge branch
+              # below. (pre-prod L3: `tier: Spec` degraded to routine -> auto-merged.)
+              echo "Review clean — non-routine tier '${TIER:-routine}' — a human merges (no auto-merge)."
             elif in_automerge; then
               # Anti-recursion fix (ci/v1.1.6): the default GITHUB_TOKEN-authored merge
               # commit does NOT trigger downstream `push:` workflows per GitHub's

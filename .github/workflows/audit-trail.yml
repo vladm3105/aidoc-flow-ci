@@ -24,6 +24,10 @@ on:
     # these; audit-trail was the outlier.
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   call:
     uses: vladm3105/aidoc-flow-ci/.github/workflows/audit-trail-check.yml@ci/v2.1.0
