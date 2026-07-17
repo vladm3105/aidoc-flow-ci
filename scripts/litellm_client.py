@@ -72,8 +72,19 @@ def completion(
         fail("no model alias supplied (--model or LITELLM_MODEL)")
     if not MODEL_PATTERN.fullmatch(model):
         fail("model alias must match [A-Za-z0-9][A-Za-z0-9._:/-]{0,127}")
+    # PLAN-011 T1: a verdict for a large diff (many findings) needs more output
+    # headroom than a plain --json call — 4096 truncates the JSON mid-object on
+    # big PRs, which surfaces as ResponseShapeError. Verdict mode defaults higher;
+    # plain callers keep 4096. The LITELLM_MAX_TOKENS override wins for both, so an
+    # operator can tune per-model without a code edit (model-agnostic).
+    # PLACEHOLDER (PLAN-011 PC-1): 8192 is a conservative 2x within DeepSeek chat
+    # models' historical cap. CONFIRM the target model accepts it without a
+    # non-retryable HTTP 400 (or that LiteLLM clamps) before relying on it; raise
+    # only once a higher cap is verified.
+    verdict_default_max_tokens = "8192"  # PLAN-011 PC-1 — verify against the live model
+    default_max_tokens = verdict_default_max_tokens if verdict_mode else "4096"
     try:
-        max_tokens = int(os.environ.get("LITELLM_MAX_TOKENS", "4096"))
+        max_tokens = int(os.environ.get("LITELLM_MAX_TOKENS", default_max_tokens))
     except ValueError:
         fail("LITELLM_MAX_TOKENS must be an integer")
     if not 1 <= max_tokens <= 32768:

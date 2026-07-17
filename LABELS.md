@@ -15,14 +15,14 @@ The namespaces have different behavior:
 The two namespaces therefore use different separator conventions
 intentionally. Don't try to unify them; the constraints differ.
 
-## PR labels — the canonical 16
+## PR labels — the canonical 17
 
-`install/templates/labels.json` is the canonical set — **16 labels** in
+`install/templates/labels.json` is the canonical set — **17 labels** in
 three functional groups. `install/install.sh` creates them idempotently
 on a consumer repo at bootstrap (fail-loud; prefetches existing, only
 adds missing, never removes drift). The groups:
 
-### 1. State / control labels (6)
+### 1. State / control labels (7)
 
 The `ai:*` state labels are applied by `ai-review.yml`. The two `skip-*`
 directives are applied by an authorized human/operator; workflows consume
@@ -32,6 +32,7 @@ them but do not create them automatically.
 |---|---|---|---|
 | `ai:review-passed` | `0e8a16` | state (canon §5.1) | Reviewer App APPROVED the PR |
 | `ai:review-changes` | `d93f0b` | state (canon §5.1) | Reviewer App requested CHANGES |
+| `ai:review-infra-error` | `e8a33d` | state (PLAN-011 F4) | Reviewer infrastructure failure — no verdict produced (not a code finding; re-run). Third mutually-exclusive outcome state; check stays red (fail-closed) |
 | `ai:human-review-required` | `fbca04` | state (canon §5.1) | Fork PR or non-allowlisted author — trust gate routed to human review |
 | `ai:autofix-applied` | `1d76db` | action (IPLAN-0014; optional) | The autofix fixer applied a patch on this PR (not a canon §5.1 required label) |
 | `skip-ai-review` | `5319e7` | **control / directive** | Human override: suppress the reviewer on subsequent pushes; `composition` carries the prior approval forward |

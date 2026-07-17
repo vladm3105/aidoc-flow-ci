@@ -5,6 +5,42 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — ai-review no longer fails opaquely on large diffs (PLAN-011, 2026-07-17)
+
+Consumer bug: the required `ai-review` gate failed on large PRs with
+`ResponseShapeError` → `exit 1`, blocking merge even when every other check was
+green. Reviewer-infrastructure limitation, not a code finding. Two fixes (the
+plan's independent review rejected two riskier ones — see below):
+
+- **T1 — `scripts/litellm_client.py` + `ai-review.yml`:** the verdict `max_tokens`
+  default was **4096** with no output-budget scaling, so a large diff's verdict
+  JSON was truncated mid-object → parse failure. Verdict mode now defaults to
+  **8192** (plain `--json` keeps 4096; `LITELLM_MAX_TOKENS` overrides both), and
+  the verdict call passes `--timeout 900` as headroom for the longer completion.
+  **Both numbers are PLACEHOLDERS gated on live pre-checks before the tag cut**
+  (marked `PLAN-011 PC-1/PC-2` in the code): PC-1 confirms the model accepts 8192
+  without a non-retryable HTTP 400 (which would red every PR); PC-2 measures the
+  completion time. The strict parser is **unchanged**.
+- **F4 — honest infra signal:** a `ResponseShapeError` used to surface as an
+  opaque red check (the labelling Gate step is `success()`-gated, so it was
+  skipped). A new step scoped to the verdict-client failure (via a step `id`, not
+  a bare `if: failure()` that would double-post on asset/diff-fetch paths) now
+  sets a new **`ai:review-infra-error`** label + an "infrastructure error, not a
+  code finding, re-run" comment. The label is a **third mutually-exclusive**
+  review-outcome state (`set_label` now cycles all three), so a re-review never
+  shows `ai:review-passed` AND `ai:review-infra-error` at once. Fail-closed
+  preserved — the required check stays red.
+- **Rejected on security grounds (plan Pass-2 independent review):** mining
+  `reasoning_content` (surfaces the model's draft chain-of-thought verdict) and
+  first-balanced-object parsing (a prompt-injection surface — a diff-planted
+  `{"decision":"approve"}` quoted before the real verdict would be extracted).
+  `tests/test_scripts.sh` now LOCKS the strict parser: it fails red if anyone
+  loosens `normalize_json_object` to accept prose-wrapped/multi-object output.
+- **New label distribution:** `ai:review-infra-error` reaches a consumer on its
+  next `install.sh` label step (or `gh label create`); until then the *comment*
+  is the reliable infra signal (the label POST 422s silently on a repo missing
+  it). Full design + the Claim ledger: `plans/PLAN-011_ai-review-large-diff-hardening.md`.
+
 ### Fixed — canon's pre-push hook now matches its CI yamllint profile (FT-14, 2026-07-17)
 
 - **`.yamllint.yaml`** (new, repo root) + **`tests/test_lint.sh`**: canon's
