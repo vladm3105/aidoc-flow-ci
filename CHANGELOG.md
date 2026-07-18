@@ -7,6 +7,35 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 _(nothing yet)_
 
+## ci/v2.3.0 — 2026-07-18
+
+### Added — ai-review autofix (PLAN-012): the reviewer can commit a fix and re-review, default-off (2026-07-18)
+
+- **`.github/workflows/ai-review.yml`:** a new gated `autofix` job. When the reviewer
+  returns `request_changes`, it asks the model for a unified diff, applies it with a
+  hard governance deny-floor, and pushes it to the PR head via a **dedicated autofix
+  GitHub App** (ephemeral installation token, `contents:write` — NOT a PAT). The push
+  re-fires the gate → the reviewer re-reviews → converge or escalate at the round cap.
+- **DEFAULT-OFF + heavily gated.** Runs only when: `auto_fix_ok` (author in
+  `trust.auto_fix` AND not a fork — forks never reach it), `autofix.enabled` (resolved
+  from the TRUSTED config, so a PR cannot self-enable), tier != spec, no
+  governance-locked path changed, and the bot-commit round cap is not hit. Inert unless
+  the dedicated App creds are set.
+- **Security controls:** the model holds no push credential (model-call/apply and push
+  are separate steps; the App token appears only in the push step); the deny-floor is
+  checked both at diff-parse and post-apply (rejecting `.github/`, `governance/`,
+  `*/governance/`, `framework/`, `templates/ai-review/`, and out-of-tree paths); the
+  push is two-step (patch-export with no token → pristine clone + `git am` + push); any
+  doubt escalates to a human (`ai:autofix-escalated`) — it never force-pushes a guess.
+- **Config:** typed `autofix` schema (`enabled` bool, `max_fix_rounds` int 0–10,
+  `max_budget_usd`); `autofix.enabled` + `autofix.max_fix_rounds` added to the
+  trust-enforced set. New labels `ai:autofix-applied` + `ai:autofix-escalated` (18 total).
+- **Secrets (opt-in):** `APP_AUTOFIX_ID`/`APP_AUTOFIX_KEY` (a SEPARATE App from the
+  reviewer App — judge≠generator at the identity level), `LITELLM_FIX_API_KEY`, and the
+  `LITELLM_FIXER_MODEL` repo var (default `ai-fixer`). Docs: `security.md §3b`.
+
+Net semver MINOR — additive (new gated job, default-off; no consumer-facing break).
+
 ## ci/v2.2.0 — 2026-07-18
 
 ### Changed — uniform protected AI-flow model: AI-flows run self-hosted on public AND private, one template (PLAN-013, 2026-07-18)

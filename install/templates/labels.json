@@ -27,7 +27,12 @@
   {
     "name": "ai:autofix-applied",
     "color": "1d76db",
-    "description": "AI autofix applied; optional for repositories that enable ai-review autofix"
+    "description": "AI autofix applied a fix commit; optional for repos that enable ai-review autofix (PLAN-012)"
+  },
+  {
+    "name": "ai:autofix-escalated",
+    "color": "b60205",
+    "description": "Autofix stopped and handed the PR to a human (deny-path / apply fail / round cap). PLAN-012"
   },
   {
     "name": "governance",

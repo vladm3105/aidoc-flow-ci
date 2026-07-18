@@ -34,7 +34,8 @@ them but do not create them automatically.
 | `ai:review-changes` | `d93f0b` | state (canon §5.1) | Reviewer App requested CHANGES |
 | `ai:review-infra-error` | `e8a33d` | state (PLAN-011 F4) | Reviewer infrastructure failure — no verdict produced (not a code finding; re-run). Third mutually-exclusive outcome state; check stays red (fail-closed) |
 | `ai:human-review-required` | `fbca04` | state (canon §5.1) | Fork PR or non-allowlisted author — trust gate routed to human review |
-| `ai:autofix-applied` | `1d76db` | action (IPLAN-0014; optional) | The autofix fixer applied a patch on this PR (not a canon §5.1 required label) |
+| `ai:autofix-applied` | `1d76db` | action (PLAN-012; optional) | The autofix fixer pushed a fix commit on this PR (not a canon §5.1 required label) |
+| `ai:autofix-escalated` | `b60205` | action (PLAN-012; optional) | Autofix stopped and handed the PR to a human — deny-path, apply failure, or the round cap (not a canon §5.1 required label) |
 | `skip-ai-review` | `5319e7` | **control / directive** | Human override: suppress the reviewer on subsequent pushes; `composition` carries the prior approval forward |
 | `skip-audit-trail` | `d876e3` | **control / directive** | Two-signal override for the OPS-0069 audit-trail CI check — MUST be paired with `[skip-audit-trail]` in a commit body (per REPO_STANDARDS §14.2 / PLAN-002 §4.6). One signal alone does not skip. |
 

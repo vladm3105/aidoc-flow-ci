@@ -10,6 +10,15 @@
 #   LITELLM_BASE_URL                         proxy base URL (normally .../v1)
 #   LITELLM_REVIEW_API_KEY                   review-scoped LiteLLM virtual key
 #
+# Autofix (PLAN-012) — OPT-IN, DEFAULT-OFF. The `autofix` job in the reusable is
+# INERT unless BOTH the trusted config sets `autofix.enabled: true` AND these are set:
+#   APP_AUTOFIX_ID + APP_AUTOFIX_KEY         DEDICATED autofix App (contents:write) —
+#                                            a SEPARATE App from the reviewer App
+#   LITELLM_FIX_API_KEY                      fix-scoped LiteLLM virtual key
+#   (repo var) LITELLM_FIXER_MODEL           fixer model alias (default `ai-fixer`)
+# Without the App creds the job self-skips; a PR branch cannot enable autofix
+# (autofix.enabled is resolved from the trusted config repo, never the PR).
+#
 # `pull_request_target` (not `pull_request`) is required so the trust gate has
 # write-capable credentials + secrets; the heavy job runs only for trusted
 # authors per `.github/ai-review/config.json`.
@@ -36,7 +45,7 @@ permissions:
   issues: write          # gh api label create/apply paths
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.2.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.3.0
     with:
       # Model selection is CONFIG-DRIVEN: the reusable reads `litellm.model`
       # from the trusted .github/ai-review/config.json. Uncomment to override:
