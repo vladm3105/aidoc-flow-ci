@@ -6,12 +6,39 @@ context compaction.
 
 ## Current state (2026-07-18)
 
-**`ci/v2.3.0` is the Latest release — autofix (PLAN-012) ships on top of the
-uniform protected AI-flow model (PLAN-013, `ci/v2.2.0`), which sits on the
-pre-prod-hardened canon (`ci/v2.1.2`).** All security-reviewed and shipped;
-what remains everywhere is 🔴 founder-gated (fleet re-pin/arming per operations
-#268, and — to turn autofix on — the dedicated autofix-App registration +
-secrets + `autofix.enabled`). The v2.1.x history that hardened the canon:
+**`ci/v2.6.0` is the Latest release — the own-security-scanner suite (PLAN-014,
+"osv/trivy/semgrep, all in, report-only first"). Three report-only scanners now
+ship on the uniform-protected + fork-guarded model (PLAN-013), each SHA/version-pinned
+with binaries/pip installed directly (no marketplace actions, §4.3):**
+
+- **`ci/v2.4.0` — `dep-scan.yml`** (Phase 1): dependency-vulnerability / SCA gate
+  via the **osv-scanner** binary. Data-only (never `--call-analysis`, which compiles
+  source). Security fold: `--no-call-analysis=all` + `expect-manifests` (rc=128 "no
+  packages" no longer silent-passes).
+- **`ci/v2.5.0` — `trivy-scan.yml`** (Phase 2): IaC/Dockerfile **misconfiguration**
+  gate via the **trivy** binary (`trivy config` only, not `fs`). SSRF-hardened —
+  restricted to static scanners (`--misconfig-scanners dockerfile,kubernetes,cloudformation,azure-arm`)
+  because trivy's terraform/helm/ansible scanners fetch PR-controlled remote sources
+  (`--tf-exclude-downloaded-modules` does NOT stop the fetch — verified).
+- **`ci/v2.6.0` — `sast-scan.yml`** (Phase 3): SAST via **semgrep** (VERSION-pinned
+  pip into a venv — semgrep is Python, not a binary). The OWN SAST complementing
+  native CodeQL (N/A on private), so it gates PRIVATE repos too. Data-only static AST;
+  `--metrics off` + explicit `--config`. Security folds (both verified): strip
+  PR-supplied `.semgrepignore`/`.semgreprc` (a `.semgrepignore` with `*` was a full
+  gate-bypass) + fail loud on a missing/unparseable SARIF (`jq -e`).
+
+All three are `auto_install: false` (opt-in), ship `fail-on-findings: false`, and
+carry no `secrets: inherit` (least privilege). **PLAN-014 remaining:** Phase 4 =
+semgrep `--autofix` (the one model-free safe-autofix path — §4a); Phase 5 = graduate
+each scanner `fail-on-findings` false→true (per-scanner **founder** step, after a
+clean window). Note Phase 4's *activation* shares the same 🔴 founder-gated autofix-App
+infrastructure as PLAN-012 — building it yields another dormant-until-armed flow.
+
+This sits on top of **`ci/v2.3.0`** — autofix (PLAN-012) on the uniform protected
+AI-flow model (PLAN-013, `ci/v2.2.0`), on the pre-prod-hardened canon (`ci/v2.1.2`).
+All security-reviewed and shipped; what remains everywhere is 🔴 founder-gated (fleet
+re-pin/arming per operations #268, and — to turn autofix on — the dedicated autofix-App
+registration + secrets + `autofix.enabled`). The v2.1.x history that hardened the canon:
 
 - **`ci/v2.1.0`** — a 5-lens pre-prod review (security/correctness/docs/
   portability/governance) of the canon as company-default source of truth
