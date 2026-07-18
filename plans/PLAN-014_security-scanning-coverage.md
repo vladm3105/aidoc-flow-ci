@@ -13,8 +13,11 @@ filesystem/IaC/misconfig scanning, and no own SAST**. This plan closes that with
 **own-scanner** reusables (CI `fail-on-findings` gate — the required, fleet-wide
 floor, private included) that ALSO surface for free in GitHub Code scanning on public
 repos (the bonus). **No paid GHAS feature is ever proposed.**
-**Status:** DRAFT — 🔴 GATED on a founder go/no-go (see §7: tool choices +
-`fail-on-findings` rollout + scope). No workflow ships until approved.
+**Status:** APPROVED (founder 2026-07-18) — **all three scanners in** (osv-scanner
++ trivy + semgrep); **report-only first, but built graduation-ready** for
+`fail-on-findings`; **and autofix the findings** (§4a). §7 gate is resolved; ready to
+implement (phased, §6). Implementation is a large multi-release build — each phase
+ships + gets the full OPS-0065 security review like the autofix flow did.
 **Depends on:** [[PLAN-013]] uniform-protected model (new scanner reusables ship as
 single self-hosted protected templates, public+private, no visibility split).
 **Exit:** each in-scope concern (SCA, filesystem/IaC, SAST) has an **own** canon
@@ -160,6 +163,50 @@ through `apply-standards.sh` (Claim 10) + REPO_STANDARDS §3 (Claim 8):
   — **not a gap to close and not a cost to incur**; the own-scanner CI gates are the
   full coverage there. That is exactly the must-have/nice-to-have split.
 
+## 4a. Autofix the findings (founder requirement, 2026-07-18) — where it is SAFE
+
+Security findings are auto-remediated **only where the fix is deterministic AND
+data-only** (never executes PR code, never guesses). An independent review
+(Pass 5) killed the naive "auto-fix everything" version; the honest, per-class
+design:
+
+- **SAST (semgrep) — YES, the one clean auto-fix path.** `semgrep --autofix`
+  applies a fix the *rule itself* defines — static, never runs the target code,
+  deterministic. It edits in place, so the pipeline runs `git diff` to derive the
+  patch. Only the minority of rules carrying a `fix:` key autofix; every other
+  finding **escalates** (report + human). No model.
+- **SCA (osv-scanner) — NO in-CI autofix; remediation is DEFERRED to Dependabot.**
+  A *valid* dependency bump requires re-running the ecosystem resolver
+  (`npm install` runs lifecycle scripts; `pip`/sdist runs `setup.py`) — that
+  **executes untrusted PR code on the self-hosted runner**, breaking §1a's data-only
+  safety, and is *more* dangerous than the model path it would replace (Pass-5 F1).
+  So our `dep-scan` is the **gate** (report/block a within-PR introduced vuln);
+  **Dependabot security updates** own the actual bump — they run in **GitHub's
+  isolated infra**, not ours. Different moments, no arbitration (§7 D-5).
+- **Filesystem/IaC (trivy) — NO autofix; escalate-only.** Trivy is a scanner with
+  **no fix capability** (Pass-5 F2); in config/misconfig mode it emits prose
+  guidance, not an appliable patch. Report + escalate to a human.
+
+**Architecture — a PARALLEL fix pipeline sharing only the push half + one counter,
+NOT a trigger tweak (Pass-5 F3/F4/F5).** The shipped [[PLAN-012]] autofix job is
+hard-wired to the ai-review verdict artifact + `request_changes` and its generation
+step *is* the model call — a scanner finding has neither. So Phase 4 builds a
+**separate scanner-autofix codepath** (its own finding source + gate) that:
+
+- **shares** the already-reviewed **two-step pristine-clone App-token push**, the
+  governance **deny-floor** (diff-parse + post-apply), **fork-exclusion / trust-gate**,
+  and **default-off**;
+- shares **ONE round counter** with the ai-review autofix (else combined bot-commits
+  reach 2× cap) and **ONE serialized concurrency group** (else two autofix paths race
+  two App-token pushes to the same head);
+- has **NO LiteLLM dependency** — the model boundary is *structural*, not a
+  convention: the scanner-autofix generator never mints `LITELLM_FIX_API_KEY` /
+  calls the client (asserted by a test). **Model-based fixing stays exclusive to
+  ai-review's code findings** ([[PLAN-012]] D-2a).
+
+Every scanner-autofix commit re-fires the gate and is re-reviewed; anything that
+breaks CI fails and escalates, never merges unseen.
+
 ## 5. Scope & non-goals
 
 - **In scope:** the three new own-scanner reusables (SCA / filesystem-IaC / SAST) +
@@ -179,21 +226,39 @@ through `apply-standards.sh` (Claim 10) + REPO_STANDARDS §3 (Claim 8):
   caller template (PLAN-013 single) + REPO_STANDARDS + docs + tests + a `ci/v2.4.0`
   cut. Security-reviewed pre-push (OPS-0065).
 - **Phase 2 (filesystem/IaC).** `trivy-scan.yml` (config/misconfig-focused).
-- **Phase 3 (own SAST).** `sast-scan.yml` (semgrep), if approved (§7 D-3).
-- **Phase 4 (graduate + native settings).** `fail-on-findings:false → true` per
-  scanner after a clean window; assert native settings via `apply-standards`.
+- **Phase 3 (own SAST).** `sast-scan.yml` (semgrep, hash-pinned pip).
+- **Phase 4 (autofix the SAFE findings — §4a).** Build a **separate** scanner-autofix
+  codepath: `semgrep --autofix` → derive patch via `git diff` → feed the **shared**
+  two-step App push + deny-floor + fork-exclusion + **one shared round counter** +
+  one serialized concurrency group; **no LiteLLM dependency** (structural boundary +
+  test). SCA remediation is Dependabot's (deferred); trivy is escalate-only.
+  Default-off. Full OPS-0065 security review (it uses the App write token on a new
+  trigger — same scrutiny the autofix build got).
+- **Phase 5 (graduate + native settings).** `fail-on-findings:false → true` per
+  scanner after a clean window; assert the free native settings via `apply-standards`.
+  Each `fail-on-findings` graduation is a founder step (mirrors markdown-lint).
 
-## 7. 🔴 Founder-decision points (the gate)
+## 7. Founder-decision points — RESOLVED (2026-07-18)
 
-1. **SCA tool — `osv-scanner` (recommended) vs `pip-audit`** (+ whether to add the
-   native `dependency-review-action` on public).
-2. **Filesystem/IaC — include `trivy` now** (config/misconfig mode) or defer?
-3. **Own SAST — add `semgrep`** (own SAST for private repos) or rely on native
-   CodeQL only for now?
-4. **Rollout** — confirm `fail-on-findings: false` (report-only) first, graduating
-   to blocking per scanner after a clean window; and which repos are in the first
-   wave (recommend the public product repos first, where Code scanning also lights
-   up).
+1. **SCA tool → `osv-scanner`** ✅ (+ the free native `dependency-review-action` on
+   public).
+2. **Filesystem/IaC → `trivy` IN** ✅ (config/misconfig-focused).
+3. **Own SAST → `semgrep` IN** ✅ (covers private repos where CodeQL is N/A).
+4. **Rollout → report-only first, built graduation-ready** ✅ — ship
+   `fail-on-findings: false`, but the toggle + tests exist from day one so flipping to
+   blocking is a one-line founder step per scanner after a clean window.
+5. **Autofix the findings → YES, where SAFE** ✅ (§4a) — `semgrep --autofix` (the one
+   deterministic + data-only path) through PLAN-012's shared push machinery,
+   default-off, own security review (Phase 4). SCA remediation → Dependabot (deferred,
+   below); trivy → escalate-only.
+
+**D-5 — SCA remediation ownership (resolved):** the `dep-scan` gate reports/blocks a
+vulnerable dep **introduced within an open PR**; the actual **bump is Dependabot's**,
+which runs in **GitHub's isolated infra** (not our self-hosted runner, avoiding the
+execute-untrusted-resolver hole — §4a). They own **different moments** (Dependabot:
+base-branch drift PRs; our gate: within-PR introduced vulns), so there is **no
+arbitration/deferral logic** — both simply run. We do NOT run a package resolver in
+CI to auto-bump.
 
 ## 8. Rejected / deferred alternatives
 
@@ -297,8 +362,51 @@ Verified the residual is fully folded: a grep finds no claim reference beyond Cl
 12 (no dead `Claim 13`) and no unqualified "SHA-verified binary" framing remains.
 §1/§2/§3/Exit are now consistent on the per-tool install mechanism, and §1a's uniform
 trust-gate design is internally consistent with §2's table. No other load-bearing
-issue open after two independent passes. **Result:** ready — DRAFT, gated on the §7
-founder go/no-go (SCA tool choice + trivy/semgrep scope + report-only rollout). No
-workflow ships until then.
+issue open after two independent passes. **Result:** ready for the §7 founder gate.
 
-<!-- Pass 1 (independent, fresh-context Agent) appended before ready. -->
+### Pass 4 — 2026-07-18 — author (founder decisions resolved + autofix-integration)
+
+Founder (2026-07-18) resolved §7 — **all three scanners in** (osv-scanner, trivy,
+semgrep); report-only-first, graduation-ready; **and autofix the findings.** Folded:
+§7 marked RESOLVED; Status → APPROVED; new **§4a** designs the autofix-integration —
+security fixes are **tool-native / deterministic** (osv dep-bump; `semgrep --autofix`;
+trivy tool-fix), NOT model-based (a deliberate safety boundary: model-fixing stays for
+ai-review's code findings only), routed through PLAN-012's already-reviewed push
+machinery (trust-gate + deny-floor + two-step App push + cap + default-off); the
+autofix *trigger* broadens from ai-review-verdict to also a fixable scanner finding.
+Phase 4 (autofix-integration) added with its own OPS-0065 review; Phase 5 = graduate.
+**Result:** needs independent review of the new §4a design (Pass 5).
+
+### Pass 5 — 2026-07-18 — independent (fresh-context Agent) — §4a autofix design
+
+Adversarial review of §4a against the SHIPPED autofix job. **6 load-bearing findings,
+all folded by narrowing §4a to only the safe path:**
+
+- **F1 (HIGH)** — an osv dep-bump is NOT data-only: a valid bump re-runs the ecosystem
+  resolver (`npm install` lifecycle scripts / `pip` `setup.py`) → executes untrusted
+  PR code on the self-hosted runner, worse than the model path. → §4a: **no in-CI
+  SCA autofix**; remediation deferred to **Dependabot** (GitHub's isolated infra).
+- **F2 (HIGH)** — trivy has no fix capability. → §4a: trivy is **escalate-only**.
+- **F3 (MED-HIGH)** — the shipped autofix job is verdict-coupled + its generation IS
+  the model call; "broaden the trigger" under-scopes it. → §4a: a **separate parallel
+  fix pipeline** sharing only the push half.
+- **F4 (MED)** — the round cap lives in the verdict-gated job; a separate path needs
+  the **same counter** + one serialized push, else 2× cap / racing pushes. → folded.
+- **F5 (MED)** — "model reserved for ai-review" was a convention, not enforced. →
+  §4a: **structural** (no LiteLLM dependency on the scanner path) + a test.
+- **F6 (MED)** — "defer to Dependabot where it suffices" was incoherent (Dependabot
+  fixes base-branch drift, not within-PR vulns). → D-5 reframed as the split, no
+  arbitration.
+
+The one genuinely sound autofix path is `semgrep --autofix` (static, rule-deterministic,
+never runs target code; most rules escalate). §4a now claims only that.
+
+### Pass 6 — 2026-07-18 — author (confirm §4a narrowing)
+
+Verified the fold: a grep finds no live overclaim (no `osv-autofix`/`trivy-tool-fix`
+as a fix path — only as rejected history in the ledger/Pass-4 record); the model
+boundary is stated as structural (no-LiteLLM + test), the round counter is shared,
+and `semgrep --autofix` is the sole autofix path. §4a / Phase 4 / §7 D-5 are mutually
+consistent. **Result:** ready — APPROVED plan; §7 resolved; implementation is the
+phased multi-release build in §6 (each phase = ship + full OPS-0065 review). No
+workflow ships until Phase 1 is built + reviewed.
