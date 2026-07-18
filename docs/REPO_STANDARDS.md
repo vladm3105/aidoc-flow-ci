@@ -232,7 +232,7 @@ Runner routing follows the flow **class**, not only visibility (PLAN-013):
 
 | Flow class | Public | Private | Caller shape |
 | --- | --- | --- | --- |
-| **AI-flows** (`ai-review`, `doc-maintainer`, `docs-sync` (+ `autofix`, planned — PLAN-012)) | self-hosted `["self-hosted","ci-runner","single-use"]` | self-hosted (same) | **ONE protected template** — no `-public`/`-private` split; visibility flip = no-op |
+| **AI-flows** (`ai-review`, `doc-maintainer`, `docs-sync` (+ `autofix`, a gated job within `ai-review` — PLAN-012)) | self-hosted `["self-hosted","ci-runner","single-use"]` | self-hosted (same) | **ONE protected template** — no `-public`/`-private` split; visibility flip = no-op |
 | **Generic checks** (`markdown-lint`, `links`, `pre-commit`, `composition`, `audit-trail`, `secret-scan`, `labeler`, `auto-merge-ai-prs`) | GitHub-hosted `ubuntu-latest` | self-hosted | `-public.yml` / `-private.yml` variants |
 
 The AI-flows run **uniform self-hosted on both visibilities** because forks never

@@ -129,12 +129,42 @@ assert_ok "jq -e '.allowed_paths | index(\"DECISIONS.md\")' install/templates/do
 assert_ok "jq -e '.version == 2 and .litellm.model == \"ai-reviewer\"' install/templates/config.json.template >/dev/null && jq -e '.properties.version.const == 2 and (.required | index(\"litellm\"))' schemas/ai-review-config-v2.schema.json >/dev/null" "AI-review config and schema share the v2 contract"
 assert_ok "grep -q 'secrets.LITELLM_REVIEW_API_KEY' .github/workflows/ai-review.yml && grep -q 'secrets.LITELLM_DOC_API_KEY' .github/workflows/doc-maintainer.yml" "AI workflows use separate purpose-scoped LiteLLM keys"
 assert_ok "grep -q 'LITELLM_REVIEW_API_KEY' .github/workflows/litellm-smoke.yml && grep -q 'LITELLM_DOC_API_KEY' .github/workflows/litellm-smoke.yml && grep -q 'ai-reviewer' .github/workflows/litellm-smoke.yml && grep -q 'ai-doc-maintainer' .github/workflows/litellm-smoke.yml" "real-proxy smoke workflow covers both canonical aliases and keys"
-assert_ok "jq -e 'length == 17 and ([.[].name | ascii_downcase] | unique | length == 17)' install/templates/labels.json >/dev/null" "canonical PR labels are complete and case-insensitively unique"
+assert_ok "jq -e 'length == 18 and ([.[].name | ascii_downcase] | unique | length == 18)' install/templates/labels.json >/dev/null" "canonical PR labels are complete and case-insensitively unique"
 assert_ok "jq -e 'all(.[]; (.description | length) <= 100)' install/templates/labels.json >/dev/null" "canonical PR label descriptions fit GitHub's 100-character limit"
 assert_ok "jq -e '.[] | select(.name == \"skip-ai-review\") | .description | test(\"suppress re-review\")' install/templates/labels.json >/dev/null" "skip-ai-review description matches suppress-and-carry-forward behavior"
 assert_ok "grep -q '^# Branching standard' docs/BRANCHING.md && grep -q 'BRANCHING.md' docs/REPO_STANDARDS.md && grep -q 'BRANCHING.md' CHANGELOG.md && grep -q 'feat/' docs/BRANCHING.md && grep -q 'All changes reach the default branch through a pull request' docs/BRANCHING.md" "branching standard is linked, released, and retains core naming/lifecycle rules"
 assert_ok "jq -e '.allow_merge_commit == false and .allow_squash_merge == true and .allow_rebase_merge == false and .delete_branch_on_merge == true and .allow_update_branch == true' install/templates/repo-settings.json >/dev/null" "repository settings enforce canonical merge and cleanup strategy"
 assert_ok "jq -s -e 'all(.[]; .allow_force_pushes == false and .allow_deletions == false and .required_pull_request_reviews != null)' install/templates/branch-protection-governance.json install/templates/branch-protection-product.json install/templates/branch-protection-ops.json install/templates/branch-protection-bootstrap.json install/templates/branch-protection-umbrella.json >/dev/null" "active tier profiles protect default-branch history and require PRs"
 assert_ok "jq -e '.enforce_admins == false' install/templates/branch-protection-umbrella.json >/dev/null && jq -s -e 'all(.[]; .enforce_admins == true)' install/templates/branch-protection-governance.json install/templates/branch-protection-product.json install/templates/branch-protection-ops.json install/templates/branch-protection-bootstrap.json >/dev/null" "umbrella alone retains the documented administrator bypass"
+
+echo "== PLAN-012 autofix — security invariants (default-off, gated, deny-floor, two-step App push) =="
+AR=.github/workflows/ai-review.yml
+# The autofix job exists and is gated on ALL of: fork-excluding trust (auto_fix_ok),
+# TRUSTED-config enable (autofix_enabled), and tier != spec.
+assert_ok "grep -qE '^  autofix:' '$AR'" "autofix job exists in ai-review.yml"
+assert_ok "grep -q \"needs.trust.outputs.auto_fix_ok == 'true'\" '$AR'" "autofix gated on auto_fix_ok (forks are never trusted → never autofixed)"
+assert_ok "grep -q \"needs.trust.outputs.autofix_enabled == 'true'\" '$AR'" "autofix gated on autofix_enabled (resolved from the TRUSTED config, not the PR)"
+assert_ok "grep -q \"inputs.tier != 'spec'\" '$AR'" "autofix never runs on the spec/governance tier"
+# autofix.enabled is resolved from the trusted CFG in the trust job (a PR cannot self-enable).
+assert_ok "grep -q 'AUTOFIX_ENABLED=\$(jq' '$AR' && grep -q 'autofix_enabled=\$AUTOFIX_ENABLED' '$AR'" "trust job resolves autofix.enabled from the trusted config"
+# Default-off: inert unless the dedicated autofix App creds are present.
+assert_ok "grep -q 'APP_AUTOFIX_PRESENT' '$AR'" "autofix is inert (default-off) unless APP_AUTOFIX_ID/KEY are set"
+# Governance deny-floor is WORKFLOW LOGIC (hardcoded), covering the locked paths.
+assert_ok "grep -E \"DENY_RE:.*governance/.*[.]github/.*framework/.*templates/ai-review/\" '$AR' >/dev/null" "autofix deny-floor REGEX covers governance / .github / framework / templates/ai-review"
+assert_ok "grep -q '120000' '$AR' && grep -q 'symlink-escape guard' '$AR'" "autofix rejects staged symlinks (mode 120000)"
+assert_ok "grep -q 'could not read the PR commit history to enforce the round cap' '$AR' && grep -q 'issues/\$PR/timeline' '$AR'" "autofix round cap is fail-closed with a rewrite-proof timeline backstop"
+assert_ok "grep -q 'issues: write' '$AR' && grep -q 'pull-requests: write' '$AR'" "autofix job can write labels + comments (escalation surfaces to a human)"
+assert_ok "grep -q 'LITELLM_ALLOW_INSECURE_HTTP: \${{ inputs.litellm_allow_insecure_http }}' '$AR'" "autofix fixer honors the private-HTTP opt-in (functional on the HTTP bridge)"
+# Dedicated autofix App, contents:write, minted per-run (NOT a PAT).
+assert_ok "grep -q 'app-id: \${{ secrets.APP_AUTOFIX_ID }}' '$AR' && grep -q 'permission-contents: write' '$AR'" "autofix mints a DEDICATED App token with contents:write (not a PAT)"
+# Two-step push: the App token appears ONLY in the dedicated push step, never in the
+# model-call/apply step (separation of duties — the fixer holds no push credential).
+autofix_fix_step="$(awk '/- name: Generate \+ apply fix/{f=1} /- name: Push fix via the autofix App/{f=0} f' "$AR")"
+assert_absent "$autofix_fix_step" 'APP_TOKEN' "the fix/model step holds NO push credential (App token is only in the push step)"
+assert_ok "grep -q 'x-access-token:\${APP_TOKEN}@github.com' '$AR' && grep -q 'clone --quiet --depth 1 --branch' '$AR'" "autofix pushes from a PRISTINE clone with the App token (two-step)"
+# Schema types the autofix knobs.
+assert_ok "jq -e '.properties.autofix.properties.enabled.type == \"boolean\" and .properties.autofix.properties.max_fix_rounds.type == \"integer\"' schemas/ai-review-config-v2.schema.json >/dev/null" "config schema types autofix.enabled (boolean) + max_fix_rounds (integer)"
+# The reviewer uploads the verdict so autofix can consume it.
+assert_ok "grep -q 'name: ai-review-verdict' '$AR' && grep -q 'actions/upload-artifact@' '$AR' && grep -q 'actions/download-artifact@' '$AR'" "ai-review uploads the verdict artifact the autofix job downloads"
 
 suite_summary "contract"

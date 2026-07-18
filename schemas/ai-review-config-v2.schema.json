@@ -28,7 +28,15 @@
     "governance": {"type": "object"},
     "composition": {"type": "object"},
     "auto_merge": {"type": "object"},
-    "autofix": {"type": "object"}
+    "autofix": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "max_fix_rounds": {"type": "integer", "minimum": 0, "maximum": 10},
+        "max_budget_usd": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": false
+    }
   },
   "additionalProperties": false
 }

@@ -24,7 +24,7 @@ not only visibility (PLAN-013):
 
 | Flow class | Public repo | Private repo | Caller shape |
 | --- | --- | --- | --- |
-| **AI-flows** — `ai-review`, `doc-maintainer`, `docs-sync` (+ `autofix`, planned — PLAN-012) | **self-hosted** `["self-hosted","ci-runner","single-use"]` | **self-hosted** (same) | **ONE protected template** — no `-public`/`-private` split; a visibility flip is a no-op |
+| **AI-flows** — `ai-review`, `doc-maintainer`, `docs-sync` (+ `autofix`, a gated job within `ai-review` — PLAN-012) | **self-hosted** `["self-hosted","ci-runner","single-use"]` | **self-hosted** (same) | **ONE protected template** — no `-public`/`-private` split; a visibility flip is a no-op |
 | **Generic checks** — `markdown-lint`, `links`, `pre-commit`, `composition`, `audit-trail`, `secret-scan`, `labeler`, `auto-merge-ai-prs` | GitHub-hosted `ubuntu-latest` | **self-hosted** | the `-public.yml` / `-private.yml` variants |
 
 The AI-flows run uniform self-hosted because **forks never reach a job that
@@ -215,7 +215,7 @@ moving private-repo jobs to `ubuntu-latest`.
 ### 5a. Public repos on the ephemeral self-hosted pool — the AI-flows run fully self-hosted (safe); the lint flows do NOT
 
 As of PLAN-013 (`ci/v2.2.0`), the **AI-flows** (`ai-review`, `doc-maintainer`,
-`docs-sync`; `autofix` planned — PLAN-012) run **entirely** on the ephemeral
+`docs-sync`; `autofix` runs as a gated job within `ai-review` — PLAN-012) run **entirely** on the ephemeral
 self-hosted pool on public repos — trust job included — via one protected template
 with no visibility split. This is **not** the "untrusted code on a self-hosted runner"
 anti-pattern, because **a fork never reaches a job that executes PR code**:

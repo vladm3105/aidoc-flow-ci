@@ -41,8 +41,8 @@ allowlists:
 ```
 
 - `trust.ai_review` — authors whose PRs trigger the heavy reviewer.
-- `trust.auto_fix` — authors whose PRs ALSO trigger the auto-fix
-  pipeline (IPLAN-0014; default-off).
+- `trust.auto_fix` — authors whose PRs ALSO trigger autofix
+  (PLAN-012; default-off — see §3b).
 
 Non-allowlisted authors (incl. all fork authors) hit
 `HUMAN-REVIEW-ONLY` path:
@@ -101,7 +101,7 @@ code** — and that differs between the two classes of flow.
 
 **The AI-flows are safe on self-hosted, public OR private (PLAN-013).** The
 uniform protected model runs `ai-review`, `doc-maintainer`, and `docs-sync`
-(and `autofix` once it ships — PLAN-012) on the ephemeral self-hosted single-use
+(and `autofix`, a gated job within `ai-review` — PLAN-012, §3b) on the ephemeral self-hosted single-use
 pool on every repo, with **no `-public`/`-private` split** (so a visibility flip
 is a no-op). This is safe because **a fork never reaches a job that executes PR
 code**:
@@ -136,6 +136,46 @@ See operations IPLAN-0017 §5 (Risks) + §7 claim C9 for the original risk recor
 this section supersedes its "accepted-risk-only" framing for the AI-flows per
 PLAN-013.
 
+## 3b. Autofix — the fixer that writes a fix back (PLAN-012)
+
+Autofix ships as a **gated job inside `ai-review.yml`** (not a separate workflow):
+when the reviewer returns `request_changes`, the fixer asks the model for a unified
+diff, applies it, and pushes it to the PR head via a **dedicated autofix App**; the
+push re-fires the gate so the reviewer re-reviews the fix. **DEFAULT-OFF** — inert
+unless the trusted config sets `autofix.enabled: true` AND `APP_AUTOFIX_ID/KEY` are
+present. This is the one flow that stops being diff-only (it checks out the PR head),
+so its safety rests on layered controls:
+
+- **Forks never reach it.** The job is gated on `auto_fix_ok`, which is false for any
+  fork (§2.2) — so autofix only ever edits a *trusted, non-fork* author's branch.
+- **A PR cannot self-enable it.** `autofix.enabled` + `max_fix_rounds` are resolved
+  from the TRUSTED config (operations@main), never the PR branch.
+- **The model holds no push credential.** The fixer runs as two steps: the
+  model-call/apply step has NO App token in its env (the model only returns text — a
+  diff); a separate push step is the ONLY place the ephemeral App token appears.
+- **Governance deny-floor (workflow logic, not a tunable).** A fix touching
+  `.github/`, `governance/`, `*/governance/`, `framework/`, or `templates/ai-review/`
+  is rejected — checked both by parsing the diff's declared targets *before* apply and
+  by re-scanning the staged set *after* apply. Out-of-tree targets (`/…`, `..`) are
+  rejected too.
+- **Two-step push.** The fix is committed + `git format-patch`-exported with no token
+  in scope, then pushed from a **pristine `git clone`** (App token only) via `git am`
+  — so the pushed history comes from GitHub, never the fixer's workspace.
+- **Bounded + escalating.** A monotonic bot-commit round cap (`autofix.max_fix_rounds`,
+  default 2) → `ai:autofix-escalated` + a human. On ANY doubt (deny path, unparseable
+  or non-applying diff, no change, cap) it escalates — it never force-pushes a guess.
+- **Every fix is re-reviewed.** The App-token push re-fires the whole gate, so an
+  injected or wrong fix cannot merge without passing review on its own.
+
+**Honest residual:** a *trusted* author's PR diff is still untrusted content that
+feeds the fixer prompt (prompt-injection surface). It is contained — the model only
+emits a diff we validate against the deny-floor and apply mechanically, and every fix
+is re-reviewed and capped — but it is a real surface, not "fully mitigated." The
+dedicated App uses an **ephemeral** installation token (not the standing PAT
+operations retired in OPS-0043). Credential: `APP_AUTOFIX_ID/KEY` (a SEPARATE App from
+the reviewer App, preserving judge≠generator at the identity level) + a fix-scoped
+`LITELLM_FIX_API_KEY`.
+
 ## 4. Secrets model
 
 ### 4.1 `secrets: inherit` (the typical caller pattern)
@@ -145,7 +185,7 @@ Consumer callers typically use:
 ```yaml
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.2.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.3.0
     secrets: inherit   # passes all consumer-repo secrets to reusable
 ```
 
