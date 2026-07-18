@@ -7,6 +7,33 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 _(nothing yet)_
 
+## ci/v2.4.0 — 2026-07-18
+
+### Added — dependency-vulnerability (SCA) gate `dep-scan.yml` (osv-scanner), report-only (PLAN-014 Phase 1, 2026-07-18)
+
+- **New reusable `.github/workflows/dep-scan.yml`** — a Software Composition Analysis
+  gate powered by the **osv-scanner binary** (SHA-256-verified `run:` install per
+  REPO_STANDARDS §4.3; NOT a marketplace action). **Data-only, enforced** with
+  `--no-call-analysis=all` (osv-scanner's Go call-analysis compiles source by
+  default — it is opt-*out*), so the scan strictly reads manifests/lockfiles and
+  never executes code. Emits SARIF; gates via `fail-on-findings` (default **false**
+  — report-only). A zero-coverage scan (no manifests found) is a visible warning and
+  fails a blocking gate unless `expect-manifests: false`.
+- **Uniform protected + fork-guarded (PLAN-013 / PLAN-014 §1a):** ONE self-hosted
+  caller template — public AND private, no `-public`/`-private` split (a visibility
+  flip is a no-op). A fork PR **skips** the scan (forks are human-reviewed via
+  ai-review; fork code never runs on the self-hosted pool); non-fork (collaborator)
+  PRs + pushes to main scan on self-hosted.
+- **Best-effort SARIF → GitHub Code scanning** (`continue-on-error`,
+  `github/codeql-action/upload-sarif`) — lands on public repos with free GHAS,
+  no-ops on private (compliance rides on the gate, not the Security tab). Dependency
+  *remediation* is Dependabot's (isolated infra); dep-scan is the gate, not the fixer.
+- Manifest entry (single template, no `visibility_variants`), WORKFLOWS.md catalog
+  (13 reusables), security.md §3c, and 12 contract-test invariants.
+
+Net semver MINOR — additive, opt-in (`auto_install: false`), report-only. First of
+PLAN-014's phased scanners (trivy + semgrep + safe-autofix to follow).
+
 ## ci/v2.3.0 — 2026-07-18
 
 ### Added — ai-review autofix (PLAN-012): the reviewer can commit a fix and re-review, default-off (2026-07-18)

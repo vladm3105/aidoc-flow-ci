@@ -26,7 +26,7 @@
 #     push: { branches: [main] }
 #   jobs:
 #     hooks:
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/pre-commit.yml@ci/v2.3.0
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/pre-commit.yml@ci/v2.4.0
 #       with:
 #         python-version: "3.12"
 #         # extra-deps: |
