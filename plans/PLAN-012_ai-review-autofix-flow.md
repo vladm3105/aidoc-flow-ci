@@ -1,4 +1,4 @@
-# PLAN-012 — ai-review autofix flow (build the dormant feature, private-only, default-off)
+# PLAN-012 — ai-review autofix flow (build the dormant feature, public+private, default-off)
 
 **Owner:** `aidoc-flow-ci` maintainer
 **Origin:** template-gap audit (2026-07-17). The AI-review config surface ships
@@ -17,11 +17,14 @@ approves the §8 forks (dedicated autofix-App `contents:write` grant +
 constraint).** Do NOT implement past §7 Phase 0 without that approval. *(Founder
 2026-07-17: chose the **dedicated autofix App** over a PAT — folded throughout;
 the App both avoids a standing *write* credential and re-fires the gate, GH-1.)*
-**Depends on:** a **dedicated autofix GitHub App** (`contents: write`) installed on
-each enabled repo, minting ephemeral per-run installation tokens — a 🔴 founder
-action. This is NOT the standing PAT operations retired in OPS-0043; it is the
-App-native path canon already prefers (Claim 27).
-**Exit:** on a **private** consumer with `autofix.enabled: true` and the author in
+**Depends on:** (1) a **dedicated autofix GitHub App** (`contents: write`) installed
+on each enabled repo, minting ephemeral per-run installation tokens — a 🔴 founder
+action; NOT the standing PAT operations retired in OPS-0043, but the App-native
+path canon already prefers (Claim 27). (2) **[[PLAN-013]]** — the uniform protected
+AI-flow model (single self-hosted template, no visibility split) that lets autofix
+ship on **public and private** repos; autofix adopts it rather than a `-private`
+variant.
+**Exit:** on a **public or private** consumer with `autofix.enabled: true` and the author in
 `trust.auto_fix`, a `request_changes` verdict on a non-governance diff produces a
 bot commit on the PR head that addresses the findings, re-triggers the gate, and
 either converges to `approve` within the round cap or escalates to a human at the
@@ -45,7 +48,7 @@ fixer files have since been removed from `operations/templates/ai-review/`
 blueprint and the current reusable-library model for distribution.
 
 **What this plan is NOT:** it is not a request to enable autofix. The deliverable
-is a **default-off, private-only** capability plus the staged-enablement runbook.
+is a **default-off** capability (public + private, per [[PLAN-013]]) plus the staged-enablement runbook.
 Enabling it on any repo is a separate 🔴 founder action, per the same staged
 sequence `IPLAN-0014` defined (review-only → enable auto-merge → enable autofix).
 
@@ -146,8 +149,10 @@ essentially for free. **Carries forward (adopt):**
   build the **retrigger model** instead (a distinct-actor push that re-fires the
   gate). Operations did that with a PAT; this plan does it with the **autofix
   App** (§4.1) — the retrigger is the mechanic to keep, not the PAT.
-- The `IPLAN-0014` **public-repo autofix** (isolated-runner variant was never
-  built) — **out of scope here; private-only** (§6).
+- The `IPLAN-0014` **public-repo deferral** (its isolated-runner variant "was
+  never built") — **no longer a blocker**: the ephemeral single-use pool now
+  provides that isolation, so autofix ships on **public and private** under the
+  uniform protected model ([[PLAN-013]], §6).
 
 ## 4. Design (the proposed flow)
 
@@ -159,15 +164,19 @@ write-capable context (Claim 20, and the caller guards this explicitly). **Autof
 cannot preserve that property:** to edit the code it must materialize the PR-head
 working tree on the runner. This is the one place the gate stops being diff-only —
 `IPLAN-0013` names it exactly (Claim 21). Every mitigation below exists to bound
-*that* departure, and it is why the flow is **private-only** and runs on an
-**ephemeral, credential-isolated** runner:
+*that* departure, and it is why the fixer runs on an **ephemeral, credential-
+isolated** runner — the `["self-hosted","ci-runner","single-use"]` pool, on
+**public and private repos alike** per the uniform protected model ([[PLAN-013]]).
+Forks never reach the fixer (they are never trusted, Claim 21's gate), so the
+fixer only ever edits a *trusted, non-fork* author's branch — the same posture on
+any repo visibility:
 
 - The fixer runs on a throwaway runner that holds **no** persistent creds (never
   the reviewer box), with `persist-credentials: false` and git hooks disabled
   (`core.hooksPath=/dev/null`) so a poisoned checkout cannot execute or read creds.
 - The fixer holds **no push credential / no git / no shell** (Claim 16) — it only
   writes files; the two-step push (4.4) is the sole path to `origin`.
-- **Residual risk that private-only does NOT erase:** a *trusted* author's PR can
+- **Residual risk that trust-gating does NOT erase:** a *trusted* author's PR can
   still carry prompt-injection in its diff → the reviewer verdict's `fix` guidance
   (Claim 7) → the fixer's input → a generated patch. The design contains this two
   ways: (i) the fixer produces only files, never actions, and (ii) **every fix
@@ -186,9 +195,11 @@ working tree on the runner. This is the one place the gate stops being diff-only
   — same-run, reads the verdict from a run-scoped artifact, no cross-workflow
   handoff — matching `IPLAN-0014`'s same-run architecture. (b) is simpler to gate
   behind a separate required-check but adds a cross-workflow verdict handoff.
-- **New caller template `install/templates/workflows/autofix-private.yml`** only
-  (no `-public` variant — §6). Ships default-inert (the caller exists but does
-  nothing until `autofix.enabled: true` + the autofix-App secrets present).
+- **One protected caller template `install/templates/workflows/autofix.yml`** —
+  **no `-public`/`-private` split** (it ships uniform per [[PLAN-013]]: single
+  template, `["self-hosted","ci-runner","single-use"]`, no visibility branch).
+  Ships default-inert (the caller exists but does nothing until
+  `autofix.enabled: true` + the autofix-App secrets present).
 - **Credential = a dedicated autofix GitHub App.** A *separate* App from the
   reviewer App (which stays `contents: read`). The caller supplies
   `APP_AUTOFIX_ID` + `APP_AUTOFIX_KEY`; the fixer job mints a per-run installation
@@ -317,22 +328,26 @@ The founder gate (§8) is about the **dedicated autofix App grant**, the
 
 ## 6. Scope boundaries (right-sizing)
 
-- **Private repos only.** Public-repo autofix needs the isolated-runner variant
-  `IPLAN-0014` never built and adds fork-facing write surface. Out of scope;
-  tracked as a follow-up if pull appears.
+- **Public AND private repos, uniform protected** (per [[PLAN-013]]). Autofix is
+  safe on public repos because forks are never trusted → the fixer never runs on a
+  fork; only trusted, non-fork authors' branches are edited, on the ephemeral
+  isolated pool — the same posture regardless of visibility. (This supersedes the
+  earlier draft's "private-only"; the isolated-runner `IPLAN-0014` said was
+  "never built" now exists as the ephemeral single-use pool.)
 - **Default-off everywhere.** Shipping this flow enables it nowhere. Enablement is
   the staged 🔴 founder sequence, per repo.
 - **No new reviewer behavior.** The review half of `ai-review.yml` is unchanged;
   autofix is strictly additive and gated.
-- **One consumer pilot first** (engramory or a throwaway private repo), then a
-  narrow propagation — never a fleet-wide enable.
+- **One consumer pilot first** (a throwaway repo), then a narrow propagation —
+  never a fleet-wide enable.
 
 ## 7. Phases
 
 - **Phase 0 (this plan + gate).** Draft + independent review + founder go/no-go on
   §8. **Nothing past here without approval.**
 - **Phase 1 (build, gated).** Resolve D-1/D-3 (D-2 pinned to D-2a by §8); author
-  `autofix.yml` + `autofix-private.yml` + typed `autofix` schema; **extend the
+  the single protected `autofix.yml` reusable + `autofix.yml` caller template
+  (uniform, per [[PLAN-013]]) + typed `autofix` schema; **extend the
   trust-enforced config list + trust-job resolution to include `autofix.enabled` +
   `autofix.max_fix_rounds`** (Claim 23 — required so a PR cannot self-enable);
   `ci/v2.2.0` semver (MINOR, additive); tests (deny-path guard at apply AND push,
@@ -341,11 +356,11 @@ The founder gate (§8) is about the **dedicated autofix App grant**, the
   REPO_STANDARDS + CHANGELOG.
 - **Phase 2 (pilot, 🔴 founder).** Register the **dedicated autofix App** (install
   on the pilot repo with `contents: write`), set `APP_AUTOFIX_ID`/`APP_AUTOFIX_KEY`
-  secrets; enable on one private pilot; validate the exit criteria live (trusted PR
-  converges; fork/untrusted gets none; governance path forced review-only;
-  App-token push re-fires the gate).
-- **Phase 3 (narrow propagation, 🔴 founder).** Enable on selected private repos
-  via the staged sequence. Public deferred.
+  secrets; enable on one pilot repo (public or private); validate the exit criteria
+  live (trusted PR converges; fork/untrusted gets none; governance path forced
+  review-only; App-token push re-fires the gate).
+- **Phase 3 (narrow propagation, 🔴 founder).** Enable on selected repos (public
+  and private) via the staged sequence.
 
 ## 8. 🔴 Founder-decision points (the gate)
 
@@ -368,13 +383,15 @@ Autofix does not proceed past Phase 0 until the founder decides:
    diff-only — and a *trusted* author's PR can still carry prompt-injection into
    the fixer (§4.0). The mitigations (edit-only fixer, isolated ephemeral runner,
    two-step pristine-clone push, governance deny-floor at apply + push,
-   cap→escalate, every-fix-re-reviewed, default-off, private-only) are strong but
-   this is honestly a real surface, not "fully mitigated."
+   cap→escalate, every-fix-re-reviewed, default-off, forks-never-trusted) are
+   strong but this is honestly a real surface, not "fully mitigated." **Same on
+   public and private** — the fixer never runs on a fork, so visibility doesn't
+   change this surface ([[PLAN-013]]).
 3. **Pin the fixer to D-2a (dependency-free)?** Adopting D-2b (an agent CLI on
    checked-out untrusted PR code) reverses the `ci/v2.0.0` dependency-free policy
    and enlarges the surface — this plan recommends forbidding D-2b; the founder
    confirms.
-4. **Confirm private-only + default-off + staged-enable** as the ship shape.
+4. **Confirm public+private (uniform protected, [[PLAN-013]]) + default-off + staged-enable** as the ship shape.
 
 An inbox runbook (`operations/ops/inbox/`) captures these for the founder; per the
 workspace autonomy tiers, the autofix-App registration + per-repo install + secret
@@ -538,3 +555,18 @@ the retrigger is the mechanic to keep, not the PAT." Plus a precision note
 
 **Result:** ready — DRAFT, still gated on the §8 founder go/no-go (now: dedicated
 autofix-App grant + untrusted-PR-head surface + D-2a). No code ships until then.
+
+### Pass 5 — 2026-07-17 — author (scope: public+private per PLAN-013)
+
+Founder decision (2026-07-17): all AI-flows available on public + private, uniformly
+protected. Autofix adopts the [[PLAN-013]] uniform model — **dropped "private-only"**
+throughout (title, §1 summary, §3 IPLAN-0014-deferral bullet, §4.0/§4.1, §6 scope,
+§7 phases, §8 fork 4, Exit). The public-repo safety rests on the property PLAN-013's
+two independent passes verified: **forks are never trusted → the fixer never runs on
+a fork → only trusted, non-fork branches are edited, on the ephemeral isolated pool —
+identical posture on any visibility.** The single `autofix.yml` caller (no
+`-private`/`-public` split) replaces the earlier `autofix-private.yml`. The autofix
+security mechanics (§4.0/§4.4, dedicated App, deny-floor, cap→escalate) are unchanged
+— only the *scope* widened. No new load-bearing surface: PLAN-013 Pass 1/2 already
+adversarially validated autofix-on-public under this model. **Result:** ready —
+gated on §8 + PLAN-013's §8 (self-hosted-on-public stance + capacity).
