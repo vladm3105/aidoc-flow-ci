@@ -30,6 +30,8 @@ only remaining work is the **founder-gated fleet rollout** (re-pin the fleet to
 | PLAN-009 fleet v2 cutover | In flight (Phase 0 🔴-gated; target now `ci/v2.1.2`) |
 | PLAN-010 adoption model | DRAFT — NOT READY (split recommended; see the plan) |
 | PLAN-011 ai-review large-diff hardening | SHIPPED (`ci/v2.1.1` + `v2.1.2`) |
+| PLAN-013 uniform protected AI-flow model (public+private, one self-hosted template, no visibility split) | DRAFT — READY, 🔴 founder-gated (self-hosted-on-public stance + pool capacity); foundational, ships `ci/v2.2.0` |
+| PLAN-012 ai-review autofix flow (dedicated autofix App, public+private, default-off) | DRAFT — READY, 🔴 founder-gated (App grant + untrusted-PR-head surface + D-2a); builds on PLAN-013 |
 
 **Recently landed:**
 

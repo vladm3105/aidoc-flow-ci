@@ -77,6 +77,34 @@ a permanent authoring bug, not decay (deref: `git/tags/<sha> --jq '.object.sha'`
 → `e827ab82…`, HTTP 200). The same trap as the SHA-pin lesson in FT-10's
 neighbourhood: `git/refs/tags/<tag>` returns the TAG object for annotated tags.
 
+**AI-flow autofix + uniform protection (PLAN-012 + PLAN-013) — DRAFT, READY,
+🔴 founder-gated; NO code until the gate clears.** Both authored + verified
+(verified-planning, ≥2 independent passes each) + merged this session, driven by
+founder decisions (2026-07-17): build the dormant ai-review **autofix** flow, and
+make **all** AI-based flows available on public **and** private repos under one
+uniform "protected" model (a repo can flip visibility, so protection must not
+depend on it).
+
+- **`plans/PLAN-013_uniform-protected-aiflows.md`** (foundational) — collapse the
+  `-public`/`-private` variant split for the AI-flows (`ai-review`, `autofix`,
+  `doc-maintainer`, `docs-sync`) into ONE self-hosted protected template; no
+  visibility branch in templates/manifest/installer. Safe because forks are never
+  trusted → they reach only the no-PR-code trust job on the isolated pool; all
+  code/write jobs are trust-gated or post-merge. Generic lint flows stay
+  GitHub-hosted (they run fork code) — deliberately out of scope. MINOR
+  (`ci/v2.2.0`). **🔴 gate:** self-hosted-on-public stance change (`security.md §3`)
+  + public-fork runner capacity.
+- **`plans/PLAN-012_ai-review-autofix-flow.md`** — the autofix build: reviewer
+  (read-only App) emits findings/approve; a **dedicated autofix App**
+  (`contents:write`, ephemeral installation token — NOT a PAT) fixes the findings,
+  pushes, re-fires the gate → re-review → converge or cap→escalate. Public+private
+  per PLAN-013. **🔴 gate:** the autofix-App grant, accepting the untrusted-PR-head
+  write surface, and pinning D-2a (dependency-free fixer).
+- **Next when the founder says go:** Phase 1 = implement PLAN-013's
+  template/manifest/installer convergence FIRST (ships `ci/v2.2.0`), then PLAN-012
+  autofix on top; prepare the ops/inbox runbook for autofix-App registration +
+  pool capacity (🔴 cross-repo, founder-executed).
+
 **Adoption-model root finding: `plans/PLAN-010_adoption-model.md` — DRAFT, NOT
 READY.** `install.sh` only *prints* a branch-protection reminder (`:602`) and
 never invokes `apply-standards.sh`; no consumer receives either `sync/` script;

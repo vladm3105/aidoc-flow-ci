@@ -350,7 +350,8 @@ The founder gate (§8) is about the **dedicated autofix App grant**, the
   (uniform, per [[PLAN-013]]) + typed `autofix` schema; **extend the
   trust-enforced config list + trust-job resolution to include `autofix.enabled` +
   `autofix.max_fix_rounds`** (Claim 23 — required so a PR cannot self-enable);
-  `ci/v2.2.0` semver (MINOR, additive); tests (deny-path guard at apply AND push,
+  `ci/v2.3.0` semver (MINOR, additive — the next MINOR *after* PLAN-013's
+  `ci/v2.2.0`, since autofix stacks on the uniform-template refactor); tests (deny-path guard at apply AND push,
   no-change→escalate, fork→no-autofix, untrusted-author→no-autofix, cap→escalate,
   kill-switch-off inert, PR-branch-config-cannot-self-enable); `docs/` +
   REPO_STANDARDS + CHANGELOG.
@@ -570,3 +571,11 @@ security mechanics (§4.0/§4.4, dedicated App, deny-floor, cap→escalate) are 
 — only the *scope* widened. No new load-bearing surface: PLAN-013 Pass 1/2 already
 adversarially validated autofix-on-public under this model. **Result:** ready —
 gated on §8 + PLAN-013's §8 (self-hosted-on-public stance + capacity).
+
+### Pass 6 — 2026-07-18 — author (version reconciliation)
+
+A documentation-consistency pass on the HANDOFF/ROADMAP currency update caught a
+latent version collision: Phase 1 targeted `ci/v2.2.0`, the same tag PLAN-013
+ships — but autofix stacks *on top of* PLAN-013's uniform-template refactor. →
+Phase 1 retargeted to **`ci/v2.3.0`** (the next MINOR after PLAN-013's `ci/v2.2.0`).
+No citation/ledger change. **Result:** ready (unchanged gate).
