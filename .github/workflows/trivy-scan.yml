@@ -1,0 +1,118 @@
+# trivy-scan.yml — reusable IaC / misconfiguration gate, powered by trivy (config mode).
+# PLAN-014 Phase 2.
+#
+# Installs the trivy BINARY directly (SHA-256-verified tarball) — NOT a marketplace
+# action (canon may `uses:` only actions/*, github/*, vladm3105/aidoc-flow-ci/* per
+# REPO_STANDARDS §4.3). Runs `trivy config` (Dockerfile / IaC misconfiguration
+# scanning) ONLY — deliberately NOT `trivy fs`, which would duplicate dep-scan
+# (osv-scanner, deps) and secret-scan (gitleaks, secrets). PLAN-014 §7 D-2.
+#
+# UNIFORM PROTECTED (PLAN-014 §1a): ONE template, self-hosted, public AND private —
+# a visibility flip is a no-op. FORK-GUARDED: a fork PR skips the scan (fork code
+# never runs on the self-hosted pool; forks are human-reviewed via ai-review).
+#
+# DATA-ONLY (enforced): restricted to the STATIC misconfig scanners
+# (dockerfile / kubernetes / cloudformation / azure-arm). Trivy's terraform, helm,
+# and ansible scanners FETCH REMOTE SOURCES from PR-controlled fields (a `.tf`
+# `module { source = "https://…" }` makes the self-hosted runner git-clone an
+# attacker-chosen URL — SSRF/egress). Those scanners are DISABLED via
+# `--misconfig-scanners` below. NOTE: `--tf-exclude-downloaded-modules` does NOT fix
+# this — it only drops the findings; trivy still performs the fetch (verified). The
+# only trusted network op that remains is trivy's signed aquasecurity checks bundle.
+name: trivy-scan
+
+on:
+  workflow_call:
+    inputs:
+      fail-on-findings:
+        description: 'Whether an IaC/config misconfiguration fails the job. Default false (report-only rollout per PLAN-014 §5); flip to true to make it a blocking gate.'
+        type: boolean
+        default: false
+      scan-path:
+        description: 'Path to scan (recursively) for config/IaC misconfigurations. Default "." (repo root).'
+        type: string
+        default: '.'
+      runner_labels:
+        description: 'JSON array (or single-string) of runner labels. Default the self-hosted single-use pool (PLAN-013 uniform protected — the SAME on public + private).'
+        type: string
+        default: '["self-hosted", "ci-runner", "single-use"]'
+
+permissions:
+  contents: read
+  security-events: write   # SARIF → Code scanning (public repos w/ GHAS; no-ops on private)
+
+concurrency:
+  group: trivy-scan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: trivy-scan
+    # FORK GUARD: a fork PR never runs the scanner on the self-hosted pool.
+    if: ${{ github.event.pull_request.head.repo.fork != true }}
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout (data-only; no persisted creds)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run trivy config (binary; IaC/misconfig, data-only)
+        env:
+          TRIVY_VERSION: "0.72.0"
+          TRIVY_LINUX_64_SHA256: "bbb64b9695866ce4a7a8f5c9592002c5961cab378577fa3f8a040df362b9b2ea"
+          FAIL: ${{ inputs.fail-on-findings }}
+          SCAN_PATH: ${{ inputs.scan-path }}
+          TRIVY_CACHE_DIR: "${{ runner.temp }}/trivy-cache"
+        run: |
+          set -euo pipefail
+          command -v jq >/dev/null 2>&1 || { echo "::error::jq not found on the runner — infrastructure error, not a finding."; exit 1; }
+          curl -sSfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -o /tmp/trivy.tgz
+          printf '%s  %s\n' "$TRIVY_LINUX_64_SHA256" /tmp/trivy.tgz | sha256sum --check --strict
+          BIN_DIR="$RUNNER_TEMP/bin"; mkdir -p "$BIN_DIR"
+          tar -xzf /tmp/trivy.tgz -C "$BIN_DIR" trivy; chmod 0755 "$BIN_DIR/trivy"
+
+          summary() { echo "trivy-scan: $1" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"; }
+
+          # STATIC scanners ONLY (LOAD-BEARING): terraform/helm/ansible fetch remote
+          # sources from PR-controlled fields → SSRF/egress from the self-hosted runner.
+          # Never add them here without network isolation. NO --exit-code: trivy exits 0 on
+          # a successful scan (findings or not), non-zero only on a TOOL error — findings
+          # come from the SARIF, errors from rc.
+          rc=0
+          "$BIN_DIR/trivy" config --misconfig-scanners dockerfile,kubernetes,cloudformation,azure-arm \
+            --format sarif --output trivy.sarif "$SCAN_PATH" || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::trivy-scan: trivy exited $rc — infrastructure/tool error (e.g. checks-bundle download failed), NOT a finding. Re-run."; exit 1
+          fi
+
+          n=0
+          [ -s trivy.sarif ] && n=$(jq '[.runs[].results[]] | length' trivy.sarif 2>/dev/null || echo 0)
+          case "$n" in ''|*[!0-9]*) n=0 ;; esac
+          if [ "$n" -gt 0 ]; then
+            echo "::warning::trivy-scan: $n IaC/config misconfiguration finding(s) — see trivy.sarif / the Security tab."
+            summary "❌ $n IaC/config misconfiguration finding(s)."
+            if [ "$FAIL" = "true" ]; then
+              echo "::error::trivy-scan: failing the gate (fail-on-findings: true)."; exit 1
+            fi
+            echo "::notice::trivy-scan: report-only (fail-on-findings: false) — not blocking. Flip fail-on-findings to gate."
+          else
+            # Honest caveat: trivy exit 0 + empty SARIF cannot distinguish "config files
+            # scanned, all clean" from "no config files present / wrong scan-path" — so a
+            # green here is NOT a coverage guarantee (unlike dep-scan, trivy gives no
+            # zero-coverage signal). Report it plainly rather than asserting "clean".
+            echo "::notice::trivy-scan: no IaC/config misconfigurations reported. NOTE: this also fires when there were no config files to scan — trivy config cannot distinguish the two, so this is NOT a coverage guarantee. If this repo has Dockerfiles/IaC, verify scan-path."
+            summary "no misconfigurations reported (also fires when nothing was scanned — not a coverage guarantee)."
+          fi
+
+      - name: Upload SARIF to Code Scanning (best-effort; free on public repos w/ GHAS)
+        # continue-on-error: private repos w/o GHAS return 403; the fail-on-findings
+        # GATE above is the compliance control. A failed upload must NOT fail the job.
+        continue-on-error: true
+        if: always() && hashFiles('trivy.sarif') != '' && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)
+        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-scan

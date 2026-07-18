@@ -28,7 +28,7 @@
 #     push: { branches: [main] }
 #   jobs:
 #     call:
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v2.4.0
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v2.5.0
 #       secrets: inherit
 
 name: docs-sync
@@ -110,7 +110,7 @@ jobs:
         run: |
           set -euo pipefail
           # The reusable workflow's `github.workflow_ref` looks like:
-          # vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v2.4.0
+          # vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v2.5.0
           # Extract the @<tag> portion and owner to fetch matching scripts.
           TAG="${CI_TAG##*@}"
           CI_OWNER=$(echo "${CI_TAG}" | cut -d/ -f1)

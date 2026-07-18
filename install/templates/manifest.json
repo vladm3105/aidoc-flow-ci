@@ -89,6 +89,14 @@
       "auto_install": false
     },
     {
+      "path": ".github/workflows/trivy-scan.yml",
+      "template": "workflows/trivy-scan.yml",
+      "_note": "PLAN-014: IaC/misconfig gate (trivy config mode). Single protected template (self-hosted, uniform public+private); no visibility_variants. Report-only until fail-on-findings graduates.",
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": false
+    },
+    {
       "path": ".github/workflows/docs-sync.yml",
       "template": "workflows/docs-sync.yml",
       "_note": "PLAN-013: single protected template (self-hosted, uniform public+private); no visibility_variants.",

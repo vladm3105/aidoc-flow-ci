@@ -193,8 +193,11 @@ third-party action, §4.3) and clones the `secret-scan.yml` shape.
   scripts). Ships report-only (`fail-on-findings: false`); flip to blocking after a
   clean window. Dependency *remediation* is Dependabot's (isolated infra) — this is
   the gate, not the fixer (PLAN-014 §4a).
-- **`trivy-scan.yml`** (filesystem/IaC) + **`sast-scan.yml`** (semgrep) — planned,
-  PLAN-014 Phases 2–3.
+- **`trivy-scan.yml`** — IaC / misconfiguration (trivy `config` mode). ✅ shipped
+  (`ci/v2.5.0`). Same uniform-protected + fork-guarded shape; data-only (static
+  parse). Deliberately `config` mode only (not `trivy fs`), so it does not duplicate
+  dep-scan (deps) or secret-scan (secrets).
+- **`sast-scan.yml`** (semgrep, SAST) — planned, PLAN-014 Phase 3.
 
 Full design + the own-vs-native split + the "autofix only where safe" boundary:
 PLAN-014.
@@ -208,7 +211,7 @@ Consumer callers typically use:
 ```yaml
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.4.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.5.0
     secrets: inherit   # passes all consumer-repo secrets to reusable
 ```
 

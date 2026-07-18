@@ -90,5 +90,5 @@ Quick-reference:
 1. Add `LITELLM_BASE_URL` + `LITELLM_REVIEW_API_KEY` secrets
 2. Add `"litellm": {"model": "ai-reviewer"}` to `.github/ai-review/config.json`
 3. Drop deprecated vendor-CLI secrets (`OPENAI_API_KEY`, etc.)
-4. `CI_TAG=ci/v2.4.0 bash install.sh <owner/repo> --repin` then `--update`
+4. `CI_TAG=ci/v2.5.0 bash install.sh <owner/repo> --repin` then `--update`
 5. Verify LiteLLM connectivity (smoke test) before merging the consumer PR
