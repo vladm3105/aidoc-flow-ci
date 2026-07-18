@@ -35,10 +35,27 @@ binaries/pip installed directly (no marketplace actions, §4.3):**
   path (§4a); model-based push-back stays gated on the PLAN-012 autofix App.
 
 All scanners are `auto_install: false` (opt-in), ship `fail-on-findings: false`, and
-carry no `secrets: inherit` (least privilege). **PLAN-014 remaining:** Phase 5 =
-graduate each scanner `fail-on-findings` false→true (per-scanner **founder** step,
-after a clean window) + the deferred Phase 4 *push-back* subset (batched with the 🔴
-PLAN-012 autofix-App enablement, not shipped as a standalone dormant flow).
+carry no `secrets: inherit` (least privilege). **`deploy-ci-wizard.sh` knows them**
+(surveys + `plan()` documents them as opt-in; `scaffold <repo> <dir> dep-scan
+trivy-scan sast-scan` produces valid callers — merged, no new tag, wizard-only).
+
+**NEXT (🔴 founder — NOT AI-executed): the report-only scanner pilot on `operations`.**
+The full prepared runbook is `plans/ROLLOUT_plan014-operations-pilot.md`. Essentials:
+operations is the pilot because it's the one repo with a live `ci-runner`/`single-use`
+pool AND exercises all three scanners with real targets (surveyed 2026-07-18:
+`pyproject.toml` → dep-scan; `scripts/ci-runner/Dockerfile` → trivy; 12 sh + 13 py →
+semgrep — so **no per-scanner tuning needed**). The one real prereq to verify:
+**runner egress** to github releases (osv/trivy binaries) + PyPI (semgrep) + semgrep.dev
+(`p/default`) — else a scanner fails loud by design. Deploy via the wizard `scaffold`,
+branch-first PR with the OPS-0069 phrase, report-only. Do NOT flip `fail-on-findings`
+(that's Phase 5) and do NOT add to branch protection in the pilot.
+
+**PLAN-014 remaining after the pilot:** Phase 5 = graduate each scanner
+`fail-on-findings` false→true (per-scanner **founder** step, after a clean window) +
+the deferred Phase 4 *push-back* subset (batched with the 🔴 PLAN-012 autofix-App
+enablement, not shipped as a standalone dormant flow). Then propagate the report-only
+scanners to the next pool-equipped repos (business/iplanic/interlog need a pool
+registered first; public repos need a pool for the self-hosted scanner jobs).
 
 This sits on top of **`ci/v2.3.0`** — autofix (PLAN-012) on the uniform protected
 AI-flow model (PLAN-013, `ci/v2.2.0`), on the pre-prod-hardened canon (`ci/v2.1.2`).
