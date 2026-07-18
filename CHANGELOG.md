@@ -7,6 +7,44 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 _(nothing yet)_
 
+## ci/v2.6.0 — 2026-07-18
+
+### Added — SAST gate `sast-scan.yml` (semgrep), report-only (PLAN-014 Phase 3, 2026-07-18)
+
+- **New reusable `.github/workflows/sast-scan.yml`** — a SAST (static code analysis)
+  gate via **semgrep**. semgrep is the OWN SAST complementing native CodeQL
+  (`codeql.yml`) — CodeQL needs GitHub Advanced Security and is N/A on private repos,
+  so this **gates PRIVATE repos too**. semgrep is PyPI-distributed (NOT a static
+  binary, unlike gitleaks/osv-scanner/trivy — PLAN-014 §3), so it installs via a
+  **VERSION-pinned pip** (`semgrep==1.170.0`) into an isolated venv (no marketplace
+  action; canon allowlist §4.3).
+- **Data-only, privacy-preserving:** semgrep is static AST analysis — it never
+  executes the scanned code. **`--metrics off`** sends NO telemetry to semgrep.dev
+  (important for private repos; note `--config auto` is incompatible with metrics-off,
+  so an explicit ruleset is used). An **EXPLICIT `--config`** (default `p/default`,
+  a `config` input) is used — never repo-local auto-discovery — so a PR **cannot
+  inject its own rules**; the ruleset is fetched from the semgrep registry (trusted,
+  not PR-controlled). semgrep exits 0 on a successful scan; findings come from the
+  SARIF, and a non-zero exit is an infrastructure/tool error (fails loud), never a
+  silent pass.
+- **Gate-controls-coverage (folded from pre-push security review, verified):** semgrep
+  ALWAYS honors a repo-root `.semgrepignore` independently of `--config`, so a PR
+  committing `.semgrepignore` with `*` would cover zero files → a silent green →
+  SAST-gate bypass (empirically confirmed). The scanned PR must not decide what the
+  gate skips, so any PR-supplied `.semgrepignore`/`.semgreprc` is stripped before the
+  scan (semgrep falls back to its built-in defaults). A missing or unparseable SARIF
+  after a zero exit is likewise treated as an infrastructure error (fails loud via
+  `jq -e`), never a false "no findings."
+- **Uniform protected + fork-guarded (PLAN-013 / PLAN-014 §1a):** ONE self-hosted
+  caller template — public AND private, no `-public`/`-private` split (a flip is a
+  no-op); a fork PR skips the scan. Best-effort SARIF → Code scanning; ships
+  report-only (`fail-on-findings: false`). No `secrets: inherit` (least privilege).
+- Manifest entry (single template, no `visibility_variants`), WORKFLOWS.md catalog
+  (15 reusables), security.md §3c, and contract-test invariants.
+
+Net semver MINOR — additive, opt-in (`auto_install: false`), report-only. PLAN-014
+Phase 3 of 5 (semgrep `--autofix` — the one safe autofix path — to follow).
+
 ## ci/v2.5.0 — 2026-07-18
 
 ### Added — IaC/misconfiguration gate `trivy-scan.yml` (trivy config mode), report-only (PLAN-014 Phase 2, 2026-07-18)

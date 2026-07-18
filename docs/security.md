@@ -194,10 +194,21 @@ third-party action, §4.3) and clones the `secret-scan.yml` shape.
   clean window. Dependency *remediation* is Dependabot's (isolated infra) — this is
   the gate, not the fixer (PLAN-014 §4a).
 - **`trivy-scan.yml`** — IaC / misconfiguration (trivy `config` mode). ✅ shipped
-  (`ci/v2.5.0`). Same uniform-protected + fork-guarded shape; data-only (static
-  parse). Deliberately `config` mode only (not `trivy fs`), so it does not duplicate
-  dep-scan (deps) or secret-scan (secrets).
-- **`sast-scan.yml`** (semgrep, SAST) — planned, PLAN-014 Phase 3.
+  (`ci/v2.5.0`). Same uniform-protected + fork-guarded shape; data-only. **SSRF-hardened**:
+  restricted to static scanners (`--misconfig-scanners dockerfile,kubernetes,cloudformation,azure-arm`)
+  because trivy's terraform/helm/ansible scanners fetch remote sources from PR-controlled
+  fields (`--tf-exclude-downloaded-modules` does NOT stop the fetch — only drops findings).
+  Deliberately `config` mode only (not `trivy fs`), so it does not duplicate dep-scan
+  (deps) or secret-scan (secrets).
+- **`sast-scan.yml`** — SAST / static code analysis (semgrep). ✅ shipped (`ci/v2.6.0`).
+  The OWN SAST complementing native CodeQL (which needs GHAS → N/A on private), so it
+  gates PRIVATE repos too. Same uniform-protected + fork-guarded shape. semgrep is
+  Python (not a static binary), so it installs via VERSION-pinned pip into an isolated
+  venv. **Data-only** static AST analysis (never executes the scanned code); `--metrics off`
+  (no telemetry to semgrep.dev — important for private repos) + an EXPLICIT `--config`
+  (never repo-local auto-discovery, so a PR cannot inject its own rules). Ships
+  report-only; flip to blocking after a clean window. Model-free autofix (semgrep
+  `--autofix`) is the one safe autofix path — PLAN-014 §4a Phase 4.
 
 Full design + the own-vs-native split + the "autofix only where safe" boundary:
 PLAN-014.
@@ -211,7 +222,7 @@ Consumer callers typically use:
 ```yaml
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.5.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.6.0
     secrets: inherit   # passes all consumer-repo secrets to reusable
 ```
 

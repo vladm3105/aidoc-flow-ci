@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/audit-trail-check.yml@ci/v2.5.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/audit-trail-check.yml@ci/v2.6.0
     with:
       runner_labels: '["self-hosted", "ci-runner", "single-use"]'
     permissions:
