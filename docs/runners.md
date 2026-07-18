@@ -19,23 +19,30 @@ consumer").
 
 **Within the aidoc-flow workspace, every PRIVATE repo MUST run CI on
 self-hosted runners — `ubuntu-latest` is never acceptable for a private repo**
-(founder policy, 2026-07-11). A repo's runner CLASS follows its visibility:
+(founder policy, 2026-07-11). Runner routing now depends on the flow **class**,
+not only visibility (PLAN-013):
 
-| Repo visibility | Default runner | Caller variant |
-| --- | --- | --- |
-| **Private** | **self-hosted** — `["self-hosted", "ci-runner", "single-use"]` | the `-private.yml` templates |
-| **Public** | GitHub-hosted `ubuntu-latest` | the `-public.yml` templates |
+| Flow class | Public repo | Private repo | Caller shape |
+| --- | --- | --- | --- |
+| **AI-flows** — `ai-review`, `doc-maintainer`, `docs-sync` (+ `autofix`, planned — PLAN-012) | **self-hosted** `["self-hosted","ci-runner","single-use"]` | **self-hosted** (same) | **ONE protected template** — no `-public`/`-private` split; a visibility flip is a no-op |
+| **Generic checks** — `markdown-lint`, `links`, `pre-commit`, `composition`, `audit-trail`, `secret-scan`, `labeler`, `auto-merge-ai-prs` | GitHub-hosted `ubuntu-latest` | **self-hosted** | the `-public.yml` / `-private.yml` variants |
 
-Rationale: this account has **no GitHub-hosted Actions minutes for private
-repos** (OPS-0049), so a private repo pinned to `ubuntu-latest` cannot get a
-runner — its jobs queue indefinitely. Public repos get free GitHub-hosted
-minutes, so `ubuntu-latest` is correct there.
+The AI-flows run uniform self-hosted because **forks never reach a job that
+executes PR code** (trust-gated or post-merge) — safe on public per
+[`security.md`](security.md) §3. The **fork-code-running lint flows**
+(`markdown-lint`/`links`/`pre-commit`, `on: pull_request`) MUST stay
+`ubuntu-latest` on public repos — converging them to self-hosted would run
+untrusted fork code on our box. Their visibility split is therefore correct and
+kept.
 
-`install.sh` encodes this rule: **`install.sh --update` auto-detects the repo's
-actual visibility** (`gh repo view isPrivate`) and installs the matching
-`-private` / `-public` variant; **bootstrap** selects the variant from the
-`--visibility` flag, which **defaults to `private`** (so a public repo must be
-bootstrapped with `--visibility public`, or it gets the self-hosted variant).
+Rationale for private = self-hosted everywhere: this account has **no
+GitHub-hosted Actions minutes for private repos** (OPS-0049), so a private repo
+pinned to `ubuntu-latest` queues indefinitely.
+
+`install.sh` encodes this: for the **generic checks** it auto-detects visibility
+(`gh repo view isPrivate`) and installs the matching `-private`/`-public` variant;
+for the **AI-flows** the manifest carries no `visibility_variants`, so the single
+protected (self-hosted) template installs regardless of visibility.
 
 > ⚠️ **Prerequisite for a private consumer:** register the
 > `["self-hosted", "ci-runner", "single-use"]` runner pool
@@ -205,36 +212,43 @@ across the matching runners. Reference supervisor + systemd template:
 (`run-ephemeral.sh`, `ci-runner@.service`). Never relieve the bottleneck by
 moving private-repo jobs to `ubuntu-latest`.
 
-### 5a. Public repos on the ephemeral self-hosted pool — review job ONLY (safe)
+### 5a. Public repos on the ephemeral self-hosted pool — the AI-flows run fully self-hosted (safe); the lint flows do NOT
 
-A **public** repo may run its ai-review **review** job on the ephemeral
-self-hosted pool, and this is **not** the "untrusted code on a self-hosted
-runner" anti-pattern. Two independent guarantees:
+As of PLAN-013 (`ci/v2.2.0`), the **AI-flows** (`ai-review`, `doc-maintainer`,
+`docs-sync`; `autofix` planned — PLAN-012) run **entirely** on the ephemeral
+self-hosted pool on public repos — trust job included — via one protected template
+with no visibility split. This is **not** the "untrusted code on a self-hosted runner"
+anti-pattern, because **a fork never reaches a job that executes PR code**:
 
-1. **Forks never reach it.** The `trust` job runs on `ubuntu-latest` for every
-   PR and **hard-sets forks untrusted**; the review job is gated
-   `if: needs.trust.outputs.ai_review_ok == 'true'`, so a fork PR **skips** the
-   self-hosted review job entirely — only allowlisted authors reach it.
-2. **No PR code executes on it.** The review job does not check out or run PR
-   head code — it `curl`s the diff and sends it to LiteLLM. So even for a trusted
-   author, nothing from the PR runs on the runner.
+1. **`ai-review` (`pull_request_target`):** a fork PR triggers ONLY the `trust`
+   job, which checks out the **trusted config repo** (never the PR head) and reads
+   PR metadata — it runs **zero PR code**. The review job is gated
+   `if: needs.trust.outputs.ai_review_ok == 'true'` and forks are **never
+   trusted**, so a fork never reaches it; and even for a trusted author the review
+   job `curl`s the diff (no PR-head checkout).
+2. **`doc-maintainer` + `docs-sync`** are **post-merge** (`push: main`) — a fork
+   PR cannot trigger them.
 
 Combined with single-use isolation (`--rm`, no mounts, no socket, non-root), the
-worst case is a throwaway container that only ever forwards a redacted diff.
-
-**Wiring:** on the public repo's ai-review caller keep the fork-facing trust job
-on GitHub-hosted and move only the review job:
+worst case a fork can cause is a throwaway container running the no-PR-code trust
+decision. Wiring is simply the single protected template's default:
 
 ```yaml
-runner_labels_routine: '"ubuntu-latest"'                          # trust job (all PRs, incl. forks)
-runner_labels_review:  '["self-hosted","ci-runner","single-use"]' # review job (trusted authors, reaches LiteLLM)
+runner_labels_routine: '["self-hosted","ci-runner","single-use"]' # trust job — no PR code
+runner_labels_review:  '["self-hosted","ci-runner","single-use"]' # review job — diff-only
 ```
 
-Keep every other public check (composition, links, markdown-lint, pre-commit,
-secret-scan, codeql) on `ubuntu-latest`. **NEVER** move the trust job — or any
-job that checks out / runs PR code, or that processes fork PRs — to self-hosted
-on a public repo. This is the mechanism that lets a **private-only** LiteLLM
-proxy serve public repos without any public endpoint.
+**The fork-code-running lint flows MUST stay GitHub-hosted on public repos.**
+`markdown-lint`, `links`, `pre-commit` (all `on: pull_request`) run the PR's own
+files, **including a fork's** — the exact case GitHub warns against. **NEVER** move
+those — or any job that checks out / runs PR code — to self-hosted on a public
+repo. They keep the `-public.yml` (`ubuntu-latest`) variant. See
+[`security.md`](security.md) §3 for the full boundary. This is also what lets a
+**private-only** LiteLLM proxy serve public repos without any public endpoint.
+
+Residual: on a public repo every fork PR fires a (fast, no-code) trust job on the
+pool — size the pool for fork volume (`concurrency: cancel-in-progress` collapses
+same-PR pushes).
 
 ## 6. Adding a new runner origin
 

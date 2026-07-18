@@ -47,9 +47,10 @@ for tpl in install/templates/workflows/*.yml; do
   # pinned at a real @ci/v tag (not @main)
   assert_ok "grep -qE 'vladm3105/aidoc-flow-ci/[^@]+@ci/v[0-9.]+' '$tpl'" "$name: pins @ci/vX.Y.Z"
   assert_absent "$(cat "$tpl")" 'aidoc-flow-ci/.github/workflows/'"$(: )"'@main' "$name: no @main pin"
-  # ai-review + composition callers MUST carry a permissions: block (startup_failure otherwise)
+  # ai-review + composition callers MUST carry a permissions: block (startup_failure otherwise).
+  # NB `ai-review.yml` (no suffix) is the PLAN-013 single protected template — match it too.
   case "$name" in
-    ai-review-*.yml|composition-*.yml)
+    ai-review.yml|ai-review-*.yml|composition-*.yml)
       assert_ok "grep -qE '^permissions:' '$tpl'" "$name: has permissions: block (avoids startup_failure)" ;;
   esac
   # private variants must carry a VALID JSON runner_labels array
@@ -81,6 +82,32 @@ PYEOF
       fi ;;
   esac
 done
+
+echo "== PLAN-013 uniform protected AI-flows (public+private, one self-hosted template) =="
+# The AI-flow callers ship as ONE protected template each — no -public/-private
+# split — so a repo visibility flip is a no-op. Each MUST carry self-hosted labels,
+# have NO variant siblings, and NO visibility_variants in the manifest.
+for flow in ai-review doc-maintainer docs-sync; do
+  tpl="install/templates/workflows/${flow}.yml"
+  assert_ok "test -f '$tpl'" "AI-flow $flow: single protected template exists"
+  assert_absent "$(ls install/templates/workflows/ 2>/dev/null)" "${flow}-private.yml" "AI-flow $flow: no -private variant (uniform)"
+  assert_absent "$(ls install/templates/workflows/ 2>/dev/null)" "${flow}-public.yml" "AI-flow $flow: no -public variant (uniform)"
+  assert_ok "grep -q 'self-hosted' '$tpl' && grep -q 'single-use' '$tpl'" "AI-flow $flow: single template carries the self-hosted pool label"
+  # manifest entry must NOT branch on visibility (flip = no-op)
+  novar="$(python3 - "$flow" <<'PYEOF'
+import json, sys
+flow = sys.argv[1]
+m = json.load(open("install/templates/manifest.json"))
+e = next((f for f in m["files"] if f["path"] == f".github/workflows/{flow}.yml"), None)
+print("MISSING" if e is None else ("HAS_VARIANTS" if "visibility_variants" in e else "OK"))
+PYEOF
+)"
+  assert_contains "$novar" "OK" "AI-flow $flow: manifest entry has NO visibility_variants (flip is a no-op)"
+done
+# The wizard label-injector must recognize runner_labels_routine/_review (ai-review's
+# inputs) so it does NOT inject a spurious bare `runner_labels:` into the single
+# ai-review template — that is an undeclared reusable input → startup_failure.
+assert_ok "grep -q 'runner_labels_routine' install/deploy-ci-wizard.sh && grep -q 'runner_labels_review' install/deploy-ci-wizard.sh" "wizard injector recognizes runner_labels_routine/_review (no spurious bare runner_labels on AI-flow singles)"
 
 echo "== production-hardening contracts =="
 assert_ok "grep -q 'GL_LINUX_X64_SHA256' .github/workflows/secret-scan.yml && grep -q 'sha256sum --check --strict' .github/workflows/secret-scan.yml" "secret-scan verifies the pinned gitleaks artifact"
