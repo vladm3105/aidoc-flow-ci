@@ -19,8 +19,8 @@
   "files": [
     {
       "path": ".github/workflows/ai-review.yml",
-      "template": "workflows/ai-review-public.yml",
-      "visibility_variants": {"public": "workflows/ai-review-public.yml", "private": "workflows/ai-review-private.yml"},
+      "template": "workflows/ai-review.yml",
+      "_note": "PLAN-013: single protected template (self-hosted, uniform public+private); no visibility_variants — a visibility flip is a no-op.",
       "substitute": [],
       "safe_to_replace": true,
       "auto_install": true
@@ -52,8 +52,8 @@
     },
     {
       "path": ".github/workflows/doc-maintainer.yml",
-      "template": "workflows/doc-maintainer-public.yml",
-      "visibility_variants": {"public": "workflows/doc-maintainer-public.yml", "private": "workflows/doc-maintainer-private.yml"},
+      "template": "workflows/doc-maintainer.yml",
+      "_note": "PLAN-013: single protected template (self-hosted, uniform public+private); no visibility_variants.",
       "substitute": [],
       "safe_to_replace": true,
       "auto_install": false
@@ -83,7 +83,7 @@
     {
       "path": ".github/workflows/docs-sync.yml",
       "template": "workflows/docs-sync.yml",
-      "visibility_variants": {"public": "workflows/docs-sync.yml", "private": "workflows/docs-sync-private.yml"},
+      "_note": "PLAN-013: single protected template (self-hosted, uniform public+private); no visibility_variants.",
       "substitute": [],
       "safe_to_replace": true,
       "auto_install": false

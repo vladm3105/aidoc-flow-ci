@@ -139,7 +139,12 @@ while i < len(lines):
             job.append(lines[i]); i += 1
         def active(key): return any(re.match(r'\s*'+key+r'\s*:', jl) and not jl.lstrip().startswith('#') for jl in job)
         adds = []
-        if vis == 'PRIVATE' and not active('runner_labels'): adds.append(LBL)
+        # Skip injection when ANY runner-label input is already present — the
+        # PLAN-013 single AI-flow templates (ai-review) use runner_labels_routine/
+        # _review (NOT bare runner_labels), which are undeclared for a bare
+        # `runner_labels:` inject → startup_failure. Match the whole family.
+        has_labels = active('runner_labels') or active('runner_labels_routine') or active('runner_labels_review')
+        if vis == 'PRIVATE' and not has_labels: adds.append(LBL)
         if wf == 'markdown-lint' and not active('fail-on-findings'): adds.append(FOF)
         if adds:
             widx = next((k for k, jl in enumerate(job) if re.match(r'^    with:\s*$', jl)), None)
@@ -155,7 +160,7 @@ open(d, 'w').write('\n'.join(out))
 PY
     fi
     if python3 -c 'import sys,yaml;yaml.safe_load(open(sys.argv[1]))' "$dst" 2>/dev/null; then c_ok "$wf.yml"; else c_no "$wf.yml — INVALID YAML (or PyYAML not installed), inspect it"; fi
-    if [ "$vis" = PRIVATE ] && [ ! -f "$TPL/workflows/$wf-$suffix.yml" ] && ! grep -qE '^\s*runner_labels:' "$dst"; then
+    if [ "$vis" = PRIVATE ] && [ ! -f "$TPL/workflows/$wf-$suffix.yml" ] && ! grep -qE '^\s*runner_labels(_routine|_review)?:' "$dst"; then
       c_wn "$wf.yml: PRIVATE repo but no runner_labels injected (job has no with: block) — add ci-runner + single-use labels manually per §5 item 1"
     fi
     if [ "$wf" = ai-review ] || [ "$wf" = composition ]; then

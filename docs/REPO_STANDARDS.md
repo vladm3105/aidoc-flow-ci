@@ -226,31 +226,39 @@ Before a major AI-contract release is tagged, `.github/workflows/litellm-smoke.y
 MUST pass against the actual proxy for both canonical aliases. Mocked unit tests
 do not replace this provider/proxy compatibility gate.
 
-### 4.1 Runner class by visibility (canon)
+### 4.1 Runner class by flow-class + visibility (canon)
 
-A workspace repo's runner CLASS follows its visibility, by default:
+Runner routing follows the flow **class**, not only visibility (PLAN-013):
 
-| Visibility | Default runner | Caller variant |
-| --- | --- | --- |
-| **Private** | self-hosted `["self-hosted", "ci-runner", "single-use"]` for AI and non-AI jobs | `-private.yml` |
-| **Public** | GitHub-hosted `ubuntu-latest` | `-public.yml` |
+| Flow class | Public | Private | Caller shape |
+| --- | --- | --- | --- |
+| **AI-flows** (`ai-review`, `doc-maintainer`, `docs-sync` (+ `autofix`, planned — PLAN-012)) | self-hosted `["self-hosted","ci-runner","single-use"]` | self-hosted (same) | **ONE protected template** — no `-public`/`-private` split; visibility flip = no-op |
+| **Generic checks** (`markdown-lint`, `links`, `pre-commit`, `composition`, `audit-trail`, `secret-scan`, `labeler`, `auto-merge-ai-prs`) | GitHub-hosted `ubuntu-latest` | self-hosted | `-public.yml` / `-private.yml` variants |
 
-This account has **no GitHub-hosted Actions minutes for private repos**
-(OPS-0049), so a private repo pinned to `ubuntu-latest` would queue forever.
-`install.sh --update` auto-detects the repo's visibility (`gh repo view
-isPrivate`) and installs the matching variant; bootstrap selects it from
-`--visibility` (defaults to `private`). **A private consumer MUST register the
-self-hosted `ci-runner` / `single-use` pool before adopting.** Full detail + the external-adopter
-override (they lack the self-hosted pool → `ubuntu-latest`): `docs/runners.md`
-"Workspace default".
+The AI-flows run **uniform self-hosted on both visibilities** because forks never
+reach a job that executes PR code (trust-gated or post-merge) — safe on public per
+`docs/security.md` §3. The **fork-code-running lint flows**
+(`markdown-lint`/`links`/`pre-commit`) MUST stay `ubuntu-latest` on public
+(running fork code on self-hosted is the leak GitHub warns against), so their
+visibility split is kept. This account has **no GitHub-hosted minutes for private
+repos** (OPS-0049), so private = self-hosted everywhere.
+
+`install.sh --update` installs the AI-flows' single protected template regardless
+of visibility (their manifest entries carry no `visibility_variants`); for the
+generic checks it auto-detects visibility (`gh repo view isPrivate`) and installs
+the matching variant. **A consumer MUST register the self-hosted `ci-runner` /
+`single-use` pool before adopting** (now also for the AI-flows on public repos).
+Full detail: `docs/runners.md` "Workspace policy".
 
 As of `ci/v1.9.0` the `-private.yml` templates ship the **real**
 `["self-hosted", "ci-runner", "single-use"]` label directly (earlier releases
 shipped a `runner-self` placeholder that resolved to `runs-on: runner-self`,
 matched no runner, and queued every required check — FT-9).
 
-**Every manifest workflow surface now has a `-private` variant** (as of the
-ci/v2.1.0 cut). Previously only 5 of 11 did; the other 6 (`links`,
+**Every GENERIC manifest workflow surface has a `-private` variant** (as of the
+ci/v2.1.0 cut; the AI-flows dropped their variants for a single protected template
+in `ci/v2.2.0` per PLAN-013 §4.1, so this applies to the generic checks only).
+Previously only 5 of 11 did; the other 6 (`links`,
 `markdown-lint`, `pre-commit`, `secret-scan`, `labeler`, `docs-sync`) were
 generic templates carrying `runner_labels` only as a commented hint. That made
 `install.sh --update` unsafe on a private consumer: `--update` resolves each

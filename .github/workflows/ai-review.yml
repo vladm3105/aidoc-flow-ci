@@ -51,7 +51,7 @@ on:
         type: string
         default: "routine"
       runner_labels_routine:
-        description: 'JSON array of runner labels for the trust job. Default ubuntu-latest (safe for public; private consumers set their self-hosted label set).'
+        description: 'JSON array of runner labels for the trust job. Default ubuntu-latest (for external adopters without a self-hosted pool). The aidoc-flow PROTECTED caller sets the self-hosted pool on BOTH public and private (PLAN-013) — safe because the trust job runs no PR code.'
         type: string
         default: '"ubuntu-latest"'
       runner_labels_review:
@@ -79,14 +79,14 @@ jobs:
   # reading only the allowlist (operations@main) + PR metadata — never PR code. The
   # reviewer job below runs only if this job says the author is trusted.
   #
-  # Runner by repo VISIBILITY (this account has NO GitHub-hosted Actions minutes — see OPS-0049):
-  #   PUBLIC  → ubuntu-latest — free GitHub-hosted minutes AND keeps untrusted fork PRs
-  #             entirely off our box (the safe-by-design guarantee that matters for forks).
-  #   PRIVATE → self-hosted ci-runner/single-use — no GitHub-hosted minutes available on this
-  #             account; private repos have no untrusted forks, and this job reads only our
-  #             config + PR metadata (never PR code), so a self-hosted disposable container
-  #             is safe here. (Served by the JIT ephemeral supervisor; reverts to ubuntu-latest
-  #             once GitHub-hosted minutes are restored — just drop the conditional.)
+  # Runner — the PROTECTED caller passes the self-hosted ephemeral pool on BOTH
+  # public and private repos (PLAN-013 uniform model; no visibility branch, so a
+  # visibility flip is a no-op). This is SAFE on public repos and does NOT rely on
+  # "private repos have no forks": a fork PR reaches ONLY this trust job, which
+  # checks out the trusted config repo (never PR head) + reads PR metadata — it
+  # runs ZERO PR code. The heavy review job below is `needs: trust`-gated and forks
+  # are never trusted, so no fork ever reaches a code-executing job on the pool.
+  # (The runner value is entirely caller-side via `inputs.runner_labels_routine`.)
   trust:
     # Run on normal events; on a label event run ONLY when it's `skip-ai-review` (so the gate's own
     # ai:review-* label writes don't re-trigger a wasteful round).

@@ -7,6 +7,36 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 _(nothing yet)_
 
+## ci/v2.2.0 — 2026-07-18
+
+### Changed — uniform protected AI-flow model: AI-flows run self-hosted on public AND private, one template (PLAN-013, 2026-07-18)
+
+- **`install/templates/workflows/`:** the AI-flow callers (`ai-review`,
+  `doc-maintainer`, `docs-sync`) collapse their `-public`/`-private` variant pairs
+  into **one protected template each** on `["self-hosted","ci-runner","single-use"]`
+  — no visibility split, so a repo visibility flip (private↔public) is a **no-op**.
+  Safe on public repos because a fork never reaches a job that executes PR code: the
+  `ai-review` trust job checks out the trusted config repo (never the PR head) and
+  runs zero PR code, the review job is `needs: trust`-gated and forks are never
+  trusted, and `doc-maintainer`/`docs-sync` are post-merge. The **fork-code-running
+  lint flows** (`markdown-lint`/`links`/`pre-commit`) deliberately KEEP their
+  `-public`/`-private` split — they run fork PR files, so they must stay
+  GitHub-hosted on public repos.
+- **`install/templates/manifest.json`:** dropped `visibility_variants` for the three
+  AI-flows (single protected template installs regardless of visibility).
+- **`install/deploy-ci-wizard.sh`:** the label-injector now recognizes
+  `runner_labels_routine`/`_review`, so it no longer injects a spurious bare
+  `runner_labels:` into the single `ai-review` template (an undeclared reusable
+  input → `startup_failure`).
+- **Docs:** `security.md §3` rewritten (self-hosted-on-public is safe for the
+  AI-flows; fork-code lint flows stay GitHub-hosted), `runners.md` routing table +
+  §5a, `REPO_STANDARDS.md §4.1`, `CLAUDE.md` runner policy.
+- **Tests:** flip-simulation (same template for both visibilities) +
+  no-`visibility_variants`-on-AI-flows + wizard-injector regression assertions.
+
+Net semver MINOR — template convergence + manifest; no consumer-facing interface
+break (callers reference the reusable name, not the template filename).
+
 ## ci/v2.1.2 — 2026-07-17
 
 ### Changed — ai-review verdict budget raised 8192 → 24576 (PLAN-011 follow-up, 2026-07-17)

@@ -2,6 +2,11 @@
 # Per IPLAN-0025 (operations 2026-06-28; READY via PR #166). Ships as
 # ci/v1.4.0 alpha.1.
 #
+# PROTECTED caller — uniform on PUBLIC and PRIVATE repos (PLAN-013): runs on the
+# ephemeral self-hosted single-use pool regardless of visibility (no
+# `-public`/`-private` split; a visibility flip is a no-op). Safe on public repos
+# because this is a POST-MERGE flow (`push: main`) — a fork PR cannot trigger it.
+#
 # This is OPT-IN: consumer must drop this file into .github/workflows/ AND
 # provide the per-consumer config + conventions:
 #   - .github/doc-maintainer.json (config schema per IPLAN-0025 §2.2)
@@ -64,7 +69,7 @@ permissions:
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v2.1.2
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v2.2.0
     with:
       runner_labels: '["self-hosted", "ci-runner", "single-use"]'
       model: ai-doc-maintainer

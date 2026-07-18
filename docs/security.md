@@ -83,11 +83,10 @@ string is spoofable) + `user.type == "Bot"`.
 This is why `composition` must stay in branch protection's
 required-checks set — removing it is a governance change.
 
-## 3. Self-hosted runners on PUBLIC repos — accepted risk
+## 3. Self-hosted runners on PUBLIC repos — the AI-flows vs. the lint flows
 
 [GitHub's documentation](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners#self-hosted-runner-security)
-explicitly recommends AGAINST self-hosted runners on public
-repos:
+recommends AGAINST self-hosted runners on public repos:
 
 > "We recommend that you only use self-hosted runners with
 > private repositories. This is because forks of your public
@@ -95,29 +94,47 @@ repos:
 > self-hosted runner machine by creating a pull request that
 > executes the code in a workflow."
 
-**Our routing rule (per [`../LABELS.md`](../LABELS.md) §2 +
-[`runners.md`](runners.md) §4) follows GitHub's recommendation:**
+The load-bearing word is **"executes."** GitHub's warning is about a fork PR
+running *untrusted code* on your runner. Whether self-hosted-on-public is safe
+therefore depends entirely on whether a fork can reach a job that **executes PR
+code** — and that differs between the two classes of flow.
 
-- **PRIVATE repos** use self-hosted `["self-hosted","ci-runner","single-use"]` — no
-  fork concern; safe per GitHub's guidance.
-- **PUBLIC repos** use `ubuntu-latest` (GitHub-hosted) — GitHub's
-  recommended path; no self-hosted exposure.
+**The AI-flows are safe on self-hosted, public OR private (PLAN-013).** The
+uniform protected model runs `ai-review`, `doc-maintainer`, and `docs-sync`
+(and `autofix` once it ships — PLAN-012) on the ephemeral self-hosted single-use
+pool on every repo, with **no `-public`/`-private` split** (so a visibility flip
+is a no-op). This is safe because **a fork never reaches a job that executes PR
+code**:
 
-If a future consumer needs self-hosted for a PUBLIC repo
-(unusual case — e.g., requires GPU or large workspace), the
-mitigation is:
+- `ai-review` (`pull_request_target`): a fork PR triggers ONLY the `trust` job,
+  which checks out the **trusted config repo** (never the PR head) and reads PR
+  metadata — it runs **zero PR code**. The heavy review job is `needs: trust`-gated
+  and forks are **never trusted**, so a fork never reaches it. `autofix` is
+  likewise trust-gated (forks excluded).
+- `doc-maintainer` + `docs-sync` are **post-merge** (`push: main`) — a fork PR
+  cannot trigger them at all.
 
-1. The trust gate ensures fork-PR code **never reaches the
-   self-hosted reviewer job** (HUMAN-REVIEW-ONLY route).
-2. The reusable workflow body **never executes PR code** — it
-   reads PR-diff metadata via `gh api` only; LiteLLM receives the diff as
-   untrusted text, not as executable code.
-3. Even with both above, this is **accepted-risk, not GitHub-
-   recommended**. Document the deviation in the consumer's
-   CLAUDE.md.
+So the only fork-triggered work on the pool is the no-PR-code trust decision on an
+isolated `--rm` container. This is **not** the "untrusted code on your box" case
+GitHub warns about. (It does rest on two invariants that MUST hold: forks stay
+trust-excluded, and the trust job takes no fork-controlled string into a shell
+except via `env:` with a charset-safe value — see PLAN-013 §3.)
 
-See operations IPLAN-0017 §5 (Risks) + §7 claim C9 for the formal
-risk + mitigation record.
+**The generic lint flows must STAY GitHub-hosted on public repos.** `markdown-lint`,
+`links`, and `pre-commit` (all `on: pull_request`) **run the PR's own files,
+including a fork's** — exactly the case GitHub's warning covers. Their
+`-public`/`-private` split is therefore correct and must be kept: `ubuntu-latest`
+on public, self-hosted on private. **Never converge a fork-code-executing lint flow
+to self-hosted on a public repo** — that would create the very leak this section
+warns about.
+
+Residual on the AI-flows: fork PRs on a public repo each trigger a (fast, no-code)
+trust job on our pool, so pool capacity must absorb public-fork volume
+(`concurrency: cancel-in-progress` collapses same-PR pushes; sizing is an ops item).
+
+See operations IPLAN-0017 §5 (Risks) + §7 claim C9 for the original risk record;
+this section supersedes its "accepted-risk-only" framing for the AI-flows per
+PLAN-013.
 
 ## 4. Secrets model
 
@@ -128,7 +145,7 @@ Consumer callers typically use:
 ```yaml
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.1.2
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.2.0
     secrets: inherit   # passes all consumer-repo secrets to reusable
 ```
 

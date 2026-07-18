@@ -1,17 +1,18 @@
-# Public consumers can use ubuntu-latest. The reusable sends requests through
-# the configured LiteLLM proxy and does not install a vendor CLI.
+# PROTECTED caller — uniform on PUBLIC and PRIVATE repos (PLAN-013).
+# Runs on the ephemeral self-hosted single-use pool regardless of visibility:
+# there is no `-public`/`-private` split, so a repo visibility flip is a no-op.
+# Safe on public repos because forks are never trusted (see `.github/ai-review/
+# config.json` trust gate) → a fork PR reaches only the no-PR-code trust job on
+# the isolated pool; the heavy review job runs only for trusted, non-fork authors.
 #
 # Secrets required (consumer adds to repo secrets):
 #   APP_REVIEWER_1_ID + APP_REVIEWER_1_KEY  reviewer App credentials
 #   LITELLM_BASE_URL                         proxy base URL (normally .../v1)
 #   LITELLM_REVIEW_API_KEY                   review-scoped LiteLLM virtual key
 #
-# `pull_request_target` (not `pull_request`) is required because the
-# trust gate needs write-capable credentials to apply labels/comments
-# on fork PRs and the heavy review job needs secrets — both unavailable
-# under `pull_request` on fork PRs. The trust gate decides whether to
-# proceed; the heavy job runs only for trusted authors per the
-# allowlist in `.github/ai-review/config.json`.
+# `pull_request_target` (not `pull_request`) is required so the trust gate has
+# write-capable credentials + secrets; the heavy job runs only for trusted
+# authors per `.github/ai-review/config.json`.
 name: ai-review
 on:
   pull_request_target:
@@ -35,13 +36,15 @@ permissions:
   issues: write          # gh api label create/apply paths
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.1.2
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.2.0
     with:
       # Model selection is CONFIG-DRIVEN: the reusable reads `litellm.model`
       # from the trusted .github/ai-review/config.json. Uncomment to override:
       # model: ai-reviewer
-      runner_labels_routine: '"ubuntu-latest"'
-      runner_labels_review: '"ubuntu-latest"'
+      runner_labels_routine: '["self-hosted", "ci-runner", "single-use"]'
+      runner_labels_review: '["self-hosted", "ci-runner", "single-use"]'
+      # Private HTTP proxies require explicit opt-in:
+      # litellm_allow_insecure_http: true
       # External adopters: point the trust config at YOUR ops/config repo
       # (holds `.github/ai-review/config.json`). Defaults to
       # vladm3105/aidoc-flow-operations@main.

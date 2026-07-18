@@ -170,18 +170,20 @@ session must not re-derive or get wrong:
   It is HTTP on the private bridge → private callers set
   `litellm_allow_insecure_http: true`.
 
-**PUBLIC repos MAY use the ephemeral self-hosted pool — for the ai-review
-*review* job ONLY. This is safe and is NOT the "untrusted code on self-hosted"
-anti-pattern.** Two independent reasons: (a) the `trust` job runs on
-`ubuntu-latest` and **forks are hard-set untrusted → the self-hosted review job
-is SKIPPED for forks** (only allowlisted authors reach it); (b) the review job
-runs **no PR code** — it `curl`s the diff and sends it to LiteLLM. So neither a
-fork nor any PR-code execution ever touches the self-hosted runner. Wire it by
-setting `runner_labels_review: '["self-hosted","ci-runner","single-use"]'` on the
-public repo's ai-review caller while keeping `runner_labels_routine:
-'"ubuntu-latest"'` (the fork-facing trust job) and every other public check on
-`ubuntu-latest`. **NEVER** move the trust job — or any code-executing / fork-facing
-job — to self-hosted on a public repo. Full rationale: `docs/runners.md` §5a.
+**PUBLIC repos run the AI-flows FULLY on the ephemeral self-hosted pool (PLAN-013,
+`ci/v2.2.0`) — trust job included. This is safe and is NOT the "untrusted code on
+self-hosted" anti-pattern**, because a fork never reaches a job that executes PR
+code: for `ai-review` a fork triggers only the `trust` job, which checks out the
+**trusted config repo** (never the PR head) and reads PR metadata — **zero PR
+code**; the review job is `needs: trust`-gated and forks are never trusted;
+`doc-maintainer`/`docs-sync` are post-merge so forks can't trigger them. The
+AI-flows ship as ONE protected template (`runner_labels_routine`/`_review` both
+self-hosted), no `-public`/`-private` split, so a visibility flip is a no-op.
+**The fork-code-running lint flows (`markdown-lint`, `links`, `pre-commit`,
+`on: pull_request`) MUST stay `ubuntu-latest` on public repos** — they run the
+PR's own files (a fork's included), so moving THEM to self-hosted is the real
+untrusted-code-on-self-hosted leak. **NEVER** converge a fork-code-executing job to
+self-hosted on a public repo. Full boundary: `docs/security.md` §3 + `docs/runners.md` §5a.
 
 ## Repo-specific rules (canon-source discipline)
 
