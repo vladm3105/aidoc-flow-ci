@@ -243,6 +243,10 @@ assert_ok "grep -q 'produced no SARIF' '$SG' && grep -q 'unparseable' '$SG'" "sa
 assert_ok "grep -q 'jq -e' '$SG'" "sast-scan uses 'jq -e' so a SARIF parse error is caught, not swallowed"
 assert_ok "grep -q 'github.event.pull_request.head.repo.fork != true' '$SG'" "sast-scan is fork-guarded (forks never scan on self-hosted)"
 assert_ok "grep -q 'continue-on-error: true' '$SG' && grep -q 'github/codeql-action/upload-sarif@' '$SG'" "sast-scan uploads SARIF best-effort (continue-on-error)"
+assert_ok "grep -q 'autofix-preview:' '$SG'" "sast-scan exposes an autofix-preview input (PLAN-014 Phase 4)"
+assert_ok "grep -q -- '--autofix' '$SG'" "sast-scan autofix-preview runs semgrep --autofix (deterministic, rule-provided)"
+assert_absent "$(cat "$SG")" 'git push' "sast-scan autofix-preview NEVER pushes (preview only — no App, no credential)"
+assert_absent "$(cat "$SG")" 'create-github-app-token' "sast-scan mints NO App token (the preview path needs no push credential)"
 SGC=install/templates/workflows/sast-scan.yml
 assert_ok "test -f '$SGC'" "sast-scan caller template exists"
 assert_absent "$(ls install/templates/workflows/ 2>/dev/null)" "sast-scan-private.yml" "sast-scan has no -private variant (uniform)"

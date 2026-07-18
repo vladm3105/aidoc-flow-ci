@@ -22,12 +22,16 @@ permissions:
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/sast-scan.yml@ci/v2.6.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/sast-scan.yml@ci/v2.7.0
     with:
       # Report-only rollout. Flip to true to block PRs on a SAST finding.
       fail-on-findings: false
       # semgrep ruleset. "p/default" is the recommended baseline; tune per repo
       # (e.g. "p/security-audit", or a language pack like "p/python").
       config: 'p/default'
+      # Flip to true to ALSO surface semgrep's deterministic (rule-provided) autofix
+      # patch in the job summary — PREVIEW ONLY, nothing is pushed (no App needed).
+      # Costs a second semgrep pass; off by default for the report-only rollout.
+      autofix-preview: false
       runner_labels: '["self-hosted", "ci-runner", "single-use"]'
     # No `secrets: inherit` — sast-scan uses only GITHUB_TOKEN (least privilege).

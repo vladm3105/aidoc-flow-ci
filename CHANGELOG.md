@@ -7,6 +7,29 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 _(nothing yet)_
 
+## ci/v2.7.0 — 2026-07-18
+
+### Added — `sast-scan` deterministic autofix PREVIEW (semgrep `--autofix`, no push) (PLAN-014 Phase 4, 2026-07-18)
+
+- **New `autofix-preview` input on `sast-scan.yml`** (default false) — when true, after
+  the scan it ALSO runs `semgrep scan --autofix` in the ephemeral workspace and surfaces
+  the resulting **deterministic, rule-provided** patch in the job summary. This is the
+  one *safe* autofix path (PLAN-014 §4a): semgrep's fixes come from the rules (NO model),
+  and they are applied only to the `--rm` workspace, which is **discarded after the job —
+  nothing is pushed**. A human (or the armed PLAN-012 autofix App) applies the patch.
+- **Preview-only by design.** Pushing a fix back to the PR head needs the dedicated
+  autofix App (default-off, founder-gated — PLAN-012); this flow deliberately does NOT
+  push, so it needs no App and is immediately usable. The step is `continue-on-error`
+  (a preview must never fail the scan gate) and fork-guarded (inherits the job guard).
+  The PR-controlled diff is rendered as a 4-space INDENTED block (not a ``` fence) so a
+  crafted context line cannot break out and forge job-summary markdown (pre-push review nit).
+- Caller template exposes `autofix-preview: false` (opt-in; a second semgrep pass roughly
+  doubles the job time). WORKFLOWS.md, security.md §3c, and contract-test invariants.
+
+Net semver MINOR — additive, opt-in, no push / no new credential. Completes PLAN-014
+Phase 4 of 5 (remaining: Phase 5 — graduate each scanner's `fail-on-findings` false→true,
+a per-scanner founder step after a clean window).
+
 ## ci/v2.6.0 — 2026-07-18
 
 ### Added — SAST gate `sast-scan.yml` (semgrep), report-only (PLAN-014 Phase 3, 2026-07-18)
