@@ -10,7 +10,7 @@ nothing, silently. This plan builds the missing fixer flow so the dormant knobs
 become real, aligned to the proven security mechanics of the operations
 `IPLAN-0014` blueprint and distributed via the current central-reusable-library
 canon (not `IPLAN-0014`'s stale vendored model).
-**Status:** DRAFT — 🔴 GATED on a founder go/no-go (see §8). This plan is
+**Status:** SHIPPED — implemented + released as `ci/v2.3.0` (2026-07-18), default-off; security-reviewed (3 agents + re-verify, 2 HIGH + MEDIUM/LOW folded). Enabling autofix is a separate 🔴 founder step. (Original gate text below.) This plan is
 authored to the point of a decision; **no workflow code ships until the founder
 approves the §8 forks (dedicated autofix-App `contents:write` grant +
 `pull_request_target` untrusted-PR-head write surface + the D-2a dependency-free

@@ -4,10 +4,14 @@ Live cross-session resume point for the workspace CI + governance-workflow
 canon library. Read at session start; refresh at milestones and before
 context compaction.
 
-## Current state (2026-07-17)
+## Current state (2026-07-18)
 
-**`ci/v2.1.2` is cut + released (Latest) — the pre-prod-hardened canon plus the
-ai-review large-diff fix.** Three tags shipped this session, in order:
+**`ci/v2.3.0` is the Latest release — autofix (PLAN-012) ships on top of the
+uniform protected AI-flow model (PLAN-013, `ci/v2.2.0`), which sits on the
+pre-prod-hardened canon (`ci/v2.1.2`).** All security-reviewed and shipped;
+what remains everywhere is 🔴 founder-gated (fleet re-pin/arming per operations
+#268, and — to turn autofix on — the dedicated autofix-App registration +
+secrets + `autofix.enabled`). The v2.1.x history that hardened the canon:
 
 - **`ci/v2.1.0`** — a 5-lens pre-prod review (security/correctness/docs/
   portability/governance) of the canon as company-default source of truth
@@ -77,33 +81,31 @@ a permanent authoring bug, not decay (deref: `git/tags/<sha> --jq '.object.sha'`
 → `e827ab82…`, HTTP 200). The same trap as the SHA-pin lesson in FT-10's
 neighbourhood: `git/refs/tags/<tag>` returns the TAG object for annotated tags.
 
-**AI-flow autofix + uniform protection (PLAN-012 + PLAN-013) — DRAFT, READY,
-🔴 founder-gated; NO code until the gate clears.** Both authored + verified
-(verified-planning, ≥2 independent passes each) + merged this session, driven by
-founder decisions (2026-07-17): build the dormant ai-review **autofix** flow, and
-make **all** AI-based flows available on public **and** private repos under one
-uniform "protected" model (a repo can flip visibility, so protection must not
-depend on it).
+**AI-flow autofix + uniform protection (PLAN-012 + PLAN-013) — SHIPPED,
+security-reviewed. Enabling autofix is the one remaining 🔴 founder step.**
+Both driven by founder decisions (2026-07-17/18): make all AI-based flows
+uniform-protected (public+private, no visibility split), and build the ai-review
+autofix flow.
 
-- **`plans/PLAN-013_uniform-protected-aiflows.md`** (foundational) — collapse the
-  `-public`/`-private` variant split for the AI-flows (`ai-review`, `autofix`,
-  `doc-maintainer`, `docs-sync`) into ONE self-hosted protected template; no
-  visibility branch in templates/manifest/installer. Safe because forks are never
-  trusted → they reach only the no-PR-code trust job on the isolated pool; all
-  code/write jobs are trust-gated or post-merge. Generic lint flows stay
-  GitHub-hosted (they run fork code) — deliberately out of scope. MINOR
-  (`ci/v2.2.0`). **🔴 gate:** self-hosted-on-public stance change (`security.md §3`)
-  + public-fork runner capacity.
-- **`plans/PLAN-012_ai-review-autofix-flow.md`** — the autofix build: reviewer
-  (read-only App) emits findings/approve; a **dedicated autofix App**
-  (`contents:write`, ephemeral installation token — NOT a PAT) fixes the findings,
-  pushes, re-fires the gate → re-review → converge or cap→escalate. Public+private
-  per PLAN-013. **🔴 gate:** the autofix-App grant, accepting the untrusted-PR-head
-  write surface, and pinning D-2a (dependency-free fixer).
-- **Next when the founder says go:** Phase 1 = implement PLAN-013's
-  template/manifest/installer convergence FIRST (ships `ci/v2.2.0`), then PLAN-012
-  autofix on top; prepare the ops/inbox runbook for autofix-App registration +
-  pool capacity (🔴 cross-repo, founder-executed).
+- **PLAN-013 → `ci/v2.2.0` SHIPPED.** The AI-flows (`ai-review`, `doc-maintainer`,
+  `docs-sync`) collapsed to ONE self-hosted protected template each; no visibility
+  branch in templates/manifest/installer, so a private↔public flip is a no-op.
+  Safe because forks never reach a code-executing job (trust-gated or post-merge);
+  the generic fork-code lint flows deliberately stay GitHub-hosted. Security review
+  caught + fixed a real wizard `startup_failure` bug.
+- **PLAN-012 → `ci/v2.3.0` SHIPPED, DEFAULT-OFF.** The autofix job in `ai-review.yml`:
+  on `request_changes` it generates a diff, applies it under a hard governance
+  deny-floor (parse + post-apply + symlink + framework lock), and pushes via a
+  **dedicated ephemeral-token autofix App** (contents:write, NOT a PAT) to re-fire
+  the gate. Forks never reach it; a PR can't self-enable it; round-cap fail-closed →
+  escalate. Security-reviewed (3 agents + re-verify; NO blocker; 2 HIGH + MEDIUM/LOW
+  folded — job permissions, insecure-HTTP flag, fail-open counters, symlink guard).
+- **The remaining 🔴 (founder-executed) to TURN AUTOFIX ON** (default-off ships
+  inert): register a dedicated **autofix GitHub App** (separate from the reviewer
+  App; contents:write), set `APP_AUTOFIX_ID/KEY` + `LITELLM_FIX_API_KEY` + var
+  `LITELLM_FIXER_MODEL`, add authors to `trust.auto_fix`, and flip
+  `autofix.enabled: true` in the trusted config — per repo, staged (one pilot
+  first). Prepare via an ops/inbox runbook.
 
 **Adoption-model root finding: `plans/PLAN-010_adoption-model.md` — DRAFT, NOT
 READY.** `install.sh` only *prints* a branch-protection reminder (`:602`) and
