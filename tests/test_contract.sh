@@ -262,4 +262,10 @@ PYEOF
 )"
 assert_contains "$novar_sg" "OK" "sast-scan manifest entry has NO visibility_variants (flip is a no-op)"
 
+echo "== deploy-ci-wizard knows the PLAN-014 scanner surfaces =="
+WZ=install/deploy-ci-wizard.sh
+assert_ok "grep -q 'dep-scan:' '$WZ' && grep -q 'trivy-scan:' '$WZ' && grep -q 'sast-scan:' '$WZ'" "wizard ALL_WF surveys the three scanner surfaces"
+assert_ok "grep -q 'scaffold .* dep-scan trivy-scan sast-scan' '$WZ'" "wizard plan() documents opt-in scanner scaffolding"
+assert_absent "$(grep 'wfs=' "$WZ" | grep -v ALL_WF)" "dep-scan" "scanners are NOT in scaffold()'s default list (deliberate per-repo adoption, not a force-sweep)"
+
 suite_summary "contract"
