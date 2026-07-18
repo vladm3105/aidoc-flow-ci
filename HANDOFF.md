@@ -6,10 +6,11 @@ context compaction.
 
 ## Current state (2026-07-18)
 
-**`ci/v2.6.0` is the Latest release — the own-security-scanner suite (PLAN-014,
-"osv/trivy/semgrep, all in, report-only first"). Three report-only scanners now
-ship on the uniform-protected + fork-guarded model (PLAN-013), each SHA/version-pinned
-with binaries/pip installed directly (no marketplace actions, §4.3):**
+**`ci/v2.7.0` is the Latest release — PLAN-014 (own-security-scanner suite,
+"osv/trivy/semgrep, all in, report-only first") is IMPLEMENTED through Phase 4.
+Three report-only scanners + a deterministic autofix preview now ship on the
+uniform-protected + fork-guarded model (PLAN-013), each SHA/version-pinned with
+binaries/pip installed directly (no marketplace actions, §4.3):**
 
 - **`ci/v2.4.0` — `dep-scan.yml`** (Phase 1): dependency-vulnerability / SCA gate
   via the **osv-scanner** binary. Data-only (never `--call-analysis`, which compiles
@@ -27,12 +28,17 @@ with binaries/pip installed directly (no marketplace actions, §4.3):**
   PR-supplied `.semgrepignore`/`.semgreprc` (a `.semgrepignore` with `*` was a full
   gate-bypass) + fail loud on a missing/unparseable SARIF (`jq -e`).
 
-All three are `auto_install: false` (opt-in), ship `fail-on-findings: false`, and
-carry no `secrets: inherit` (least privilege). **PLAN-014 remaining:** Phase 4 =
-semgrep `--autofix` (the one model-free safe-autofix path — §4a); Phase 5 = graduate
-each scanner `fail-on-findings` false→true (per-scanner **founder** step, after a
-clean window). Note Phase 4's *activation* shares the same 🔴 founder-gated autofix-App
-infrastructure as PLAN-012 — building it yields another dormant-until-armed flow.
+- **`ci/v2.7.0` — `sast-scan` autofix PREVIEW** (Phase 4): the `autofix-preview` input
+  (default false) runs `semgrep --autofix` in the ephemeral workspace and surfaces the
+  **deterministic** (rule-provided, no model) patch in the job summary — **nothing is
+  pushed**, so it needs no App and is un-gated / dormant-free. The one *safe* autofix
+  path (§4a); model-based push-back stays gated on the PLAN-012 autofix App.
+
+All scanners are `auto_install: false` (opt-in), ship `fail-on-findings: false`, and
+carry no `secrets: inherit` (least privilege). **PLAN-014 remaining:** Phase 5 =
+graduate each scanner `fail-on-findings` false→true (per-scanner **founder** step,
+after a clean window) + the deferred Phase 4 *push-back* subset (batched with the 🔴
+PLAN-012 autofix-App enablement, not shipped as a standalone dormant flow).
 
 This sits on top of **`ci/v2.3.0`** — autofix (PLAN-012) on the uniform protected
 AI-flow model (PLAN-013, `ci/v2.2.0`), on the pre-prod-hardened canon (`ci/v2.1.2`).
