@@ -12,11 +12,15 @@ become real, aligned to the proven security mechanics of the operations
 canon (not `IPLAN-0014`'s stale vendored model).
 **Status:** DRAFT — 🔴 GATED on a founder go/no-go (see §8). This plan is
 authored to the point of a decision; **no workflow code ships until the founder
-approves the two 🔴 forks (standing write-PAT re-introduction + `pull_request_target`
-write blast radius).** Do NOT implement past §7 Phase 0 without that approval.
-**Depends on:** a re-provisioned scoped write credential (`AUTOFIX_TOKEN`) — a
-🔴 founder action (operations `IPLAN-0013` retired the standing write credential
-in OPS-0043; autofix re-introduces it).
+approves the §8 forks (dedicated autofix-App `contents:write` grant +
+`pull_request_target` untrusted-PR-head write surface + the D-2a dependency-free
+constraint).** Do NOT implement past §7 Phase 0 without that approval. *(Founder
+2026-07-17: chose the **dedicated autofix App** over a PAT — folded throughout;
+the App both avoids a standing *write* credential and re-fires the gate, GH-1.)*
+**Depends on:** a **dedicated autofix GitHub App** (`contents: write`) installed on
+each enabled repo, minting ephemeral per-run installation tokens — a 🔴 founder
+action. This is NOT the standing PAT operations retired in OPS-0043; it is the
+App-native path canon already prefers (Claim 27).
 **Exit:** on a **private** consumer with `autofix.enabled: true` and the author in
 `trust.auto_fix`, a `request_changes` verdict on a non-governance diff produces a
 bot commit on the PR head that addresses the findings, re-triggers the gate, and
@@ -45,25 +49,41 @@ is a **default-off, private-only** capability plus the staged-enablement runbook
 Enabling it on any repo is a separate 🔴 founder action, per the same staged
 sequence `IPLAN-0014` defined (review-only → enable auto-merge → enable autofix).
 
+**Roles (the two identities):** the **reviewer** (reviewer App, `contents: read`,
+never writes) emits the verdict — `approve` or `request_changes` with per-finding
+detail incl. a `fix` guidance string (Claim 7) — and submits the review + label.
+The **autofix** (a *dedicated* autofix App, `contents: write`, the sole writer)
+runs only on `request_changes` + gates, turns the findings into edits, and pushes.
+Its push re-fires the gate → the reviewer re-reviews the fix → converge to
+`approve` or hit the round cap → escalate. **judge≠generator holds at the identity
+level: the App that reviews (read-only) is never the App that pushes.**
+
 **The two things that make this 🔴, not a routine canon PR:**
 
-1. **It re-introduces a standing write credential.** The fixer must push a
-   commit to the PR head. The base `GITHUB_TOKEN` on a `pull_request_target`
-   caller *can* push, but a `GITHUB_TOKEN` push does **not** re-fire the gate
-   (`synchronize` from `GITHUB_TOKEN` is suppressed by GitHub) — so re-review
-   requires a **scoped PAT (`AUTOFIX_TOKEN`)** whose push re-triggers the gate.
-   That PAT is the attack surface operations deliberately retired (OPS-0043).
+1. **It grants a dedicated autofix GitHub App `contents: write`.** The fixer must
+   push a commit to the PR head, and that push must **re-fire the gate** so the fix
+   is re-reviewed. A base-`GITHUB_TOKEN` push does **not** re-trigger workflows
+   (GitHub's loop-prevention, Claim 22) — but a **GitHub App installation-token
+   push DOES** (App tokens are a distinct actor, GitHub-documented, fact GH-1). So
+   the credential is a **dedicated autofix App** minting an **ephemeral, per-run,
+   per-repo installation token** (`create-github-app-token`, the exact pattern the
+   reviewer App already uses — Claims 25/26), **not** the standing PAT operations
+   retired in OPS-0043. This is the direction canon already took (App-native path
+   preferred over PAT — Claim 27); a PAT here would be a regression (see Rejected
+   alternatives). Residual: a write-capable token still exists *in the job* — but
+   ephemeral + scoped, not standing.
 2. **It runs AI-authored code back onto the PR head under `pull_request_target`.**
    Writing under `pull_request_target` is not itself new — the ai-review caller
    already grants `contents: write` and pushes via `GITHUB_TOKEN` (the auto-merge
-   fallback, Claim 24). The genuinely-new surface is two-fold: (a) a **standing
-   PAT** (fork #1), and (b) the fixer must **check out the untrusted PR head** to
-   edit it and then push AI-generated changes back — the single point at which the
-   gate stops being diff-only (Claim 21). Every other write-back flow in canon
-   (`docs-sync.yml`, `doc-maintainer.yml`) is **post-merge** — trusted context, no
-   untrusted PR content in scope (Claims 12, 13). Autofix acts on an *open* PR
-   whose content is untrusted. The blast radius is real and must be founder-
-   accepted with eyes open.
+   fallback, Claim 24). The genuinely-new surface is that the fixer must **check
+   out the untrusted PR head** to edit it and then push AI-generated changes back —
+   the single point at which the gate stops being diff-only (Claim 21). Every other
+   write-back flow in canon (`docs-sync.yml`, `doc-maintainer.yml`) is
+   **post-merge** — trusted context, no untrusted PR content in scope
+   (Claims 12, 13). Autofix acts on an *open* PR whose content is untrusted. **The
+   dedicated App improves fork #1 to an ephemeral credential but does NOT remove
+   this surface** — it is inherent to autofix and must be founder-accepted with
+   eyes open.
 
 ---
 
@@ -103,9 +123,11 @@ essentially for free. **Carries forward (adopt):**
 - **The two-step push (the load-bearing safety mechanic).** (a) guard + commit +
   `git format-patch` with **no token**, staging via an explicit allowlist that
   excludes scratch and can never `git add -A` a `.git/**` poison; (b) push from a
-  **pristine `git clone`** (PAT only) + `git am`, so the pushed `.git` comes from
-  GitHub, never the fixer's workspace (Claim 17). This defeats the "agent poisons
-  `.git/config`|`.git/hooks`" attack that `git diff --cached` cannot see.
+  **pristine `git clone`** (autofix-App token only) + `git am`, so the pushed
+  `.git` comes from GitHub, never the fixer's workspace (Claim 17 — the operations
+  as-built used a PAT here; this plan substitutes the autofix-App token). This
+  defeats the "agent poisons `.git/config`|`.git/hooks`" attack that
+  `git diff --cached` cannot see.
 - **The governance floor as workflow logic, not a tunable.** No autofix on
   `framework/**`, `.github/**`, or `*/governance/**`, enforced at the **push
   boundary** (hard-fail + escalate on any staged deny path), anchored fixed-string
@@ -121,7 +143,9 @@ essentially for free. **Carries forward (adopt):**
   rejected a central library) — superseded by the `aidoc-flow-ci` reusable-library
   canon this repo now is. Distribute as a **reusable + caller template**.
 - The `GITHUB_TOKEN`-no-retrigger **inline-loop** prose in `IPLAN-0014`'s header —
-  the as-built used the **PAT-retrigger** model; that is the one to build.
+  build the **retrigger model** instead (a distinct-actor push that re-fires the
+  gate). Operations did that with a PAT; this plan does it with the **autofix
+  App** (§4.1) — the retrigger is the mechanic to keep, not the PAT.
 - The `IPLAN-0014` **public-repo autofix** (isolated-runner variant was never
   built) — **out of scope here; private-only** (§6).
 
@@ -164,7 +188,15 @@ working tree on the runner. This is the one place the gate stops being diff-only
   behind a separate required-check but adds a cross-workflow verdict handoff.
 - **New caller template `install/templates/workflows/autofix-private.yml`** only
   (no `-public` variant — §6). Ships default-inert (the caller exists but does
-  nothing until `autofix.enabled: true` + secrets present).
+  nothing until `autofix.enabled: true` + the autofix-App secrets present).
+- **Credential = a dedicated autofix GitHub App.** A *separate* App from the
+  reviewer App (which stays `contents: read`). The caller supplies
+  `APP_AUTOFIX_ID` + `APP_AUTOFIX_KEY`; the fixer job mints a per-run installation
+  token via `actions/create-github-app-token` with `permission-contents: write`,
+  `owner`/`repositories` scoped to the PR repo — the same minting pattern the
+  reviewer/trust path already uses (Claims 25/26), just with a write permission and
+  a distinct App identity. No `AUTOFIX_TOKEN` PAT (Rejected alternatives). The
+  App-token push is what re-fires the gate (fact GH-1).
 
 ### 4.2 Trigger & gate (when the fixer runs)
 
@@ -214,22 +246,27 @@ files to the workspace; the workflow's two-step push (4.4) does the rest.
 
 ### 4.4 Write-back (the safe push)
 
-Per `IPLAN-0014` as-built (Claim 17), split so the PAT never touches the fixer's
-`.git`:
+Per `IPLAN-0014` as-built (Claim 17), split so the write token never touches the
+fixer's `.git`:
 
 1. **Guard + commit + export (no token):** stage via explicit allowlist
    (`git add -A -- ':!.autofix' ':!.git'` style), enumerate staged paths NUL-safe,
    **hard-fail + escalate** if any staged path matches the governance deny-set or
    escapes via symlink, then `git format-patch` (binary-safe). All git ops run
    `-c core.hooksPath=/dev/null --no-verify`.
-2. **Push from a pristine clone (PAT only):** fresh `git clone` of the PR head via
-   `AUTOFIX_TOKEN`, `git am` the exported patch with a bot committer identity
-   (`ai-autofix`), `git push`. The PAT appears **only** in this step's env.
+2. **Push from a pristine clone (autofix-App token only):** mint the autofix App's
+   installation token (`create-github-app-token`, `permission-contents: write`,
+   scoped to the PR repo), fresh `git clone` of the PR head **with that token**,
+   `git am` the exported patch with the `ai-autofix` bot committer identity,
+   `git push`. The token appears **only** in this step's env, is **ephemeral**
+   (per-run, ~60 min, auto-revoked), and the pushed `.git` comes straight from
+   GitHub, never the fixer's workspace.
 
-The PAT push re-fires the gate → the reviewer re-reviews the fix → converge or
-cap→escalate. In-canon precedent for a write-back reusable exists
-(`docs-sync.yml`, `doc-maintainer.yml`), but both are **post-merge / trusted**
-(Claims 12, 13) — autofix's open-PR `pull_request_target` write is the new risk.
+The autofix-App-token push re-fires the gate (fact GH-1) → the reviewer re-reviews
+the fix → converge or cap→escalate. In-canon precedent for a write-back reusable
+exists (`docs-sync.yml`, `doc-maintainer.yml`), but both are **post-merge /
+trusted** (Claims 12, 13) — autofix's open-PR `pull_request_target` write is the
+new risk.
 
 ### 4.5 Config knobs (made real)
 
@@ -240,6 +277,7 @@ cap→escalate. In-canon precedent for a write-back reusable exists
 | `autofix.max_budget_usd` | trusted `config.json` | per-PR model-spend ceiling (optional) |
 | `trust.auto_fix` | trusted `config.json` | author allowlist (existing; now consumed) |
 | governance deny-paths | **workflow logic** | NOT a tunable — hardcoded `framework/**` · `.github/**` · `*/governance/**` |
+| `APP_AUTOFIX_ID` / `APP_AUTOFIX_KEY` | consumer repo secrets | the **dedicated autofix App** creds; absent → the flow is inert (fail-safe) |
 
 All autofix settings live in the **trusted config source** (operations@main by
 default), never the PR branch — a PR cannot enable its own autofix. **This is not
@@ -274,8 +312,8 @@ touched the PR is worth the one label write; wire it mutually-exclusive with an
 - **D-3** — define `ai:autofix-applied` (rec) vs. drop it.
 
 D-1 and D-3 are implementation-shape choices, decision-free for the founder gate.
-The founder gate (§8) is about the **write-PAT**, the **untrusted-PR-head write
-surface**, and the **D-2a constraint**.
+The founder gate (§8) is about the **dedicated autofix App grant**, the
+**untrusted-PR-head write surface**, and the **D-2a constraint**.
 
 ## 6. Scope boundaries (right-sizing)
 
@@ -301,9 +339,11 @@ surface**, and the **D-2a constraint**.
   no-change→escalate, fork→no-autofix, untrusted-author→no-autofix, cap→escalate,
   kill-switch-off inert, PR-branch-config-cannot-self-enable); `docs/` +
   REPO_STANDARDS + CHANGELOG.
-- **Phase 2 (pilot, 🔴 founder).** Provision `AUTOFIX_TOKEN`; enable on one private
-  pilot; validate the exit criteria live (trusted PR converges; fork/untrusted
-  gets none; governance path forced review-only).
+- **Phase 2 (pilot, 🔴 founder).** Register the **dedicated autofix App** (install
+  on the pilot repo with `contents: write`), set `APP_AUTOFIX_ID`/`APP_AUTOFIX_KEY`
+  secrets; enable on one private pilot; validate the exit criteria live (trusted PR
+  converges; fork/untrusted gets none; governance path forced review-only;
+  App-token push re-fires the gate).
 - **Phase 3 (narrow propagation, 🔴 founder).** Enable on selected private repos
   via the staged sequence. Public deferred.
 
@@ -311,11 +351,17 @@ surface**, and the **D-2a constraint**.
 
 Autofix does not proceed past Phase 0 until the founder decides:
 
-1. **Re-introduce the standing scoped write PAT (`AUTOFIX_TOKEN`)?** Retired in
-   OPS-0043; autofix requires it because a `GITHUB_TOKEN` push does not re-fire the
-   gate (GitHub-documented, Claim 22), so re-review needs a PAT-triggered push.
-   Least-privilege (`contents` + `pull-requests`, no admin) mitigates but does not
-   remove the surface.
+1. **Provision a dedicated autofix GitHub App with `contents: write`?** The fixer
+   push must re-fire the gate; a `GITHUB_TOKEN` push does not (Claim 22) but a
+   GitHub App installation-token push does (fact GH-1). The credential is therefore
+   a dedicated autofix App minting an **ephemeral per-run installation token**
+   (the pattern the reviewer App already uses — Claims 25/26), **not** the standing
+   PAT operations retired in OPS-0043 — this is strictly better and the direction
+   canon already took (Claim 27). What the founder actually authorizes: registering
+   one more App (separate identity from the reviewer, preserving judge≠generator)
+   and installing it with `contents: write` on the enabled repos. Residual: a
+   write-capable (ephemeral) token exists in the job — far softer than a standing
+   PAT, but not zero.
 2. **Accept running AI-authored edits on the untrusted PR head?** This is the axis
    that makes autofix different from every existing canon write-back flow: the
    fixer must check out the PR head (Claim 21) — the one point the gate stops being
@@ -331,8 +377,9 @@ Autofix does not proceed past Phase 0 until the founder decides:
 4. **Confirm private-only + default-off + staged-enable** as the ship shape.
 
 An inbox runbook (`operations/ops/inbox/`) captures these for the founder; per the
-workspace autonomy tiers, the PAT provisioning + per-repo enablement are
-founder-executed (writes to other repos / credential provisioning are 🔴).
+workspace autonomy tiers, the autofix-App registration + per-repo install + secret
+provisioning + per-repo enablement are founder-executed (writes to other repos /
+credential provisioning are 🔴).
 
 ## 9. Rejected / deferred alternatives
 
@@ -341,6 +388,16 @@ founder-executed (writes to other repos / credential provisioning are 🔴).
 - **Apply the verdict `fix` string directly** — rejected: `fix` is free-text
   guidance (Claim 7), not an appliable patch; realizing it still needs a model to
   produce edits (folds into D-2).
+- **A standing scoped write PAT (`AUTOFIX_TOKEN`)** — rejected in favour of the
+  dedicated autofix App. Both re-fire the gate (a PAT is a distinct actor too), but
+  a PAT is a *standing* long-lived secret in repo secrets — exactly what OPS-0043
+  retired and what canon already migrated off (App-native path preferred, Claim 27).
+  The App gives the same re-trigger with an ephemeral, per-run, per-repo,
+  auto-revoked token and a distinct bot identity. A PAT here would be a regression.
+- **Reuse the reviewer App (grant it `contents: write`)** — rejected in favour of a
+  *separate* autofix App. One App both reviewing and pushing collapses
+  judge≠generator at the identity level and broadens the reviewer App's grant;
+  the dedicated App keeps the writer distinct and its write scope isolated.
 - **Public-repo autofix** — deferred (§6).
 - **Author-side "split large PRs"** — N/A (that was PLAN-011's concern).
 - **Reintroduce the full agent-CLI runtime** — deferred behind D-2 unless the
@@ -379,6 +436,20 @@ cross-repo — verify the gate with `--root ../operations`.
 | 22  | `GITHUB_TOKEN`-pushed commits do NOT trigger new runs (GitHub-documented) → PAT re-fires   | `GITHUB_TOKEN`                  | ../operations/ops/iplans/IPLAN-0014_public-ci-actions-and-autofix.md:108 `[operations]` |
 | 23  | the trust-enforced config list omits `autofix.*` (only `trust.*`/`litellm.model`/`auto_merge.repos`) | `ENFORCED`            | install/templates/config.json.template:4                                    |
 | 24  | the ai-review caller already grants `contents: write` + pushes via `GITHUB_TOKEN`          | `contents: write`               | install/templates/workflows/ai-review-private.yml:29                        |
+| 25  | canon already mints App installation tokens via `create-github-app-token` (SHA-pinned)    | `create-github-app-token`       | .github/workflows/ai-review.yml:139                                         |
+| 26  | the minted App token is per-repo scoped with an explicit `permission-contents`             | `permission-contents`           | .github/workflows/ai-review.yml:145                                         |
+| 27  | canon's token precedence prefers the App-native path over the legacy PAT ("no per-repo PAT")| `no per-repo PAT`              | .github/workflows/ai-review.yml:441                                         |
+
+**Platform facts (GitHub-documented; external contract, not a repo `file:line`):**
+
+- **GH-1 — a GitHub App installation-token push re-triggers workflows.** GitHub's
+  loop-prevention is specific to the default `GITHUB_TOKEN`; a push authenticated
+  with a GitHub App installation access token (a distinct actor) *does* trigger
+  subsequent workflow runs. This is what lets the autofix-App push re-fire the gate
+  without a PAT. Source:
+  <https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow>
+  ("Using a personal access token or GitHub App … triggers events that require a
+  token" / GITHUB_TOKEN loop-prevention).
 
 ## Review log
 
@@ -433,3 +504,37 @@ considers-and-rejects the inline loop). Verdict: `zero load-bearing findings`.
 **Result:** ready — this is a DRAFT plan whose "ready" means *ready for the founder
 go/no-go at §8*, not ready to implement. No workflow code ships until the founder
 approves the §8 forks.
+
+### Pass 3 — 2026-07-17 — author (self, post-ready revision)
+
+Founder decision (2026-07-17): use a **dedicated autofix GitHub App** instead of a
+standing PAT. Load-bearing security-mechanic change, folded throughout: §1 roles +
+fork #1 (App grant, not PAT), §4.1 credential model, §4.4 push (App installation
+token, not `AUTOFIX_TOKEN`), §4.5 secrets row (`APP_AUTOFIX_ID`/`_KEY`), §7 Phase 2
+(App registration), §8 fork #1 rewritten, §9 two new rejected alternatives (standing
+PAT; reuse-reviewer-App). New evidence: Claims 25–27 (canon already mints App
+tokens via `create-github-app-token`, per-repo `permission-contents` scoping,
+App-native-over-PAT precedence) + platform fact **GH-1** (App installation-token
+pushes re-trigger workflows, unlike `GITHUB_TOKEN` — GitHub-documented, verified
+against GitHub docs). `check_plan.py` ok (27 citations). Note: fork #2
+(untrusted-PR-head write surface) is unchanged by the App — deliberately preserved
+as a standing founder-accepted risk. **Result:** needs independent re-review (Pass
+4) to confirm the App fold.
+
+### Pass 4 — 2026-07-17 — independent (fresh-context Agent)
+
+Confirmed the App fold. **GH-1 verified CORRECT** (App installation-token pushes
+re-trigger workflows; `GITHUB_TOKEN` loop-prevention is token-specific — the whole
+design rests on this and it holds). Claims 25/26/27 resolve (`ai-review.yml:139`
+mint, `:145` `permission-contents` scoping, `:441` App-native-over-PAT precedence).
+Fork #2 correctly kept UNCHANGED by the App (no false claim the App fixes the
+untrusted-content surface); dedicated-App-vs-reuse separation-of-duties sound;
+two-step push works cleanly with an ephemeral App token. **1 load-bearing finding:**
+a leftover §3 bullet still said the "PAT-retrigger model … is the one to build,"
+contradicting the App fold → reworded to "build the retrigger model (App-based);
+the retrigger is the mechanic to keep, not the PAT." Plus a precision note
+(App swaps a standing *write* credential for a private key + ephemeral tokens) →
+"standing *write* credential." Both folded. No new hole.
+
+**Result:** ready — DRAFT, still gated on the §8 founder go/no-go (now: dedicated
+autofix-App grant + untrusted-PR-head surface + D-2a). No code ships until then.
