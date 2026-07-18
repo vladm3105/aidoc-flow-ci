@@ -176,6 +176,29 @@ operations retired in OPS-0043). Credential: `APP_AUTOFIX_ID/KEY` (a SEPARATE Ap
 the reviewer App, preserving judge≠generator at the identity level) + a fix-scoped
 `LITELLM_FIX_API_KEY`.
 
+## 3c. Own security scanners (PLAN-014)
+
+The canon runs its **own** security scanners in CI as the fleet-wide compliance
+floor (they work on public AND private repos, no GitHub Advanced Security needed),
+and best-effort surfaces their SARIF in GitHub Code scanning where GHAS is free
+(public repos). Each installs its tool as a SHA-verified binary (never a
+third-party action, §4.3) and clones the `secret-scan.yml` shape.
+
+- **`secret-scan.yml`** — secrets (gitleaks). ✅ shipped.
+- **`dep-scan.yml`** — dependency vulnerabilities / SCA (osv-scanner). ✅ shipped
+  (`ci/v2.4.0`). **Uniform protected + fork-guarded**: one self-hosted template
+  (public+private, flip = no-op); a fork PR skips the scan (forks are human-reviewed
+  via ai-review), so fork code never runs on the pool. **Data-only** — osv-scanner
+  reads manifests/lockfiles; it NEVER runs `--call-analysis` (which executes build
+  scripts). Ships report-only (`fail-on-findings: false`); flip to blocking after a
+  clean window. Dependency *remediation* is Dependabot's (isolated infra) — this is
+  the gate, not the fixer (PLAN-014 §4a).
+- **`trivy-scan.yml`** (filesystem/IaC) + **`sast-scan.yml`** (semgrep) — planned,
+  PLAN-014 Phases 2–3.
+
+Full design + the own-vs-native split + the "autofix only where safe" boundary:
+PLAN-014.
+
 ## 4. Secrets model
 
 ### 4.1 `secrets: inherit` (the typical caller pattern)
@@ -185,7 +208,7 @@ Consumer callers typically use:
 ```yaml
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.3.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.4.0
     secrets: inherit   # passes all consumer-repo secrets to reusable
 ```
 

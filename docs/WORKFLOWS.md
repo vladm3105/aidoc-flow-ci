@@ -10,7 +10,7 @@ if a workflow doesn't appear here, it doesn't exist in the library.
 > covers how a new company project onboards. [`overrides.md`](overrides.md)
 > covers the 3 override modes. This doc is the workflow-catalog layer.
 
-## 1. Complete workflow catalog (12 reusables)
+## 1. Complete workflow catalog (13 reusables)
 
 Every workflow ships as `workflow_call` at
 `vladm3105/aidoc-flow-ci/.github/workflows/<name>.yml@ci/vX.Y.Z`.
@@ -29,6 +29,7 @@ Pin at a released tag; never `@main` in a consumer.
 | 9 | `labeler.yml` | Path-based PR labeling. Reads consumer's `.github/labeler.yml` (v5+ format: `changed-files: any-glob-to-any-file:`) and applies labels. Labels must pre-exist. | ~10 s | Framework `labeler.yml` pattern |
 | 10 | `docs-sync.yml` | Mechanical post-merge doc fixer. Runs deterministic transformations (version-reference propagation, structural bump propagation) + commits + opens PR if changes are made. | ~30-60 s | IPLAN-0018 (operations 2026-06-25) |
 | 11 | `doc-maintainer.yml` | AI-driven post-merge doc-of-record maintainer. **Supersedes** `docs-sync.yml` in `ci/v2.0.0`. LiteLLM selects the documentation that a merged PR made stale, then proposes bounded edits under the repository's path/risk policy. | ~2-5 min | IPLAN-0025 (operations 2026-06-28) |
+| 13 | `dep-scan.yml` | Dependency-vulnerability (SCA) gate via **osv-scanner binary** (SHA-256-verified `run:` install — NOT `google/osv-scanner-action`, allowlist-blocked §4.3). **Uniform protected** (PLAN-014): one self-hosted template, public+private, no visibility split (a flip is a no-op); **fork-guarded** (forks skip → human review; data-only, never `--call-analysis`). `fail-on-findings` (default false → report-only rollout). Best-effort SARIF → Code scanning (`continue-on-error`; no-ops on private w/o GHAS). | ~20-60 s | PLAN-014 (`ci/v2.4.0`) |
 | 12 | `audit-trail-check.yml` | OPS-0069 audit-trail phrase gate. Belt-and-suspenders CI check for the local pre-push hook (REPO_STANDARDS.md §14): verifies every non-exempt PR carries `Multi-agent self-review per OPS-0065` OR `Self-review skipped per founder OK` in some commit body. Exemptions: bot-authored range (dependabot/renovate/github-actions), revert-only range, two-signal `skip-audit-trail` label + body marker. Check-name renders as `call / verify`. `fetch-depth: 0` prevents fork-PR false-pass. | ~10-30 s | PLAN-002 PR-U3 (2026-07-08) |
 
 ## 2. Per-repo applicability matrix

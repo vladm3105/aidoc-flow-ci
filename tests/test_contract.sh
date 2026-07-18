@@ -167,4 +167,35 @@ assert_ok "jq -e '.properties.autofix.properties.enabled.type == \"boolean\" and
 # The reviewer uploads the verdict so autofix can consume it.
 assert_ok "grep -q 'name: ai-review-verdict' '$AR' && grep -q 'actions/upload-artifact@' '$AR' && grep -q 'actions/download-artifact@' '$AR'" "ai-review uploads the verdict artifact the autofix job downloads"
 
+echo "== PLAN-014 dep-scan — SCA gate (osv-scanner) security invariants =="
+DS=.github/workflows/dep-scan.yml
+assert_ok "test -f '$DS'" "dep-scan reusable exists"
+# osv-scanner installed as a SHA-verified BINARY (not a third-party action).
+assert_ok "grep -q 'curl -sSfL .*osv-scanner_linux_amd64' '$DS' && grep -q 'sha256sum --check --strict' '$DS'" "dep-scan installs the osv-scanner binary with SHA-256 verification (no third-party action)"
+assert_absent "$(cat "$DS")" 'uses: google/osv-scanner' "dep-scan does NOT use a third-party osv-scanner action (canon allowlist §4.3)"
+# DATA-ONLY: never --call-analysis (which runs build scripts = executes PR code).
+# Data-only ENFORCED: the invocation must pass --no-call-analysis (opt-out; Go call
+# analysis compiles source by default) and must NOT pass a bare enabling --call-analysis.
+assert_ok "grep 'scan source' '$DS' | grep -q -- '--no-call-analysis'" "dep-scan enforces data-only via --no-call-analysis (osv Go call-analysis compiles source by default)"
+assert_absent "$(grep 'scan source' "$DS")" '--call-analysis' "dep-scan's invocation never passes the enabling --call-analysis flag"
+# FORK GUARD: forks never run the scanner on the self-hosted pool.
+assert_ok "grep -q 'github.event.pull_request.head.repo.fork != true' '$DS'" "dep-scan is fork-guarded (forks never scan on self-hosted)"
+# Best-effort SARIF → Code scanning (continue-on-error + github/* action).
+assert_ok "grep -q 'continue-on-error: true' '$DS' && grep -q 'github/codeql-action/upload-sarif@' '$DS'" "dep-scan uploads SARIF best-effort (continue-on-error; no-ops where GHAS absent)"
+# Uniform protected caller: single template, self-hosted, report-only default, no variants.
+DSC=install/templates/workflows/dep-scan.yml
+assert_ok "test -f '$DSC'" "dep-scan caller template exists"
+assert_absent "$(ls install/templates/workflows/ 2>/dev/null)" "dep-scan-private.yml" "dep-scan has no -private variant (uniform)"
+assert_absent "$(ls install/templates/workflows/ 2>/dev/null)" "dep-scan-public.yml" "dep-scan has no -public variant (uniform)"
+assert_ok "grep -q 'self-hosted' '$DSC' && grep -q 'single-use' '$DSC'" "dep-scan caller runs on the self-hosted pool (uniform public+private)"
+assert_ok "grep -q 'fail-on-findings: false' '$DSC'" "dep-scan ships report-only (fail-on-findings: false) per PLAN-014 rollout"
+novar="$(python3 - <<'PYEOF'
+import json
+m = json.load(open("install/templates/manifest.json"))
+e = next((f for f in m["files"] if f["path"] == ".github/workflows/dep-scan.yml"), None)
+print("MISSING" if e is None else ("HAS_VARIANTS" if "visibility_variants" in e else "OK"))
+PYEOF
+)"
+assert_contains "$novar" "OK" "dep-scan manifest entry has NO visibility_variants (flip is a no-op)"
+
 suite_summary "contract"
