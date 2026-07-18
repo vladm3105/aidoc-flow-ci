@@ -16,7 +16,7 @@ repos (the bonus). **No paid GHAS feature is ever proposed.**
 **Status:** IMPLEMENTED (Phases 1-4, 2026-07-18) — **all three scanners shipped**
 report-only: `dep-scan` (`ci/v2.4.0`), `trivy-scan` (`ci/v2.5.0`), `sast-scan`
 (`ci/v2.6.0`), + deterministic autofix **preview** (`ci/v2.7.0`, Phase 4 preview
-subset). Each shipped with a full OPS-0065 pre-push security review (5 HIGH + 1 MEDIUM
+subset). Each shipped with a full OPS-0065 pre-push security review (4 HIGH + 2 MEDIUM
 + 1 LOW folded across the four releases). **Remaining:** Phase 5 (graduate
 `fail-on-findings` false→true per scanner — a **founder step**) + the deferred Phase 4
 push-back subset (batched with the 🔴 PLAN-012 autofix-App enablement). Original

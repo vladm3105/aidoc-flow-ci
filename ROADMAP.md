@@ -8,17 +8,21 @@ deferred items belong in `plans/` or `HANDOFF.md` open threads.
 
 ---
 
-## Current phase — v2.3.0 shipped (autofix); founder-gated rollout + enablement
+## Current phase — v2.7.0 shipped (own-security-scanner suite); founder-gated rollout
 
-`ci/v2.3.0` is the Latest release. Since v2.1.2 the canon added the **uniform
-protected AI-flow model** (`ci/v2.2.0`, PLAN-013 — AI-flows run one self-hosted
-protected template each, public+private, so a visibility flip is a no-op) and the
-**ai-review autofix flow** (`ci/v2.3.0`, PLAN-012 — the reviewer can commit a fix
-and re-review, default-off, dedicated ephemeral-token App). Both are
-security-reviewed and shipped. Remaining work is all **founder-gated** 🔴:
-the fleet re-pin + branch-protection arming (operations #268), and — to turn
-autofix on — registering the dedicated autofix App + secrets + flipping
-`autofix.enabled` per repo. READ `HANDOFF.md` for the live state.
+`ci/v2.7.0` is the Latest release. On top of the uniform protected AI-flow model
+(`ci/v2.2.0`, PLAN-013) and the ai-review autofix flow (`ci/v2.3.0`, PLAN-012), the
+canon now ships the **own-security-scanner suite** (PLAN-014, "osv/trivy/semgrep, all
+in, report-only first"): `dep-scan` (SCA, `ci/v2.4.0`), `trivy-scan` (IaC/misconfig,
+`ci/v2.5.0`), `sast-scan` (SAST, `ci/v2.6.0`), + a deterministic `semgrep --autofix`
+**preview** (no push, `ci/v2.7.0`). Each is opt-in, report-only, uniform-protected +
+fork-guarded, installs its tool directly (no marketplace actions), and shipped with a
+full OPS-0065 pre-push security review (4 HIGH + 2 MEDIUM + 1 LOW folded, several
+verified by reproducing the exploit). `deploy-ci-wizard.sh` now knows the scanner
+surfaces (opt-in). Remaining work is all **founder-gated** 🔴: the report-only pilot on
+`operations` (runbook: `plans/ROLLOUT_plan014-operations-pilot.md`), then Phase 5
+(`fail-on-findings` graduation, per scanner), propagation to pool-equipped repos, plus
+the still-open autofix-App enablement + fleet re-pin. READ `HANDOFF.md` for live state.
 
 | Milestone | Status |
 |---|---|
@@ -34,9 +38,24 @@ autofix on — registering the dedicated autofix App + secrets + flipping
 | PLAN-011 ai-review large-diff hardening | SHIPPED (`ci/v2.1.1` + `v2.1.2`) |
 | PLAN-013 uniform protected AI-flow model (public+private, one self-hosted template, no visibility split) | SHIPPED (`ci/v2.2.0`) |
 | PLAN-012 ai-review autofix flow (dedicated autofix App, public+private, default-off) | SHIPPED (`ci/v2.3.0`) — enabling is a separate 🔴 founder step |
+| PLAN-014 own-security-scanner suite (osv/trivy/semgrep, report-only, uniform-protected) | SHIPPED Phases 1–4 (`ci/v2.4.0`–`ci/v2.7.0`) — deployment + Phase 5 graduation are 🔴 founder steps; pilot runbook prepared (`plans/ROLLOUT_plan014-operations-pilot.md`) |
 
 **Recently landed:**
 
+- 2026-07-18 — `ci/v2.7.0` cut: **sast-scan deterministic autofix PREVIEW (PLAN-014
+  Phase 4)** — `semgrep --autofix` runs in the ephemeral workspace and surfaces the
+  rule-provided patch in the job summary; nothing pushed (no App). Plus wizard support
+  for the three scanner surfaces (no tag). Security-reviewed READY (LOW summary-fence nit folded).
+- 2026-07-18 — `ci/v2.6.0` cut: **sast-scan (PLAN-014 Phase 3)** — semgrep SAST
+  (version-pinned pip; covers private repos where CodeQL is N/A). Strips PR
+  `.semgrepignore` (a `*`-ignore was a full gate-bypass — verified) + fail-loud on
+  broken SARIF. 1 HIGH + 1 MEDIUM folded.
+- 2026-07-18 — `ci/v2.5.0` cut: **trivy-scan (PLAN-014 Phase 2)** — IaC/misconfig
+  (`trivy config`), SSRF-hardened to static scanners (terraform/helm fetch PR-controlled
+  remote sources; `--tf-exclude-downloaded-modules` does NOT stop the fetch — verified). 1 HIGH + 1 MEDIUM folded.
+- 2026-07-18 — `ci/v2.4.0` cut: **dep-scan (PLAN-014 Phase 1)** — dependency/SCA
+  (osv-scanner binary); data-only (`--no-call-analysis=all`); no-manifests no longer
+  silent-passes (`expect-manifests`). 2 HIGH folded.
 - 2026-07-18 — `ci/v2.3.0` cut: **ai-review autofix (PLAN-012)** — gated,
   default-off fixer that (on request_changes) generates a diff, applies it under a
   governance deny-floor, and pushes via a dedicated ephemeral-token App to re-fire
@@ -75,14 +94,20 @@ autofix on — registering the dedicated autofix App + secrets + flipping
 
 ---
 
-## Next phase — post-v2.1.x canon evolution
+## Next phase — deploy the shipped canon; server-side + consumer-feedback evolution
 
-Once the fleet is on `ci/v2.1.2`, next phase closes the server-side pre-prod
-items (branch protection, required-check parity) and evolves the canon based on
-consumer feedback.
+The canon capability is built through `ci/v2.7.0`; the next phase is founder-driven
+**deployment** of what's shipped (scanners, autofix arming, fleet re-pin) plus the
+server-side pre-prod items (branch protection, required-check parity) and
+consumer-feedback-driven evolution.
 
 **Planned initiatives:**
 
+- **PLAN-014 scanner rollout** — report-only pilot on `operations`
+  (`plans/ROLLOUT_plan014-operations-pilot.md`) → clean window → **Phase 5**
+  (`fail-on-findings` false→true per scanner) → propagate to pool-equipped repos.
+  Founder-executed (🔴 cross-repo); the Phase 4 autofix push-back subset batches with
+  the PLAN-012 autofix-App enablement.
 - **W4 fleet branch-protection arming** — arm the now-blocking checks as
   required across all consumers. Founder-executed; runbook at
   `docs/FLEET_BRANCH_PROTECTION_ARMING.md`.
