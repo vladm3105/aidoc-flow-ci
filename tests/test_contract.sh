@@ -198,4 +198,33 @@ PYEOF
 )"
 assert_contains "$novar" "OK" "dep-scan manifest entry has NO visibility_variants (flip is a no-op)"
 
+echo "== PLAN-014 trivy-scan — IaC/misconfig gate (trivy config) security invariants =="
+TV=.github/workflows/trivy-scan.yml
+assert_ok "test -f '$TV'" "trivy-scan reusable exists"
+assert_ok "grep -q 'trivy_.*Linux-64bit.tar.gz' '$TV' && grep -q 'sha256sum --check --strict' '$TV'" "trivy-scan installs the trivy binary with SHA-256 verification (no third-party action)"
+assert_absent "$(cat "$TV")" 'uses: aquasecurity/trivy' "trivy-scan does NOT use a third-party trivy action (canon allowlist §4.3)"
+# Config/misconfig mode ONLY — never 'trivy fs' (which would duplicate osv/gitleaks).
+assert_ok "grep -q 'trivy\" config' '$TV' || grep -qE 'trivy.* config ' '$TV'" "trivy-scan runs 'trivy config' (IaC/misconfig)"
+assert_absent "$(grep -E 'BIN_DIR.*trivy|trivy\"' "$TV")" 'trivy" fs' "trivy-scan does not run 'trivy fs' (avoids duplicating dep-scan/secret-scan)"
+# SSRF fix: restricted to STATIC scanners (no terraform/helm/ansible which fetch remote sources).
+assert_ok "grep 'misconfig-scanners' '$TV' | grep -q 'dockerfile' && grep 'misconfig-scanners' '$TV' | grep -q 'kubernetes'" "trivy-scan restricts to static misconfig scanners (no-egress)"
+assert_absent "$(grep 'misconfig-scanners' "$TV")" 'terraform' "trivy-scan does NOT enable the terraform scanner (SSRF: fetches PR-controlled remote modules)"
+assert_absent "$(grep 'misconfig-scanners' "$TV")" 'helm' "trivy-scan does NOT enable the helm scanner (can fetch remote charts)"
+assert_ok "grep -q 'github.event.pull_request.head.repo.fork != true' '$TV'" "trivy-scan is fork-guarded (forks never scan on self-hosted)"
+assert_ok "grep -q 'continue-on-error: true' '$TV' && grep -q 'github/codeql-action/upload-sarif@' '$TV'" "trivy-scan uploads SARIF best-effort (continue-on-error)"
+TVC=install/templates/workflows/trivy-scan.yml
+assert_ok "test -f '$TVC'" "trivy-scan caller template exists"
+assert_absent "$(ls install/templates/workflows/ 2>/dev/null)" "trivy-scan-private.yml" "trivy-scan has no -private variant (uniform)"
+assert_absent "$(ls install/templates/workflows/ 2>/dev/null)" "trivy-scan-public.yml" "trivy-scan has no -public variant (uniform)"
+assert_ok "grep -q 'self-hosted' '$TVC' && grep -q 'fail-on-findings: false' '$TVC'" "trivy-scan caller is self-hosted + report-only"
+assert_ok "! grep -qE '^[[:space:]]*secrets: inherit' '$TVC'" "trivy-scan caller has no active secrets: inherit (least privilege)"
+novar_tv="$(python3 - <<'PYEOF'
+import json
+m = json.load(open("install/templates/manifest.json"))
+e = next((f for f in m["files"] if f["path"] == ".github/workflows/trivy-scan.yml"), None)
+print("MISSING" if e is None else ("HAS_VARIANTS" if "visibility_variants" in e else "OK"))
+PYEOF
+)"
+assert_contains "$novar_tv" "OK" "trivy-scan manifest entry has NO visibility_variants (flip is a no-op)"
+
 suite_summary "contract"

@@ -7,6 +7,33 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 _(nothing yet)_
 
+## ci/v2.5.0 — 2026-07-18
+
+### Added — IaC/misconfiguration gate `trivy-scan.yml` (trivy config mode), report-only (PLAN-014 Phase 2, 2026-07-18)
+
+- **New reusable `.github/workflows/trivy-scan.yml`** — an IaC / Dockerfile
+  **misconfiguration** gate via the **trivy binary** (SHA-256-verified tarball install
+  per REPO_STANDARDS §4.3; NOT a marketplace action). Runs **`trivy config` mode
+  ONLY** — deliberately not `trivy fs`, which would duplicate `dep-scan` (osv-scanner,
+  deps) and `secret-scan` (gitleaks, secrets) (PLAN-014 §7 D-2).
+- **Data-only, SSRF-hardened:** restricted to the STATIC misconfig scanners
+  (`--misconfig-scanners dockerfile,kubernetes,cloudformation,azure-arm`). Trivy's
+  terraform/helm/ansible scanners **fetch remote sources from PR-controlled fields**
+  (a `.tf` `module { source = "https://…" }` makes the runner git-clone an
+  attacker-chosen URL — SSRF/egress from the self-hosted pool); those are disabled.
+  (`--tf-exclude-downloaded-modules` does NOT fix this — it only drops findings; trivy
+  still fetches. Verified.) Findings are derived from the SARIF content; a non-zero
+  trivy exit is an infrastructure/tool error (fails loud), never a silent pass.
+- **Uniform protected + fork-guarded (PLAN-013 / PLAN-014 §1a):** ONE self-hosted
+  caller template — public AND private, no `-public`/`-private` split (a flip is a
+  no-op); a fork PR skips the scan. Best-effort SARIF → Code scanning; ships
+  report-only (`fail-on-findings: false`). No `secrets: inherit` (least privilege).
+- Manifest entry (single template, no `visibility_variants`), WORKFLOWS.md catalog
+  (14 reusables), security.md §3c, and 13 contract-test invariants.
+
+Net semver MINOR — additive, opt-in (`auto_install: false`), report-only. PLAN-014
+Phase 2 of 5 (semgrep SAST + safe-autofix to follow).
+
 ## ci/v2.4.0 — 2026-07-18
 
 ### Added — dependency-vulnerability (SCA) gate `dep-scan.yml` (osv-scanner), report-only (PLAN-014 Phase 1, 2026-07-18)
