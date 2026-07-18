@@ -8,10 +8,12 @@ private→public), and any protection that *depends* on visibility is a latent l
 the flip exposes. Runner-routing decision (founder, 2026-07-17): **uniform
 ephemeral self-hosted, one protected template per flow, no `-public`/`-private`
 variants.**
-**Status:** DRAFT — 🔴 GATED on a founder go/no-go (see §8: the self-hosted-on-
-public stance change + the public-repo capacity/DoS acceptance). Foundational for
-[[PLAN-012]] (autofix), which adopts this model to reach public repos. Do NOT
-implement past Phase 0 without approval.
+**Status:** SHIPPED — implemented + released as `ci/v2.2.0` (2026-07-18);
+security-reviewed (a real wizard startup_failure bug caught + fixed). The §8 gate
+(self-hosted-on-public stance + public-repo capacity/DoS acceptance) was CLEARED by
+the founder and is now history. Foundational for [[PLAN-012]] (autofix), which
+adopts this model to reach public repos. _(Original pre-ship gate text below, kept
+as the record.)_ Do NOT implement past Phase 0 without approval.
 **Depends on:** sufficient **ephemeral self-hosted runner capacity** to also serve
 public repos' trust jobs (a 🔴 founder/ops capacity item — see §8.2).
 **Exit:** every AI-based flow (`ai-review`, `autofix`, `doc-maintainer`,

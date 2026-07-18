@@ -8,15 +8,17 @@ deferred items belong in `plans/` or `HANDOFF.md` open threads.
 
 ---
 
-## Current phase — v2.1.x shipped; founder-gated fleet rollout
+## Current phase — v2.3.0 shipped (autofix); founder-gated rollout + enablement
 
-`ci/v2.1.2` is cut + released (Latest). The pre-prod hardening that made the
-canon production-ready as the company-default source of truth is done and
-released, together with the ai-review large-diff fix a consumer hit live. The
-only remaining work is the **founder-gated fleet rollout** (re-pin the fleet to
-`ci/v2.1.2` + arm branch protection on the 5 unprotected/phantom-context repos)
-— 🔴 cross-repo, tracked in operations #268. READ
-`HANDOFF.md` for the live rollout state.
+`ci/v2.3.0` is the Latest release. Since v2.1.2 the canon added the **uniform
+protected AI-flow model** (`ci/v2.2.0`, PLAN-013 — AI-flows run one self-hosted
+protected template each, public+private, so a visibility flip is a no-op) and the
+**ai-review autofix flow** (`ci/v2.3.0`, PLAN-012 — the reviewer can commit a fix
+and re-review, default-off, dedicated ephemeral-token App). Both are
+security-reviewed and shipped. Remaining work is all **founder-gated** 🔴:
+the fleet re-pin + branch-protection arming (operations #268), and — to turn
+autofix on — registering the dedicated autofix App + secrets + flipping
+`autofix.enabled` per repo. READ `HANDOFF.md` for the live state.
 
 | Milestone | Status |
 |---|---|
@@ -30,11 +32,19 @@ only remaining work is the **founder-gated fleet rollout** (re-pin the fleet to
 | PLAN-009 fleet v2 cutover | In flight (Phase 0 🔴-gated; target now `ci/v2.1.2`) |
 | PLAN-010 adoption model | DRAFT — NOT READY (split recommended; see the plan) |
 | PLAN-011 ai-review large-diff hardening | SHIPPED (`ci/v2.1.1` + `v2.1.2`) |
-| PLAN-013 uniform protected AI-flow model (public+private, one self-hosted template, no visibility split) | DRAFT — READY, 🔴 founder-gated (self-hosted-on-public stance + pool capacity); foundational, ships `ci/v2.2.0` |
-| PLAN-012 ai-review autofix flow (dedicated autofix App, public+private, default-off) | DRAFT — READY, 🔴 founder-gated (App grant + untrusted-PR-head surface + D-2a); builds on PLAN-013 |
+| PLAN-013 uniform protected AI-flow model (public+private, one self-hosted template, no visibility split) | SHIPPED (`ci/v2.2.0`) |
+| PLAN-012 ai-review autofix flow (dedicated autofix App, public+private, default-off) | SHIPPED (`ci/v2.3.0`) — enabling is a separate 🔴 founder step |
 
 **Recently landed:**
 
+- 2026-07-18 — `ci/v2.3.0` cut: **ai-review autofix (PLAN-012)** — gated,
+  default-off fixer that (on request_changes) generates a diff, applies it under a
+  governance deny-floor, and pushes via a dedicated ephemeral-token App to re-fire
+  the gate. Security-reviewed (no blocker; 2 HIGH + MEDIUM/LOW folded).
+- 2026-07-18 — `ci/v2.2.0` cut: **uniform protected AI-flow model (PLAN-013)** —
+  AI-flows collapse to one self-hosted protected template each (public+private, no
+  visibility split → flip is a no-op); generic fork-code lint flows stay
+  GitHub-hosted. Fixed a wizard `startup_failure` bug caught in review.
 - 2026-07-17 — `ci/v2.1.2` cut: ai-review verdict budget raised 8192→24576
   (PLAN-011 follow-up; live-verified headroom for reasoning-token spikes).
 - 2026-07-17 — `ci/v2.1.1` cut: ai-review large-diff fix (PLAN-011) — verdict
