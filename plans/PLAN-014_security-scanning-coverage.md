@@ -13,11 +13,15 @@ filesystem/IaC/misconfig scanning, and no own SAST**. This plan closes that with
 **own-scanner** reusables (CI `fail-on-findings` gate — the required, fleet-wide
 floor, private included) that ALSO surface for free in GitHub Code scanning on public
 repos (the bonus). **No paid GHAS feature is ever proposed.**
-**Status:** APPROVED (founder 2026-07-18) — **all three scanners in** (osv-scanner
-+ trivy + semgrep); **report-only first, but built graduation-ready** for
-`fail-on-findings`; **and autofix the findings** (§4a). §7 gate is resolved; ready to
-implement (phased, §6). Implementation is a large multi-release build — each phase
-ships + gets the full OPS-0065 security review like the autofix flow did.
+**Status:** IMPLEMENTED (Phases 1-4, 2026-07-18) — **all three scanners shipped**
+report-only: `dep-scan` (`ci/v2.4.0`), `trivy-scan` (`ci/v2.5.0`), `sast-scan`
+(`ci/v2.6.0`), + deterministic autofix **preview** (`ci/v2.7.0`, Phase 4 preview
+subset). Each shipped with a full OPS-0065 pre-push security review (5 HIGH + 1 MEDIUM
++ 1 LOW folded across the four releases). **Remaining:** Phase 5 (graduate
+`fail-on-findings` false→true per scanner — a **founder step**) + the deferred Phase 4
+push-back subset (batched with the 🔴 PLAN-012 autofix-App enablement). Original
+approval: founder 2026-07-18 — **all three scanners in**, **report-only first but
+graduation-ready**, **autofix the findings** (§4a).
 **Depends on:** [[PLAN-013]] uniform-protected model (new scanner reusables ship as
 single self-hosted protected templates, public+private, no visibility split).
 **Exit:** each in-scope concern (SCA, filesystem/IaC, SAST) has an **own** canon
@@ -220,23 +224,33 @@ breaks CI fails and escalates, never merges unseen.
 
 ## 6. Phases
 
-- **Phase 0 (this plan + gate).** Draft + independent review + founder go/no-go (§7).
-- **Phase 1 (SCA — the biggest gap).** `dep-scan.yml` (osv-scanner binary +
-  fail-on-findings + SARIF upload) + `dependency-review` public path + manifest +
-  caller template (PLAN-013 single) + REPO_STANDARDS + docs + tests + a `ci/v2.4.0`
-  cut. Security-reviewed pre-push (OPS-0065).
-- **Phase 2 (filesystem/IaC).** `trivy-scan.yml` (config/misconfig-focused).
-- **Phase 3 (own SAST).** `sast-scan.yml` (semgrep, hash-pinned pip).
-- **Phase 4 (autofix the SAFE findings — §4a).** Build a **separate** scanner-autofix
-  codepath: `semgrep --autofix` → derive patch via `git diff` → feed the **shared**
-  two-step App push + deny-floor + fork-exclusion + **one shared round counter** +
-  one serialized concurrency group; **no LiteLLM dependency** (structural boundary +
-  test). SCA remediation is Dependabot's (deferred); trivy is escalate-only.
-  Default-off. Full OPS-0065 security review (it uses the App write token on a new
-  trigger — same scrutiny the autofix build got).
-- **Phase 5 (graduate + native settings).** `fail-on-findings:false → true` per
-  scanner after a clean window; assert the free native settings via `apply-standards`.
-  Each `fail-on-findings` graduation is a founder step (mirrors markdown-lint).
+- **Phase 0 (this plan + gate).** Draft + independent review + founder go/no-go (§7). ✅ **DONE.**
+- **Phase 1 (SCA — the biggest gap).** ✅ **DONE — `ci/v2.4.0`.** `dep-scan.yml`
+  (osv-scanner binary, `--no-call-analysis=all` + `expect-manifests`, fail-on-findings +
+  SARIF upload) + manifest + caller template (PLAN-013 single) + docs + tests.
+  Security-reviewed pre-push (2 HIGH folded + verified).
+- **Phase 2 (filesystem/IaC).** ✅ **DONE — `ci/v2.5.0`.** `trivy-scan.yml`
+  (`trivy config` only). SSRF-hardened to static scanners (terraform/helm/ansible fetch
+  PR-controlled remote sources; `--tf-exclude-downloaded-modules` does NOT stop the
+  fetch — verified). 1 HIGH folded.
+- **Phase 3 (own SAST).** ✅ **DONE — `ci/v2.6.0`.** `sast-scan.yml` (semgrep,
+  version-pinned pip into a venv). `--metrics off` + explicit `--config`; strips
+  PR-supplied `.semgrepignore` (a `*`-ignore was a full gate-bypass — verified) +
+  fail-loud on broken SARIF. 1 HIGH + 1 MEDIUM folded.
+- **Phase 4 (autofix the SAFE findings — §4a).** ✅ **DONE (PREVIEW subset) — `ci/v2.7.0`.**
+  Founder chose the **preview-only** shape (2026-07-18): `sast-scan`'s `autofix-preview`
+  input runs `semgrep --autofix` in the ephemeral workspace and surfaces the
+  deterministic (rule-provided, **no LiteLLM**) patch in the job summary — **nothing is
+  pushed**, so it needs no App and ships un-gated / dormant-free. Security-reviewed
+  READY (LOW summary-fence-breakout nit folded). **DEFERRED** (originally-scoped
+  push-back subset): feeding the patch through the shared two-step App push + deny-floor +
+  shared round counter is gated on the same 🔴 founder autofix-App enablement as
+  PLAN-012 — batch it there, not as a standalone dormant flow. SCA remediation is
+  Dependabot's (deferred); trivy is escalate-only.
+- **Phase 5 (graduate + native settings).** ⏳ **FOUNDER STEP.** `fail-on-findings:false
+  → true` per scanner after a clean window; assert the free native settings via
+  `apply-standards`. Each `fail-on-findings` graduation is a founder step (mirrors
+  markdown-lint).
 
 ## 7. Founder-decision points — RESOLVED (2026-07-18)
 
