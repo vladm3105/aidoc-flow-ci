@@ -5,7 +5,20 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-_(nothing yet)_
+### Changed — `deploy-ci-wizard` knows the PLAN-014 scanner surfaces (2026-07-18)
+
+- `install/deploy-ci-wizard.sh` now surveys `dep-scan`/`trivy-scan`/`sast-scan` in its
+  coverage report and documents them in the deployment `plan()` as **optional,
+  report-only, opt-in** surfaces (deliberately NOT in `scaffold()`'s default list — the
+  founder passes them explicitly, so adoption stays per-repo, not a force-sweep). The
+  existing single-template scaffold path already handles them (pin normalized;
+  `runner_labels`/`fail-on-findings` are baked, so the injector correctly skips).
+- Preflight pool-check corrected for PUBLIC repos: the uniform-protected AI-flows
+  (ai-review review job) + PLAN-014 scanners run self-hosted **even on public**, so a
+  public repo adopting those surfaces needs a `ci-runner`/`single-use` pool too — the
+  wizard no longer implies "PUBLIC → no self-hosted pool needed."
+- Wizard-only change (no reusable/schema touched) → no new `ci/` tag; the wizard scaffolds
+  scanner callers pinned at the current `VERSION` (`ci/v2.7.0`).
 
 ## ci/v2.7.0 — 2026-07-18
 

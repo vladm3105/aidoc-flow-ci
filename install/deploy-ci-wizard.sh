@@ -22,7 +22,10 @@ BOT_ID="294948438"                    # aidoc-reviewer App bot-user id (App-glob
 GH="${GH:-gh}"
 
 # All workflows in dependency order. Format: name:phase
-ALL_WF="pre-commit:1 links:2 markdown-lint:2 labeler:2 secret-scan:3 audit-trail:4 ai-review:5 composition:5 auto-merge-ai-prs:6 doc-maintainer:7 docs-sync:7 codeql:8"
+# dep-scan/trivy-scan/sast-scan (PLAN-014 own security scanners) are OPTIONAL +
+# report-only — surveyed here + offered by plan(), but NOT in scaffold()'s default
+# list (deliberate per-repo adoption; pass them explicitly to scaffold).
+ALL_WF="pre-commit:1 links:2 markdown-lint:2 labeler:2 secret-scan:3 dep-scan:3 trivy-scan:3 sast-scan:3 audit-trail:4 ai-review:5 composition:5 auto-merge-ai-prs:6 doc-maintainer:7 docs-sync:7 codeql:8"
 
 c_ok() { printf '  \033[32m🟢 %s\033[0m\n' "$*"; }
 c_no() { printf '  \033[31m🔴 %s\033[0m\n' "$*"; }
@@ -43,7 +46,11 @@ preflight() {
     local runners; runners="$($GH api "repos/$repo/actions/runners" --jq '[.runners[]|select(.status=="online")|[.labels[].name]|join(",")]|join(" | ")' 2>/dev/null || echo '')"
     if echo "$runners" | grep -q 'ci-runner' && echo "$runners" | grep -q 'single-use'; then c_ok "self-hosted ci-runner/single-use pool online: $runners"
     else c_no "PRIVATE repo has NO online ci-runner/single-use pool → 🔴 founder registers the pool (docs/runners.md). Do NOT use ubuntu-latest."; fi
-  else c_ok "PUBLIC → ubuntu-latest (no self-hosted pool needed)"; fi
+  else
+    local prunners; prunners="$($GH api "repos/$repo/actions/runners" --jq '[.runners[]|select(.status=="online")|[.labels[].name]|join(",")]|join(" | ")' 2>/dev/null || echo '')"
+    if echo "$prunners" | grep -q 'ci-runner' && echo "$prunners" | grep -q 'single-use'; then c_ok "PUBLIC → generic lint flows use ubuntu-latest; ci-runner/single-use pool ALSO online (needed by the uniform-protected AI-flows + PLAN-014 scanners): $prunners"
+    else c_wn "PUBLIC → generic lint flows use ubuntu-latest, but the uniform-protected AI-flows (ai-review review job) + PLAN-014 scanners run self-hosted here too and need a ci-runner/single-use pool — none online. Register one before adopting those surfaces (docs/runners.md §5a)."; fi
+  fi
 
   hdr "2. Reviewer App secrets + bot-id (for ai-review + composition)"
   local secs; secs="$($GH secret list -R "$repo" --json name -q '.[].name' 2>/dev/null || echo '')"
@@ -87,6 +94,9 @@ plan() {
    1. pre-commit           (needs .pre-commit-config.yaml)
    2. links, markdown-lint(report-only), labeler   (+ configs §4)
    3. secret-scan          (SKIP if repo ships own security.yml)
+   3b. dep-scan, trivy-scan, sast-scan   (OPTIONAL own security scanners — PLAN-014;
+       report-only; self-hosted even on PUBLIC (uniform-protected); no secrets needed;
+       opt-in → pass them explicitly: scaffold $repo <dir> dep-scan trivy-scan sast-scan)
    4. audit-trail          (needs skip-audit-trail label)
    5. ai-review + composition   (needs 🔴 App+secrets+ 🟢 bot-id var)
    6. auto-merge-ai-prs    (inert without ai-review)
