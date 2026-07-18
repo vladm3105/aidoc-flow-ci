@@ -227,4 +227,35 @@ PYEOF
 )"
 assert_contains "$novar_tv" "OK" "trivy-scan manifest entry has NO visibility_variants (flip is a no-op)"
 
+echo "== PLAN-014 sast-scan — SAST gate (semgrep) security invariants =="
+SG=.github/workflows/sast-scan.yml
+assert_ok "test -f '$SG'" "sast-scan reusable exists"
+assert_ok "grep -qE 'pip.* install .*semgrep==' '$SG'" "sast-scan installs semgrep via VERSION-pinned pip (semgrep is Python, not a binary)"
+assert_ok "grep -q 'python3 -m venv' '$SG'" "sast-scan installs into an isolated venv"
+assert_absent "$(cat "$SG")" 'uses: returntocorp/semgrep' "sast-scan does NOT use a third-party semgrep action (canon allowlist §4.3)"
+assert_absent "$(cat "$SG")" 'uses: semgrep/semgrep' "sast-scan does NOT use the semgrep marketplace action (canon allowlist §4.3)"
+assert_ok "grep -qE 'semgrep(\"|\`)? scan' '$SG' || grep -q 'semgrep\" scan' '$SG'" "sast-scan runs 'semgrep scan'"
+assert_ok "grep -q -- '--metrics off' '$SG'" "sast-scan runs with --metrics off (no telemetry to semgrep.dev — private-repo privacy)"
+assert_ok "grep -q -- '--config \"\$CONFIG\"' '$SG'" "sast-scan uses an EXPLICIT --config (never repo-local auto-discovery — a PR cannot inject rules)"
+assert_absent "$(grep 'semgrep\" scan\|bin/semgrep' "$SG")" '--config auto' "sast-scan does NOT use --config auto (metrics-incompatible + registry auto-select)"
+assert_ok "grep -qE \"name '.semgrepignore'\" '$SG' && grep -q -- '-delete' '$SG'" "sast-scan strips PR-supplied .semgrepignore before scanning (gate controls coverage — no '*'-ignore bypass)"
+assert_ok "grep -q 'produced no SARIF' '$SG' && grep -q 'unparseable' '$SG'" "sast-scan fails loud on missing/unparseable SARIF (no silent green from a broken scan)"
+assert_ok "grep -q 'jq -e' '$SG'" "sast-scan uses 'jq -e' so a SARIF parse error is caught, not swallowed"
+assert_ok "grep -q 'github.event.pull_request.head.repo.fork != true' '$SG'" "sast-scan is fork-guarded (forks never scan on self-hosted)"
+assert_ok "grep -q 'continue-on-error: true' '$SG' && grep -q 'github/codeql-action/upload-sarif@' '$SG'" "sast-scan uploads SARIF best-effort (continue-on-error)"
+SGC=install/templates/workflows/sast-scan.yml
+assert_ok "test -f '$SGC'" "sast-scan caller template exists"
+assert_absent "$(ls install/templates/workflows/ 2>/dev/null)" "sast-scan-private.yml" "sast-scan has no -private variant (uniform)"
+assert_absent "$(ls install/templates/workflows/ 2>/dev/null)" "sast-scan-public.yml" "sast-scan has no -public variant (uniform)"
+assert_ok "grep -q 'self-hosted' '$SGC' && grep -q 'fail-on-findings: false' '$SGC'" "sast-scan caller is self-hosted + report-only"
+assert_ok "! grep -qE '^[[:space:]]*secrets: inherit' '$SGC'" "sast-scan caller has no active secrets: inherit (least privilege)"
+novar_sg="$(python3 - <<'PYEOF'
+import json
+m = json.load(open("install/templates/manifest.json"))
+e = next((f for f in m["files"] if f["path"] == ".github/workflows/sast-scan.yml"), None)
+print("MISSING" if e is None else ("HAS_VARIANTS" if "visibility_variants" in e else "OK"))
+PYEOF
+)"
+assert_contains "$novar_sg" "OK" "sast-scan manifest entry has NO visibility_variants (flip is a no-op)"
+
 suite_summary "contract"

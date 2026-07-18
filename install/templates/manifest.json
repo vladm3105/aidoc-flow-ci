@@ -97,6 +97,14 @@
       "auto_install": false
     },
     {
+      "path": ".github/workflows/sast-scan.yml",
+      "template": "workflows/sast-scan.yml",
+      "_note": "PLAN-014 Phase 3: SAST gate (semgrep, pip-installed — not a binary). Single protected template (self-hosted, uniform public+private); no visibility_variants. Complements native CodeQL (N/A on private). Report-only until fail-on-findings graduates.",
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": false
+    },
+    {
       "path": ".github/workflows/docs-sync.yml",
       "template": "workflows/docs-sync.yml",
       "_note": "PLAN-013: single protected template (self-hosted, uniform public+private); no visibility_variants.",

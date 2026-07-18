@@ -1,0 +1,135 @@
+# sast-scan.yml — reusable SAST (static code analysis) gate, powered by semgrep.
+# PLAN-014 Phase 3.
+#
+# semgrep is the OWN SAST complementing native CodeQL (`codeql.yml`) — CodeQL needs
+# GitHub Advanced Security and is N/A on private repos (REPO_STANDARDS §3), so this
+# gates PRIVATE repos too. semgrep is PyPI-distributed (NOT a static binary, unlike
+# gitleaks/osv-scanner/trivy — PLAN-014 §3), so it installs via a VERSION-pinned pip
+# into an isolated venv (no third-party action; canon allowlist §4.3).
+#
+# UNIFORM PROTECTED (PLAN-014 §1a): ONE template, self-hosted, public AND private —
+# a visibility flip is a no-op. FORK-GUARDED: a fork PR skips the scan (fork code
+# never runs on the self-hosted pool; forks are human-reviewed via ai-review).
+#
+# DATA-ONLY: semgrep is static AST analysis — it never executes the scanned code.
+# `--metrics off` sends NO telemetry to semgrep.dev (important for private repos).
+# An EXPLICIT `--config` is used (never repo-local auto-discovery), so a PR cannot
+# inject its own rules; the ruleset is fetched from the semgrep registry (a trusted
+# source, not PR-controlled).
+name: sast-scan
+
+on:
+  workflow_call:
+    inputs:
+      fail-on-findings:
+        description: 'Whether a SAST finding fails the job. Default false (report-only rollout per PLAN-014 §5); flip to true to make it a blocking gate.'
+        type: boolean
+        default: false
+      config:
+        description: 'semgrep ruleset (registry pack or path). Default "p/default". EXPLICIT config only — never repo-local auto-discovery, so a PR cannot inject rules.'
+        type: string
+        default: 'p/default'
+      scan-path:
+        description: 'Path to scan. Default "." (repo root).'
+        type: string
+        default: '.'
+      runner_labels:
+        description: 'JSON array (or single-string) of runner labels. Default the self-hosted single-use pool (PLAN-013 uniform protected — the SAME on public + private).'
+        type: string
+        default: '["self-hosted", "ci-runner", "single-use"]'
+
+permissions:
+  contents: read
+  security-events: write   # SARIF → Code scanning (public repos w/ GHAS; no-ops on private)
+
+concurrency:
+  group: sast-scan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: sast-scan
+    # FORK GUARD: a fork PR never runs the scanner on the self-hosted pool.
+    if: ${{ github.event.pull_request.head.repo.fork != true }}
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout (data-only; no persisted creds)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run semgrep (pip venv; static SAST, data-only)
+        env:
+          SEMGREP_VERSION: "1.170.0"
+          FAIL: ${{ inputs.fail-on-findings }}
+          CONFIG: ${{ inputs.config }}
+          SCAN_PATH: ${{ inputs.scan-path }}
+        run: |
+          set -euo pipefail
+          command -v jq >/dev/null 2>&1 || { echo "::error::jq not found on the runner — infrastructure error, not a finding."; exit 1; }
+          command -v python3 >/dev/null 2>&1 || { echo "::error::python3 not found on the runner — infrastructure error, not a finding."; exit 1; }
+
+          summary() { echo "sast-scan: $1" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"; }
+
+          # semgrep is Python — VERSION-pinned pip into an isolated venv (full transitive
+          # hash-pinning is impractical for a large dep tree; version-pin is the accepted
+          # supply-chain baseline for a pip tool — PLAN-014 §3). pip runs PyPI build code
+          # at install time, but the runner is ephemeral single-use (--rm, non-root, one
+          # job then destroyed), so install-time blast radius is one job.
+          VENV="$RUNNER_TEMP/sgvenv"
+          python3 -m venv "$VENV"
+          "$VENV/bin/pip" install --quiet --disable-pip-version-check "semgrep==${SEMGREP_VERSION}"
+
+          # THE GATE — NOT THE SCANNED PR — DECIDES COVERAGE. semgrep ALWAYS honors a
+          # `.semgrepignore` (gitignore syntax) INDEPENDENTLY of --config, so a PR that
+          # commits `.semgrepignore` containing `*` makes the scan cover zero files → a
+          # silent green → complete SAST-gate bypass (VERIFIED). Strip any PR-supplied
+          # ignore/rc file before scanning; semgrep then falls back to its built-in
+          # defaults (which still skip vendored dirs). A repo that needs a real exclusion
+          # must express it gate-side (the ruleset / a future input), never via a
+          # PR-mutable file.
+          find "$SCAN_PATH" -type f \( -name '.semgrepignore' -o -name '.semgreprc' \) -print -delete 2>/dev/null || true
+
+          # Static AST scan. --metrics off = NO telemetry. Explicit --config (registry
+          # ruleset), NEVER repo-local auto-discovery → a PR cannot inject rules. semgrep
+          # exits 0 on a successful scan (findings or not); non-zero = a tool/infra error.
+          rc=0
+          "$VENV/bin/semgrep" scan --config "$CONFIG" --metrics off \
+            --sarif --output semgrep.sarif "$SCAN_PATH" || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::sast-scan: semgrep exited $rc — infrastructure/tool error (e.g. ruleset fetch failed, bad config), NOT a finding. Re-run."; exit 1
+          fi
+
+          # rc==0 must mean a REAL scan happened. A missing or unparseable SARIF (partial
+          # write, OOM, disk pressure on the --rm container) is an infra error — fail loud,
+          # NEVER treat a broken report as "no findings" (the silent green this gate exists
+          # to prevent).
+          if [ ! -s semgrep.sarif ]; then
+            echo "::error::sast-scan: semgrep exited 0 but produced no SARIF — infrastructure error, not a clean scan. Re-run."; exit 1
+          fi
+          if ! n=$(jq -e '[.runs[].results[]] | length' semgrep.sarif 2>/dev/null); then
+            echo "::error::sast-scan: semgrep.sarif is unparseable — infrastructure error, not a clean scan. Re-run."; exit 1
+          fi
+          if [ "$n" -gt 0 ]; then
+            echo "::warning::sast-scan: $n SAST finding(s) — see semgrep.sarif / the Security tab."
+            summary "❌ $n SAST finding(s) (semgrep, config: $CONFIG)."
+            if [ "$FAIL" = "true" ]; then
+              echo "::error::sast-scan: failing the gate (fail-on-findings: true)."; exit 1
+            fi
+            echo "::notice::sast-scan: report-only (fail-on-findings: false) — not blocking. Flip fail-on-findings to gate."
+          else
+            echo "::notice::sast-scan: no SAST findings for config '$CONFIG'."
+            summary "clean — no SAST findings (config: $CONFIG)."
+          fi
+
+      - name: Upload SARIF to Code Scanning (best-effort; free on public repos w/ GHAS)
+        # continue-on-error: private repos w/o GHAS return 403; the fail-on-findings
+        # GATE above is the compliance control. A failed upload must NOT fail the job.
+        continue-on-error: true
+        if: always() && hashFiles('semgrep.sarif') != '' && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)
+        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+        with:
+          sarif_file: semgrep.sarif
+          category: sast-scan
