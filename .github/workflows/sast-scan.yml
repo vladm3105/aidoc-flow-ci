@@ -29,6 +29,10 @@ on:
         description: 'semgrep ruleset (registry pack or path). Default "p/default". EXPLICIT config only — never repo-local auto-discovery, so a PR cannot inject rules.'
         type: string
         default: 'p/default'
+      autofix-preview:
+        description: 'When true, ALSO run semgrep --autofix in the ephemeral workspace and surface the resulting (deterministic, rule-provided) patch in the job summary. PREVIEW ONLY — nothing is pushed (PLAN-014 §4a Phase 4). Default false.'
+        type: boolean
+        default: false
       scan-path:
         description: 'Path to scan. Default "." (repo root).'
         type: string
@@ -122,6 +126,40 @@ jobs:
           else
             echo "::notice::sast-scan: no SAST findings for config '$CONFIG'."
             summary "clean — no SAST findings (config: $CONFIG)."
+          fi
+
+      - name: semgrep autofix preview (deterministic; NO push; best-effort)
+        # PLAN-014 §4a Phase 4 — the one safe autofix path (semgrep --autofix is
+        # DETERMINISTIC, rule-provided; no model). It rewrites files IN PLACE in the
+        # EPHEMERAL workspace, which is discarded after the job — nothing is pushed.
+        # We only surface the resulting patch for a human (or the armed PLAN-012 autofix
+        # App) to apply. Pushing a fix back needs the dedicated autofix App (default-off,
+        # founder-gated) — deliberately NOT done here.
+        if: ${{ inputs.autofix-preview }}
+        continue-on-error: true   # a preview must NEVER fail the scan gate
+        env:
+          CONFIG: ${{ inputs.config }}
+          SCAN_PATH: ${{ inputs.scan-path }}
+        run: |
+          set -uo pipefail
+          VENV="$RUNNER_TEMP/sgvenv"
+          "$VENV/bin/semgrep" scan --config "$CONFIG" --metrics off --autofix "$SCAN_PATH" >/dev/null 2>&1 || true
+          if git diff --quiet 2>/dev/null; then
+            echo "::notice::sast-scan autofix-preview: no auto-fixable findings (no rule provided a fix)."
+            echo "sast-scan autofix-preview: no auto-fixable findings." >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          else
+            echo "::notice::sast-scan autofix-preview: deterministic fixes available — see the job summary (NOT applied)."
+            # Render the (PR-controlled) diff as a 4-space INDENTED code block, NOT a ```
+            # fence: a diff context line that is exactly ``` would close a fence early and
+            # let the rest render as forged summary markdown. An indented block has no
+            # closing delimiter to break out of, so PR content cannot spoof the summary.
+            {
+              echo "### sast-scan — semgrep autofix preview (deterministic; NOT applied, nothing pushed)"
+              echo "Download-and-apply this patch, or let the armed autofix App push it. Truncated to 400 lines:"
+              echo ""
+              git diff | head -n 400 | sed 's/^/    /'
+            } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+            git checkout -- . 2>/dev/null || true   # restore workspace (defensive; job is ephemeral)
           fi
 
       - name: Upload SARIF to Code Scanning (best-effort; free on public repos w/ GHAS)

@@ -207,8 +207,13 @@ third-party action, §4.3) and clones the `secret-scan.yml` shape.
   venv. **Data-only** static AST analysis (never executes the scanned code); `--metrics off`
   (no telemetry to semgrep.dev — important for private repos) + an EXPLICIT `--config`
   (never repo-local auto-discovery, so a PR cannot inject its own rules). Ships
-  report-only; flip to blocking after a clean window. Model-free autofix (semgrep
-  `--autofix`) is the one safe autofix path — PLAN-014 §4a Phase 4.
+  report-only; flip to blocking after a clean window. **Deterministic autofix PREVIEW**
+  (`autofix-preview` input, `ci/v2.7.0`, default off): runs semgrep's rule-provided
+  `--autofix` in the ephemeral `--rm` workspace and shows the patch in the job summary —
+  **nothing is pushed** (the workspace is discarded), so it needs no App and no new
+  credential. This is the one *safe* autofix path (PLAN-014 §4a): the fixes are
+  rule-provided (NO model), unlike the model-based push-back autofix (PLAN-012, §3b),
+  which requires the dedicated autofix App and is founder-gated.
 
 Full design + the own-vs-native split + the "autofix only where safe" boundary:
 PLAN-014.
@@ -222,7 +227,7 @@ Consumer callers typically use:
 ```yaml
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.6.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.7.0
     secrets: inherit   # passes all consumer-repo secrets to reusable
 ```
 
