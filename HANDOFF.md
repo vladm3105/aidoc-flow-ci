@@ -107,10 +107,17 @@ registration + secrets + `autofix.enabled`). The v2.1.x history that hardened th
 
 **What remains — founder-gated fleet rollout (🔴 cross-repo, NOT canon code).**
 Runbook: `../operations/ops/inbox/2026-07-17_cto-platform_flow-ci-v2.1.0-cut-and-preprod-closure.md`
-(operations #268, retargeted to `ci/v2.1.2`):
+(operations #268). **Fleet target reconciled to `ci/v2.8.0`** (PLAN-015 B1,
+2026-07-18) — the tag PLAN-015 cuts; forthcoming (latest is `ci/v2.7.0`, v2.8.0
+cut when PLAN-015's code tasks land). Supersedes the earlier `v2.0.1`/`v2.1.2`
+targets. Closure plan: `plans/PLAN-015_preprod-review-fixes.md`.
 
-1. **Re-pin the fleet to `ci/v2.1.2`** — version-only `--repin` with an explicit
-   `CI_TAG` (safe; a re-pin never clobbers `runner_labels` — that is `--update`).
+1. **Re-pin the fleet to `ci/v2.8.0`** — version-only `--repin` with an explicit
+   `CI_TAG`, **after** v2.8.0 is cut (safe; a re-pin never clobbers
+   `runner_labels` — that is `--update`). **NOT a drop-in**: v2.8.0's
+   uniform-protected AI-flow (PLAN-013, `ci/v2.2.0`) runs ai-review on the
+   self-hosted pool on **public** repos too, so every public consumer needs a
+   runner pool registered before re-pin.
 2. **Arm branch protection** — `aidoc-flow-ci` itself (canon), `engramory`, and
    `iplan-standard` have **no branch protection at all**; `business` + `iplanic`
    require only the phantom bare `Lint / format / security hooks` context per
@@ -168,14 +175,15 @@ answered) from the D3/enforcement half (founder decision, unanswerable from
 canon today). It has a 🔴 half (making `install.sh` apply server-side settings
 mutates consumer repos); consumer-side callers go via the ops/inbox runbook.
 
-**Fleet v2 cutover (PLAN-009) — target SUPERSEDED `ci/v2.0.1` → `ci/v2.1.2`
-(operations #268); Phase 0 partially done, still 🔴-gated.** `ci/v2.0.1` was the
-original fleet target (tag → `819d148`; patches `ci/v2.0.0` → `d3f4b03` with the
-3 ai-review blocker fixes), but `ci/v2.1.2` is strictly better (it *contains*
-v2.0.1's fixes plus the pre-prod hardening and PLAN-011), so the fleet re-pins
-straight to `ci/v2.1.2` per the runbook above — do not re-pin to v2.0.1. **`operations` is advanced to `@ci/v2.0.1` and LIVE-VERIFIED (2026-07-16,
-PR #265).** `plans/PLAN-009_fleet-v2-cutover.md` syncs the other **7 consumers**
-(still `@ci/v1.9.5`).
+**Fleet v2 cutover (PLAN-009) — target reconciled to `ci/v2.8.0` (PLAN-015 B1,
+2026-07-18); Phase 0 partially done, still 🔴-gated.** The target advanced
+`ci/v2.0.1` → `ci/v2.1.2` → **`ci/v2.8.0`** as the canon shipped forward; the
+fleet re-pins straight to the current tag (`v2.8.0` once cut — it *contains*
+every prior fix plus PLAN-013/012/014 and PLAN-015's rollout tooling), never to a
+superseded one. **`operations` is advanced to `@ci/v2.0.1` and LIVE-VERIFIED
+(2026-07-16, PR #265)** and re-pins forward with the fleet.
+`plans/PLAN-009_fleet-v2-cutover.md` (see its superseding header) syncs the other
+**7 consumers** (still `@ci/v1.9.5`).
 
 **v2.0.1 verification banked on operations, not deferred to the pilot** —
 operations (not the pilot) is the first armed consumer. Throwaway PR #266

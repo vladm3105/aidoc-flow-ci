@@ -1,5 +1,23 @@
-# PLAN-009 — Sync the aidoc-flow fleet to CI canon `ci/v2.0.1`
+# PLAN-009 — Sync the aidoc-flow fleet to CI canon (target superseded → `ci/v2.8.0`)
 
+> **⚠️ FLEET TARGET SUPERSEDED (2026-07-18, PLAN-015 B1).** The single fleet
+> rollout target is now **`ci/v2.8.0`** — the tag PLAN-015 cuts (consumer drift
+> detector + honest install-verify + the pre-push/doc fixes). It is
+> **forthcoming**: the current latest is `ci/v2.7.0`, and `v2.8.0` is cut once
+> PLAN-015's code tasks land. The **v2.0.1** mechanics in the body below remain
+> valid as the **v1→v2 cutover reference** (per-repo steps, label contract,
+> pilot-then-propagate), but the fleet re-pins **straight to `ci/v2.8.0`**, not
+> v2.0.1. Unlike v2.0.1, **`ci/v2.8.0` is NOT a drop-in re-pin**: under the
+> PLAN-013 uniform-protected AI-flow model (`ci/v2.2.0`) the **whole** ai-review
+> flow (not just the review job) runs on the self-hosted pool on **public** repos,
+> broadening the public review-runner prerequisite the v2.0.1 plan already carried
+> (Phase 2 **Edit F**) — so every public consumer needs a pool registered *before*
+> re-pin. **When executing the per-repo steps in the body post-cut, substitute the
+> cut `v2.8.0` tag and its commit SHA for every `@ci/v2.0.1` / `819d148…` value
+> below** — those are the v1→v2 reference, not the pin to apply. The fleet re-pin
+> stays 🔴 founder-gated and happens **after** `v2.8.0` is cut. Live state:
+> `HANDOFF.md`; closure plan: `plans/PLAN-015_preprod-review-fixes.md`.
+>
 > Status: EXECUTING — **Phase 0 partially done**; `operations` advanced to
 > `@ci/v2.0.1` + live-verified 2026-07-16 (PR #265; runbook
 > `operations/ops/inbox/2026-07-16_founder_operations-ci-v2.0.1-advance-and-verify.md`,
