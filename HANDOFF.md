@@ -480,6 +480,16 @@ enforcement, PR-U1/U2/U3/U4, 2026-07-08).
 
 See `DECISIONS.md` for the full CI-NNNN record. Latest:
 
+- **CI-0011** (OPEN — founder) — `verified_allowed` supply-chain boundary:
+  keep (verified marketplace admitted fleet-wide) vs drop (three-pattern only).
+  Filed by PLAN-015 M1; resolve before treating the boundary as settled.
+- **CI-0010** (2026-07-18) — own security-scanner suite (osv/trivy/semgrep):
+  binaries not marketplace actions, report-only-first, opt-in (`ci/v2.4.0`–`v2.7.0`).
+- **CI-0009** (2026-07-17) — ai-review autofix: dedicated write-App, default-off,
+  governance deny-floor (`ci/v2.3.0`).
+- **CI-0008** (2026-07-17) — uniform-protected AI-flows: public+private on the
+  self-hosted pool, no visibility split (`ci/v2.2.0`; reverses the prior split).
+- **CI-0007** (2026-07-16) — runner-label naming: defer any rename to a future major.
 - **CI-0006** (2026-07-12) — LiteLLM unification: all AI jobs route through
   one OpenAI-compatible LiteLLM proxy via a dependency-free Python adapter.
   Vendor CLI paths, credentials, and workflow inputs are removed. Breaking
