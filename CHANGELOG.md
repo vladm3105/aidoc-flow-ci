@@ -5,6 +5,17 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Docs — value + company-standard-readiness assessment (2026-07-19)
+
+- `plans/ASSESSMENT_flow-ci-value-and-standard-readiness.md` — evidence-based
+  pre-deployment evaluation: the AI-review core is the differentiated, proven
+  value (caught a critical CI-bricking bug on operations #244); the rest is
+  commodity/governance-overhead. Deploy the ~3 value flows selectively; **not yet**
+  worth mandating as a company standard (5-gate readiness scorecard). No canon
+  code change — assessment only.
+- **FT-15 elevated to a trust-blocker** — confirm the deployed ai-review is
+  actually version-pinned (not fetching from `main`) before widening deployment.
+
 ## ci/v2.8.0 — 2026-07-19
 
 **PLAN-015 pre-prod review fix closure.** Closes the 5-lens pre-prod review's two

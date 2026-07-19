@@ -27,7 +27,21 @@ rollout not"; PLAN-015 closed both blockers + the M/L follow-ups, cut as
 `standards-drift` + arm branch protection + verify) and the CI-0011
 `verified_allowed` decision. **FT-15** (audit ai-review/doc-maintainer/docs-sync
 for the same latent `workflow_ref`-is-the-caller asset-fetch issue PLAN-015 B2
-found + fixed in `standards-drift`) is OPEN in `plans/FRAMEWORK-TODO.md`.
+found + fixed in `standards-drift`) is OPEN in `plans/FRAMEWORK-TODO.md` — now
+**elevated to a trust-blocker**: it must be confirmed before trusting the pin
+story or widening deployment (see the assessment below).
+
+**Value + company-standard assessment (2026-07-19):**
+`plans/ASSESSMENT_flow-ci-value-and-standard-readiness.md`. Verdicts: the
+**AI-review core is the differentiated, proven value** (caught a critical
+CI-bricking bug on operations #244 that no linter would); the rest is commodity
+or governance-overhead. Deploy the ~3 value flows **selectively**, not the 16 as
+a bundle. **Not yet worth mandating as a company standard** (bus factor ~1,
+per-team infra tax, governance coupling, not battle-tested — 5-gate scorecard in
+the doc); standardize the *capability*, not this implementation. Founder posture:
+**deploy-and-freeze** — deploy the AI-review core to 2–3 repos + measure real
+catch-rate, feature-freeze new PLAN-NNN capability until adoption ≥ ~50%, resolve
+FT-15 first. Company-standard ratification is a 🔴 operations (OPS-NNNN) call.
 
 ---
 
