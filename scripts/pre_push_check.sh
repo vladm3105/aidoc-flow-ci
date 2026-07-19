@@ -50,9 +50,16 @@ toplevel="$(git rev-parse --show-toplevel 2>/dev/null)" || {
 cd "$toplevel" || exit 2
 
 # --- changed-files calculation ---
-# base = merge-base with origin/main (fall back to local main, then to
-# the empty tree for a fresh repo).
-BASE="$(git merge-base HEAD origin/main 2>/dev/null \
+# base = the already-pushed point (@{upstream}) so the mechanical linters see
+# only what THIS push ADDS — not every file that differs from main. PLAN-015 M3:
+# merge-base-with-main re-linted every pre-existing branch commit on every push,
+# so a push that touched only file A was blocked by stale lint on files B/C from
+# earlier commits. This mirrors the audit-trail phrase range below (@{upstream}
+# ..HEAD). Fall back to merge-base with origin/main on the FIRST push (no
+# upstream yet), then local main, then the empty tree for a fresh repo.
+# shellcheck disable=SC1083  # @{upstream} is git ref-syntax, not shell brace expansion
+BASE="$(git rev-parse --verify --quiet '@{upstream}' 2>/dev/null \
+        || git merge-base HEAD origin/main 2>/dev/null \
         || git merge-base HEAD main 2>/dev/null \
         || git rev-list --max-parents=0 HEAD | tail -1)"
 mapfile -t CHANGED < <(git diff --name-only --diff-filter=ACMR "$BASE"...HEAD 2>/dev/null)

@@ -67,10 +67,15 @@ on:
 jobs:
   verify:
     name: verify
-    # F4-sec fold: fail-closed on non-PR events. Reusable is scoped to
-    # `pull_request` (and `pull_request_target` if a consumer knowingly
-    # wires it); other events lack the base_sha/head_sha data + would
-    # silently degrade to the empty-range fail-open path.
+    # F4-sec fold: fail-closed on non-PR events. This reusable is scoped to
+    # `pull_request` ONLY — the `if:` below runs the verify job for that event.
+    # Do NOT wire it on `pull_request_target`: this job checks out the PR HEAD sha,
+    # and pairing that with pull_request_target's privileged context is the classic
+    # untrusted-checkout RCE. Any other event lacks the base_sha/head_sha data and
+    # would silently degrade to the empty-range fail-open path. (PLAN-015 L5: the
+    # earlier "pull_request_target if a consumer knowingly wires it" note
+    # contradicted this `if:` — which SKIPS the job on pull_request_target, a
+    # silent no-gate — and invited the RCE; removed.)
     # Label-event parity with composition.yml: the caller templates now trigger
     # on `labeled, unlabeled` so the `skip-audit-trail` escape hatch can take
     # effect — but re-run ONLY for that label, not every label write (ai-review /

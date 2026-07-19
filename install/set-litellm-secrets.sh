@@ -94,8 +94,16 @@ put() {  # put SECRET_NAME REPO   (value on stdin; never echoed)
 }
 
 mint() {  # mint REPO PURPOSE MODEL_ALIAS  -> prints the scoped key
+  # PLAN-015 L3: the master key (mints all others) must NOT sit on the curl
+  # argv, where any local process-table reader sees it — honoring this script's
+  # STDIN-only contract (header comment). Write it to a 0600 temp file with the
+  # `printf` BUILTIN (no argv exposure) and read it via `curl -H @file`
+  # (curl >= 7.55). RETURN trap removes the file on success OR failure.
+  local hdr; hdr="$(mktemp)"; chmod 600 "$hdr"
+  trap 'rm -f "$hdr"' RETURN
+  printf 'Authorization: Bearer %s\n' "$LITELLM_MASTER_KEY" > "$hdr"
   curl -fsS -X POST "$MGMT_URL/key/generate" \
-    -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H "Content-Type: application/json" \
+    -H @"$hdr" -H "Content-Type: application/json" \
     -d "{\"models\":[\"$3\"],\"max_budget\":$BUDGET,\"metadata\":{\"purpose\":\"$2\",\"repo\":\"$1\"}}" \
     | jq -er '.key'
 }

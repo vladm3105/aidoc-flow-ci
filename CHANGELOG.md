@@ -5,6 +5,29 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — script hygiene (PLAN-015 Task 5, 2026-07-18)
+
+- **`scripts/pre_push_check.sh`** (M3): the mechanical linters now scan the push
+  range `@{upstream}..HEAD` (fall back to `origin/main` on the first push), not
+  `merge-base(HEAD, main)...HEAD`. The old base re-linted every pre-existing branch
+  commit on every push, so a push touching only file A was blocked by stale lint on
+  files B/C from earlier commits (the audit-trail phrase check already used the push
+  range; the file list now matches it).
+- **`install/set-litellm-secrets.sh`** (L3): `--mint` no longer passes the LiteLLM
+  master key (mints all others) via `curl -H` argv, where any local process-table
+  reader could see it. It is written to a `0600` temp file with the `printf` builtin
+  (never on an argv) and read via `curl -H @file`, honoring the script's STDIN-only
+  contract.
+- **`.github/workflows/audit-trail-check.yml`** (L5): removed the header comment's
+  false "`pull_request_target` if a consumer knowingly wires it" claim — the job's
+  `if:` runs only on `pull_request`, so a `pull_request_target` wiring silently
+  SKIPS the gate; and since the job checks out the PR head sha, wiring it that way
+  would be the classic untrusted-checkout RCE. Comment now matches the `if:`.
+- L4 (a proposed "delete dead redaction helpers" in `litellm_client.py`) was
+  investigated and **dropped as invalid**: `redact_secret_shaped` / `restore_redactions`
+  are actively used by `scripts/doc-maintainer/{planner,apply}.py` (the review that
+  flagged them only checked ai-review's `completion()`).
+
 ### Changed — `install.sh` verifies server-side standards instead of a silent reminder (PLAN-015 B2 Task 3, 2026-07-18)
 
 - `install.sh` no longer just PRINTS "after CI green, apply branch protection." When
