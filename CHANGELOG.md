@@ -5,6 +5,22 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — `install.sh` verifies server-side standards instead of a silent reminder (PLAN-015 B2 Task 3, 2026-07-18)
+
+- `install.sh` no longer just PRINTS "after CI green, apply branch protection." When
+  given `--tier <t>`, a bootstrap now runs `check-standards-drift.sh` against the target
+  repo at the end and reports the **actual** server-side state — `✅ clean` /
+  `⚠️ NOT APPLIED (drift/absent)` / `⚠️ could not verify (token lacks admin scope)` — so
+  "installed" never reads as "standards on." Closes the pre-prod review's B2-apply half
+  (the silent-success gap).
+- New standalone mode `install.sh <owner/repo> --verify-standards --tier <t>` (no install):
+  exits `0` clean, `1` on genuine drift/absent branch protection, `2` when the `gh` token
+  lacks admin scope to read protection. Usable as a founder/CI gate.
+- `install.sh` still does NOT mutate consumer branch protection — that stays the
+  🔴 founder arming step (Task 8 runbook); this task makes the *verification* honest.
+- Live-verified against unprotected canon: correctly reported "no protection on main" →
+  NOT APPLIED, exit 1.
+
 ### Added — consumer-installable `standards-drift` detector (PLAN-015 B2, 2026-07-18)
 
 - `.github/workflows/standards-drift.yml` is now a **`workflow_call` reusable**: it
