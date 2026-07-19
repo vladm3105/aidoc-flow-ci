@@ -386,6 +386,157 @@ decision only: "we do not need migration now just track the decision."
 
 ---
 
+## CI-0008: Uniform-protected AI-flows — public and private on the self-hosted pool, no visibility split (2026-07-17)
+
+**Context**
+
+The AI-flows (`ai-review`, `doc-maintainer`, `docs-sync`) previously shipped as
+`-public` / `-private` caller variants: public repos ran the flow on
+GitHub-hosted runners, private on the self-hosted ephemeral pool. A visibility
+flip therefore required swapping templates, and the split was justified by "keep
+untrusted fork code off the self-hosted pool."
+
+**Decision**
+
+Collapse each AI-flow to ONE self-hosted protected template — the same
+`runner_labels_routine` / `runner_labels_review` pool on BOTH public and private
+repos, no visibility branch in the templates, manifest, or installer. A
+visibility flip is a no-op.
+
+This is SAFE and is NOT the "untrusted code on self-hosted" anti-pattern: a fork
+never reaches a job that executes PR code. `ai-review`'s fork path runs only the
+`trust` job, which checks out the trusted config repo (never PR head) and reads
+PR metadata — zero PR code; the review job is `needs: trust`-gated and forks are
+never trusted. `doc-maintainer` / `docs-sync` are post-merge, so forks cannot
+trigger them. The generic fork-code lint flows (`markdown-lint`, `links`,
+`pre-commit`, `on: pull_request`) MUST stay GitHub-hosted on public repos — they
+run the PR's own files — and are deliberately NOT converged.
+
+**Consequences**
+
+- Reverses the visibility-split posture; public repos now need a `ci-runner` /
+  `single-use` pool to run the ai-review *review* job (a PLAN-009 Phase-0 prereq).
+- No `-public` / `-private` AI-flow template variants; `tests/test_contract.sh`
+  asserts the single-template invariant + no `visibility_variants` in the manifest.
+- Shipped as `ci/v2.2.0` (PLAN-013).
+
+**Origin**
+
+Founder direction 2026-07-17: make all AI-based flows uniform-protected
+(public + private, no visibility split). Recorded retroactively per PLAN-015 M2.
+
+---
+
+## CI-0009: ai-review autofix — dedicated write-capable App, default-off, governance deny-floor (2026-07-17)
+
+**Context**
+
+On a `request_changes` verdict the reviewer could only comment; applying the fix
+required a human. Automating it needs a token that can push to the PR branch —
+a materially larger trust grant than the read-only reviewer path.
+
+**Decision**
+
+Add an autofix job to `ai-review.yml` that, on `request_changes` for a
+trusted-author (`trust.auto_fix`) PR, generates a diff, applies it under a hard
+governance deny-floor (parse + post-apply + symlink + framework-lock checks), and
+pushes via a **dedicated ephemeral-token autofix GitHub App** (contents:write,
+NOT a PAT, separate from the reviewer App) to re-fire the gate. Ships
+**default-off**: inert until a founder registers the App, sets
+`APP_AUTOFIX_ID/KEY` + `LITELLM_FIX_API_KEY`, adds authors to `trust.auto_fix`,
+and flips `autofix.enabled: true` in the TRUSTED config. A PR cannot self-enable
+it; forks never reach it; the round-cap fails closed → escalate.
+
+**Consequences**
+
+- A second, write-capable App trust root exists but is dormant until founder
+  enablement (per-repo, staged).
+- Shipped as `ci/v2.3.0` (PLAN-012); security-reviewed (no blocker).
+
+**Origin**
+
+Founder direction 2026-07-17 to build the ai-review autofix flow. Recorded
+retroactively per PLAN-015 M2.
+
+---
+
+## CI-0010: Own security-scanner suite — binaries not marketplace actions, report-only-first, opt-in (2026-07-18)
+
+**Context**
+
+The workspace wanted SCA / IaC-misconfig / SAST coverage. Marketplace scanner
+actions are blocked for non-verified creators (`startup_failure`) and, where
+admitted, broaden the supply-chain surface; a hard gate on day one would block
+PRs fleet-wide before the findings were triaged.
+
+**Decision**
+
+Ship three own scanners as reusables that install the tool DIRECTLY (no
+marketplace action), each SHA/version-pinned: `dep-scan` (osv-scanner binary),
+`trivy-scan` (trivy binary, `config` only — static scanners, SSRF-hardened),
+`sast-scan` (semgrep via pinned pip). All are:
+
+- **opt-in** (`auto_install: false`; the founder passes them explicitly to the
+  wizard — not a force-sweep);
+- **report-only first** (`fail-on-findings: false`), graduating to blocking
+  per-scanner per-repo only after a clean window (a founder step);
+- data-only / static (no source compilation; `trivy` terraform/helm scanners
+  excluded because they fetch PR-controlled remote sources);
+- the `sast-scan` autofix is **preview-only** (`semgrep --autofix` surfaced in the
+  job summary, nothing pushed) — the one safe autofix path that needs no App.
+
+**Consequences**
+
+- Complements native CodeQL (N/A on private repos) — `sast-scan` gates private too.
+- Shipped as `ci/v2.4.0`–`ci/v2.7.0` (PLAN-014 Phases 1–4); deployment + the
+  false→true `fail-on-findings` graduation are 🔴 founder steps.
+
+**Origin**
+
+Founder direction 2026-07-18 ("osv/trivy/semgrep, all in, report-only first").
+Recorded retroactively per PLAN-015 M2.
+
+---
+
+## CI-0011: `verified_allowed` supply-chain boundary — OPEN (founder decision)
+
+**Status: OPEN — awaiting founder decision. Do not treat as decided.**
+
+**Context**
+
+`install/templates/actions-permissions.json` sets `verified_allowed: true` (and
+`github_owned_allowed: true`) alongside the three-pattern `patterns_allowed`
+(`vladm3105/aidoc-flow-ci/*`, `actions/*`, `github/*`). So the DEPLOYED
+allowlist admits **any GitHub-verified creator's action** (`aquasecurity`,
+`docker`, `hashicorp`, …) on every consumer, not just the three patterns.
+`REPO_STANDARDS.md` §4.3 now documents this accurately and flags widening to the
+verified marketplace as "a decision to take deliberately" — but that decision
+was never recorded, so code and policy have drifted apart by default, not by
+choice.
+
+**The decision (founder):**
+
+- **Keep `verified_allowed: true`** — accept that any verified-creator action can
+  run on consumer runners (incl. the private self-hosted pool) as an intentional
+  convenience; OR
+- **Drop it** — narrow the deployed boundary to the three patterns. Expect
+  verified actions currently relied upon (e.g. `aquasecurity/trivy-action` if any
+  consumer still calls it) to then `startup_failure`; canon reusables already
+  install tools as binaries, so canon itself is unaffected.
+
+**Related note (not itself a decision):** `actions-permissions.json` also sets
+`workflow.can_approve_pull_request_reviews: true`. This is defanged here — the
+`composition` gate counts ONLY the reviewer App's numeric bot-id + `type==Bot`,
+never `github-actions[bot]` — so an Actions-minted approval does not satisfy the
+merge gate. Fold confirmation of this into whichever way CI-0011 resolves.
+
+**Origin**
+
+PLAN-015 M1 (pre-prod review security lens #2). Filed as an open decision;
+resolve before treating the supply-chain boundary as settled.
+
+---
+
 <!-- Append new entries above this line; append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
 and update the superseded entry's "Consequences" section to reference
