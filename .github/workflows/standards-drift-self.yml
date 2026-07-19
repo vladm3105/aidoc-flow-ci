@@ -1,0 +1,88 @@
+# standards-drift-self.yml — canon's OWN weekly server-side drift check.
+#
+# Split out of standards-drift.yml when that filename became the `workflow_call`
+# REUSABLE consumers call (PLAN-015 B2). Canon ships sync/check-standards-drift.sh
+# locally, so it runs the script DIRECTLY (no fetch, no reusable indirection) and
+# additionally runs the fleet-wide pin audit, which is canon-specific and does not
+# belong in the shared reusable.
+#
+# Self-adoption per PLAN-002 §5.5 line 461-466 + §7 success criterion #4
+# ("sync/check-standards-drift.sh per non-paused repo returns 0 drift,
+# 0 fetch/scope error(s) when run in that repo's CI"). Runs
+# `bash sync/check-standards-drift.sh --tier product` on schedule.
+#
+# WARNING-ONLY per canon §3.1b on the scheduled run — drift emits
+# `::warning::` annotations for operator visibility and never blocks. The
+# script is not unconditionally non-blocking, though: `workflow_dispatch`
+# below exposes `strict`, which makes it exit non-zero on drift (for
+# release/adoption validation).
+#
+# SCOPE — this run checks THIS repo (aidoc-flow-ci) only. aidoc-flow-ci
+# self-tier = product (per REPO_STANDARDS.md §1 taxonomy).
+
+name: standards-drift-self
+
+on:
+  schedule:
+    # Monday 09:00 UTC — early week visibility for any accumulated drift.
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      strict:
+        description: 'Fail on drift or an uncheckable control (use for release/adoption validation)'
+        type: boolean
+        default: false
+
+# Zero default token permissions (sec LOW, defense-in-depth); the drift
+# job below explicitly grants only what it needs (contents: read).
+permissions: {}
+
+jobs:
+  drift:
+    name: check-standards-drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Run standards drift check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STRICT: ${{ inputs.strict || false }}
+        run: |
+          args=(--tier product)
+          [ "$STRICT" = "true" ] && args+=(--strict)
+          bash sync/check-standards-drift.sh "${args[@]}"
+
+      - name: Fleet pin-currency audit (public repos)
+        # Central weekly view of stale @ci/v* pins. GITHUB_TOKEN can read public
+        # repos' contents, so this step covers the PUBLIC fleet only.
+        #
+        # PRIVATE repos are NOT covered here. They are meant to be covered by
+        # their own standards-drift run: check-standards-drift.sh chains
+        # check-pin-currency.sh itself (see its tail), so a private repo running
+        # it transitively gets pin-currency without naming it in the caller.
+        #
+        # That mechanism is real but is NOT currently delivering. Verified
+        # 2026-07-16: business + interlog have no caller at all; iplanic's pins
+        # `e15ec7d…`, which is the ANNOTATED TAG OBJECT of ci/v1.6.0 rather than
+        # a commit, so raw.githubusercontent has never served it (404) and that
+        # caller has never worked; every private standards-drift run on record
+        # has failed. Tracked as FT-13 in plans/FRAMEWORK-TODO.md — read it
+        # before restating anything here: this comment has been wrong three
+        # times, in three different directions. Fixing the callers is
+        # consumer-side work and goes via the ops/inbox runbook. Warning-only.
+        #
+        # NOTE (PLAN-015 B2): once the consumer standards-drift caller is
+        # installed fleet-wide (Task 8 runbook), each consumer runs its own
+        # drift + transitive pin-currency; this central audit stays as a canon
+        # backstop for the public fleet.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bash sync/check-pin-currency.sh --fleet \
+            vladm3105/aidoc-flow-framework vladm3105/aidoc-flow-engramory \
+            vladm3105/aidoc-flow-iplan-standard vladm3105/iplan-runner \
+            vladm3105/aidoc-flow-ci || true

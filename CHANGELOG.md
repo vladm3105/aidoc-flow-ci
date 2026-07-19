@@ -5,6 +5,29 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — consumer-installable `standards-drift` detector (PLAN-015 B2, 2026-07-18)
+
+- `.github/workflows/standards-drift.yml` is now a **`workflow_call` reusable**: it
+  fetches `sync/check-standards-drift.sh` from the **adopted canon tag** — read from
+  the consumer's own checked-out caller pin, since inside a reusable
+  `github.workflow_ref` is the caller's ref (not the pin) and `github.job_workflow_sha`
+  is not expression-accessible — and runs the server-side drift check against the
+  CALLER repo (branch protection, repo settings, actions permissions, labels vs the
+  tier template). Warning-only by default (IPLAN-0017 §3.1b); `strict: true` for a
+  release/adoption gate.
+- Consumer caller templates `install/templates/workflows/standards-drift{,-private}.yml`
+  (`auto_install: false`, opt-in via the wizard / the arming runbook), manifested with
+  `visibility_variants`. Closes the pre-prod review's **B2** finding that no consumer
+  ever ran drift detection — only canon did, against itself.
+- Canon's own weekly self-check + the fleet pin audit moved to the new
+  `.github/workflows/standards-drift-self.yml` (canon ships the script locally — no
+  fetch path). `deploy-ci-wizard.sh` surveys `standards-drift` (opt-in, wave 8).
+- Branch protection is only verifiable with an admin-scoped token (not a grantable
+  `GITHUB_TOKEN` scope) → the default token reports it `warn_uncheckable`, never a
+  false green.
+- Additive from the consumer contract (no repo called the old non-reusable
+  `standards-drift.yml`) → next MINOR, `ci/v2.8.0`.
+
 ### Changed — `deploy-ci-wizard` knows the PLAN-014 scanner surfaces (2026-07-18)
 
 - `install/deploy-ci-wizard.sh` now surveys `dep-scan`/`trivy-scan`/`sast-scan` in its

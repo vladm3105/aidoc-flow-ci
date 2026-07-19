@@ -319,6 +319,15 @@ never blocks. When a consumer legitimately deviates (parameter override,
 full replacement, custom workflow — see [`overrides.md`](overrides.md)), the
 warning is the operator's opportunity to reconcile intent.
 
+A consumer can run `check-standards-drift.sh` against its OWN repo by installing
+the reusable **`standards-drift`** caller (`install/templates/workflows/standards-drift.yml`,
+opt-in, `-private` variant available) — a thin `workflow_call` over
+[`.github/workflows/standards-drift.yml`](../.github/workflows/standards-drift.yml),
+which fetches the script from the adopted canon tag (read from the consumer's own
+checked-out caller pin) and runs it weekly (warning-only; `strict: true` via the
+dispatch button for a release/adoption gate). This closes the gap where drift detection ran only inside canon. Canon's
+own weekly self-check is [`standards-drift-self.yml`](../.github/workflows/standards-drift-self.yml).
+
 ## 7. Change log
 
 - 2026-07-14 — **§2 stale ai-review/composition/pre-commit/audit-trail cells

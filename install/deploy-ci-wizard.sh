@@ -25,7 +25,7 @@ GH="${GH:-gh}"
 # dep-scan/trivy-scan/sast-scan (PLAN-014 own security scanners) are OPTIONAL +
 # report-only — surveyed here + offered by plan(), but NOT in scaffold()'s default
 # list (deliberate per-repo adoption; pass them explicitly to scaffold).
-ALL_WF="pre-commit:1 links:2 markdown-lint:2 labeler:2 secret-scan:3 dep-scan:3 trivy-scan:3 sast-scan:3 audit-trail:4 ai-review:5 composition:5 auto-merge-ai-prs:6 doc-maintainer:7 docs-sync:7 codeql:8"
+ALL_WF="pre-commit:1 links:2 markdown-lint:2 labeler:2 secret-scan:3 dep-scan:3 trivy-scan:3 sast-scan:3 audit-trail:4 ai-review:5 composition:5 auto-merge-ai-prs:6 doc-maintainer:7 docs-sync:7 codeql:8 standards-drift:8"
 
 c_ok() { printf '  \033[32m🟢 %s\033[0m\n' "$*"; }
 c_no() { printf '  \033[31m🔴 %s\033[0m\n' "$*"; }
