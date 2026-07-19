@@ -8,9 +8,19 @@ deferred items belong in `plans/` or `HANDOFF.md` open threads.
 
 ---
 
-## Current phase — v2.7.0 shipped (own-security-scanner suite); founder-gated rollout
+## Current phase — v2.8.0 shipped (PLAN-015 pre-prod fix closure); founder-gated rollout
 
-`ci/v2.7.0` is the Latest release. On top of the uniform protected AI-flow model
+`ci/v2.8.0` is the Latest release (2026-07-19). It closes the 5-lens pre-prod
+review's two blockers — **B1** (fleet rollout target reconciled to one tag) and
+**B2** (a consumer-installable `standards-drift` detector + `install.sh
+--verify-standards` that honestly reports server-side state instead of a silent
+reminder) — plus the M/L follow-ups (decision-log closure incl. the OPEN CI-0011
+`verified_allowed`; script hygiene; install ergonomics; doc-count accuracy).
+PRs #209–#218. Remaining PLAN-015 work is 🔴 founder-gated + prepared:
+`plans/ROLLOUT_plan015-arming.md` (per-repo re-pin + arm + install standards-drift)
+and the CI-0011 decision. READ `HANDOFF.md` for live state.
+
+_Prior — `ci/v2.7.0`:_ On top of the uniform protected AI-flow model
 (`ci/v2.2.0`, PLAN-013) and the ai-review autofix flow (`ci/v2.3.0`, PLAN-012), the
 canon now ships the **own-security-scanner suite** (PLAN-014, "osv/trivy/semgrep, all
 in, report-only first"): `dep-scan` (SCA, `ci/v2.4.0`), `trivy-scan` (IaC/misconfig,
@@ -28,7 +38,9 @@ the still-open autofix-App enablement + fleet re-pin. READ `HANDOFF.md` for live
 |---|---|
 | Pre-prod canon-side blockers (composition parse-bypass, backwards-repin, half-provisioned brick, `-private` variants, adopter docs) | DONE — shipped in `ci/v2.1.0` (#175–#177) |
 | ai-review large-diff hardening (PLAN-011: `max_tokens` budget + honest `ai:review-infra-error` signal) | DONE — shipped in `ci/v2.1.1` (`max_tokens` 4096→8192) + `ci/v2.1.2` (→24576) |
-| Fleet re-pin to `ci/v2.8.0` (target reconciled, PLAN-015 B1; forthcoming — cut when PLAN-015 lands; NOT a drop-in, public repos need pools) | Founder + ops/inbox (🔴 cross-repo; operations #268) |
+| PLAN-015 pre-prod review fix closure (B1 target reconcile + B2 drift-detector/install-verify + M/L) | SHIPPED — `ci/v2.8.0` (2026-07-19, PRs #209–#218) |
+| Fleet re-pin to `ci/v2.8.0` + arm + install `standards-drift` (PLAN-015 Task 8) | 🔴 Founder — **unblocked** (v2.8.0 cut); runbook `plans/ROLLOUT_plan015-arming.md`. NOT a drop-in — public repos need pools |
+| `verified_allowed` supply-chain boundary (CI-0011) | 🔴 Founder — OPEN decision (keep vs narrow) |
 | Server-side pre-prod blockers (composition-required on business/iplanic; branch protection on the 3 unprotected repos incl. canon) | Founder + ops/inbox (cross-repo) |
 | PLAN-007 W4 fleet branch-protection arming | Founder-gated |
 | PLAN-007 W3 docs-sync dry-run → live | Founder-gated (App provisioning or doc-maintainer supersession) |
@@ -42,6 +54,10 @@ the still-open autofix-App enablement + fleet re-pin. READ `HANDOFF.md` for live
 
 **Recently landed:**
 
+- 2026-07-19 — `ci/v2.8.0` cut: **PLAN-015 pre-prod review fix closure** — B1
+  (single fleet target) + B2 (consumer `standards-drift` detector + honest
+  `install.sh --verify-standards`) + M/L follow-ups (CI-0008/0009/0010, CI-0011
+  OPEN; script hygiene; `.yamllint.yaml`; doc counts 12→16 / 16→18). PRs #209–#218.
 - 2026-07-18 — `ci/v2.7.0` cut: **sast-scan deterministic autofix PREVIEW (PLAN-014
   Phase 4)** — `semgrep --autofix` runs in the ephemeral workspace and surfaces the
   rule-provided patch in the job summary; nothing pushed (no App). Plus wizard support
@@ -96,7 +112,7 @@ the still-open autofix-App enablement + fleet re-pin. READ `HANDOFF.md` for live
 
 ## Next phase — deploy the shipped canon; server-side + consumer-feedback evolution
 
-The canon capability is built through `ci/v2.7.0`; the next phase is founder-driven
+The canon capability is built through `ci/v2.8.0`; the next phase is founder-driven
 **deployment** of what's shipped (scanners, autofix arming, fleet re-pin) plus the
 server-side pre-prod items (branch protection, required-check parity) and
 consumer-feedback-driven evolution.
