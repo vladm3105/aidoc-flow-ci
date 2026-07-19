@@ -15,14 +15,14 @@ The namespaces have different behavior:
 The two namespaces therefore use different separator conventions
 intentionally. Don't try to unify them; the constraints differ.
 
-## PR labels — the canonical 17
+## PR labels — the canonical 18
 
-`install/templates/labels.json` is the canonical set — **17 labels** in
+`install/templates/labels.json` is the canonical set — **18 labels** in
 three functional groups. `install/install.sh` creates them idempotently
 on a consumer repo at bootstrap (fail-loud; prefetches existing, only
 adds missing, never removes drift). The groups:
 
-### 1. State / control labels (7)
+### 1. State / control labels (8)
 
 The `ai:*` state labels are applied by `ai-review.yml`. The two `skip-*`
 directives are applied by an authorized human/operator; workflows consume
@@ -76,6 +76,15 @@ diff-class agents can read the applied labels directly.
 |---|---|---|
 | `dependencies` | `0366d6` | Dependabot PR (matches Dependabot's own convention) |
 | `security` | `b60205` | Security-tagged issue or PR |
+
+### Workflow-provisioned labels (NOT in the canonical 18)
+
+Applied on demand by a workflow, self-created via `gh api` if missing — NOT
+created by `install.sh` at bootstrap, so they are outside the canonical 18.
+
+| Label | Applied by | Meaning |
+|---|---|---|
+| `ai:enforcer-failed` | `auto-merge-ai-prs.yml` | The stuck-green auto-merge enforcer could not re-arm native auto-merge; the PR stays open for operator attention (the workflow self-provisions the label, warning if creation fails). |
 
 ### Naming conventions across the PR-label set
 
@@ -227,7 +236,7 @@ Branch naming follows from commit type: `feat/...`, `fix/...`,
 
 ## 4. References
 
-- `install/templates/labels.json` — canonical 16-label taxonomy
+- `install/templates/labels.json` — canonical 18-label taxonomy
   (name/color/description).
 - `docs/REPO_STANDARDS.md` §5.2 — diff-class label path→label map
   (source of truth for §2 above); §5.3 — area labels.

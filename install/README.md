@@ -121,13 +121,15 @@ Full walkthrough: [`../docs/UPDATE_GUIDE.md`](../docs/UPDATE_GUIDE.md).
    `.pre-commit-config.yaml` idempotently (via a `# CANON:` marker). The
    merge needs `ruamel.yaml` or `pyyaml` (see Prerequisites) and upgrades
    `default_install_hook_types` to include `pre-push`.
-7. **Creates the 16 canonical labels** via `gh label create` (idempotent +
+7. **Creates the 18 canonical labels** via `gh label create` (idempotent +
    fail-loud — prefetches existing labels, exits nonzero on real
-   failures): 5 state/control (`ai:review-passed`, `ai:review-changes`,
-   `ai:human-review-required`, `skip-ai-review`, `ai:autofix-applied`),
-   8 diff-class (`governance`, `docs`, `workflows`, `scripts`, `agents`,
-   `tests`, `config`, `plans`), plus `dependencies`, `security`, and
-   `skip-audit-trail`.
+   failures): 7 state/control (`ai:review-passed`, `ai:review-changes`,
+   `ai:review-infra-error`, `ai:human-review-required`, `skip-ai-review`,
+   `ai:autofix-applied`, `ai:autofix-escalated`), 8 diff-class
+   (`governance`, `docs`, `workflows`, `scripts`, `agents`, `tests`,
+   `config`, `plans`), plus `dependencies`, `security`, and
+   `skip-audit-trail`. (`ai:enforcer-failed` is NOT installer-created — the
+   auto-merge enforcer self-provisions it on demand; see `LABELS.md`.)
 8. **Prints founder next steps** (secrets, branch protection — see below).
 
 The additional caller templates that ship in `install/templates/workflows/`

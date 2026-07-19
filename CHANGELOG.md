@@ -5,6 +5,25 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — doc counts match shipped reality (PLAN-015 Task 7 / M5, 2026-07-18)
+
+- **`README.md`**: "12 reusable workflows" → **16** (added the `dep-scan` /
+  `trivy-scan` / `sast-scan` scanner rows + the `standards-drift` detector to the
+  catalog table — the count was stale by the PLAN-014 scanners and PLAN-015 B2).
+- **Label count "16" → "18"** in `install/README.md` (enumeration gains the two
+  omitted `ai:review-infra-error` + `ai:autofix-escalated`) and
+  `docs/AI_CI_DEPLOYMENT.md` (×2). `LABELS.md` corrected: "canonical 17" → **18**
+  (×2, incl. the References line), its group-1 header "(7)" → "(8)" (it already
+  listed 8), and a new **workflow-provisioned labels** section documents
+  `ai:enforcer-failed` (the auto-merge enforcer self-provisions it; NOT in the
+  installer-created 18).
+- **The rest of the reusable-count family** (the pre-push review's F2): `docs/WORKFLOWS.md`
+  catalog header "14 reusables" → **16** and the missing `standards-drift.yml`
+  row ADDED to the catalog (README pointed readers there); `docs/README.md`
+  registry "12" → **16**; `docs/REPO_STANDARDS.md` registry "12" → **16**. The
+  applicability-matrix "12 workflows" is kept (it genuinely covers the 12 **core**
+  columns; the 4 opt-in scanners/detector aren't matrixed) and clarified as such.
+
 ### Added — install ergonomics (PLAN-015 Task 6, 2026-07-18)
 
 - **`install/templates/.yamllint.yaml`** (M4): a consumer yamllint profile

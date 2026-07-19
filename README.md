@@ -29,7 +29,7 @@ install references in sync).
 
 ## What ships
 
-The library provides **12 reusable workflows**. See
+The library provides **16 reusable workflows**. See
 [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md) for the full catalog (purpose,
 per-repo applicability matrix, and skip guidance) and
 [`docs/architecture.md`](docs/architecture.md) for the per-workflow design
@@ -49,6 +49,10 @@ rationale.
 | `docs-sync.yml` | Mechanical post-merge doc fixer (deterministic version/structure propagation). |
 | `doc-maintainer.yml` | AI-driven post-merge doc-of-record maintainer (supersedes `docs-sync.yml` at `ci/v2.0.0`). |
 | `audit-trail-check.yml` | OPS-0069 audit-trail phrase gate (CI belt-and-suspenders for the local pre-push hook). Check renders as `call / verify`. |
+| `dep-scan.yml` | Dependency-vulnerability / SCA gate via the pinned osv-scanner binary (data-only). Opt-in, report-only first. |
+| `trivy-scan.yml` | IaC / Dockerfile misconfiguration gate via the pinned trivy binary (`config` only, SSRF-hardened static scanners). Opt-in, report-only first. |
+| `sast-scan.yml` | SAST via pinned semgrep (complements native CodeQL — gates private repos too). Opt-in, report-only first; deterministic autofix preview. |
+| `standards-drift.yml` | Consumer-installable server-side drift detector — branch protection / repo settings / actions-permissions / labels vs the tier template. Warning-only; opt-in. |
 
 Alongside the workflows the repo ships **workflow caller templates**
 (both `-public` / `-private` variants where runner class differs) in

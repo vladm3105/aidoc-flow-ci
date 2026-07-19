@@ -197,7 +197,7 @@ patterns block several workflows from firing on the adoption PR itself:
 |---|---|---|
 | 1 | **Provision the runner** | Private repos need a `[ci-runner, single-use]` pool before any job can be picked up (§1.2). |
 | 2 | **Set App secrets + bot-id variable** | `APP_REVIEWER_1_ID`/`_KEY`, `LITELLM_BASE_URL`/`_REVIEW_API_KEY`/`_DOC_API_KEY`, `APP_REVIEWER_1_BOT_ID` — all required for trust + ai-review + composition. |
-| 3 | **Create canonical labels** | `apply-standards.sh --apply` on the target repo creates the 16 canon labels that the labeler and ai-review expect. |
+| 3 | **Create canonical labels** | `apply-standards.sh --apply` on the target repo creates the 18 canon labels that the labeler and ai-review expect. |
 | 4 | **Open the CI adoption PR** | Add caller workflows, `.github/labeler.yml`, `.pre-commit-config.yaml`, config files. This PR CANNOT trigger ai-review/composition/labeler (they read from `main`, which doesn't have them yet). |
 | 5 | **Merge via admin** | Admin-merge the adoption PR. The workflows are now on `main`. |
 | 6 | **Open a probe PR** | A trivial content PR (e.g. whitespace in HANDOFF.md). ai-review, composition, and labeler MUST now fire from `main`. Verify all return green. |
@@ -337,7 +337,7 @@ Every one of these cost real debugging time. They are load-bearing.
     `apply-standards.sh --apply` (or `gh label create` for each canon label)
     before expecting the labeler to work. Without this, the labeler job
     succeeds silently but produces `Label does not exist` annotations.
-    The 16 canonical labels are defined in `install/templates/labels.json`.
+    The 18 canonical labels are defined in `install/templates/labels.json`.
 16. **Design-spec repos still need a `.pre-commit-config.yaml`.** The ops-tier
     branch protection includes `call / Lint / format / security hooks` as a
     required check. Even a docs-only or design-spec repo needs a minimal
