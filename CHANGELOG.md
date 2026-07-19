@@ -5,6 +5,16 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+## ci/v2.8.0 — 2026-07-19
+
+**PLAN-015 pre-prod review fix closure.** Closes the 5-lens pre-prod review's two
+blockers — **B1** (fleet rollout-target reconciled to a single tag, `ci/v2.8.0`)
+and **B2** (a consumer-installable `standards-drift` detector + `install.sh` that
+honestly verifies server-side standards instead of a silent reminder) — plus the
+M1–M5 / L-series follow-ups (decision-log closure, script hygiene, install
+ergonomics, doc-count accuracy). Additive over `ci/v2.7.0`; consumers re-pin per
+`plans/ROLLOUT_plan015-arming.md` (🔴 founder). PRs #209–#217.
+
 ### Fixed — doc counts match shipped reality (PLAN-015 Task 7 / M5, 2026-07-18)
 
 - **`README.md`**: "12 reusable workflows" → **16** (added the `dep-scan` /
