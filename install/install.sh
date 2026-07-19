@@ -25,6 +25,10 @@
 #   re-pin, NEVER --update which re-applies the template body; FT-9):
 #   CI_TAG=ci/v2.7.0 bash install.sh <owner/repo> --repin
 #   CI_TAG=ci/v2.7.0 bash install.sh <owner/repo> --visibility private
+#   Verify server-side standards (no install; exits non-zero on genuine drift —
+#   PLAN-015 B2; needs an admin-scoped gh token to check branch protection):
+#   bash install.sh <owner/repo> --verify-standards --tier <governance|product|ops|umbrella|bootstrap>
+#   (a bootstrap also runs this verify at the end and reports honestly if --tier is given)
 #
 # De-branding flags (PLAN-004 D2) let an external org adopt the canon
 # without vladm3105/aidoc-flow-operations hardcoded. Placeholders in the
@@ -59,6 +63,12 @@ CANON_CI_URL="../aidoc-flow-ci"
 MODE_UPDATE=0
 MODE_REPIN=0
 NONINTERACTIVE=0
+# PLAN-015 B2 Task 3: `--verify-standards` runs the server-side drift check
+# (no install) and exits non-zero on genuine drift/absent standards; `--tier`
+# names the tier to compare against (also used to verify at the end of a
+# bootstrap instead of printing a silent "apply branch protection" reminder).
+MODE_VERIFY=0
+TIER=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --visibility) VISIBILITY="$2"; shift 2 ;;
@@ -70,6 +80,8 @@ while [ $# -gt 0 ]; do
     # `--update` (which re-applies the template body) must never be used for a
     # re-pin (FT-9: it clobbers customized callers → runner-self brick).
     --repin) MODE_REPIN=1; shift ;;
+    --verify-standards) MODE_VERIFY=1; shift ;;
+    --tier) TIER="${2:?--tier requires a value}"; shift 2 ;;
     --non-interactive) NONINTERACTIVE=1; shift ;;
     # Strip a leading @ so `--codeowner @org` and `--codeowner org` are
     # equivalent; the templates re-add @ only where CODEOWNERS syntax needs it.
@@ -82,6 +94,15 @@ done
 case "$VISIBILITY" in public|private) ;; *) echo "--visibility must be public|private" >&2; exit 1 ;; esac
 if [ "$MODE_UPDATE" = 1 ] && [ "$MODE_REPIN" = 1 ]; then
   echo "--update and --repin are mutually exclusive (--repin = version-only pin bump; --update = re-apply template body)" >&2; exit 1
+fi
+if [ "$MODE_VERIFY" = 1 ] && { [ "$MODE_UPDATE" = 1 ] || [ "$MODE_REPIN" = 1 ]; }; then
+  echo "--verify-standards is standalone (no install) — not combinable with --update/--repin" >&2; exit 1
+fi
+if [ -n "$TIER" ]; then
+  case "$TIER" in governance|product|ops|umbrella|bootstrap) ;; *) echo "--tier must be one of: governance|product|ops|umbrella|bootstrap" >&2; exit 1 ;; esac
+fi
+if [ "$MODE_VERIFY" = 1 ] && [ -z "$TIER" ]; then
+  echo "--verify-standards requires --tier <governance|product|ops|umbrella|bootstrap>" >&2; exit 1
 fi
 # Validate the de-branding values BEFORE substitution. --codeowner lands in
 # config.json's trust.ai_review — a SECURITY allowlist — inside a JSON string,
@@ -147,13 +168,77 @@ else
 fi
 TEMPLATE_BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/templates"
 
+# PLAN-015 B2 Task 3 — honestly verify server-side standards instead of a silent
+# "apply branch protection" reminder. Fetches check-standards-drift.sh from
+# canon@CI_TAG and runs it against $repo, classifying the outcome:
+#   0 = clean;  1 = genuine drift / absent branch protection;
+#   2 = could not verify — the check bailed (gh unauthenticated / jq missing) OR
+#       a control was uncheckable (e.g. the token lacks admin scope to read
+#       branch protection; administration:read is not grantable to a workflow
+#       GITHUB_TOKEN, so a local run needs an authenticated admin-scoped gh);
+#   3 = skipped (no --tier, or the script could not be fetched).
+# "Installed" must never read as "standards on." Emits the check's own output
+# indented; the caller maps the rc to a status line.
+verify_standards() {
+  local tier="$1" repo="$2"
+  if [ -z "$tier" ]; then
+    echo "     (skipped — pass --tier <governance|product|ops|umbrella|bootstrap> to verify server-side standards)"
+    return 3
+  fi
+  local script; script="$(mktemp)"
+  if ! curl -fsSL "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/sync/check-standards-drift.sh" -o "$script" 2>/dev/null; then
+    echo "     (skipped — could not fetch check-standards-drift.sh@${CI_TAG})"
+    rm -f "$script"; return 3
+  fi
+  local out
+  # Warning mode (no --strict): the script prints ::warning:: lines and a final
+  # machine-parseable summary "<N> drift, <M> fetch/scope error(s), <P> pin
+  # error(s)". Classify from that SUMMARY, not from individual warning strings —
+  # those vary per control and are easy to miss (contexts drift carries spaces,
+  # a missing label reads "canon label missing:", and an unauthenticated gh /
+  # missing jq bails early emitting NEITHER a drift line nor the summary).
+  out="$(bash "$script" --tier "$tier" --repo "$repo" --ci-tag "$CI_TAG" 2>&1 || true)"
+  rm -f "$script"
+  printf '%s\n' "$out" | sed 's/^/     /'
+  local summary n_drift n_fetch
+  summary="$(printf '%s\n' "$out" | grep -oE '[0-9]+ drift, [0-9]+ fetch/scope error\(s\), [0-9]+ pin error\(s\)' | tail -1)"
+  if [ -z "$summary" ]; then
+    # No summary ⇒ the check bailed before running (gh/jq missing or gh
+    # unauthenticated) ⇒ verification did NOT happen. Never report clean.
+    return 2
+  fi
+  n_drift="$(printf '%s' "$summary" | grep -oE '^[0-9]+')"
+  n_fetch="$(printf '%s' "$summary" | grep -oE '[0-9]+ fetch' | grep -oE '^[0-9]+')"
+  # Drift (branch protection / settings / actions-perms / labels) takes
+  # precedence over an uncheckable control (drift is the actionable signal).
+  if [ "${n_drift:-0}" -gt 0 ]; then return 1; fi
+  if [ "${n_fetch:-0}" -gt 0 ]; then return 2; fi
+  return 0
+}
+
 echo "==> using CI_TAG=$CI_TAG (source: $CI_TAG_SOURCE)"
-if [ "$MODE_REPIN" = 1 ]; then
+if [ "$MODE_VERIFY" = 1 ]; then
+  echo "==> verifying server-side standards for $TARGET_REPO (tier=$TIER, canon @ $CI_TAG)"
+elif [ "$MODE_REPIN" = 1 ]; then
   echo "==> re-pinning $TARGET_REPO callers to @ $CI_TAG (version-only; topology preserved)"
 elif [ "$MODE_UPDATE" = 1 ]; then
   echo "==> updating $TARGET_REPO against canon @ $CI_TAG (non-interactive=$NONINTERACTIVE)"
 else
   echo "==> bootstrapping $TARGET_REPO (visibility=$VISIBILITY, tag=$CI_TAG)"
+fi
+
+# --verify-standards is standalone (no clone/install): the check reads server
+# settings via `gh api --repo` and compares against canon@CI_TAG.
+if [ "$MODE_VERIFY" = 1 ]; then
+  if verify_standards "$TIER" "$TARGET_REPO"; then vrc=0; else vrc=$?; fi
+  echo ""
+  case "$vrc" in
+    0) echo "==> ✅ server-side standards verified clean (tier=$TIER)." ;;
+    1) echo "==> ⚠️  server-side standards NOT applied — drift or missing branch protection (above). Arm per docs/BRANCH_PROTECTION.md + the fleet arming runbook." ;;
+    2) echo "==> ⚠️  could not verify — gh unauthenticated/missing tool, or the token lacks admin scope to read branch protection. Re-run with an authenticated admin-scoped gh, or arm per docs/BRANCH_PROTECTION.md." ;;
+    *) echo "==> verify skipped (see note above)." ;;
+  esac
+  exit "$vrc"
 fi
 
 # Clone the consumer to a stable user-visible location (NOT a temp dir
@@ -609,7 +694,14 @@ echo "       You must already operate a reachable LiteLLM proxy — see docs/AI_
 echo "    3. Set vars.APP_REVIEWER_1_BOT_ID = 294948438 (App-global; do NOT wait for a first review —"
 echo "       until it is set, composition runs INERT and enforces nothing)."
 echo "    4. Commit + push + open the adoption PR on the consumer."
-echo "    5. After CI green, apply branch protection: docs/BRANCH_PROTECTION.md (tier table + arming)."
+echo "    5. SERVER-SIDE STANDARDS — verified now against tier ${TIER:-<none>} (files installed ≠ standards on):"
+if verify_standards "$TIER" "$TARGET_REPO"; then vrc=0; else vrc=$?; fi
+case "$vrc" in
+  0) echo "       ✅ verified clean — branch protection + settings match the tier template." ;;
+  1) echo "       ⚠️  NOT APPLIED — drift or missing branch protection (above). Arm per docs/BRANCH_PROTECTION.md (tier table + arming) + the fleet arming runbook BEFORE relying on the gate." ;;
+  2) echo "       ⚠️  COULD NOT VERIFY — gh unauthenticated/missing tool, or the token lacks admin scope to read branch protection. Re-run: install.sh $TARGET_REPO --verify-standards --tier <tier> with an authenticated admin-scoped gh." ;;
+  *) echo "       apply branch protection: docs/BRANCH_PROTECTION.md (tier table + arming)." ;;
+esac
 echo "    6. (Cleanup, your choice) rm -rf $WORK_DIR"
 echo ""
 echo "    Full dependency-ordered playbook + a preflight that audits all of the above:"

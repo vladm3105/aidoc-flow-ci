@@ -149,7 +149,13 @@ templates select `ubuntu-latest`.
 - **Doesn't change branch protection** — the required checks
   (`call / ai-review`, `call / composition`, `call / verify`) must be
   added for the gates to actually enforce. See
-  [`../docs/BRANCH_PROTECTION.md`](../docs/BRANCH_PROTECTION.md).
+  [`../docs/BRANCH_PROTECTION.md`](../docs/BRANCH_PROTECTION.md). It **does**
+  now VERIFY server-side standards at the end of a bootstrap (when `--tier` is
+  given) and reports honestly — clean / drift-or-absent / uncheckable — so
+  "installed" never reads as "standards on" (PLAN-015 B2). Run the check
+  standalone anytime: `install.sh <owner/repo> --verify-standards --tier <tier>`
+  (exits non-zero on genuine drift; needs an admin-scoped `gh` token to read
+  branch protection).
 - **Doesn't install the GitHub App** on the consumer repo (founder, per
   the F5 "only select repositories" blast-radius rule).
 - **Doesn't overwrite existing files** — preserve = local override always
