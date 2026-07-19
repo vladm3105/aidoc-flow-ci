@@ -4,9 +4,34 @@ Live cross-session resume point for the workspace CI + governance-workflow
 canon library. Read at session start; refresh at milestones and before
 context compaction.
 
-## Current state (2026-07-18)
+## Current state (2026-07-19)
 
-**`ci/v2.7.0` is the Latest release — PLAN-014 (own-security-scanner suite,
+**`ci/v2.8.0` is the Latest release — PLAN-015 (pre-prod review fix closure) is
+SHIPPED.** A 5-lens pre-prod review of the canon returned "workflows ready,
+rollout not"; PLAN-015 closed both blockers + the M/L follow-ups, cut as
+`ci/v2.8.0` (2026-07-19, PRs #209–#218):
+
+- **B1** — the fleet rollout target was named three ways across the docs
+  (v2.0.1 / v2.1.2 / v2.7.0); reconciled to a single tag, `ci/v2.8.0`.
+- **B2** — canon published a drift detector no consumer ran, and `install.sh`
+  silently implied standards were applied. Now: a consumer-installable
+  `standards-drift` reusable + caller templates, and `install.sh
+  --verify-standards` that honestly reports clean / drift-or-absent / uncheckable.
+- **M/L** — decision-log closure (CI-0008/0009/0010; CI-0011 `verified_allowed`
+  filed OPEN), script hygiene (pre-push range, mint key off argv, audit-trail
+  comment), install ergonomics (`.yamllint.yaml`, tool-presence note), doc-count
+  accuracy (reusables 12→16, labels 16→18).
+
+**Remaining PLAN-015 work is entirely 🔴 founder-gated + prepared:**
+`plans/ROLLOUT_plan015-arming.md` (per-repo re-pin to `ci/v2.8.0` + install
+`standards-drift` + arm branch protection + verify) and the CI-0011
+`verified_allowed` decision. **FT-15** (audit ai-review/doc-maintainer/docs-sync
+for the same latent `workflow_ref`-is-the-caller asset-fetch issue PLAN-015 B2
+found + fixed in `standards-drift`) is OPEN in `plans/FRAMEWORK-TODO.md`.
+
+---
+
+_History — `ci/v2.7.0`:_ **PLAN-014 (own-security-scanner suite,
 "osv/trivy/semgrep, all in, report-only first") is IMPLEMENTED through Phase 4.
 Three report-only scanners + a deterministic autofix preview now ship on the
 uniform-protected + fork-guarded model (PLAN-013), each SHA/version-pinned with
@@ -59,8 +84,8 @@ registered first; public repos need a pool for the self-hosted scanner jobs).
 
 This sits on top of **`ci/v2.3.0`** — autofix (PLAN-012) on the uniform protected
 AI-flow model (PLAN-013, `ci/v2.2.0`), on the pre-prod-hardened canon (`ci/v2.1.2`).
-All security-reviewed and shipped; what remains everywhere is 🔴 founder-gated (fleet
-re-pin/arming per operations #268, and — to turn autofix on — the dedicated autofix-App
+All security-reviewed and shipped; what remained then was 🔴 founder-gated (fleet
+re-pin/arming — now `plans/ROLLOUT_plan015-arming.md`; and — to turn autofix on — the dedicated autofix-App
 registration + secrets + `autofix.enabled`). The v2.1.x history that hardened the canon:
 
 - **`ci/v2.1.0`** — a 5-lens pre-prod review (security/correctness/docs/
@@ -106,15 +131,16 @@ registration + secrets + `autofix.enabled`). The v2.1.x history that hardened th
 `plans/PLAN-011_ai-review-large-diff-hardening.md`).
 
 **What remains — founder-gated fleet rollout (🔴 cross-repo, NOT canon code).**
-Runbook: `../operations/ops/inbox/2026-07-17_cto-platform_flow-ci-v2.1.0-cut-and-preprod-closure.md`
-(operations #268). **Fleet target reconciled to `ci/v2.8.0`** (PLAN-015 B1,
-2026-07-18) — the tag PLAN-015 cuts; forthcoming (latest is `ci/v2.7.0`, v2.8.0
-cut when PLAN-015's code tasks land). Supersedes the earlier `v2.0.1`/`v2.1.2`
-targets. Closure plan: `plans/PLAN-015_preprod-review-fixes.md`.
+Primary runbook: **`plans/ROLLOUT_plan015-arming.md`** (PLAN-015 Task 8 — the
+prepared per-repo re-pin + install `standards-drift` + arm + verify). **Fleet
+target `ci/v2.8.0` is CUT (2026-07-19)** — tag + GitHub release live; PLAN-015
+canon-side is complete, so the re-pin is now unblocked (it was gated on the tag
+existing). Supersedes the earlier `v2.0.1`/`v2.1.2` targets. Closure plan:
+`plans/PLAN-015_preprod-review-fixes.md`.
 
 1. **Re-pin the fleet to `ci/v2.8.0`** — version-only `--repin` with an explicit
-   `CI_TAG`, **after** v2.8.0 is cut (safe; a re-pin never clobbers
-   `runner_labels` — that is `--update`). **NOT a drop-in**: v2.8.0's
+   `CI_TAG` (safe; a re-pin never clobbers `runner_labels` — that is `--update`).
+   **NOT a drop-in**: v2.8.0's
    uniform-protected AI-flow (PLAN-013, `ci/v2.2.0`) runs ai-review on the
    self-hosted pool on **public** repos too, so every public consumer needs a
    runner pool registered before re-pin.
@@ -178,7 +204,7 @@ mutates consumer repos); consumer-side callers go via the ops/inbox runbook.
 **Fleet v2 cutover (PLAN-009) — target reconciled to `ci/v2.8.0` (PLAN-015 B1,
 2026-07-18); Phase 0 partially done, still 🔴-gated.** The target advanced
 `ci/v2.0.1` → `ci/v2.1.2` → **`ci/v2.8.0`** as the canon shipped forward; the
-fleet re-pins straight to the current tag (`v2.8.0` once cut — it *contains*
+fleet re-pins straight to the current tag (`v2.8.0`, cut 2026-07-19 — it *contains*
 every prior fix plus PLAN-013/012/014 and PLAN-015's rollout tooling), never to a
 superseded one. **`operations` is advanced to `@ci/v2.0.1` and LIVE-VERIFIED
 (2026-07-16, PR #265)** and re-pins forward with the fleet.
