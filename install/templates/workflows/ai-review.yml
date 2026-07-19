@@ -35,10 +35,14 @@ on:
 # block the reusable exceeds the caller grant and fails at load
 # (startup_failure, zero jobs) on any consumer under the read default. Scopes
 # match the reusable's own declaration (ai-review.yml). Safe under
-# pull_request_target because the reusable is diff-only: the heavy review job
-# fetches the diff via curl and never `actions/checkout`s the PR head into this
-# write-capable context (the sole checkout is the trust gate reading the
-# trust-config repo). Keep it diff-only if the reusable is ever edited.
+# pull_request_target because the reusable is diff-only on the REVIEW path: the
+# heavy review job fetches the diff via curl and never `actions/checkout`s the PR
+# head; the sole review-path checkout is the trust gate reading the trust-config
+# repo. (Exception — the DEFAULT-OFF autofix job DOES check out the PR head to
+# apply a fix, but with a read-only token, `persist-credentials: false`, and it
+# never EXECUTES PR code (only `git apply` + a canon-pinned client); it stays
+# inert until the founder enables it — CI-0009.) Keep the review path diff-only
+# if the reusable is ever edited.
 permissions:
   contents: write        # reusable auto-merge fallback (gh pr merge via GITHUB_TOKEN)
   pull-requests: write   # trust-gate + verdict comments + label set

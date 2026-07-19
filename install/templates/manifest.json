@@ -176,6 +176,14 @@
       "auto_install": false
     },
     {
+      "_note": "PLAN-015 M4: consumer yamllint profile, companion to the pre-push hook. Bootstrap copies it (preserve-if-exists); manifested for --update coverage. safe_to_replace=false — a consumer tunes it for their YAML conventions.",
+      "path": ".yamllint.yaml",
+      "template": ".yamllint.yaml",
+      "substitute": [],
+      "safe_to_replace": false,
+      "auto_install": false
+    },
+    {
       "path": ".lychee.toml",
       "template": ".lychee.toml",
       "substitute": [],
