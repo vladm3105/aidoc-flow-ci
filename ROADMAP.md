@@ -28,12 +28,12 @@ the still-open autofix-App enablement + fleet re-pin. READ `HANDOFF.md` for live
 |---|---|
 | Pre-prod canon-side blockers (composition parse-bypass, backwards-repin, half-provisioned brick, `-private` variants, adopter docs) | DONE — shipped in `ci/v2.1.0` (#175–#177) |
 | ai-review large-diff hardening (PLAN-011: `max_tokens` budget + honest `ai:review-infra-error` signal) | DONE — shipped in `ci/v2.1.1` (`max_tokens` 4096→8192) + `ci/v2.1.2` (→24576) |
-| Fleet re-pin to `ci/v2.1.2` | Founder + ops/inbox (🔴 cross-repo; operations #268) |
+| Fleet re-pin to `ci/v2.8.0` (target reconciled, PLAN-015 B1; forthcoming — cut when PLAN-015 lands; NOT a drop-in, public repos need pools) | Founder + ops/inbox (🔴 cross-repo; operations #268) |
 | Server-side pre-prod blockers (composition-required on business/iplanic; branch protection on the 3 unprotected repos incl. canon) | Founder + ops/inbox (cross-repo) |
 | PLAN-007 W4 fleet branch-protection arming | Founder-gated |
 | PLAN-007 W3 docs-sync dry-run → live | Founder-gated (App provisioning or doc-maintainer supersession) |
 | PLAN-008 pre-prod gap closure | COMPLETE (v2.0.0 cut) |
-| PLAN-009 fleet v2 cutover | In flight (Phase 0 🔴-gated; target now `ci/v2.1.2`) |
+| PLAN-009 fleet v2 cutover | In flight (Phase 0 🔴-gated; target reconciled to `ci/v2.8.0`, PLAN-015 B1) |
 | PLAN-010 adoption model | DRAFT — NOT READY (split recommended; see the plan) |
 | PLAN-011 ai-review large-diff hardening | SHIPPED (`ci/v2.1.1` + `v2.1.2`) |
 | PLAN-013 uniform protected AI-flow model (public+private, one self-hosted template, no visibility split) | SHIPPED (`ci/v2.2.0`) |
