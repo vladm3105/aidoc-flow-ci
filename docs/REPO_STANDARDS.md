@@ -355,6 +355,22 @@ single pattern works on GitHub-hosted and self-hosted ephemeral runners.
 but release and adoption validation MUST invoke `--strict`, which fails on
 settings drift, stale pins, fetch errors, or controls that cannot be verified.
 
+As of PLAN-015 (B2), `standards-drift` ALSO ships as a **`workflow_call`
+reusable** (`.github/workflows/standards-drift.yml`) with opt-in consumer caller
+templates (`install/templates/workflows/standards-drift.yml` + a `-private`
+variant, `auto_install: false`, manifested with `visibility_variants`). A
+consumer that installs the caller runs the drift check against its OWN repo on
+schedule — the reusable fetches the script from the **adopted canon tag**, which
+it reads from the consumer's OWN checked-out standards-drift caller pin (NOT
+`github.workflow_ref`, which inside a `workflow_call` reusable is the caller's own
+default-branch ref, not the pin; consumers do not vendor `sync/`). Canon's own
+weekly self-check + the fleet pin audit moved
+to `.github/workflows/standards-drift-self.yml`. **Branch protection is only
+verifiable with an admin-scoped token — NOT a grantable `GITHUB_TOKEN` workflow
+scope** — so under the default token that one control reports `warn_uncheckable`
+(non-blocking unless `--strict`), never a false green; run with an admin PAT to
+verify it.
+
 #### 4.3a A consumer `.gitleaks.toml` MUST declare rules — canon proves the ruleset is non-empty
 
 A gitleaks config that declares an `[allowlist]` but neither `[extend]

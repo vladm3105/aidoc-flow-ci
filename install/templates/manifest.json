@@ -129,6 +129,15 @@
       "auto_install": false
     },
     {
+      "_note": "PLAN-015 B2: server-side canon drift detector, thin caller over the reusable .github/workflows/standards-drift.yml. auto_install=false (opt-in; adoption via deploy-ci-wizard / the Task 8 arming runbook). Set tier per REPO_STANDARDS §1 after install. Not to be confused with canon's own standards-drift-self.yml.",
+      "path": ".github/workflows/standards-drift.yml",
+      "template": "workflows/standards-drift.yml",
+      "visibility_variants": {"public": "workflows/standards-drift.yml", "private": "workflows/standards-drift-private.yml"},
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": false
+    },
+    {
       "path": ".github/workflows/markdown-lint.yml",
       "template": "workflows/markdown-lint.yml",
       "visibility_variants": {"public": "workflows/markdown-lint.yml", "private": "workflows/markdown-lint-private.yml"},

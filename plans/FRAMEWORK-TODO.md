@@ -509,3 +509,55 @@ file also ships to consumers via `install/templates/` + `manifest.json` is the
 separable question the filing actually asked, and it should be settled with the
 adoption-model plan rather than as a drive-by: shipping a lint config to repos
 that do not run the linter adds a drift surface for no signal.
+
+### FT-15 — audit fleet reusables (ai-review / doc-maintainer / docs-sync) for the `workflow_ref`-is-the-caller asset-fetch bug
+
+**Status:** OPEN — investigation (do NOT blind-fix the four reusables).
+
+**Surfaced by:** PLAN-015 B2 pre-push review (2026-07-18, security + correctness
+lenses, both CONFIRMED with GitHub-docs citations). While building the new
+`standards-drift` reusable, two independent reviewers established that inside a
+`workflow_call` reusable, **`github.workflow_ref` resolves to the CALLER's entry
+workflow ref (the consumer's default branch), NOT the reusable's pinned tag.**
+The reusable's own resolved commit is `github.job_workflow_sha`.
+
+`standards-drift.yml` was fixed to use `job_workflow_sha` before merge. But the
+**existing** fleet reusables parse `github.workflow_ref` to build their
+cross-repo asset-fetch URLs:
+
+- `ai-review.yml:427-447` — fetches rubric / schema / `litellm_client.py` from
+  `…/aidoc-flow-ci/${REF}/…` where `REF="${GITHUB_WORKFLOW_REF##*@}"`.
+- `doc-maintainer.yml:135,142,196,203,209` — same pattern for
+  `reconcile.py` / `litellm_client.py`.
+- `docs-sync.yml:109-117` — same.
+
+**The claim to verify (NOT yet verified — this is why it's an investigation):**
+if `REF` is really the caller's ref, these fetch assets from
+`aidoc-flow-ci@<consumer-default-branch>` (e.g. `main`), NOT from the consumer's
+adopted `@ci/vX.Y.Z` pin — so the pin does not control which rubric / client /
+reconcile-script version actually runs. This "works" today only because
+`main` ≈ the tagged asset for same-owner consumers, and it would silently track
+`main` rather than the pinned release. It is a **determinism** regression, not a
+cross-domain supply-chain break (host + repo path are hardcoded; only the ref is
+wrong).
+
+**Why not fixed here:** (1) these are in-production, security-reviewed reusables
+that every consumer's AI gate depends on — a blind edit is high-risk; (2) it must
+first be **confirmed live** (a throwaway run logging `github.workflow_ref` vs
+`github.job_workflow_sha` from inside one of these reusables) rather than reasoned
+from docs alone, because the "works in production" evidence is genuinely in
+tension with the docs claim and one side is wrong; (3) the fix (switch to
+`job_workflow_sha`) is mechanical once confirmed, but should land as its own
+reviewed PR per reusable, not bundled into B2.
+
+**Fix sketch (after confirmation):** `github.job_workflow_sha` is NOT
+expression-accessible (verified 2026-07-18: actionlint rejects it and it is not
+in the documented `github` context — the reviewer that suggested it conflated the
+OIDC token claim with a context field), so the fix is NOT a drop-in swap. The
+robust pattern (used by the fixed `standards-drift.yml`) is to **derive the
+adopted `@ci/vX.Y.Z` tag from the consumer's OWN checked-out caller file** and
+fetch from that tag + a hardcoded `vladm3105/aidoc-flow-ci` owner. For ai-review
+this is more involved than standards-drift — the review job does not check out the
+consumer's `.github/workflows/` the same way — so each reusable needs its own
+analysis, which is why this stays an investigation, not a mechanical sweep.
+Correct any "pinned tag" determinism wording in their comments/docs to match.

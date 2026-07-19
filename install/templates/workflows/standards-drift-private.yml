@@ -1,0 +1,43 @@
+# Caller template for aidoc-flow-ci's reusable standards-drift workflow (PRIVATE).
+#
+# Weekly server-side canon drift check on the self-hosted ephemeral pool (private
+# repos have no GitHub-hosted minutes — runner policy, REPO_STANDARDS §4.1/§4.2).
+# Compares THIS repo's branch protection, repo settings, actions permissions, and
+# labels against the canon templates for your tier; warning-only (IPLAN-0017
+# §3.1b), never blocks. Dispatch with `strict: true` for a release/adoption gate.
+#
+# REQUIRES ci/v2.8.0+: the standards-drift `workflow_call` reusable first ships in
+# ci/v2.8.0. The @ci/v pin below tracks the repo VERSION and is bumped to the
+# release tag at cut time — do NOT scaffold this caller against an earlier pin
+# (unlike other callers, the reusable does not exist at ≤ ci/v2.7.0).
+#
+# BEFORE ADOPTING: set `tier:` below to YOUR repo's tier
+#   (governance | product | ops | umbrella | bootstrap — REPO_STANDARDS.md §1).
+#
+# TOKEN: verifying branch protection needs an admin-scoped token, which is NOT a
+# grantable GITHUB_TOKEN workflow scope — so under the default token the
+# branch-protection control reports as "uncheckable" (a warning, not a failure).
+# To verify it, run this with a PAT carrying admin (set it as GH_TOKEN).
+
+name: standards-drift
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'   # weekly Mon 09:00 UTC
+  workflow_dispatch:
+    inputs:
+      strict:
+        description: 'Fail on drift or an uncheckable control (release/adoption gate)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/standards-drift.yml@ci/v2.7.0
+    with:
+      tier: product
+      strict: ${{ github.event.inputs.strict == 'true' }}
+      runner_labels: '["self-hosted","ci-runner","single-use"]'

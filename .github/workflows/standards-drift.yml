@@ -1,80 +1,108 @@
-# standards-drift.yml — weekly server-side canon drift check.
+# standards-drift.yml — REUSABLE (workflow_call) server-side canon drift check.
 #
-# Self-adoption per PLAN-002 §5.5 line 461-466 + §7 success criterion #4
-# ("sync/check-standards-drift.sh per non-paused repo returns 0 drift,
-# 0 fetch/scope error(s) when run in that repo's CI"). Runs
-# `bash sync/check-standards-drift.sh --tier product` on schedule.
+# A consumer repo does NOT ship `sync/check-standards-drift.sh`, so this
+# reusable FETCHES the script from the adopted canon tag and runs it against the
+# CALLER repo. It reports drift in the caller's server-side settings (branch
+# protection, repo settings, actions permissions, labels) versus the canon
+# templates for `inputs.tier`.
 #
-# WARNING-ONLY per canon §3.1b on the scheduled run — drift emits
-# `::warning::` annotations for operator visibility and never blocks. The
-# script is not unconditionally non-blocking, though: `workflow_dispatch`
-# below exposes `strict`, which makes it exit non-zero on drift (for
-# release/adoption validation).
+# WHICH canon version: the adopted `@ci/vX.Y.Z` pin is read from the consumer's
+# OWN checked-out standards-drift caller file. We deliberately do NOT use
+# `github.workflow_ref` — inside a `workflow_call` reusable it is the CALLER's
+# entry ref (the consumer's default branch), NOT this reusable's pin — and
+# `github.job_workflow_sha` is not accessible as a `${{ }}` expression. Reading
+# the tag from the caller file is deterministic and pins the fetched script + the
+# template comparison to exactly the version the consumer adopted. (A repo with
+# two standards-drift callers pinned to different tags resolves to the highest —
+# an abnormal install, and warning-only.)
 #
-# SCOPE — this run checks THIS repo only. The script auto-detects its target
-# via `gh repo view --json nameWithOwner`, so it reports on whatever repo it
-# is checked out in. It does NOT survey the fleet.
+# WARNING-ONLY by default (per IPLAN-0017 §3.1b — the drift-detection contract is
+# advisory; consumers decide). Pass `strict: true` for a release/adoption gate:
+# the script then exits non-zero on drift OR an uncheckable control.
 #
-# aidoc-flow-ci self-tier = product (per REPO_STANDARDS.md §1 taxonomy).
-
+# TOKEN: reading branch protection requires an ADMIN-scoped token, which is NOT a
+# grantable `GITHUB_TOKEN` workflow permission scope. Under the default token the
+# script reports branch-protection as `warn_uncheckable` (non-blocking unless
+# `strict`) rather than a false green. A consumer that wants the branch-protection
+# arm actually verified runs this with a PAT carrying admin (via `GH_TOKEN`).
+#
+# Canon's OWN weekly self-check + the fleet-wide pin audit live in the sibling
+# `standards-drift-self.yml` (canon has the script locally and does not exercise
+# this fetch path). Consumers install a thin caller
+# (`install/templates/workflows/standards-drift.yml`) that `uses:` this reusable.
 name: standards-drift
 
 on:
-  schedule:
-    # Monday 09:00 UTC — early week visibility for any accumulated drift.
-    - cron: '0 9 * * 1'
-  workflow_dispatch:
+  workflow_call:
     inputs:
+      tier:
+        description: "Canon tier to compare against: governance|product|ops|umbrella|bootstrap"
+        type: string
+        required: true
       strict:
-        description: 'Fail on drift or an uncheckable control (use for release/adoption validation)'
+        description: "Fail on drift or an uncheckable control (release/adoption gate). Default warning-only."
         type: boolean
         default: false
+      runner_labels:
+        description: 'JSON array of runner labels. Default ubuntu-latest; a private consumer passes its self-hosted pool.'
+        type: string
+        default: '"ubuntu-latest"'
 
-# Zero default token permissions (sec LOW, defense-in-depth); the drift
-# job below explicitly grants only what it needs (contents: read).
 permissions: {}
+
+concurrency:
+  group: standards-drift-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   drift:
     name: check-standards-drift
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
     timeout-minutes: 15
     permissions:
       contents: read
+      # NB: reading branch protection needs an admin-scoped token, which is NOT a
+      # grantable GITHUB_TOKEN scope — so under the default token the script
+      # reports branch-protection as warn_uncheckable (non-blocking unless strict),
+      # never a false green. Run with an admin PAT (GH_TOKEN) to verify it.
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Checkout caller repo (read @ci/v pins + local files)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - name: Run standards drift check
+      - name: Fetch canon drift script + run against the caller repo
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          STRICT: ${{ inputs.strict || false }}
+          GH_REPO: ${{ github.repository }}
+          TIER: ${{ inputs.tier }}
+          STRICT: ${{ inputs.strict }}
         run: |
-          args=(--tier product)
+          set -euo pipefail
+          # Resolve the adopted canon tag from the consumer's OWN checked-out
+          # standards-drift caller pin (actions/checkout above put it on disk).
+          # Deterministic and pin-accurate; see the header for why not workflow_ref.
+          CANON_TAG="$(grep -rhoE 'aidoc-flow-ci/\.github/workflows/standards-drift\.yml@ci/v[0-9]+\.[0-9]+\.[0-9]+' .github/workflows/ 2>/dev/null \
+            | grep -oE 'ci/v[0-9]+\.[0-9]+\.[0-9]+' | sort -Vu | tail -1 || true)"
+          [ -n "$CANON_TAG" ] \
+            || { echo "::error::standards-drift: could not find the standards-drift '@ci/vX.Y.Z' pin in .github/workflows/ — is this caller installed from the canon template? INFRASTRUCTURE error, not a drift verdict."; exit 1; }
+          echo "::notice::standards-drift: adopted canon pin vladm3105/aidoc-flow-ci@${CANON_TAG}"
+
+          # The consumer does not ship sync/. Fetch the script from the adopted
+          # canon tag; owner/repo hardcoded to canonical canon (matching the
+          # script's own template + pin-currency fetches, check-standards-drift.sh).
+          # ALWAYS fetch to a fresh temp path — never run a caller-vendored copy
+          # that could shadow the pinned version. The script self-fetches its
+          # check-pin-currency.sh dependency from the same tag (see its tail).
+          SCRIPT="$(mktemp)"
+          curl -fsSL --retry 3 --retry-delay 2 \
+            -o "$SCRIPT" \
+            "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CANON_TAG}/sync/check-standards-drift.sh" \
+            || { echo "::error::standards-drift: could not fetch check-standards-drift.sh from vladm3105/aidoc-flow-ci@${CANON_TAG} — INFRASTRUCTURE error, not a drift verdict. Re-run."; exit 1; }
+          [ -s "$SCRIPT" ] \
+            || { echo "::error::standards-drift: fetched check-standards-drift.sh is empty"; exit 1; }
+
+          # --ci-tag pins the comparison base (tier templates + pin-currency) to
+          # the SAME adopted tag — deterministic; the consumer compares against
+          # exactly the version it adopted.
+          args=(--tier "$TIER" --repo "$GH_REPO" --ci-tag "$CANON_TAG")
           [ "$STRICT" = "true" ] && args+=(--strict)
-          bash sync/check-standards-drift.sh "${args[@]}"
-
-      - name: Fleet pin-currency audit (public repos)
-        # Central weekly view of stale @ci/v* pins. GITHUB_TOKEN can read public
-        # repos' contents, so this step covers the PUBLIC fleet only.
-        #
-        # PRIVATE repos are NOT covered here. They are meant to be covered by
-        # their own standards-drift run: check-standards-drift.sh chains
-        # check-pin-currency.sh itself (see its tail), so a private repo running
-        # it transitively gets pin-currency without naming it in the caller.
-        #
-        # That mechanism is real but is NOT currently delivering. Verified
-        # 2026-07-16: business + interlog have no caller at all; iplanic's pins
-        # `e15ec7d…`, which is the ANNOTATED TAG OBJECT of ci/v1.6.0 rather than
-        # a commit, so raw.githubusercontent has never served it (404) and that
-        # caller has never worked; every private standards-drift run on record
-        # has failed. Tracked as FT-13 in plans/FRAMEWORK-TODO.md — read it
-        # before restating anything here: this comment has been wrong three
-        # times, in three different directions. Fixing the callers is
-        # consumer-side work and goes via the ops/inbox runbook. Warning-only.
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          bash sync/check-pin-currency.sh --fleet \
-            vladm3105/aidoc-flow-framework vladm3105/aidoc-flow-engramory \
-            vladm3105/aidoc-flow-iplan-standard vladm3105/iplan-runner \
-            vladm3105/aidoc-flow-ci || true
+          bash "$SCRIPT" "${args[@]}"
