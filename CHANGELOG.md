@@ -5,6 +5,28 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — install ergonomics (PLAN-015 Task 6, 2026-07-18)
+
+- **`install/templates/.yamllint.yaml`** (M4): a consumer yamllint profile
+  (120-char, prose-relaxed) — companion to the pre-push hook's yamllint check.
+  `install.sh` copies it on bootstrap if absent (preserve-if-exists); manifested
+  (`auto_install: false`, `safe_to_replace: false`) for `--update` coverage.
+  Without it a consumer that has yamllint gets the 80-char default, which floods
+  SDD prose YAML (~300 errors measured on a fresh consumer).
+- **`install.sh` tool-presence note** (L2): flags missing `shellcheck` /
+  `actionlint` at install time (non-fatal) — those two pre-push checks silently
+  SKIP without the tools. `docs/local-pre-push.md` §5 gains per-platform install
+  instructions (apt / brew / `go install`).
+- **`install/templates/workflows/ai-review.yml`** (L5b): the caller comment's
+  blanket "never checks out PR head" claim now notes the default-off autofix job
+  exception (checks out head with a read-only token, `persist-credentials: false`,
+  never executes PR code — CI-0009).
+- **L1 dropped** (confirm-first): a `codeql-private.yml` variant is unnecessary —
+  the `codeql.yml` reusable's `runner_labels` input already lets a private
+  consumer pass the self-hosted pool, and CodeQL SARIF upload on private needs
+  GitHub Advanced Security (absent on the fleet), so the variant would fix a path
+  no private consumer reaches. `sast-scan` (CI-0010) is the private SAST substitute.
+
 ### Fixed — script hygiene (PLAN-015 Task 5, 2026-07-18)
 
 - **`scripts/pre_push_check.sh`** (M3): the mechanical linters now scan the push

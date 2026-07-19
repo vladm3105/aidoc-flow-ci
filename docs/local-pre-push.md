@@ -102,12 +102,22 @@ as part of the Wave 2 rollout per PLAN-002 §5.5).
   bash`) if you're a founder using the hook locally on macOS.
 - **`pre-commit`** (the `pre-commit.com` toolchain): `pip install
   pre-commit` + `pre-commit install` in the consumer repo.
-- **Optional linters** (installed for local pre-lint; canon script skips
-  each individually if absent):
-  - `markdownlint-cli2` (`npm install -g markdownlint-cli2`)
-  - `yamllint` (`pip install yamllint`)
-  - `actionlint` (`brew install actionlint` or download binary)
-  - `shellcheck` (`brew install shellcheck` or apt/yum)
+- **Linters** (the canon script skips each individually if absent — so a
+  missing tool means that check runs only in CI, not locally). `install.sh`
+  emits a `NOTE` naming any missing `shellcheck`/`actionlint` at install time.
+  Install all four so the local hook mirrors CI (2 of the 5 checks —
+  `actionlint`, `shellcheck` — silently SKIP without them):
+  - `markdownlint-cli2` — `npm install -g markdownlint-cli2`
+  - `yamllint` — `pip install yamllint` (reads the shipped `.yamllint.yaml`, M4)
+  - `actionlint` — `brew install actionlint`; apt has none, so on Linux use
+    `go install github.com/rhysd/actionlint/cmd/actionlint@latest` or the
+    release binary (`github.com/rhysd/actionlint/releases`)
+  - `shellcheck` — `brew install shellcheck` · `apt install shellcheck` ·
+    `dnf install ShellCheck`
+
+- **`.yamllint.yaml`** (PLAN-015 M4) — `install.sh` copies a consumer profile
+  (120-char, prose-relaxed) if you don't already have one, so `yamllint` doesn't
+  flood SDD prose YAML with 80-char errors. Tune it for your repo.
 
 The audit-trail phrase check requires only `git` + `grep` (in every
 POSIX-ish env). No CLI dependency, no network calls.

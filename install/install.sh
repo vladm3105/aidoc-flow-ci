@@ -542,6 +542,28 @@ else
   echo "  add       scripts/pre_push_check.sh"
 fi
 
+# .yamllint.yaml — companion config for the pre-push hook's yamllint check
+# (PLAN-015 M4). Without it a consumer that has yamllint installed gets the
+# 80-char default, which floods SDD prose YAML with hundreds of line-length
+# errors. Preserve if the consumer already tuned one (either extension).
+if [ -f ".yamllint.yaml" ] || [ -f ".yamllint.yml" ]; then
+  echo "  preserve  .yamllint.yaml (already exists — consumer-tuned)"
+else
+  fetch_template ".yamllint.yaml" ".yamllint.yaml" || exit 1
+  echo "  add       .yamllint.yaml"
+fi
+
+# L2 (PLAN-015): the pre-push hook's actionlint + shellcheck checks degrade to
+# skipped-with-notice when the tools are absent — 2 of 5 checks silently inert.
+# Flag missing tools at install time (non-fatal) so the founder can install them;
+# platform instructions are in docs/local-pre-push.md.
+_missing_tools=""
+command -v shellcheck >/dev/null 2>&1 || _missing_tools="$_missing_tools shellcheck"
+command -v actionlint >/dev/null 2>&1 || _missing_tools="$_missing_tools actionlint"
+if [ -n "$_missing_tools" ]; then
+  echo "  NOTE      pre-push tools not found:${_missing_tools} — those checks will SKIP locally until installed (see docs/local-pre-push.md §5 Prerequisites). CI still enforces them."
+fi
+
 # .pre-commit-config.yaml — merge canon hook block idempotently.
 # Idempotency key: canonical marker `# CANON: aidoc-flow-ci pre_push_check`.
 # If present → no-op. If absent → merge (append hook block; upgrade
