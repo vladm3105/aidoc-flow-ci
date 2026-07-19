@@ -513,6 +513,12 @@ that do not run the linter adds a drift surface for no signal.
 ### FT-15 — audit fleet reusables (ai-review / doc-maintainer / docs-sync) for the `workflow_ref`-is-the-caller asset-fetch bug
 
 **Status:** OPEN — investigation (do NOT blind-fix the four reusables).
+**Priority ELEVATED 2026-07-19 → trust-blocker:** the value/standard-readiness
+assessment (`plans/ASSESSMENT_flow-ci-value-and-standard-readiness.md`) makes this
+gating — if the deployed ai-review fetches its rubric/client from `main` rather
+than the pinned tag, the gate's "version-deterministic" guarantee has not held in
+production. Confirm (a throwaway run logging `github.workflow_ref` from inside a
+reusable) BEFORE trusting the pin story or widening deployment.
 
 **Surfaced by:** PLAN-015 B2 pre-push review (2026-07-18, security + correctness
 lenses, both CONFIRMED with GitHub-docs citations). While building the new
