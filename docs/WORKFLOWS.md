@@ -10,7 +10,7 @@ if a workflow doesn't appear here, it doesn't exist in the library.
 > covers how a new company project onboards. [`overrides.md`](overrides.md)
 > covers the 3 override modes. This doc is the workflow-catalog layer.
 
-## 1. Complete workflow catalog (14 reusables)
+## 1. Complete workflow catalog (16 reusables)
 
 Every workflow ships as `workflow_call` at
 `vladm3105/aidoc-flow-ci/.github/workflows/<name>.yml@ci/vX.Y.Z`.
@@ -32,11 +32,14 @@ Pin at a released tag; never `@main` in a consumer.
 | 14 | `trivy-scan.yml` | IaC / misconfiguration gate via **trivy binary** (`trivy config` mode only — Dockerfile/IaC misconfig; NOT `trivy fs`, which would duplicate dep-scan + secret-scan). SHA-256-verified `run:` install (not `aquasecurity/trivy-action`, allowlist-blocked §4.3). **Uniform protected + fork-guarded** (PLAN-014). Data-only, **SSRF-hardened** — restricted to static scanners (`--misconfig-scanners dockerfile,kubernetes,cloudformation,azure-arm`) because trivy's terraform/helm/ansible scanners fetch PR-controlled remote sources. `fail-on-findings` (default false → report-only). Best-effort SARIF → Code scanning. | ~20-90 s | PLAN-014 (`ci/v2.5.0`) |
 | 15 | `sast-scan.yml` | SAST (static code analysis) gate via **semgrep** (VERSION-pinned pip into an isolated venv — semgrep is Python, not a static binary; no third-party action, §4.3). Complements native CodeQL (which needs GHAS → N/A on private), so this gates PRIVATE repos too. **Uniform protected + fork-guarded** (PLAN-014). Data-only static AST analysis; `--metrics off` (no telemetry to semgrep.dev) + EXPLICIT `--config` (never repo-local auto-discovery, so a PR can't inject rules); strips PR-supplied `.semgrepignore` (gate owns coverage). `config` input (default `p/default`). `fail-on-findings` (default false → report-only). Optional `autofix-preview` (`ci/v2.7.0`, default false): surfaces semgrep's **deterministic** rule-provided `--autofix` patch in the job summary — **preview only, nothing pushed** (no App); model-based push-back is autofix (PLAN-012). Best-effort SARIF → Code scanning. | ~40-120 s (×2 w/ preview) | PLAN-014 (`ci/v2.6.0`, `ci/v2.7.0`) |
 | 13 | `dep-scan.yml` | Dependency-vulnerability (SCA) gate via **osv-scanner binary** (SHA-256-verified `run:` install — NOT `google/osv-scanner-action`, allowlist-blocked §4.3). **Uniform protected** (PLAN-014): one self-hosted template, public+private, no visibility split (a flip is a no-op); **fork-guarded** (forks skip → human review; data-only, never `--call-analysis`). `fail-on-findings` (default false → report-only rollout). Best-effort SARIF → Code scanning (`continue-on-error`; no-ops on private w/o GHAS). | ~20-60 s | PLAN-014 (`ci/v2.4.0`) |
+| 16 | `standards-drift.yml` | Consumer-installable server-side drift detector (PLAN-015 B2). `workflow_call` reusable: fetches `check-standards-drift.sh` from the adopted canon tag and runs it against the CALLER repo, comparing branch protection / repo settings / actions-permissions / labels against the tier template. Warning-only by default (IPLAN-0017 §3.1b); `strict: true` for a release/adoption gate. Opt-in (`auto_install: false`); `-private` variant for the self-hosted pool. Canon's own weekly self-check is `standards-drift-self.yml`. | ~20-60 s | PLAN-015 (`ci/v2.8.0`) |
 | 12 | `audit-trail-check.yml` | OPS-0069 audit-trail phrase gate. Belt-and-suspenders CI check for the local pre-push hook (REPO_STANDARDS.md §14): verifies every non-exempt PR carries `Multi-agent self-review per OPS-0065` OR `Self-review skipped per founder OK` in some commit body. Exemptions: bot-authored range (dependabot/renovate/github-actions), revert-only range, two-signal `skip-audit-trail` label + body marker. Check-name renders as `call / verify`. `fetch-depth: 0` prevents fork-PR false-pass. | ~10-30 s | PLAN-002 PR-U3 (2026-07-08) |
 
 ## 2. Per-repo applicability matrix
 
-Rows = workspace repos. Columns = the 12 workflows. Cell values:
+Rows = workspace repos. Columns = the 12 **core** workflows (the 4 opt-in
+surfaces — `dep-scan`, `trivy-scan`, `sast-scan`, `standards-drift` — are adopted
+per-repo and are not matrixed). Cell values:
 
 - **✅** — should adopt / adopted
 - **⏸ skip** — skippable with rationale (see § "3. Skip guidance" below)
