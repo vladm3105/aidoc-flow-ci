@@ -59,7 +59,9 @@ placeholder substituted to this directory's absolute path — the reason raw
 `~/.config/ci-runner/<instance>.env`, and enables `ci-runner@<instance>`.
 
 Add another repo: run it again with a different `TARGET_REPO` (the instance
-name defaults to the repo basename).
+name defaults to the repo basename). **Provision every instance from the same
+checkout** — the shared unit template's substituted paths point at the
+checkout that provisioned last.
 
 **Migrating from an older label scheme?** Override the labels for the
 coexistence window so old-label and new-label jobs both find a runner, then
@@ -96,6 +98,9 @@ no benefit.)
 | `RUNNER_GROUP_ID` | `1` | Default runner group |
 | `RUNNER_CPUS` / `RUNNER_MEM` | `2` / `4g` | per-job container caps |
 | `RUNNER_PIDS_LIMIT` | `512` | maximum processes inside one job container |
+| `RUNNER_WORKDIR` | `_work` | per-job workspace subdirectory inside the container |
+| `GH_HOST` | — | GitHub Enterprise host, if not github.com |
+| `GH_TOKEN_STRIP` | `1` | strip a (possibly stale) `GH_TOKEN` env before every `gh` call. **Headless hosts authenticating via a `GH_TOKEN` service PAT must set `0`** or JIT minting silently 401s |
 | `RUNNER_DNS` | `1.1.1.1 8.8.8.8` | container resolvers (`""` = host resolver) |
 
 Before enabling AI workflows, verify a single-use container can reach the

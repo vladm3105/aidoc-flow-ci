@@ -124,14 +124,17 @@ custom names.
 
 The reference self-hosted runner image spec lives at
 [`../install/templates/runner/`](../install/templates/runner/)
-(`Dockerfile` + `build-image.sh`). It builds atop
-[`ghcr.io/actions/actions-runner:latest`](https://github.com/actions/runner)
-with the following baked in:
+(`Dockerfile` + `build-image.sh`). It builds atop a **digest-pinned**
+[`ghcr.io/actions/actions-runner`](https://github.com/actions/runner) base
+(see the [`Dockerfile`](../install/templates/runner/Dockerfile) for the
+current pin — base-digest bumps land in canon and flow to consumers via
+re-pin) with the following baked in:
 
 | Tool | Why |
 |---|---|
 | `gh` CLI | Required by `ai-review` + `composition` workflows for `gh api` calls; **historical foot-gun** (PR #101 on operations spent ~2h debugging a "network failure" that was actually `gh: not found` in the runner image) |
 | `libatomic1` | Node-backed lint tools installed at job time (markdownlint-cli2) crash without it — second shipped instance of the same image-drift class (business #63) |
+| `ripgrep` | fast search for AI-review / doc-maintainer job scripts |
 | `python3` | Runs the dependency-free LiteLLM adapter |
 | `gh`, `jq`, `curl`, `git` | Standard CLI utilities the workflows assume |
 

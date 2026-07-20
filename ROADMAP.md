@@ -8,14 +8,16 @@ deferred items belong in `plans/` or `HANDOFF.md` open threads.
 
 ---
 
-## Next release — runner canon templates (PLAN-016, merged plan; PR 1 in flight)
+## Next release — runner canon templates (PLAN-016; W1–W3 merged, W4 pending)
 
 `install/templates/runner/` brings the runner reference implementation into
 canon (CI-0012): image spec with `libatomic1`, single-use supervisor with the
 `@RUNNER_HOME@` placeholder unit, provision-runner as sole installer, docker
-dependabot watch. Follow-ups: operations vendored re-baseline (PLAN-016 W3,
-founder-approved PR), then a minor `ci/vX.Y.Z` tag + host image rebuild
-(W4, 🔴 founder).
+dependabot watch. PR 1 merged (#227); W3 operations vendored re-baseline
+merged (operations #277, founder-delegated review); pre-tag ci-preprod-review
+run 2026-07-20 → SHIP-WITH-FIXES, fixes landed (this PR). Remaining: a minor
+`ci/vX.Y.Z` tag + VENDORED-FROM re-stamp + host image rebuild (W4, 🔴
+founder), and the FT-19/FT-20 hardening deferrals.
 
 ## Current phase — v2.8.0 shipped (PLAN-015 pre-prod fix closure); founder-gated rollout
 

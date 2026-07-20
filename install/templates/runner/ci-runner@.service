@@ -5,6 +5,8 @@
 # substitutes the placeholder with the real checkout path at install time
 # (systemd does not expand environment variables in the ExecStart path).
 #
+# @DOCKER_BIN@ is likewise substituted by provision-runner.sh (absolute path
+# required by systemd; /usr/bin/docker is wrong on rootless installs).
 # %i = a short repo nickname that maps to ~/.config/ci-runner/%i.env
 # (one env file per repo, holding TARGET_REPO etc. — written by
 # provision-runner.sh).
@@ -15,7 +17,7 @@ Wants=network-online.target
 
 [Service]
 EnvironmentFile=%h/.config/ci-runner/%i.env
-ExecStartPre=/usr/bin/docker info
+ExecStartPre=@DOCKER_BIN@ info
 # @RUNNER_HOME@ is replaced by provision-runner.sh with the absolute path of
 # the directory holding run-ephemeral.sh on this host.
 ExecStart=@RUNNER_HOME@/run-ephemeral.sh

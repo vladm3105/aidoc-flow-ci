@@ -56,8 +56,11 @@ rationale.
 
 Alongside the workflows the repo ships **workflow caller templates**
 (both `-public` / `-private` variants where runner class differs) in
-`install/templates/workflows/`, plus starter configs (CODEOWNERS, branch
-protection, dependabot, labels, governance-file skeletons), the canonical
+`install/templates/workflows/`, the **self-hosted runner reference
+implementation** in `install/templates/runner/` (digest-pinned image spec,
+single-use supervisor, provisioning script — see
+[`docs/runners.md`](docs/runners.md) §2), plus starter configs (CODEOWNERS,
+branch protection, dependabot, labels, governance-file skeletons), the canonical
 scripts (`install/install.sh`, `install/apply-standards.sh`,
 `scripts/pre_push_check.sh`), drift detectors in `sync/`, `LABELS.md`
 (label-namespace conventions), and the consumer-facing docs in `docs/`
