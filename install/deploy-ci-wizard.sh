@@ -45,7 +45,7 @@ preflight() {
   if [ "$vis" = PRIVATE ]; then
     local runners; runners="$($GH api "repos/$repo/actions/runners" --jq '[.runners[]|select(.status=="online")|[.labels[].name]|join(",")]|join(" | ")' 2>/dev/null || echo '')"
     if echo "$runners" | grep -q 'ci-runner' && echo "$runners" | grep -q 'single-use'; then c_ok "self-hosted ci-runner/single-use pool online: $runners"
-    else c_no "PRIVATE repo has NO online ci-runner/single-use pool → 🔴 founder registers the pool (docs/runners.md). Do NOT use ubuntu-latest."; fi
+    else c_no "PRIVATE repo has NO online ci-runner/single-use pool → 🔴 founder registers the pool (docs/runners.md §2/§3; templates: install/templates/runner/). Do NOT use ubuntu-latest."; fi
   else
     local prunners; prunners="$($GH api "repos/$repo/actions/runners" --jq '[.runners[]|select(.status=="online")|[.labels[].name]|join(",")]|join(" | ")' 2>/dev/null || echo '')"
     if echo "$prunners" | grep -q 'ci-runner' && echo "$prunners" | grep -q 'single-use'; then c_ok "PUBLIC → generic lint flows use ubuntu-latest; ci-runner/single-use pool ALSO online (needed by the uniform-protected AI-flows + PLAN-014 scanners): $prunners"

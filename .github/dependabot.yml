@@ -1,10 +1,13 @@
-# dependabot.yml — pruned for aidoc-flow-ci (PLAN-007 W5).
+# dependabot.yml — pruned for aidoc-flow-ci (PLAN-007 W5; docker added PLAN-016).
 #
-# This repo ships reusable workflows + shell scripts + docs — NO pip/npm/docker/
-# gitsubmodule manifests. The canonical multi-ecosystem template
-# (install/templates/dependabot.yml) says "enable only ecosystems present in the
-# target repo"; the un-pruned copy enabled 4 orphan ecosystems that generated
-# recurring Dependabot update errors. Pruned to github-actions only.
+# This repo ships reusable workflows + shell scripts + docs + the runner
+# reference implementation — NO pip/npm/gitsubmodule manifests. The canonical
+# multi-ecosystem template (install/templates/dependabot.yml) says "enable only
+# ecosystems present in the target repo"; the un-pruned copy enabled orphan
+# ecosystems that generated recurring Dependabot update errors. Enabled:
+# github-actions + docker (the canon runner Dockerfile at
+# install/templates/runner/ — base-digest bumps land HERE and flow to
+# consumers via re-pin, never the reverse; PLAN-016 W2).
 #
 # Auto-merge policy: Dependabot PRs pass through ai-review + composition +
 # auto-merge-ai-prs on green (per auto_merge.repos); aidoc-flow-ci is
@@ -25,5 +28,20 @@ updates:
         update-types:
           - minor
           - patch
+    labels:
+      - dependencies
+
+  # Bump the digest-pinned actions-runner base image in the canon runner
+  # template (install/templates/runner/Dockerfile). Direction of truth:
+  # canon leads, consumers re-pin (PLAN-016 W2). Best-effort: the FROM is a
+  # bare digest (no tag lineage — the tagless form is what the consumer
+  # contract-lock regex asserts), so dependabot may be unable to compute
+  # bumps; the documented manual digest-refresh path in
+  # install/templates/runner/README.md remains authoritative.
+  - package-ecosystem: docker
+    directory: /install/templates/runner
+    schedule:
+      interval: weekly
+      day: monday
     labels:
       - dependencies

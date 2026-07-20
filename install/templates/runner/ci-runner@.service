@@ -1,0 +1,27 @@
+# User-level systemd template for the single-use CI runner supervisor.
+# TEMPLATE — do NOT `cp` this file directly into ~/.config/systemd/user/:
+# the ExecStart below carries an @RUNNER_HOME@ placeholder that systemd will
+# not expand. Install via `provision-runner.sh` in this directory, which
+# substitutes the placeholder with the real checkout path at install time
+# (systemd does not expand environment variables in the ExecStart path).
+#
+# %i = a short repo nickname that maps to ~/.config/ci-runner/%i.env
+# (one env file per repo, holding TARGET_REPO etc. — written by
+# provision-runner.sh).
+[Unit]
+Description=Single-use sandboxed CI runner (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=%h/.config/ci-runner/%i.env
+ExecStartPre=/usr/bin/docker info
+# @RUNNER_HOME@ is replaced by provision-runner.sh with the absolute path of
+# the directory holding run-ephemeral.sh on this host.
+ExecStart=@RUNNER_HOME@/run-ephemeral.sh
+Restart=always
+RestartSec=5
+# The supervisor calls docker (group-accessible) + gh (host auth); no root.
+
+[Install]
+WantedBy=default.target
