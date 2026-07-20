@@ -4,7 +4,23 @@ Live cross-session resume point for the workspace CI + governance-workflow
 canon library. Read at session start; refresh at milestones and before
 context compaction.
 
-## Current state (2026-07-19)
+## Current state (2026-07-20)
+
+- **PLAN-016 runner-canon move: W1–W3 COMPLETE, W4 pending (🔴 founder).**
+  Canon templates live at `install/templates/runner/` (#227, CI-0012);
+  operations vendored re-baseline merged (operations #277). Pre-tag
+  `ci-preprod-review` (5 lenses) returned SHIP-WITH-FIXES; the fix set landed
+  on this branch. Remaining W4: cut the next `ci/vX.Y.Z`, re-stamp the 5
+  VENDORED-FROM headers in operations, rebuild `aidoc-flow-runner:latest` on
+  the host (adds `libatomic1` → unblocks business #63; no service restart —
+  one-shot containers). At tag time update TOGETHER: this bullet + ROADMAP
+  next-release block + FT-19 pending→accepted (if granted) + the 5
+  VENDORED-FROM stamps. Deferred hardening: FT-19 (container egress
+  restriction — founder risk-accept pending), FT-20 (defense-in-depth
+  bundle). Same-day context: FT-16 outage (wedged single-use runner, 16 jobs
+  ~3h, zero alerting) — the fleet-watchdog backlog item exists because of it.
+
+### Previous state (2026-07-19)
 
 **`ci/v2.8.0` is the Latest release — PLAN-015 (pre-prod review fix closure) is
 SHIPPED.** A 5-lens pre-prod review of the canon returned "workflows ready,

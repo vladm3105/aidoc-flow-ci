@@ -568,7 +568,6 @@ consumer's `.github/workflows/` the same way — so each reusable needs its own
 analysis, which is why this stays an investigation, not a mechanical sweep.
 Correct any "pinned tag" determinism wording in their comments/docs to match.
 
-
 ### FT-16 — runner-fleet health has no reflexes: wedged supervisor queued 16 jobs ~3h with zero alerting
 
 **Found:** 2026-07-20, operations — the single `ci-runner,single-use`
@@ -632,3 +631,40 @@ callers actually emit (catches orphans + renames — would have caught FT-12
 and today's iplanic block automatically), and emit a per-repo 🔴-step
 worksheet (exact commands + current-state checks) so the founder executes
 rather than derives.
+
+### FT-19 — job containers share the default docker bridge: fork-PR code can reach host-local services (LiteLLM) — egress restriction needed; founder risk-accept pending for the current tag
+
+**Found:** 2026-07-20 pre-tag security lens — `run-ephemeral.sh` runs each
+job container on the default bridge with no egress restriction; on a public
+repo, fork `pull_request` code inside the container can reach the bridge
+gateway `172.17.0.1`, where this fleet binds the LiteLLM proxy (`:4001`) and
+where sibling runners live. Today the only boundary is the proxy requiring a
+key (fork jobs get no secrets → 401) — a residual, not an open door, but
+canon should not lean on "the service happens to require auth."
+**Surfaces:** `install/templates/runner/run-ephemeral.sh`,
+`install/templates/runner/README.md`, `docs/runners.md`.
+
+**Fix sketch:** dedicated user-defined docker network per supervisor +
+documented host firewall rules denying the container RFC1918 + the bridge
+gateway except the explicit LiteLLM endpoint; or move LiteLLM off the bridge
+the runners use. Until then the risk is PENDING explicit founder risk-accept for
+the current tag (tracked here + CHANGELOG 2026-07-20; flip this line when
+granted).
+
+### FT-20 — runner defense-in-depth bundle: JITCONFIG via env, no job-container disk quota, no provision preflight
+
+**Found:** 2026-07-20 pre-tag review (security + portability lenses), all
+low-severity residuals: (a) the JIT config rides `-e JITCONFIG` — readable
+by PR code via `/proc/1/environ` and `docker inspect`; mitigations real
+(single-use, consumed at connect, same-user trust model) — prefer stdin or a
+0600 tmpfs file; (b) no `--storage-opt size=`/tmpfs cap on `_work` — PR code
+can fill host docker storage (shared-daemon DoS); needs overlay2+pquota so
+opt-in; (c) `provision-runner.sh` preflight is docker-on-PATH only (added
+2026-07-20); still unchecked: docker-group membership (socket permission),
+`gh auth status`, `systemctl --user` reachability — those
+first-run-adopter failures still land deep with raw errors while the
+provisioner reports done (wizard-side sibling: FT-18).
+**Surfaces:** `install/templates/runner/{run-ephemeral.sh,provision-runner.sh,README.md}`.
+
+**Fix sketch:** (a) stdin/`--env-file` on tmpfs; (b) documented opt-in
+`--storage-opt`; (c) `step_preflight` failing fast per missing prerequisite.

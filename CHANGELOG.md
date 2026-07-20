@@ -5,6 +5,35 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — pre-tag ci-preprod-review fixes (5-lens review, SHIP-WITH-FIXES → fixed) (2026-07-20)
+
+Pre-tag review (security / correctness / docs / portability / governance
+lenses, all findings source-verified): `run-ephemeral.sh` gains a docker
+preflight before JIT minting (a dead daemon previously hot-looped orphan
+runner registrations every ~2s) and a `GH_TOKEN_STRIP` knob (default 1;
+headless PAT-auth adopters set 0 — the strip was unconditional and silently
+401'd them); `ci-runner@.service` `ExecStartPre` docker path is now
+substituted at provision time (`@DOCKER_BIN@` — `/usr/bin/docker` broke
+rootless installs); `provision-runner.sh` `--target-repo` flag un-deadened
+(required-var assertion moved after arg parse) + docker-on-PATH fail-fast;
+`build-image.sh` gains `GH_VERSION` override passthrough; docs: runners.md
+digest-pinned prose corrected (claimed `:latest`), `ripgrep` documented,
+root README ships-list gains the runner templates, env-knob table completed
+(`RUNNER_WORKDIR`/`GH_HOST`/`GH_TOKEN_STRIP`), multi-checkout caveat.
+Deferred with FT entries: FT-19 container-egress restriction (founder
+risk-accept pending), FT-20 defense-in-depth (JITCONFIG via env → stdin,
+job-container disk quota, provision preflight). NOTE: canon runner files
+changed → operations re-pins at the W4 tag cut (headers already say
+re-stamp).
+
+### Docs — FT-16..18 automation weak layers recorded from the outage arc (2026-07-20)
+
+`plans/FRAMEWORK-TODO.md` gains FT-16 (runner-fleet watchdog — wedged
+supervisor queued 16 jobs ~3h with zero alerting), FT-17 (post-v2-cutover
+verification of ai-review INFRA-class failures + bounded auto-recovery),
+FT-18 (wizard required-context↔check-name validator; the guard for FT-12's
+class). PR #229.
+
 ### Added — runner reference implementation in canon (PLAN-016 W1–W2) (2026-07-20)
 
 - `install/templates/runner/` — the implementation that satisfies the

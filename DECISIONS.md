@@ -563,6 +563,27 @@ adopter path 404'd, and image↔workflow drift shipped two defects (`gh: not
 found`, operations PR #101; missing `libatomic1`, business #63 — fixed by
 this move). Interface and reference implementation now version together.
 
+**Consequences**
+
+- Operations (and any future workspace consumer) must keep its vendored copy
+  byte-current with canon via re-pin; the VENDORED-FROM headers are
+  re-stamped at each `ci/vX.Y.Z` cut. Until a consumer re-pins AND rebuilds
+  the image, canon-side image fixes (e.g. `libatomic1`) do not reach its
+  running runners.
+- Automated drift detection for the vendored `scripts/ci-runner/` copy is
+  explicitly deferred (PLAN-016 §5) — the header makes drift visible;
+  wiring the check is a named follow-up.
+- Base-image digest bumps land in canon only (consumer dependabot watches
+  removed); the canon docker watch is best-effort against a tagless digest
+  (manual refresh path in the runner README remains authoritative).
+
+**Feature-freeze reconciliation:** the 2026-07-19 ASSESSMENT recommended
+freezing new canon capability until fleet adoption catches up. PLAN-016 is
+exempt as **defect closure + adopter-path repair**, not new capability: it
+fixes two shipped image-drift defects (`gh: not found` PR #101;
+`libatomic.so.1` business #63) and the public 404 in the documented adopter
+path — all pre-existing obligations of the already-shipped label contract.
+
 **Origin**
 
 `plans/PLAN-016_runner-canon-templates.md` (17-citation Claim ledger; 7

@@ -15,7 +15,8 @@
 #
 # Usage:  TARGET_REPO=owner/repo ./run-ephemeral.sh
 # Env overrides: RUNNER_LABELS, RUNNER_IMAGE, RUNNER_GROUP_ID, RUNNER_CPUS,
-#                RUNNER_MEM, RUNNER_PIDS_LIMIT, RUNNER_WORKDIR, GH_HOST.
+#                RUNNER_MEM, RUNNER_PIDS_LIMIT, RUNNER_WORKDIR, GH_HOST,
+#                GH_TOKEN_STRIP (default 1 — see below), RUNNER_DNS.
 set -euo pipefail
 
 TARGET_REPO="${TARGET_REPO:?set TARGET_REPO=owner/repo}"
@@ -39,8 +40,14 @@ RUNNER_WORKDIR="${RUNNER_WORKDIR:-_work}"
 # fall back to the host resolver, or override the list as needed.
 RUNNER_DNS="${RUNNER_DNS-1.1.1.1 8.8.8.8}"
 
-# gh is authenticated on the host; the env GH_TOKEN is stale → always strip it.
-gh() { command env -u GH_TOKEN gh "$@"; }
+# GH_TOKEN handling: some hosts (this workspace included) carry a stale
+# GH_TOKEN export that shadows the host's keyring gh auth — default strips it.
+# Headless hosts that authenticate VIA a GH_TOKEN service PAT (no interactive
+# `gh auth login`) must set GH_TOKEN_STRIP=0 or every API call silently 401s.
+GH_TOKEN_STRIP="${GH_TOKEN_STRIP:-1}"
+if [ "$GH_TOKEN_STRIP" = 1 ]; then
+  gh() { command env -u GH_TOKEN gh "$@"; }
+fi
 
 # Build the repeated -f labels[]=… args from the comma list.
 label_args=()
@@ -60,6 +67,16 @@ RUNNING=1
 log "ephemeral CI runner supervisor up — repo=$TARGET_REPO labels=$RUNNER_LABELS image=$RUNNER_IMAGE"
 
 while [ "$RUNNING" = 1 ]; do
+  # Docker preflight BEFORE minting a JIT config: if the daemon is down, a
+  # minted registration can never connect — without this check the loop would
+  # register an orphan runner every ~2s for as long as the daemon is dead
+  # (runner-list pollution + API hammering). The unit's ExecStartPre only
+  # guards service START; this guards the mid-run path.
+  if ! docker info >/dev/null 2>&1; then
+    log "docker daemon unreachable — no JIT minted, retry in 30s"
+    sleep 30
+    continue
+  fi
   name="ci-job-$(hostname -s)-$$-${SECONDS}"
   # One-shot JIT config: the runner registers, takes ONE job, then de-registers.
   jit="$(gh api -X POST "repos/${TARGET_REPO}/actions/runners/generate-jitconfig" \

@@ -22,9 +22,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-TARGET_REPO="${TARGET_REPO:?set TARGET_REPO=owner/repo}"
+TARGET_REPO="${TARGET_REPO:-}"
 RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,ci-runner,single-use}"
-INSTANCE="${INSTANCE:-${TARGET_REPO##*/}}"
+INSTANCE="${INSTANCE:-}"
 ENV_DIR="${ENV_DIR:-$HOME/.config/ci-runner}"
 SERVICE_DIR="${SERVICE_DIR:-$HOME/.config/systemd/user}"
 DRY_RUN=0
@@ -38,6 +38,20 @@ while [ $# -gt 0 ]; do
     *) echo "unknown arg: $1"; exit 1 ;;
   esac
 done
+
+TARGET_REPO="${TARGET_REPO:?set TARGET_REPO=owner/repo (env or --target-repo)}"
+# Derive INSTANCE from the repo basename unless explicitly provided.
+INSTANCE="${INSTANCE:-${TARGET_REPO##*/}}"
+DOCKER_BIN="$(command -v docker || true)"
+if [ -z "$DOCKER_BIN" ]; then
+  if [ "$DRY_RUN" = 1 ]; then
+    echo "WARN: docker not found on PATH — dry-run continues with a placeholder"
+    DOCKER_BIN="<docker-not-found>"
+  else
+    echo "ERROR: docker not found on PATH — install docker (or rootless docker) first"
+    exit 1
+  fi
+fi
 
 ENV_FILE="$ENV_DIR/$INSTANCE.env"
 SERVICE_FILE="$SERVICE_DIR/ci-runner@.service"
@@ -57,12 +71,15 @@ step_install_service() {
   log "installing ci-runner@.service (ExecStart -> $SCRIPT_DIR/run-ephemeral.sh)"
   mkdir -p "$ENV_DIR" "$SERVICE_DIR"
   if [ "$DRY_RUN" = 1 ]; then
-    echo "  [dry-run] sed 's|@RUNNER_HOME@|$SCRIPT_DIR|' $SCRIPT_DIR/ci-runner@.service > $SERVICE_FILE"
+    echo "  [dry-run] sed @RUNNER_HOME@->$SCRIPT_DIR @DOCKER_BIN@->$DOCKER_BIN into $SERVICE_FILE"
     return
   fi
-  # Substitute the @RUNNER_HOME@ ExecStart placeholder with this directory —
-  # the template unit is NOT installable by raw cp (see its header).
-  sed "s|@RUNNER_HOME@|$SCRIPT_DIR|" "$SCRIPT_DIR/ci-runner@.service" > "$SERVICE_FILE"
+  # Substitute the placeholders — @RUNNER_HOME@ (this directory) and
+  # @DOCKER_BIN@ (resolved docker path; systemd needs an absolute ExecStartPre
+  # and /usr/bin/docker is wrong on rootless/non-Debian installs). The
+  # template unit is NOT installable by raw cp (see its header).
+  sed -e "s|@RUNNER_HOME@|$SCRIPT_DIR|" -e "s|@DOCKER_BIN@|$DOCKER_BIN|" \
+    "$SCRIPT_DIR/ci-runner@.service" > "$SERVICE_FILE"
 }
 
 step_env() {
