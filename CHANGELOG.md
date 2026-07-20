@@ -5,6 +5,24 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+_(empty — next changes land here)_
+
+## ci/v2.9.0 — 2026-07-20
+
+**PLAN-016: runner reference implementation in canon (CI-0012) + pre-tag
+review fixes.** The implementation satisfying the
+`[self-hosted, ci-runner, single-use]` label contract moves into this repo at
+`install/templates/runner/` — digest-pinned image spec (**+`libatomic1`**,
+root-fixes the markdownlint/node crash class), one-shot supervisor (+docker
+preflight vs the orphan-JIT hot-loop; `GH_TOKEN_STRIP` knob), placeholder
+systemd unit (`@RUNNER_HOME@`/`@DOCKER_BIN@`; `provision-runner.sh` is the
+sole installer), canon-clean provisioning. Operations is the first vendored
+consumer (re-stamps to this tag). Full 5-lens pre-tag `ci-preprod-review`
+ran → SHIP-WITH-FIXES → all fixes landed (#230). Deferred hardening: FT-19
+(container egress; founder risk-accept pending), FT-20 (defense-in-depth).
+PRs #226/#227/#229/#230 + operations #277; decision CI-0012; plan
+`plans/PLAN-016_runner-canon-templates.md`.
+
 ### Fixed — pre-tag ci-preprod-review fixes (5-lens review, SHIP-WITH-FIXES → fixed) (2026-07-20)
 
 Pre-tag review (security / correctness / docs / portability / governance

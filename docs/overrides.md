@@ -50,7 +50,7 @@ permissions:
   contents: read
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v2.8.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v2.9.0
     with:
       runner_labels: '["self-hosted", "ci-runner", "single-use"]'   # PRIVATE override; default is "ubuntu-latest"
       globs: |
@@ -63,7 +63,7 @@ jobs:
 ```yaml
 jobs:
   codeql:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/codeql.yml@ci/v2.8.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/codeql.yml@ci/v2.9.0
     with:
       languages: '["python","actions","javascript-typescript"]'
 ```
@@ -73,7 +73,7 @@ jobs:
 ```yaml
 jobs:
   internal:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/links.yml@ci/v2.8.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/links.yml@ci/v2.9.0
     with:
       mode: internal
       paths: docs

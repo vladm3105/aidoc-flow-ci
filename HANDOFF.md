@@ -10,12 +10,15 @@ context compaction.
   Canon templates live at `install/templates/runner/` (#227, CI-0012);
   operations vendored re-baseline merged (operations #277). Pre-tag
   `ci-preprod-review` (5 lenses) returned SHIP-WITH-FIXES; the fix set landed
-  on this branch. Remaining W4: cut the next `ci/vX.Y.Z`, re-stamp the 5
-  VENDORED-FROM headers in operations, rebuild `aidoc-flow-runner:latest` on
-  the host (adds `libatomic1` → unblocks business #63; no service restart —
-  one-shot containers). At tag time update TOGETHER: this bullet + ROADMAP
-  next-release block + FT-19 pending→accepted (if granted) + the 5
-  VENDORED-FROM stamps. Deferred hardening: FT-19 (container egress
+  on this branch. Release prep for `ci/v2.9.0` is MERGED
+  (VERSION bumped, refs synced, CHANGELOG section cut). Remaining W4, in
+  order: (1) 🔴 founder executes the tag+release command (handed off
+  in-session); (2) operations re-stamp PR (re-baseline to the tagged canon —
+  prepared, awaits tag + founder review, governance-locked path); (3) 🔴
+  founder decides FT-19 (egress risk-accept — flip FT-19 wording if
+  granted); (4) 🔴 founder rebuilds `aidoc-flow-runner:latest` on the host
+  (adds `libatomic1` → unblocks business #63; no service restart — one-shot
+  containers). Deferred hardening: FT-19 (container egress
   restriction — founder risk-accept pending), FT-20 (defense-in-depth
   bundle). Same-day context: FT-16 outage (wedged single-use runner, 16 jobs
   ~3h, zero alerting) — the fleet-watchdog backlog item exists because of it.
