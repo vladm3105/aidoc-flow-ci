@@ -567,3 +567,68 @@ this is more involved than standards-drift — the review job does not check out
 consumer's `.github/workflows/` the same way — so each reusable needs its own
 analysis, which is why this stays an investigation, not a mechanical sweep.
 Correct any "pinned tag" determinism wording in their comments/docs to match.
+
+
+### FT-16 — runner-fleet health has no reflexes: wedged supervisor queued 16 jobs ~3h with zero alerting
+
+**Found:** 2026-07-20, operations — the single `ci-runner,single-use`
+runner's JIT session went stale (container alive, `Runner.Listener`
+token-refreshing ~50-min cadence, GitHub showing `offline`); the one-shot
+supervisor only replaces containers when they EXIT, so it waited on the
+zombie indefinitely. PRs #275/#276 queued 8 jobs each ~3h.
+`ci-network-monitor` saw nothing (it probes api.github.com reachability
+only; the network was fine). Diagnosis + `systemctl --user restart` were
+fully manual.
+**Surfaces:** `install/templates/runner/` (new watchdog script + timer
+template), `docs/runners.md`.
+
+**Fix sketch:** a fleet watchdog beside the supervisor (systemd timer, same
+no-sudo model as ci-network-monitor): per enabled `ci-runner@<i>`, compare
+GitHub-side runner status (`gh api repos/$TARGET_REPO/actions/runners`)
+against supervisor liveness; on offline-while-container-running >N minutes,
+restart the unit (safe: `docker run --rm` reaps the zombie; one-shot design
+makes restart idempotent) + log a durable event. Highest-value automation
+gap — every other layer sits on runners that currently fail silently.
+
+### FT-17 — post-v2-cutover: verify whether ai-review INFRA-class failures persist; if so, give them bounded auto-recovery
+
+**Found:** 2026-07-20 — iplanic #265 (`reviewer CLI 'codex' not found`) and
+iplan-runner #94 (`no parseable verdict — fail-closed`, twice) recovered
+only by manual skip-ai-review label-cycle (`gh run rerun` does NOT work —
+reruns keep the pre-label trigger context; only label remove→re-add fires a
+fresh evaluation). Root cause of BOTH observed instances: the ci/v1
+vendor-CLI symptom already documented in `docs/troubleshooting.md` §10 —
+fixed by the v2 cutover (PLAN-009), NOT a v2 gap.
+**Surfaces:** `ai-review.yml`, `docs/troubleshooting.md` §10/§15,
+`auto-merge-ai-prs.yml`.
+
+**Fix sketch:** two parts. (a) After the PLAN-009 v2 cutover completes on
+these repos, confirm whether any INFRA-class ai-review failure mode remains
+(LiteLLM unreachable, asset-fetch, runner env) — the flow already
+distinguishes its infra-error exits from verdicts in its messages. (b) If
+yes: either self-retry the reviewer step with backoff, or emit a
+machine-readable `infra-error` conclusion a small recovery workflow can act
+on (bounded label-cycle, OPS-0066-capped) instead of requiring a
+session-AI/human. Also document the rerun-vs-label-cycle trap in §15 (a
+rerun does not re-read labels).
+
+### FT-18 — deploy wizard has no required-context ↔ emitted-check-name validator; 🔴-step prep/verify is under-automated (builds the guard for FT-12's class)
+
+**Found:** 2026-07-20 — iplanic `main` carried the orphaned required
+context `Lint / format / security hooks` (real check: `call / Lint / format
+/ security hooks`); every PR blocked at green until a founder settings edit.
+The live instances of this class are tracked in **FT-12** (phantom
+required-contexts on framework/business/iplanic) — this item is the
+*validator + preflight tooling* that prevents the class, not a duplicate
+report of the instances. Broader class (PLAN-009 Phase 0): per-repo LiteLLM
+secrets, pool registration, and protection rules are founder-manual with no
+automated preflight that says exactly what is missing/wrong per repo.
+**Surfaces:** `install/deploy-ci-wizard.sh`, `docs/runners.md` §3,
+`install/templates/branch-protection-*.json`; cross-ref FT-12.
+
+**Fix sketch:** extend `deploy-ci-wizard.sh` (or a new `preflight` mode) to
+diff required-status-check contexts against the check names the installed
+callers actually emit (catches orphans + renames — would have caught FT-12
+and today's iplanic block automatically), and emit a per-repo 🔴-step
+worksheet (exact commands + current-state checks) so the founder executes
+rather than derives.
