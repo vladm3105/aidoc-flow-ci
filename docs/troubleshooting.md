@@ -150,10 +150,10 @@ the actual cause surfaced.
 **Fix:**
 
 - **Self-hosted runners:** rebuild the runner image with `gh`
-  baked in. See operations'
-  [`scripts/ci-runner/Dockerfile`](https://github.com/vladm3105/aidoc-flow-operations/blob/main/scripts/ci-runner/Dockerfile)
+  baked in. See the canon
+  [`install/templates/runner/Dockerfile`](../install/templates/runner/Dockerfile)
   for the reference (installs `gh` from GitHub's official APT
-  repo atop `actions-runner:latest`).
+  repo atop the digest-pinned `actions-runner` image).
 - **GitHub-hosted runners** (`ubuntu-latest`): `gh` is
   pre-installed; this error shouldn't occur there.
 

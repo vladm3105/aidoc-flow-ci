@@ -8,6 +8,15 @@ deferred items belong in `plans/` or `HANDOFF.md` open threads.
 
 ---
 
+## Next release — runner canon templates (PLAN-016, merged plan; PR 1 in flight)
+
+`install/templates/runner/` brings the runner reference implementation into
+canon (CI-0012): image spec with `libatomic1`, single-use supervisor with the
+`@RUNNER_HOME@` placeholder unit, provision-runner as sole installer, docker
+dependabot watch. Follow-ups: operations vendored re-baseline (PLAN-016 W3,
+founder-approved PR), then a minor `ci/vX.Y.Z` tag + host image rebuild
+(W4, 🔴 founder).
+
 ## Current phase — v2.8.0 shipped (PLAN-015 pre-prod fix closure); founder-gated rollout
 
 `ci/v2.8.0` is the Latest release (2026-07-19). It closes the 5-lens pre-prod

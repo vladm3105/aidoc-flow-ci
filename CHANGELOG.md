@@ -5,6 +5,30 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — runner reference implementation in canon (PLAN-016 W1–W2) (2026-07-20)
+
+- `install/templates/runner/` — the implementation that satisfies the
+  `[self-hosted, ci-runner, single-use]` label contract, moved from the
+  private operations repo (where the public adopter docs 404'd):
+  digest-pinned `Dockerfile` (**adds `libatomic1`** — fixes the
+  markdownlint/node crash class, business #63), `build-image.sh` (+ libatomic
+  verification), `run-ephemeral.sh` (logic unchanged; comments genericized —
+  same-directory paths, no operator LAN details in public canon),
+  `ci-runner@.service`
+  (**`@RUNNER_HOME@` ExecStart placeholder — raw `cp` no longer supported**),
+  `provision-runner.sh` (canon-clean: `TARGET_REPO` required, final-label
+  default, substitutes the placeholder at install; the only documented
+  installer). `ci-network-monitor.*` deliberately NOT templatized
+  (operations host diagnostics).
+- `docs/runners.md` — every operations reference repointed in-repo (§2
+  reframed, §7 routing table; two deliberate operations-side carve-outs:
+  network monitor + activation log); wizard pool hint now names the template
+  path; dependabot gains a `docker` watch on the canon Dockerfile
+  (direction of truth: canon leads, consumers re-pin).
+- Decision: `DECISIONS.md` CI-0012. Plan: `plans/PLAN-016_runner-canon-templates.md`
+  (17-citation ledger, 7 independent review passes). Operations re-baselines
+  as the first vendored consumer in its own follow-up PR (PLAN-016 W3).
+
 ### Docs — value + company-standard-readiness assessment (2026-07-19)
 
 - `plans/ASSESSMENT_flow-ci-value-and-standard-readiness.md` — evidence-based

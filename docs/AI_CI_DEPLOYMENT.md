@@ -48,7 +48,7 @@ secrets), [`runners.md`](runners.md) (self-hosted pools),
 | --- | --- |
 | Install the reviewer **App** on the repo (+ on `aidoc-flow-operations`) | App installation is F5 blast-radius; needs org/repo admin UI |
 | Set the AI **secrets** (`APP_REVIEWER_1_ID`, `APP_REVIEWER_1_KEY`, `LITELLM_BASE_URL`, `LITELLM_REVIEW_API_KEY`, `LITELLM_DOC_API_KEY`) | You don't hold the App private key / token values |
-| Register a self-hosted **runner pool** for a private repo | Provisions infra on the runner host; use `scripts/ci-runner/provision-runner.sh` from the operations checkout |
+| Register a self-hosted **runner pool** for a private repo | Provisions infra on the runner host; use the canon `install/templates/runner/provision-runner.sh` (see below) |
 | Merge the first CI-adoption PR (pull_request_target chicken-and-egg) | ai-review/composition can't self-trigger until the workflows are on `main`; admin-merge the adoption PR, then verify on a follow-up test PR |
 
 Everything else (caller workflows, config files, non-secret variables, labels,
@@ -84,16 +84,21 @@ Expect an online runner with labels `self-hosted,ci-runner,single-use`. If none:
 
 **Provisioning a runner for a new private repo (🔴 founder, 🟢 AI assistants pre-flight):**
 
-The runner host must already be set up with Docker and the `aidoc-flow-operations`
-checkout. From the runner host, as the user running the CI supervisor:
+The runner host must already be set up with Docker and a copy of the canon
+runner templates (`install/templates/runner/` from this repo — workspace hosts
+use the vendored copy in their operations checkout once PLAN-016 W3 lands).
+From the runner host, as the user running the CI supervisor:
 
 ```bash
-cd /opt/data/aidoc-flow/operations
+cd <path-to>/install/templates/runner
 TARGET_REPO=<owner/repo> \
 INSTANCE=<short-nick> \
-RUNNER_LABELS=self-hosted,ci-runner,single-use \
-bash scripts/ci-runner/provision-runner.sh
+bash provision-runner.sh
 ```
+
+(`RUNNER_LABELS` defaults to the final `self-hosted,ci-runner,single-use`;
+override it only for a label-migration coexistence window — see the
+directory's README.)
 
 This builds the runner Docker image, installs the systemd unit, writes the
 per-repo environment file, enables lingering, and starts the supervisor. The

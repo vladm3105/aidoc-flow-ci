@@ -537,6 +537,42 @@ resolve before treating the supply-chain boundary as settled.
 
 ---
 
+## CI-0012: Runner reference implementation lives in canon; consumers vendor it (2026-07-20)
+
+**Decision**
+
+The implementation that satisfies the `[self-hosted, ci-runner, single-use]`
+label contract — image spec (`Dockerfile` + `build-image.sh`), single-use
+supervisor (`run-ephemeral.sh` + `ci-runner@.service`), and provisioning
+(`provision-runner.sh`) — lives in this repo at `install/templates/runner/`,
+versioned with the `ci/vX.Y.Z` tags. Workspace consumers (operations first)
+vendor a pinned, byte-matched copy stamped with a `VENDORED-FROM` header;
+deployed host state (env files, enabled units, built images, registrations)
+stays operator-side and is never tracked in canon. The systemd unit template
+carries an `@RUNNER_HOME@` ExecStart placeholder; `provision-runner.sh` is
+the only documented installer (raw `cp` deploys a broken unit by design).
+Dependabot watches the canon Dockerfile — base-digest truth flows
+canon→consumer via re-pin, never the reverse. `ci-network-monitor.*` is
+deliberately excluded (operations host diagnostics, not pool mechanics).
+
+**Why**
+
+The label contract, pool check, and adopter docs were already canon, but the
+implementation lived in the private operations repo: the public runners.md
+adopter path 404'd, and image↔workflow drift shipped two defects (`gh: not
+found`, operations PR #101; missing `libatomic1`, business #63 — fixed by
+this move). Interface and reference implementation now version together.
+
+**Origin**
+
+`plans/PLAN-016_runner-canon-templates.md` (17-citation Claim ledger; 7
+independent verified-planning-reviewer passes; two founder-authorized cap
+extensions). Supersedes the runners.md §2 "this is aidoc-flow-operations
+infrastructure" framing; OPS-0075's contract (labels, single-use, hardening,
+LiteLLM) is unchanged and remains authoritative in operations.
+
+---
+
 <!-- Append new entries above this line; append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
 and update the superseded entry's "Consequences" section to reference
