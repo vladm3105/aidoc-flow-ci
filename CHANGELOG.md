@@ -5,6 +5,42 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — `ai-review` resolves the adopted canon pin (FT-15 PR-C, PLAN-017)
+
+- **`ai-review.yml`** — both sites (the `ai-review` review job and the `autofix`
+  job) now resolve the canon tag from the consumer's adopted pin and hardcode
+  `vladm3105/aidoc-flow-ci`, completing FT-15 across all three reusables.
+- **This job has no `actions/checkout` by design** (IPLAN-0024 — a 5-cycle
+  sparse-checkout saga proved checkout *was* the failure mode), so unlike
+  `docs-sync`/`doc-maintainer` it cannot grep the caller's file from disk. It
+  instead uses `github.workflow_ref` as a **locator only** (caller owner/repo/path)
+  and reads that file over the **API contents endpoint** at a **trusted,
+  event-selected ref**: `pull_request_target` → the PR's base branch;
+  `pull_request_review` → the repo's default branch; any other event → default
+  branch. Its `@<ref>` component is **discarded**, so no caller-controlled value
+  is security-load-bearing.
+- **`autofix` resolves from the same trusted ref, not its PR-head checkout** —
+  reading the pin from PR-authored content would let a PR downgrade its own canon
+  tag. That step also previously had no token of its own; it now takes
+  `GITHUB_TOKEN` explicitly for the caller-file read.
+- Same hardening as PR-A/PR-B (both pin forms, fetch-at-the-SHA, fail-closed on
+  ambiguity, pre-release rejected). Step name "…from the pinned ref" corrected —
+  it was false.
+- **From the pre-push review, each verified:** the infra-failure signal (label +
+  PR comment) now also fires for failures *before* the reviewer runs — previously
+  a pin/asset failure produced a bare red `ai-review` with no explanation, which
+  authors reasonably misread as "the AI rejected my code"; the fetched caller
+  workflow gets the same empty-body/wrong-shape guards as every other asset, so a
+  transport fault is no longer misreported as "caller not installed"; the
+  `workflow_ref` split uses `%%@*` so a branch name containing `@` cannot corrupt
+  the path; `?ref=` is URL-encoded (branch names may contain `& # % +`); and
+  `pull_request_target` with an empty base ref now hard-fails instead of silently
+  falling back to the default branch (which could resolve a pin the PR's target
+  branch never adopted — the FT-15 class again).
+- **Completes** `docs-sync` ✅ → `doc-maintainer` ✅ → `ai-review` ✅ per
+  `plans/PLAN-017_ft-15-pinned-asset-fetch.md`. Next per §5: cut `ci/v2.10.0`,
+  then pilot a consumer re-pin to verify live (🔴 cross-repo).
+
 ### Fixed — `doc-maintainer` resolves the adopted canon pin (FT-15 PR-B, PLAN-017)
 
 - **`doc-maintainer.yml`** — both sites (the `reconcile` and `maintain` jobs) now
