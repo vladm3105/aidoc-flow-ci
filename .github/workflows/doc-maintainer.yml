@@ -130,17 +130,54 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Fetch reconcile script from aidoc-flow-ci
-        env:
-          CI_TAG: ${{ github.workflow_ref }}
+      - name: Fetch reconcile script from the adopted canon tag
         run: |
           set -euo pipefail
-          # Pinned-tag fetch so the script matches the reusable's tag exactly.
-          TAG="${CI_TAG##*@}"
-          CI_OWNER=$(echo "${CI_TAG}" | cut -d/ -f1)
+          [ -d .github/workflows ] \
+            || { echo "::error::doc-maintainer: .github/workflows/ not found after checkout — INFRASTRUCTURE error, not a maintenance result."; exit 1; }
+
+          # Read only real `uses:` lines in files GitHub actually executes: a
+          # *.yml.bak/*.disabled leftover or a commented-out example must never
+          # supply the tag (it would WIN the version sort — verified).
+          set +e
+          USES_LINES="$(grep -rhE --include='*.yml' --include='*.yaml' '^[[:space:]]*uses:' .github/workflows/)"
+          grc=$?
+          set -e
+          # grep rc: 0=match, 1=no match, >=2=real error (unreadable dir). Without
+          # this split, an I/O error is misreported as "caller not installed".
+          [ "$grc" -le 1 ] \
+            || { echo "::error::doc-maintainer: could not read .github/workflows/ (grep exit $grc) — INFRASTRUCTURE error, not a maintenance result."; exit 1; }
+
+          PINS="$(printf '%s\n' "$USES_LINES" \
+            | grep -ohE 'aidoc-flow-ci/\.github/workflows/doc-maintainer\.yml@([0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' \
+            | sort -u || true)"
+          PIN_COUNT="$(printf '%s' "$PINS" | grep -c . || true)"
+          [ "$PIN_COUNT" -ge 1 ] \
+            || { echo "::error::doc-maintainer: could not find a doc-maintainer '@ci/vX.Y.Z' pin on a 'uses:' line in .github/workflows/ — is this caller installed from the canon template? INFRASTRUCTURE error, not a maintenance result."; exit 1; }
+          # Fail CLOSED on ambiguity: only one reusable actually runs, so the
+          # correct tag is unknowable from the tree. Picking the highest would
+          # silently fetch a version the repo never adopted.
+          [ "$PIN_COUNT" -eq 1 ] \
+            || { echo "::error::doc-maintainer: found $PIN_COUNT differing doc-maintainer pins in .github/workflows/ — resolve to one. INFRASTRUCTURE error, not a maintenance result."; printf '%s\n' "$PINS" | sed 's/^/  /'; exit 1; }
+
+          CANON_TAG="$(printf '%s' "$PINS" | grep -oE 'ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?')"
+          CANON_SHA="$(printf '%s' "$PINS" | grep -oE '@[0-9a-f]{40}' | tr -d '@' || true)"
+          case "$CANON_TAG" in
+            *-*) echo "::error::doc-maintainer: pre-release canon pin '${CANON_TAG}' is not supported — pin a released ci/vX.Y.Z tag. INFRASTRUCTURE error, not a maintenance result."; exit 1 ;;
+          esac
+          # When the caller pinned by SHA, GitHub EXECUTES that SHA — so fetch the
+          # assets from the SHA too. The trailing `# ci/vX.Y.Z` is documentation
+          # and can lag the SHA; trusting it would run one version's workflow with
+          # another version's scripts (FT-15's class via the other pin form).
+          FETCH_REF="${CANON_SHA:-$CANON_TAG}"
+          echo "::notice::doc-maintainer: adopted canon pin vladm3105/aidoc-flow-ci@${CANON_TAG} (fetching at ${FETCH_REF})"
+
+          # owner/repo hardcoded to the canonical canon — never caller-derived.
           mkdir -p .doc-maintainer-scripts
-          curl -fsSL "https://raw.githubusercontent.com/${CI_OWNER}/aidoc-flow-ci/${TAG}/scripts/doc-maintainer/reconcile.py" \
-            -o .doc-maintainer-scripts/reconcile.py
+          curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
+            -o .doc-maintainer-scripts/reconcile.py \
+            "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${FETCH_REF}/scripts/doc-maintainer/reconcile.py" \
+            || { echo "::error::doc-maintainer: failed to fetch reconcile.py from vladm3105/aidoc-flow-ci@${CANON_TAG} — INFRASTRUCTURE error, not a maintenance result. Re-run."; exit 1; }
           chmod +x .doc-maintainer-scripts/reconcile.py
 
       - name: Reconcile — scan recent main commits for un-maintained SHAs
@@ -191,23 +228,64 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Fetch operation scripts from aidoc-flow-ci
-        env:
-          CI_TAG: ${{ github.workflow_ref }}
+      - name: Fetch operation scripts from the adopted canon tag
         run: |
           set -euo pipefail
-          # Per IPLAN-0024 curl-replaces-checkout: fetch the per-tag operation
-          # scripts so they match the reusable's pinned tag exactly.
-          TAG="${CI_TAG##*@}"
-          CI_OWNER=$(echo "${CI_TAG}" | cut -d/ -f1)
-          BASE="https://raw.githubusercontent.com/${CI_OWNER}/aidoc-flow-ci/${TAG}/scripts/doc-maintainer"
+          # Same resolution as the reconcile job — see that step and
+          # docs/REPO_STANDARDS.md §4.2a. Resolved per-job because these are
+          # separate jobs (no shared step state), and it cannot be factored into
+          # a fetched helper: you would need the tag in order to fetch it.
+          [ -d .github/workflows ] \
+            || { echo "::error::doc-maintainer: .github/workflows/ not found after checkout — INFRASTRUCTURE error, not a maintenance result."; exit 1; }
+
+          # Read only real `uses:` lines in files GitHub actually executes: a
+          # *.yml.bak/*.disabled leftover or a commented-out example must never
+          # supply the tag (it would WIN the version sort — verified).
+          set +e
+          USES_LINES="$(grep -rhE --include='*.yml' --include='*.yaml' '^[[:space:]]*uses:' .github/workflows/)"
+          grc=$?
+          set -e
+          # grep rc: 0=match, 1=no match, >=2=real error (unreadable dir). Without
+          # this split, an I/O error is misreported as "caller not installed".
+          [ "$grc" -le 1 ] \
+            || { echo "::error::doc-maintainer: could not read .github/workflows/ (grep exit $grc) — INFRASTRUCTURE error, not a maintenance result."; exit 1; }
+
+          PINS="$(printf '%s\n' "$USES_LINES" \
+            | grep -ohE 'aidoc-flow-ci/\.github/workflows/doc-maintainer\.yml@([0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' \
+            | sort -u || true)"
+          PIN_COUNT="$(printf '%s' "$PINS" | grep -c . || true)"
+          [ "$PIN_COUNT" -ge 1 ] \
+            || { echo "::error::doc-maintainer: could not find a doc-maintainer '@ci/vX.Y.Z' pin on a 'uses:' line in .github/workflows/ — is this caller installed from the canon template? INFRASTRUCTURE error, not a maintenance result."; exit 1; }
+          # Fail CLOSED on ambiguity: only one reusable actually runs, so the
+          # correct tag is unknowable from the tree. Picking the highest would
+          # silently fetch a version the repo never adopted.
+          [ "$PIN_COUNT" -eq 1 ] \
+            || { echo "::error::doc-maintainer: found $PIN_COUNT differing doc-maintainer pins in .github/workflows/ — resolve to one. INFRASTRUCTURE error, not a maintenance result."; printf '%s\n' "$PINS" | sed 's/^/  /'; exit 1; }
+
+          CANON_TAG="$(printf '%s' "$PINS" | grep -oE 'ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?')"
+          CANON_SHA="$(printf '%s' "$PINS" | grep -oE '@[0-9a-f]{40}' | tr -d '@' || true)"
+          case "$CANON_TAG" in
+            *-*) echo "::error::doc-maintainer: pre-release canon pin '${CANON_TAG}' is not supported — pin a released ci/vX.Y.Z tag. INFRASTRUCTURE error, not a maintenance result."; exit 1 ;;
+          esac
+          # When the caller pinned by SHA, GitHub EXECUTES that SHA — so fetch the
+          # assets from the SHA too. The trailing `# ci/vX.Y.Z` is documentation
+          # and can lag the SHA; trusting it would run one version's workflow with
+          # another version's scripts (FT-15's class via the other pin form).
+          FETCH_REF="${CANON_SHA:-$CANON_TAG}"
+          echo "::notice::doc-maintainer: adopted canon pin vladm3105/aidoc-flow-ci@${CANON_TAG} (fetching at ${FETCH_REF})"
+
+          # owner/repo hardcoded to the canonical canon — never caller-derived.
+          BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${FETCH_REF}/scripts"
           mkdir -p .doc-maintainer-scripts
           for op in planner apply reconcile; do
-            curl -fsSL "${BASE}/${op}.py" -o ".doc-maintainer-scripts/${op}.py"
+            curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
+              -o ".doc-maintainer-scripts/${op}.py" "${BASE}/doc-maintainer/${op}.py" \
+              || { echo "::error::doc-maintainer: failed to fetch ${op}.py from vladm3105/aidoc-flow-ci@${CANON_TAG} — INFRASTRUCTURE error, not a maintenance result. Re-run."; exit 1; }
             chmod +x ".doc-maintainer-scripts/${op}.py"
           done
-          curl -fsSL "https://raw.githubusercontent.com/${CI_OWNER}/aidoc-flow-ci/${TAG}/scripts/litellm_client.py" \
-            -o .doc-maintainer-scripts/litellm_client.py
+          curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
+            -o .doc-maintainer-scripts/litellm_client.py "${BASE}/litellm_client.py" \
+            || { echo "::error::doc-maintainer: failed to fetch litellm_client.py from vladm3105/aidoc-flow-ci@${CANON_TAG} — INFRASTRUCTURE error, not a maintenance result. Re-run."; exit 1; }
           ls -la .doc-maintainer-scripts/
 
       - name: Step 1 — Deterministic dedup check (skip if maintainer-bot PR exists for this SHA)

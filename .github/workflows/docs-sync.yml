@@ -121,37 +121,50 @@ jobs:
           # workflow's filename so a pin for a different reusable can never be
           # picked up. (Two callers pinned to different tags resolve to the
           # highest — an abnormal install.)
-          # Distinguish "directory unreadable" from "no pin found" so the error
-          # below cannot misdiagnose a correctly-installed caller.
           [ -d .github/workflows ] \
-            || { echo "::error::docs-sync: .github/workflows/ not found or unreadable after checkout — INFRASTRUCTURE error, not a sync result."; exit 1; }
+            || { echo "::error::docs-sync: .github/workflows/ not found after checkout — INFRASTRUCTURE error, not a sync result."; exit 1; }
 
-          # Only real `uses:` lines in files GitHub actually executes count.
-          # Without the --include filter a `*.yml.bak` / `*.disabled` leftover is
-          # still scanned by `grep -r` and can WIN the `sort -V` below (verified);
-          # without the `uses:` filter a commented-out example or prose can supply
-          # the tag. Both are silent wrong-version hazards.
-          CANON_TAG="$(grep -rhE --include='*.yml' --include='*.yaml' '^[[:space:]]*uses:' .github/workflows/ 2>/dev/null \
+          # Read only real `uses:` lines in files GitHub actually executes: a
+          # *.yml.bak/*.disabled leftover or a commented-out example must never
+          # supply the tag (it would WIN the version sort — verified).
+          set +e
+          USES_LINES="$(grep -rhE --include='*.yml' --include='*.yaml' '^[[:space:]]*uses:' .github/workflows/)"
+          grc=$?
+          set -e
+          # grep rc: 0=match, 1=no match, >=2=real error (unreadable dir). Without
+          # this split, an I/O error is misreported as "caller not installed".
+          [ "$grc" -le 1 ] \
+            || { echo "::error::docs-sync: could not read .github/workflows/ (grep exit $grc) — INFRASTRUCTURE error, not a sync result."; exit 1; }
+
+          PINS="$(printf '%s\n' "$USES_LINES" \
             | grep -ohE 'aidoc-flow-ci/\.github/workflows/docs-sync\.yml@([0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' \
-            | grep -oE 'ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' | sort -Vu | tail -1 || true)"
-          [ -n "$CANON_TAG" ] \
+            | sort -u || true)"
+          PIN_COUNT="$(printf '%s' "$PINS" | grep -c . || true)"
+          [ "$PIN_COUNT" -ge 1 ] \
             || { echo "::error::docs-sync: could not find a docs-sync '@ci/vX.Y.Z' pin on a 'uses:' line in .github/workflows/ — is this caller installed from the canon template? INFRASTRUCTURE error, not a sync result."; exit 1; }
+          # Fail CLOSED on ambiguity: only one reusable actually runs, so the
+          # correct tag is unknowable from the tree. Picking the highest would
+          # silently fetch a version the repo never adopted.
+          [ "$PIN_COUNT" -eq 1 ] \
+            || { echo "::error::docs-sync: found $PIN_COUNT differing docs-sync pins in .github/workflows/ — resolve to one. INFRASTRUCTURE error, not a sync result."; printf '%s\n' "$PINS" | sed 's/^/  /'; exit 1; }
 
-          # Pre-release pins are REJECTED, not silently truncated. The version
-          # pattern is unanchored, so tolerating `-rc.N` would resolve
-          # `ci/v2.10.0-rc.1` to `ci/v2.10.0` — a real but DIFFERENT tag once it
-          # ships, reintroducing the FT-15 wrong-version class through a new door
-          # with a notice that looks correct. See REPO_STANDARDS §4.2a.
+          CANON_TAG="$(printf '%s' "$PINS" | grep -oE 'ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?')"
+          CANON_SHA="$(printf '%s' "$PINS" | grep -oE '@[0-9a-f]{40}' | tr -d '@' || true)"
           case "$CANON_TAG" in
             *-*) echo "::error::docs-sync: pre-release canon pin '${CANON_TAG}' is not supported — pin a released ci/vX.Y.Z tag. INFRASTRUCTURE error, not a sync result."; exit 1 ;;
           esac
-          echo "::notice::docs-sync: adopted canon pin vladm3105/aidoc-flow-ci@${CANON_TAG}"
+          # When the caller pinned by SHA, GitHub EXECUTES that SHA — so fetch the
+          # assets from the SHA too. The trailing `# ci/vX.Y.Z` is documentation
+          # and can lag the SHA; trusting it would run one version's workflow with
+          # another version's scripts (FT-15's class via the other pin form).
+          FETCH_REF="${CANON_SHA:-$CANON_TAG}"
+          echo "::notice::docs-sync: adopted canon pin vladm3105/aidoc-flow-ci@${CANON_TAG} (fetching at ${FETCH_REF})"
 
           # owner/repo hardcoded to the canonical canon — never derived from
           # caller-controlled input (FT-15 D2: deriving the owner from
           # `workflow_ref` broke external adopters, who fetched
           # <their-org>/aidoc-flow-ci and 404'd).
-          BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CANON_TAG}/scripts/docs-sync"
+          BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${FETCH_REF}/scripts/docs-sync"
           mkdir -p .docs-sync-scripts
           for op in changelog_stub version_sync cross_ref_repair; do
             curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
