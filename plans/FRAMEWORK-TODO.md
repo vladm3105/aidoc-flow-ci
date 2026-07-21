@@ -677,6 +677,31 @@ consumer's `.github/workflows/` the same way — so each reusable needs its own
 analysis, which is why this stays an investigation, not a mechanical sweep.
 Correct any "pinned tag" determinism wording in their comments/docs to match.
 
+### FT-23 — canon does not self-adopt `docs-sync`/`doc-maintainer`, so canon changes to them cannot self-verify
+
+**Status:** OPEN — surfaced by PLAN-017.
+**Found:** 2026-07-21, PLAN-017 verification planning.
+
+`aidoc-flow-ci` ships `ai-review`, `doc-maintainer`, and `docs-sync` as
+`workflow_call` reusables and has **no self-caller** for any of them (the only
+real self-`uses:` are `audit-trail.yml:33` and `self-secret-scan.yml:32` —
+`audit-trail-check.yml` is the *reusable*, not a caller).
+Consequence: a PR that changes those reusables **cannot exercise its own change** —
+canon's CI proves syntax + `tests/run.sh` + fixtures only. PLAN-017's entire
+verification therefore needs a 🔴 cross-repo consumer re-pin
+(`plans/ROLLOUT_plan017-verify.md`).
+
+This contradicts the repo's own stated discipline in `CLAUDE.md`: *"Wave 0 (this
+repo) self-adopts BEFORE Wave 1+ consumers pull. The canon-source dogfoods its own
+canon."*
+
+**Fix sketch:** add a `docs-sync` self-caller + `.github/docs-sync.json` with
+`dry_run: true` (canon has neither today, so docs-sync would exit at the opt-in
+guard even if called). That alone would have let PLAN-017 PR-A self-verify. A
+`doc-maintainer` self-caller is a bigger step (needs the bot App creds) and a
+self-`ai-review` bigger still — scope each separately. Value is not one-off: every
+future change to these reusables inherits the same blind spot.
+
 ### FT-22 — `standards-drift.yml` resolver predates the FT-15 rule (both-forms + scan-scope + pre-release reject)
 
 **Status:** OPEN — one-line-ish extension, deliberately NOT bundled into PLAN-017 PR-A.
