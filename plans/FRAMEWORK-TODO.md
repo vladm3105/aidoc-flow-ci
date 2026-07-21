@@ -668,3 +668,31 @@ provisioner reports done (wizard-side sibling: FT-18).
 
 **Fix sketch:** (a) stdin/`--env-file` on tmpfs; (b) documented opt-in
 `--storage-opt`; (c) `step_preflight` failing fast per missing prerequisite.
+
+### FT-21 — release cut has no sequencing tool: prep-merge→tag ordering is tribal, and the self-pin chicken-and-egg guarantees one red run
+
+**Found:** 2026-07-20, the ci/v2.9.0 cut — three failure modes in one release:
+(1) the tag was cut BEFORE the release-prep PR merged → tag pointed at a
+tree whose internal `VERSION` said v2.8.0 and whose consumer templates
+carried v2.8.0 pins (fixed by delete+re-cut at post-prep main, safe only
+because zero consumers had pinned); (2) the prep PR's own checks
+hard-failed as a "workflow file issue" because its bumped self-pins
+reference a tag that cannot exist yet (chicken-and-egg inherent to
+self-pinning canon); (3) such runs are NOT retryable (`gh run rerun`
+refuses workflow-file-issue runs) — recovery required an empty re-trigger
+commit after the tag existed.
+**Surfaces:** `scripts/sync-version-refs.sh`, `VERSION`,
+`docs/RELEASE_CHECKLIST.md` (EXISTS — states tag-on-merge-commit ordering
+but was not consulted during this cut, and is silent on the self-pin
+chicken-and-egg + non-retryability gotchas — harden it, do not draft a
+competing doc), potentially a new `scripts/release.sh` enforcing it.
+
+**Fix sketch:** a `release.sh` that enforces the sequence: verify prep PR
+merged at main → tag main → `gh release create` → print the consumer
+re-stamp checklist (VENDORED-FROM headers). For the chicken-and-egg,
+either (a) document the expected one-red-run + empty-commit re-trigger as
+the known path, or (b) have the prep PR pin `@main` and a post-tag
+follow-up flip to the tag, or (c) cut the tag from the prep BRANCH head
+just before merge (tag == squash-merge tree only if squash is a no-op —
+needs thought). At minimum: write the release runbook down; today it
+lived in one session's context.
