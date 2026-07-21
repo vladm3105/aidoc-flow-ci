@@ -681,8 +681,11 @@ reference a tag that cannot exist yet (chicken-and-egg inherent to
 self-pinning canon); (3) such runs are NOT retryable (`gh run rerun`
 refuses workflow-file-issue runs) — recovery required an empty re-trigger
 commit after the tag existed.
-**Surfaces:** `scripts/sync-version-refs.sh`, `VERSION`, release process
-docs (currently implicit), potentially a new `scripts/release.sh`.
+**Surfaces:** `scripts/sync-version-refs.sh`, `VERSION`,
+`docs/RELEASE_CHECKLIST.md` (EXISTS — states tag-on-merge-commit ordering
+but was not consulted during this cut, and is silent on the self-pin
+chicken-and-egg + non-retryability gotchas — harden it, do not draft a
+competing doc), potentially a new `scripts/release.sh` enforcing it.
 
 **Fix sketch:** a `release.sh` that enforces the sequence: verify prep PR
 merged at main → tag main → `gh release create` → print the consumer
