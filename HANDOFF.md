@@ -4,24 +4,39 @@ Live cross-session resume point for the workspace CI + governance-workflow
 canon library. Read at session start; refresh at milestones and before
 context compaction.
 
-## Current state (2026-07-20)
+## Current state (2026-07-20, session wrap)
 
-- **PLAN-016 runner-canon move: W1–W3 COMPLETE, W4 pending (🔴 founder).**
-  Canon templates live at `install/templates/runner/` (#227, CI-0012);
-  operations vendored re-baseline merged (operations #277). Pre-tag
-  `ci-preprod-review` (5 lenses) returned SHIP-WITH-FIXES; the fix set landed
-  on this branch. Release prep for `ci/v2.9.0` is MERGED
-  (VERSION bumped, refs synced, CHANGELOG section cut). Remaining W4, in
-  order: (1) 🔴 founder executes the tag+release command (handed off
-  in-session); (2) operations re-stamp PR (re-baseline to the tagged canon —
-  prepared, awaits tag + founder review, governance-locked path); (3) 🔴
-  founder decides FT-19 (egress risk-accept — flip FT-19 wording if
-  granted); (4) 🔴 founder rebuilds `aidoc-flow-runner:latest` on the host
-  (adds `libatomic1` → unblocks business #63; no service restart — one-shot
-  containers). Deferred hardening: FT-19 (container egress
-  restriction — founder risk-accept pending), FT-20 (defense-in-depth
-  bundle). Same-day context: FT-16 outage (wedged single-use runner, 16 jobs
-  ~3h, zero alerting) — the fleet-watchdog backlog item exists because of it.
+- **`ci/v2.9.0` SHIPPED — PLAN-016 complete.** Canon runner reference
+  implementation at `install/templates/runner/` (CI-0012); tag cut, re-cut
+  once for coherence (initial cut landed pre-#231-merge with internal
+  VERSION=v2.8.0; final tag @ `9cd2ba2`, VERIFIED: VERSION matches, template
+  pins @v2.9.0), release published. Operations vendored + re-stamped
+  (@ ci/v2.9.0, #279) and the host image REBUILT with `libatomic1` (both
+  build-image verification gates passed live). PR chain: #226 plan → #227
+  canon → ops #277 vendor → #229 FT-16..18 → #230 pre-tag fixes (5-lens
+  ci-preprod-review, SHIP-WITH-FIXES → fixed) → #231 release prep → ops
+  #279 re-stamp → #232 FT-21.
+- **Remaining founder items:** (1) `ci-runner@business` provisioning — the
+  v2 pool registration that business **PR** #63 (the verified-planning slim
+  PR — its CI lint job crashes on the legacy ci-eph runner image's missing
+  `libatomic`; re-confirmed post-rebuild) is solely blocked on (command
+  handed off);
+  (2) FT-19 container-egress risk-accept (pending, blocks nothing); (3)
+  iplanic branch-protection context rename (see the operations 2026-07-19
+  orphaned-contexts inbox runbook).
+- **Release-cut lessons → FT-21** (harden `docs/RELEASE_CHECKLIST.md` +
+  `release.sh`): merge prep BEFORE tagging; self-pin chicken-and-egg makes
+  the prep PR's first check run red until the tag exists (workflow-file-issue
+  runs are NOT rerunnable — empty-commit re-trigger is the recovery).
+- Backlog seeded from the same-day FT-16 outage arc: FT-16 fleet watchdog,
+  FT-17 post-cutover ai-review recovery, FT-18 context validator, FT-19/20
+  hardening, FT-21 release sequencing.
+
+### Previously (2026-07-20 mid-session)
+
+PLAN-016 W1–W3 execution detail — superseded by the wrap above; full record
+in CHANGELOG ci/v2.9.0 section + `plans/PLAN-016_runner-canon-templates.md`
+Review log.
 
 ### Previous state (2026-07-19)
 
