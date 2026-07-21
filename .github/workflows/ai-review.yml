@@ -458,8 +458,10 @@ jobs:
               CALLER_REF="${CALLER_BASE_REF}" ;;
             *)                   CALLER_REF="${CALLER_DEFAULT_BRANCH}" ;;
           esac
-          [ -n "${CALLER_REPO}" ] && [ -n "${CALLER_WF_PATH}" ] && [ -n "${CALLER_REF}" ] \
-            || { echo "::error::ai-review: could not derive the caller workflow location/ref from '${GITHUB_WORKFLOW_REF}' — INFRASTRUCTURE error, NOT a verdict."; exit 1; }
+          if [ -z "${CALLER_REPO}" ] || [ -z "${CALLER_WF_PATH}" ] || [ -z "${CALLER_REF}" ]; then
+            echo "::error::ai-review: could not derive the caller workflow location/ref from '${GITHUB_WORKFLOW_REF}' — INFRASTRUCTURE error, NOT a verdict."
+            exit 1
+          fi
 
           caller_wf="$(mktemp)"
           # --get/--data-urlencode: branch names may contain & # % +, which would
@@ -1235,8 +1237,10 @@ jobs:
           # pull_request_target-only job (see the job `if:`), so the base ref is
           # the executing copy; no fallback (see the review job's rationale).
           CALLER_REF="${CALLER_BASE_REF}"
-          [ -n "${CALLER_REPO}" ] && [ -n "${CALLER_WF_PATH}" ] && [ -n "${CALLER_REF}" ] \
-            || { echo "::error::autofix: could not derive the caller workflow location/ref from '${GITHUB_WORKFLOW_REF}' — infrastructure error, not a code failure."; exit 1; }
+          if [ -z "${CALLER_REPO}" ] || [ -z "${CALLER_WF_PATH}" ] || [ -z "${CALLER_REF}" ]; then
+            echo "::error::autofix: could not derive the caller workflow location/ref from '${GITHUB_WORKFLOW_REF}' — infrastructure error, not a code failure."
+            exit 1
+          fi
 
           caller_wf="$(mktemp)"
           curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
