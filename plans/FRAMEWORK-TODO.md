@@ -677,6 +677,29 @@ consumer's `.github/workflows/` the same way — so each reusable needs its own
 analysis, which is why this stays an investigation, not a mechanical sweep.
 Correct any "pinned tag" determinism wording in their comments/docs to match.
 
+### FT-22 — `standards-drift.yml` resolver predates the FT-15 rule (both-forms + scan-scope + pre-release reject)
+
+**Status:** OPEN — one-line-ish extension, deliberately NOT bundled into PLAN-017 PR-A.
+**Found:** 2026-07-21, PLAN-017 PR-A review (code-reviewer, MAJOR doc-consistency finding).
+
+`standards-drift.yml:83` pioneered "resolve the adopted tag from the consumer's
+own caller pin", but it accepts **only** the plain `@ci/vX.Y.Z` form and scans
+`.github/workflows/` unfiltered. `REPO_STANDARDS` §4.2a now mandates three extra
+properties that `docs-sync.yml` implements and `standards-drift.yml` does not:
+
+- accept the commented-SHA form `@<40-hex> # ci/vX.Y.Z` (legal per
+  `sync/check-pin-currency.sh:71`) — a consumer pinning `standards-drift` that
+  way hard-fails INFRA-classed on every run today;
+- restrict the scan to `--include='*.yml' --include='*.yaml'` **and** real
+  `uses:` lines — otherwise a `*.yml.bak` / `*.disabled` leftover or a
+  commented-out example can win the version sort (verified reproducible);
+- capture and **reject** a pre-release `-suffix` rather than silently truncating
+  `ci/v2.10.0-rc.1` → `ci/v2.10.0`.
+
+**Fix:** port `docs-sync.yml`'s resolver verbatim (keyed to
+`standards-drift\.yml`). §4.2a already points implementers at `docs-sync.yml`
+and warns against copying `standards-drift.yml` until this lands.
+
 ### FT-16 — runner-fleet health has no reflexes: wedged supervisor queued 16 jobs ~3h with zero alerting
 
 **Found:** 2026-07-20, operations — the single `ci-runner,single-use`

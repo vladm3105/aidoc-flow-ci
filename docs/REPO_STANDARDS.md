@@ -282,6 +282,50 @@ callers (this is exactly how the v1.8.1 sweep re-introduced `runner-self` and
 bricked the fleet; FT-9). `--update` is only for deliberately adopting a new
 template body, reviewing each drift.
 
+### 4.2a The adopted pin must be readable — reusables resolve it from the caller
+
+**A reusable that fetches cross-repo assets MUST resolve the canon tag from the
+consumer's own adopted `uses:` pin, and MUST hardcode the canon owner/repo. It
+must NOT use `github.workflow_ref`.**
+
+Inside a `workflow_call` reusable, `github.workflow_ref` is the **CALLER's**
+entry workflow ref (the consumer's default branch), not the reusable's pinned
+tag — and its first path segment is the **caller's owner**, not the canon's.
+Using it means the adopted pin controls neither the version nor the source: the
+gate silently tracks canon `main`, rollback-by-re-pin does nothing, and external
+adopters 404 against `<their-org>/aidoc-flow-ci`. This was live in production
+until FT-15 (confirmed 2026-07-21); `github.job_workflow_sha` is not a
+substitute because it is not accessible as a `${{ }}` expression.
+
+The canonical resolver — **copy `docs-sync.yml`**, which implements the full
+rule. (`standards-drift.yml` pioneered the approach but predates the
+both-forms + scan-scope requirements below and is pending the same extension —
+FT-22. Do not copy it as-is.) The rule:
+
+- scan only files GitHub actually executes (`--include='*.yml' --include='*.yaml'`)
+  and only real `uses:` lines. Without both filters a `*.yml.bak` / `*.disabled`
+  leftover or a commented-out example can supply the tag and **win** the version
+  sort — a silent wrong-version hazard (verified, not theoretical);
+- key the pattern to **this reusable's own filename**, never an unkeyed one — an
+  unkeyed match can pick up the trailing comment on a line pinning a *different*
+  reusable and resolve the wrong tag;
+- accept both pin forms canon recognises: plain `@ci/vX.Y.Z` and the
+  commented-SHA `@<40-hex> # ci/vX.Y.Z`;
+- **reject pre-release pins explicitly.** Capture any `-suffix` and hard-fail on
+  it. Silently dropping it resolves `ci/v2.10.0-rc.1` to `ci/v2.10.0` — a real
+  but *different* tag once that ships, reintroducing the wrong-version class with
+  a notice that looks correct;
+- distinguish "`.github/workflows/` unreadable" from "no pin found", so the error
+  cannot misdiagnose a correctly-installed caller;
+- **fail loud and INFRASTRUCTURE-classed in every one of those cases — never fall
+  back to `main`**, which would silently restore the defect.
+
+**Consequence for consumers:** a caller whose pin the resolver cannot read now
+hard-fails instead of silently fetching `main`. **Pre-release pins
+(`@ci/vX.Y.Z-rc.N`) are not supported** — the resolver pattern is unanchored and
+would prefix-match `ci/v2.10.0-rc.1` to the nonexistent `ci/v2.10.0`. Pin
+released tags only.
+
 ### 4.3 Reusable workflows install tools as BINARIES, never third-party actions
 
 **Canon reusable workflows may `uses:` only `actions/*`, `github/*`, and

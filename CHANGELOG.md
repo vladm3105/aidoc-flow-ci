@@ -5,6 +5,37 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — `docs-sync` resolves the adopted canon pin (FT-15 PR-A, PLAN-017)
+
+- **`docs-sync.yml`** no longer builds its script-fetch URL from
+  `github.workflow_ref`. Inside a `workflow_call` reusable that value is the
+  **CALLER's** ref, so the adopted `@ci/vX.Y.Z` pin controlled neither the
+  version (assets silently came from canon `main`) nor the owner (its first
+  segment is the *caller's* owner, so external adopters 404'd). Confirmed live
+  2026-07-21 — see FT-15. It now resolves the tag from the consumer's own
+  checked-out `docs-sync` pin (both plain and commented-SHA forms, keyed to the
+  workflow filename) and **hardcodes** `vladm3105/aidoc-flow-ci`. A missing pin
+  now fails loud + INFRASTRUCTURE-classed rather than falling back to `main`,
+  and the resolved tag is echoed as a `::notice::`.
+- **Resolver hardening** (from the pre-push review, each verified reproducible):
+  the scan is limited to `*.yml`/`*.yaml` **and** real `uses:` lines — otherwise
+  a `*.yml.bak`/`*.disabled` leftover or a commented-out example can supply the
+  tag and *win* the version sort; **pre-release pins are rejected explicitly**
+  rather than silently truncated (`ci/v2.10.0-rc.1` → `ci/v2.10.0` would be a
+  real but different tag once it ships); and an unreadable
+  `.github/workflows/` is reported distinctly so the error can't misdiagnose a
+  correctly-installed caller. The script fetch also gained `--retry 3`
+  (availability only, matching `standards-drift.yml`).
+- **`docs/REPO_STANDARDS.md` §4.2a** codifies the rule for every reusable that
+  fetches cross-repo assets.
+- **Consumer-visible:** a caller whose pin the resolver cannot read now
+  hard-fails instead of silently fetching `main`; **pre-release (`-rc.N`) pins
+  are unsupported** (the pattern would prefix-match to a nonexistent tag). All
+  current consumers use plain semver pins — no live impact.
+- First of three (`docs-sync` → `doc-maintainer` → `ai-review`) per
+  `plans/PLAN-017_ft-15-pinned-asset-fetch.md`. **Consumers must re-pin to get
+  the fix.**
+
 _(empty — next changes land here)_
 
 ## ci/v2.9.0 — 2026-07-20
