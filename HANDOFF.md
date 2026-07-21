@@ -4,7 +4,33 @@ Live cross-session resume point for the workspace CI + governance-workflow
 canon library. Read at session start; refresh at milestones and before
 context compaction.
 
-## Current state (2026-07-20, session wrap)
+## Current state (2026-07-21)
+
+- ⚠️ **FT-15 CONFIRMED LIVE — the pin does NOT control reviewer assets.** Proven
+  from production logs (no throwaway run needed: `ai-review.yml:431` already
+  notices the resolved ref every run). `operations`, pinned `@ci/v2.0.1`, logged
+  `ai-review fetching assets from vladm3105/aidoc-flow-ci@refs/heads/main` — so it
+  fetches `main`'s rubric / verdict schema / `litellm_client.py`. Verified against
+  the **tag** source (not just the log, since `pull_request_target` makes
+  `github.ref` also `main`). **Realized drift is narrow — only
+  `litellm_client.py` actually differs (+19/-1); rubric + schema are identical** —
+  but the mechanism is fully broken. Workflow *logic* is correctly pinned by
+  GitHub; only the **curl-fetched assets** float. 5 `workflow_ref` sites:
+  `ai-review` (2), `doc-maintainer` (2), `docs-sync` (1).
+  **Two NEW findings beyond the original entry:** (1) `CI_OWNER` is *also*
+  caller-derived (`cut -d/ -f1`), so **external adoption is broken today** — an
+  external org fetches `<their-org>/aidoc-flow-ci` → 404 (the owner is NOT
+  hardcoded, contrary to the prior note); (2) a hard-404 mode reachable **today** —
+  `doc-maintainer` also declares `workflow_dispatch:`, so a manual dispatch from a
+  feature branch yields `refs/heads/<branch>` → 404 → bricked gate, surfacing as an
+  INFRA-looking flake rather than a config error. **Consequence for sequencing: the release/pin story is not true as
+  shipped — do not premise the arming rollout on "the pin determines reviewer
+  behaviour."** Fix is OPEN, deliberately NOT blind-applied: one reviewed PR per
+  reusable, must hardcode the owner and derive the tag from the consumer's own
+  caller (the `standards-drift.yml` pattern). Full evidence + scope table in
+  `plans/FRAMEWORK-TODO.md` FT-15.
+
+### Previously (2026-07-20, session wrap)
 
 - **`ci/v2.9.0` SHIPPED — PLAN-016 complete.** Canon runner reference
   implementation at `install/templates/runner/` (CI-0012); tag cut, re-cut

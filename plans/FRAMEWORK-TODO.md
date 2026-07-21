@@ -512,13 +512,122 @@ that do not run the linter adds a drift surface for no signal.
 
 ### FT-15 — audit fleet reusables (ai-review / doc-maintainer / docs-sync) for the `workflow_ref`-is-the-caller asset-fetch bug
 
-**Status:** OPEN — investigation (do NOT blind-fix the four reusables).
+**Status:** ⚠️ **CONFIRMED LIVE 2026-07-21 — the claim is TRUE. The pin does NOT
+control reviewer assets.** Investigation closed; the FIX is now OPEN (do NOT
+blind-fix — see "Fix sketch", one reviewed PR per reusable).
+
+**Live evidence (production logs, not docs reasoning).** `ai-review.yml:431`
+already emits the resolved ref as a notice on **every** run, so no throwaway run
+was needed — the proof was in every historical log. Two consecutive `operations`
+runs (`29790683633` @ 2026-07-21T00:35, `29788760133` @ 2026-07-20T23:56):
+
+```
+##[notice]ai-review fetching assets from vladm3105/aidoc-flow-ci@refs/heads/main
+```
+
+while that same repo's caller is pinned:
+
+```yaml
+uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.0.1
+```
+
+`refs/heads/main` ≠ `ci/v2.0.1`. **`github.workflow_ref` is the CALLER's entry
+workflow ref, exactly as the docs say.** operations, pinned at `v2.0.1`, fetches
+`main`'s `review-prompt.md`, `verdict.schema.json`, and `litellm_client.py`.
+
+*Ambiguity closed (adversarial re-verify):* under `pull_request_target`,
+`github.ref` **also** equals `refs/heads/main`, so the log line alone does not
+prove the source. Resolved against the **tag** source — `git show
+ci/v2.0.1:.github/workflows/ai-review.yml` (lines 397, 411-413) shows
+`GITHUB_WORKFLOW_REF: ${{ github.workflow_ref }}` → `REF="${GITHUB_WORKFLOW_REF##*@}"`
+→ that exact notice, so the printed value provably comes from `workflow_ref`.
+operations has exactly one `ai-review.yml` (a thin caller — no local copy), and
+the run's `headBranch` (`docs/handoff-wrap-2026-07-20`) differs from the resolved
+ref, confirming it is the caller's *base* ref, not the reusable's tag.
+`standards-drift.yml:10-13` already documents this behaviour in-repo.
+
+**Realized drift is narrower than the mechanism implies — state it precisely.**
+`git diff --stat ci/v2.0.1 origin/main` over the three fetched assets: only
+**`litellm_client.py` differs** (+19/-1); `review-prompt.md` and
+`verdict.schema.json` are byte-identical. So the *mechanism* is fully broken and
+the determinism / rollback / release-discipline consequences below hold in full,
+but the *realized* divergence to date is one file — **not** a silently-swapped
+rubric. Do not overstate this as "8 versions of rubric drift."
+
+**The "works in production" tension is resolved — both sides were right, measuring
+different things.** It never 404s because the caller's ref happens to be
+`refs/heads/main` and `aidoc-flow-ci` *also* has a `main`, so the URL resolves —
+to the wrong version. Every affected trigger lands on `refs/heads/main`:
+`ai-review` is `pull_request_target` (ref = base branch), `doc-maintainer` and
+`docs-sync` are `push: [main]`.
+
+**Scope confirmed by code inspection — all three reusables, 5 `workflow_ref`
+sites (7 curl invocations).** `grep -rn 'github.workflow_ref' .github/workflows/`
+returns exactly these 5 env assignments, so the enumeration is complete — no
+reusable was missed:
+
+| Reusable | Sites | Assets fetched from the wrong ref |
+| --- | --- | --- |
+| `ai-review.yml` | 429-447, 1143-1150 | rubric, verdict schema, `litellm_client.py` |
+| `doc-maintainer.yml` | 135-142, 196-209 | `reconcile.py`, `litellm_client.py` |
+| `docs-sync.yml` | 109-117 | docs-sync scripts |
+
+`doc-maintainer`/`docs-sync` name the variable `CI_TAG`/`TAG` rather than `REF`,
+but both are `CI_TAG: ${{ github.workflow_ref }}` → `TAG="${CI_TAG##*@}"` —
+the identical defect. `docs-sync.yml:112`'s comment ("The reusable workflow's
+`github.workflow_ref`") states the wrong mental model that produced the bug;
+correct it with the fix.
+
+**What is and isn't broken (precise):** GitHub resolves the reusable's *workflow
+YAML* at the pinned tag — that part is the platform and is correct. Only the
+**curl-fetched assets** float. So a consumer runs **pinned workflow logic with
+floating `main` assets**. Consequences:
+
+- **Determinism** — the pin does not reproduce a review; the rubric can change
+  under a consumer with no re-pin.
+- **Release discipline is bypassed** — any merge to `aidoc-flow-ci` `main`
+  instantly changes every consumer's live gate, with no tag, no release, no
+  adoption step. This is the inverse of the semver contract the canon advertises.
+- **Rollback is ineffective** — re-pinning a consumer to an older tag does NOT
+  roll back the rubric/client.
+
+**NEW — two extensions this investigation found beyond the original entry:**
+
+1. **`CI_OWNER` is also caller-derived, so external adoption is broken today.**
+   `ai-review.yml:430` does `CI_OWNER=$(echo "${GITHUB_WORKFLOW_REF}" | cut -d/ -f1)`
+   — field 1 of the ref is the **CALLER's owner**, not the canon's. It only works
+   because every current consumer shares the `vladm3105` owner. An external
+   adopter (`acme/their-repo`) would fetch
+   `raw.githubusercontent.com/acme/aidoc-flow-ci/...` → 404 → INFRA failure, or —
+   worse — silently fetch *their own* fork's rubric if such a repo exists. This
+   contradicts the entry's earlier note that "host + repo path are hardcoded; only
+   the ref is wrong": the **owner is not hardcoded**. Repo-path and host are.
+   Relevant to PLAN-010 (adoption model) and the "External adopters" guidance in
+   `docs/runners.md` / `docs/REVIEWER_APP_ONBOARDING.md`. The fix must hardcode
+   the owner (or take it as an input), not derive it.
+2. **A hard-404 failure mode that is reachable TODAY — no customization needed.**
+   Any trigger yielding a ref absent from `aidoc-flow-ci` — `pull_request`
+   (`refs/pull/N/merge`) or a push/dispatch on a feature branch
+   (`refs/heads/<branch>`) — 404s and bricks the gate. The original assumption
+   that "all three triggers yield `refs/heads/main`" is **wrong**:
+   `operations/.github/workflows/doc-maintainer.yml` also declares `schedule:`
+   (:11) and **`workflow_dispatch:` (:16)** — so a manual dispatch from a feature
+   branch hits the 404 path immediately. (`ai-review` is `pull_request_target`,
+   plus `pull_request_review` on business/iplanic/interlog — both base-ref, so
+   still `main`; `docs-sync` is `push: [main]`.) The failure surfaces as an
+   INFRA-looking fetch error, not a config error, so it would likely be
+   misdiagnosed as a flake.
 **Priority ELEVATED 2026-07-19 → trust-blocker:** the value/standard-readiness
 assessment (`plans/ASSESSMENT_flow-ci-value-and-standard-readiness.md`) makes this
 gating — if the deployed ai-review fetches its rubric/client from `main` rather
 than the pinned tag, the gate's "version-deterministic" guarantee has not held in
-production. Confirm (a throwaway run logging `github.workflow_ref` from inside a
-reusable) BEFORE trusting the pin story or widening deployment.
+production. **→ CONFIRMED 2026-07-21: it has NOT held.** The gate's
+version-determinism claim is false as shipped, so the trust-blocker is now a
+**fix-blocker**: the rollout/arming sequence (`ROLLOUT_plan015-arming.md`) and any
+widening of deployment should not proceed on the assumption that a pin determines
+reviewer behaviour, because it does not. Correct the "pinned tag" determinism
+wording wherever it appears (comments, `docs/`, adoption material) as part of the
+fix.
 
 **Surfaced by:** PLAN-015 B2 pre-push review (2026-07-18, security + correctness
 lenses, both CONFIRMED with GitHub-docs citations). While building the new
