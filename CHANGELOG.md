@@ -5,6 +5,27 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — `doc-maintainer` resolves the adopted canon pin (FT-15 PR-B, PLAN-017)
+
+- **`doc-maintainer.yml`** — both sites (the `reconcile` and `maintain` jobs) now
+  resolve the canon tag from the consumer's own checked-out pin and hardcode
+  `vladm3105/aidoc-flow-ci`, instead of deriving ref **and owner** from
+  `github.workflow_ref` (FT-15). Fetch URLs are byte-identical to before.
+- **Resolver hardened, and the hardening back-ported to `docs-sync.yml`** so the
+  §4.2a exemplar stays authoritative for PR-C. Three additions, each from review
+  and each verified in a fixture:
+  - **SHA-pinned callers now fetch at the SHA**, not the trailing
+    `# ci/vX.Y.Z` comment. GitHub executes the reusable at the SHA while the
+    comment can lag it, so trusting the comment ran one version's workflow with
+    another version's assets — FT-15's class through the other pin form.
+  - **Ambiguity fails closed**: more than one distinct pin now errors and lists
+    them, rather than silently taking the highest (which could fetch a version
+    the repo never adopted).
+  - **`grep` exit ≥2 is distinguished from "no match"**, so an unreadable
+    `.github/workflows/` is no longer misreported as "caller not installed".
+- Second of three (`docs-sync` ✅ → `doc-maintainer` ✅ → `ai-review`) per
+  `plans/PLAN-017_ft-15-pinned-asset-fetch.md`.
+
 ### Fixed — `docs-sync` resolves the adopted canon pin (FT-15 PR-A, PLAN-017)
 
 - **`docs-sync.yml`** no longer builds its script-fetch URL from

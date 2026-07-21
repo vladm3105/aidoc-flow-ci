@@ -6,6 +6,18 @@ context compaction.
 
 ## Current state (2026-07-21)
 
+- **PLAN-017 (FT-15 fix) — PR-A + PR-B LANDED; PR-C (`ai-review`) is next.**
+  `docs-sync` (#236) and `doc-maintainer` (both sites) now resolve the canon tag
+  from the consumer's own adopted pin and hardcode the owner. **PR-C is the hard
+  one** — the review job has no `actions/checkout` by design (IPLAN-0024), so it
+  uses `workflow_ref` as a *locator* only and resolves at a trusted,
+  event-selected ref (`pull_request.base.ref` / `repository.default_branch`); see
+  PLAN-017 §4 PR-C. **Not yet verified live:** canon has no self-caller for these
+  reusables, so their own CI cannot exercise them — verification is the
+  `ci/v2.10.0` cut + a pilot consumer re-pin reading the `::notice::`, which is a
+  🔴 cross-repo write (ops/inbox runbook). **FT-22** tracks porting the same
+  resolver to `standards-drift.yml`, which predates the rule.
+
 - ⚠️ **FT-15 CONFIRMED LIVE — the pin does NOT control reviewer assets.** Proven
   from production logs (no throwaway run needed: `ai-review.yml:431` already
   notices the resolved ref every run). `operations`, pinned `@ci/v2.0.1`, logged

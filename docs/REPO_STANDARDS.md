@@ -315,8 +315,17 @@ FT-22. Do not copy it as-is.) The rule:
   it. Silently dropping it resolves `ci/v2.10.0-rc.1` to `ci/v2.10.0` — a real
   but *different* tag once that ships, reintroducing the wrong-version class with
   a notice that looks correct;
-- distinguish "`.github/workflows/` unreadable" from "no pin found", so the error
-  cannot misdiagnose a correctly-installed caller;
+- **fail CLOSED when more than one distinct pin is found.** Only one reusable
+  actually runs, so the correct tag is not knowable from the tree; picking the
+  highest would silently fetch a version the repo never adopted. Error and list
+  the competing pins;
+- **when the caller pinned by SHA, fetch at the SHA — not the trailing comment.**
+  GitHub executes the reusable at the SHA, while `# ci/vX.Y.Z` is documentation
+  that can lag it (a surgical-sed re-pin updates one and not the other). Trusting
+  the comment runs one version's workflow with another version's assets — the
+  same wrong-version class through the other pin form;
+- distinguish "`.github/workflows/` unreadable" from "no pin found" (`grep` exit
+  ≥2 vs 1), so the error cannot misdiagnose a correctly-installed caller;
 - **fail loud and INFRASTRUCTURE-classed in every one of those cases — never fall
   back to `main`**, which would silently restore the defect.
 

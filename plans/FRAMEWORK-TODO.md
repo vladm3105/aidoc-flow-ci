@@ -697,7 +697,9 @@ properties that `docs-sync.yml` implements and `standards-drift.yml` does not:
   `ci/v2.10.0-rc.1` → `ci/v2.10.0`.
 
 **Fix:** port `docs-sync.yml`'s resolver verbatim (keyed to
-`standards-drift\.yml`). §4.2a already points implementers at `docs-sync.yml`
+`standards-drift\.yml`). It gained two further properties in PR-B —
+fail-closed on multiple distinct pins, and fetch-at-the-SHA when the caller is
+SHA-pinned — so use §4.2a's full property list, not the three enumerated above. §4.2a already points implementers at `docs-sync.yml`
 and warns against copying `standards-drift.yml` until this lands.
 
 ### FT-16 — runner-fleet health has no reflexes: wedged supervisor queued 16 jobs ~3h with zero alerting
