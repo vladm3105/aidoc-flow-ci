@@ -103,21 +103,60 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "::notice::docs-sync running; dry_run=$DRY_RUN"
 
-      - name: Fetch operation scripts from aidoc-flow-ci
+      - name: Fetch operation scripts from the adopted canon tag
         if: ${{ steps.cfg.outputs.skip != 'true' }}
-        env:
-          CI_TAG: ${{ github.workflow_ref }}
         run: |
           set -euo pipefail
-          # The reusable workflow's `github.workflow_ref` looks like:
-          # vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v2.9.0
-          # Extract the @<tag> portion and owner to fetch matching scripts.
-          TAG="${CI_TAG##*@}"
-          CI_OWNER=$(echo "${CI_TAG}" | cut -d/ -f1)
-          BASE="https://raw.githubusercontent.com/${CI_OWNER}/aidoc-flow-ci/${TAG}/scripts/docs-sync"
+          # WHICH canon version: read the adopted `@ci/vX.Y.Z` pin from the
+          # consumer's OWN checked-out docs-sync caller (the `actions/checkout`
+          # above put it on disk). We deliberately do NOT use
+          # `github.workflow_ref` — inside a `workflow_call` reusable it is the
+          # CALLER's entry ref (the consumer's default branch), NOT this
+          # reusable's pin, so it silently fetched scripts from `main` regardless
+          # of the adopted tag (FT-15, confirmed live 2026-07-21). And
+          # `github.job_workflow_sha` is not accessible as a workflow expression
+          # (actionlint rejects it; it is an OIDC claim, not a context field).
+          # Matches both pin forms canon accepts — plain `@ci/vX.Y.Z` and the
+          # commented-SHA `@<40-hex> # ci/vX.Y.Z` — and is keyed to THIS
+          # workflow's filename so a pin for a different reusable can never be
+          # picked up. (Two callers pinned to different tags resolve to the
+          # highest — an abnormal install.)
+          # Distinguish "directory unreadable" from "no pin found" so the error
+          # below cannot misdiagnose a correctly-installed caller.
+          [ -d .github/workflows ] \
+            || { echo "::error::docs-sync: .github/workflows/ not found or unreadable after checkout — INFRASTRUCTURE error, not a sync result."; exit 1; }
+
+          # Only real `uses:` lines in files GitHub actually executes count.
+          # Without the --include filter a `*.yml.bak` / `*.disabled` leftover is
+          # still scanned by `grep -r` and can WIN the `sort -V` below (verified);
+          # without the `uses:` filter a commented-out example or prose can supply
+          # the tag. Both are silent wrong-version hazards.
+          CANON_TAG="$(grep -rhE --include='*.yml' --include='*.yaml' '^[[:space:]]*uses:' .github/workflows/ 2>/dev/null \
+            | grep -ohE 'aidoc-flow-ci/\.github/workflows/docs-sync\.yml@([0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' \
+            | grep -oE 'ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' | sort -Vu | tail -1 || true)"
+          [ -n "$CANON_TAG" ] \
+            || { echo "::error::docs-sync: could not find a docs-sync '@ci/vX.Y.Z' pin on a 'uses:' line in .github/workflows/ — is this caller installed from the canon template? INFRASTRUCTURE error, not a sync result."; exit 1; }
+
+          # Pre-release pins are REJECTED, not silently truncated. The version
+          # pattern is unanchored, so tolerating `-rc.N` would resolve
+          # `ci/v2.10.0-rc.1` to `ci/v2.10.0` — a real but DIFFERENT tag once it
+          # ships, reintroducing the FT-15 wrong-version class through a new door
+          # with a notice that looks correct. See REPO_STANDARDS §4.2a.
+          case "$CANON_TAG" in
+            *-*) echo "::error::docs-sync: pre-release canon pin '${CANON_TAG}' is not supported — pin a released ci/vX.Y.Z tag. INFRASTRUCTURE error, not a sync result."; exit 1 ;;
+          esac
+          echo "::notice::docs-sync: adopted canon pin vladm3105/aidoc-flow-ci@${CANON_TAG}"
+
+          # owner/repo hardcoded to the canonical canon — never derived from
+          # caller-controlled input (FT-15 D2: deriving the owner from
+          # `workflow_ref` broke external adopters, who fetched
+          # <their-org>/aidoc-flow-ci and 404'd).
+          BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CANON_TAG}/scripts/docs-sync"
           mkdir -p .docs-sync-scripts
           for op in changelog_stub version_sync cross_ref_repair; do
-            curl -fsSL "${BASE}/${op}.py" -o ".docs-sync-scripts/${op}.py"
+            curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
+              -o ".docs-sync-scripts/${op}.py" "${BASE}/${op}.py" \
+              || { echo "::error::docs-sync: failed to fetch ${op}.py from vladm3105/aidoc-flow-ci@${CANON_TAG} — INFRASTRUCTURE error, not a sync result. Re-run."; exit 1; }
             chmod +x ".docs-sync-scripts/${op}.py"
           done
           ls -la .docs-sync-scripts/
