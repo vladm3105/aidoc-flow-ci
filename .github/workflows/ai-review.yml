@@ -410,9 +410,13 @@ jobs:
             echo "::warning::reviewer-App token cannot read ${OWNER}/${REPO} config — falling back to AI_REVIEW_TOKEN/GITHUB_TOKEN"
           fi
       - name: Fetch reviewer assets + per-consumer config
+        id: fetch_assets
         if: ${{ env.SKIP_REVIEW != '1' }}
         env:
           GITHUB_WORKFLOW_REF: ${{ github.workflow_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          CALLER_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          CALLER_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           APP_TOKEN: ${{ steps.review_app_ok.outputs.ok == '1' && steps.review_app_token.outputs.token || '' }}
           AI_REVIEW_TOKEN: ${{ secrets.AI_REVIEW_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -424,16 +428,86 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Parse pinned ref from github.workflow_ref:
-          # format = vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@<ref>
-          REF="${GITHUB_WORKFLOW_REF##*@}"
-          CI_OWNER=$(echo "${GITHUB_WORKFLOW_REF}" | cut -d/ -f1)
-          echo "::notice::ai-review fetching assets from ${CI_OWNER}/aidoc-flow-ci@${REF}"
+          # --- Resolve the adopted canon pin (FT-15) -------------------------
+          # `github.workflow_ref` = <caller-owner>/<caller-repo>/<path>@<caller-ref>.
+          # Inside a workflow_call reusable it identifies the CALLER's entry
+          # workflow — which is exactly what we use it for here. We take ONLY the
+          # owner/repo/path from it; its @<ref> is the CALLER's ref and must never
+          # be applied to aidoc-flow-ci (doing so was FT-15: assets silently came
+          # from canon `main`, and the owner was caller-derived so external
+          # adopters 404'd). This job has no `actions/checkout` by design
+          # (IPLAN-0024 — see the comment above), so unlike docs-sync /
+          # doc-maintainer we READ the caller's workflow file over the API rather
+          # than from disk. Full rule: docs/REPO_STANDARDS.md §4.2a.
+          CALLER_SLUG_PATH="${GITHUB_WORKFLOW_REF%%@*}"
+          CALLER_REPO="$(printf '%s' "$CALLER_SLUG_PATH" | cut -d/ -f1,2)"
+          CALLER_WF_PATH="$(printf '%s' "$CALLER_SLUG_PATH" | cut -d/ -f3-)"
+
+          # Which copy of the caller workflow did GitHub actually execute?
+          # pull_request_target → the PR's BASE branch; pull_request_review (and
+          # anything else) → the repo's DEFAULT branch. Both are event-supplied
+          # and trusted; neither is PR-content-controlled.
+          case "$EVENT_NAME" in
+            pull_request_target)
+              # Hard-fail rather than fall back: silently substituting the default
+              # branch could resolve the pin from a branch the PR does not target
+              # (e.g. a release branch on an older tag) — a wrong-but-plausible
+              # tag, which is the FT-15 class again.
+              [ -n "${CALLER_BASE_REF}" ] \
+                || { echo "::error::ai-review: pull_request_target with an empty base ref — cannot resolve the adopted canon pin. INFRASTRUCTURE error, NOT a verdict."; exit 1; }
+              CALLER_REF="${CALLER_BASE_REF}" ;;
+            *)                   CALLER_REF="${CALLER_DEFAULT_BRANCH}" ;;
+          esac
+          if [ -z "${CALLER_REPO}" ] || [ -z "${CALLER_WF_PATH}" ] || [ -z "${CALLER_REF}" ]; then
+            echo "::error::ai-review: could not derive the caller workflow location/ref from '${GITHUB_WORKFLOW_REF}' — INFRASTRUCTURE error, NOT a verdict."
+            exit 1
+          fi
+
+          caller_wf="$(mktemp)"
+          # --get/--data-urlencode: branch names may contain & # % +, which would
+          # otherwise truncate the query and silently resolve the wrong ref.
+          curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github.raw" \
+            -o "${caller_wf}" \
+            --get --data-urlencode "ref=${CALLER_REF}" \
+            "https://api.github.com/repos/${CALLER_REPO}/contents/${CALLER_WF_PATH}" \
+            || { echo "::error::ai-review: could not read the caller workflow ${CALLER_REPO}/${CALLER_WF_PATH}@${CALLER_REF} to resolve the adopted canon pin — INFRASTRUCTURE error, NOT a verdict. Re-run."; exit 1; }
+          # Same 200-but-empty / wrong-shape defence the other fetched assets get.
+          # Without it a transport fault is misreported as "caller not installed".
+          test -s "${caller_wf}" \
+            || { echo "::error::ai-review: caller workflow ${CALLER_WF_PATH}@${CALLER_REF} fetched EMPTY — INFRASTRUCTURE error, NOT a verdict. Re-run."; exit 1; }
+          case "$(head -c 1 "${caller_wf}")" in
+            '{'|'[') echo "::error::ai-review: caller workflow fetch returned JSON, not raw YAML (Accept header not honoured?) — INFRASTRUCTURE error, NOT a verdict."; exit 1 ;;
+          esac
+
+          PINS="$(grep -hE '^[[:space:]]*uses:' "${caller_wf}" \
+            | grep -ohE 'aidoc-flow-ci/\.github/workflows/ai-review\.yml@([0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' \
+            | sort -u || true)"
+          PIN_COUNT="$(printf '%s' "$PINS" | grep -c . || true)"
+          [ "$PIN_COUNT" -ge 1 ] \
+            || { echo "::error::ai-review: no ai-review '@ci/vX.Y.Z' pin found on a 'uses:' line in ${CALLER_REPO}/${CALLER_WF_PATH}@${CALLER_REF} — is this caller installed from the canon template? INFRASTRUCTURE error, NOT a verdict."; exit 1; }
+          # Fail CLOSED on ambiguity — only one reusable actually runs, so the
+          # correct tag is not knowable; picking the highest could fetch a version
+          # the repo never adopted.
+          [ "$PIN_COUNT" -eq 1 ] \
+            || { echo "::error::ai-review: found $PIN_COUNT differing ai-review pins in ${CALLER_WF_PATH} — resolve to one. INFRASTRUCTURE error, NOT a verdict."; printf '%s\n' "$PINS" | sed 's/^/  /'; exit 1; }
+
+          CANON_TAG="$(printf '%s' "$PINS" | grep -oE 'ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?')"
+          CANON_SHA="$(printf '%s' "$PINS" | grep -oE '@[0-9a-f]{40}' | tr -d '@' || true)"
+          case "$CANON_TAG" in
+            *-*) echo "::error::ai-review: pre-release canon pin '${CANON_TAG}' is not supported — pin a released ci/vX.Y.Z tag. INFRASTRUCTURE error, NOT a verdict."; exit 1 ;;
+          esac
+          # SHA-pinned caller → GitHub executes THAT SHA, so fetch assets from it;
+          # the trailing `# ci/vX.Y.Z` is documentation and can lag.
+          FETCH_REF="${CANON_SHA:-$CANON_TAG}"
+          echo "::notice::ai-review: adopted canon pin vladm3105/aidoc-flow-ci@${CANON_TAG} (fetching at ${FETCH_REF})"
 
           # Fetch rubric + schema from aidoc-flow-ci (PUBLIC; raw works unauth).
+          # owner/repo hardcoded — never caller-derived (FT-15 D2).
           mkdir -p reviewer-assets/ai-review
           for f in review-prompt.md verdict.schema.json; do
-            url="https://raw.githubusercontent.com/${CI_OWNER}/aidoc-flow-ci/${REF}/ai-review/${f}"
+            url="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${FETCH_REF}/ai-review/${f}"
             curl --fail --silent --show-error --location \
               --retry 3 --retry-delay 2 \
               -o "reviewer-assets/ai-review/${f}" \
@@ -444,7 +518,7 @@ jobs:
           done
           curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
             -o reviewer-assets/litellm_client.py \
-            "https://raw.githubusercontent.com/${CI_OWNER}/aidoc-flow-ci/${REF}/scripts/litellm_client.py" || {
+            "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${FETCH_REF}/scripts/litellm_client.py" || {
               echo "::error::ai-review: failed to fetch LiteLLM adapter"
               exit 1
             }
@@ -611,7 +685,12 @@ jobs:
       # 422s (swallowed) and only the comment posts — the comment is the reliable
       # signal there until the label is synced.
       - name: Signal reviewer-infrastructure failure (fail-closed, honest)
-        if: ${{ always() && steps.run_review.outcome == 'failure' }}
+        # Covers BOTH the reviewer client failing AND any failure BEFORE it ran
+        # (canon-pin resolution / asset fetch). Without the second arm those exit
+        # before `run_review` exists, so the PR would show a bare red `ai-review`
+        # with no label and no comment — which authors reasonably misread as "the
+        # AI rejected my code" rather than an infrastructure fault.
+        if: ${{ always() && (steps.run_review.outcome == 'failure' || steps.fetch_assets.outcome == 'failure') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -1134,20 +1213,73 @@ jobs:
           path: prhead
           fetch-depth: 0
 
-      - name: Fetch fixer assets (litellm client + fix prompt) from the pinned ref
+      - name: Fetch fixer assets (litellm client + fix prompt) from the adopted canon tag
         if: ${{ steps.gate.outputs.proceed == '1' }}
         env:
           GITHUB_WORKFLOW_REF: ${{ github.workflow_ref }}
+          CALLER_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          CALLER_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # This step previously had no token of its own (it inherited only the
+          # job-level GH_TOKEN); the caller-file read below needs one explicitly.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          REF="${GITHUB_WORKFLOW_REF##*@}"
-          CI_OWNER=$(echo "${GITHUB_WORKFLOW_REF}" | cut -d/ -f1)
+          # Same resolution as the review job — see that step and
+          # docs/REPO_STANDARDS.md §4.2a. NOTE: this job DOES check out the PR
+          # head, but at `path: prhead`, and reading the pin from PR-authored
+          # content would let a PR downgrade its own canon tag. So we resolve from
+          # the caller's file at a TRUSTED ref over the API, exactly as the review
+          # job does. This job is pull_request_target-only, so the base ref is the
+          # executing copy.
+          CALLER_SLUG_PATH="${GITHUB_WORKFLOW_REF%%@*}"
+          CALLER_REPO="$(printf '%s' "$CALLER_SLUG_PATH" | cut -d/ -f1,2)"
+          CALLER_WF_PATH="$(printf '%s' "$CALLER_SLUG_PATH" | cut -d/ -f3-)"
+          # pull_request_target-only job (see the job `if:`), so the base ref is
+          # the executing copy; no fallback (see the review job's rationale).
+          CALLER_REF="${CALLER_BASE_REF}"
+          if [ -z "${CALLER_REPO}" ] || [ -z "${CALLER_WF_PATH}" ] || [ -z "${CALLER_REF}" ]; then
+            echo "::error::autofix: could not derive the caller workflow location/ref from '${GITHUB_WORKFLOW_REF}' — infrastructure error, not a code failure."
+            exit 1
+          fi
+
+          caller_wf="$(mktemp)"
+          curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github.raw" \
+            -o "${caller_wf}" \
+            --get --data-urlencode "ref=${CALLER_REF}" \
+            "https://api.github.com/repos/${CALLER_REPO}/contents/${CALLER_WF_PATH}" \
+            || { echo "::error::autofix: could not read the caller workflow ${CALLER_REPO}/${CALLER_WF_PATH}@${CALLER_REF} to resolve the adopted canon pin — infrastructure error, not a code failure."; exit 1; }
+          test -s "${caller_wf}" \
+            || { echo "::error::autofix: caller workflow ${CALLER_WF_PATH}@${CALLER_REF} fetched EMPTY — infrastructure error, not a code failure."; exit 1; }
+          case "$(head -c 1 "${caller_wf}")" in
+            '{'|'[') echo "::error::autofix: caller workflow fetch returned JSON, not raw YAML — infrastructure error, not a code failure."; exit 1 ;;
+          esac
+
+          PINS="$(grep -hE '^[[:space:]]*uses:' "${caller_wf}" \
+            | grep -ohE 'aidoc-flow-ci/\.github/workflows/ai-review\.yml@([0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' \
+            | sort -u || true)"
+          PIN_COUNT="$(printf '%s' "$PINS" | grep -c . || true)"
+          [ "$PIN_COUNT" -ge 1 ] \
+            || { echo "::error::autofix: no ai-review '@ci/vX.Y.Z' pin found on a 'uses:' line in ${CALLER_REPO}/${CALLER_WF_PATH}@${CALLER_REF} — infrastructure error, not a code failure."; exit 1; }
+          [ "$PIN_COUNT" -eq 1 ] \
+            || { echo "::error::autofix: found $PIN_COUNT differing ai-review pins in ${CALLER_WF_PATH} — resolve to one. infrastructure error, not a code failure."; printf '%s\n' "$PINS" | sed 's/^/  /'; exit 1; }
+
+          CANON_TAG="$(printf '%s' "$PINS" | grep -oE 'ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?')"
+          CANON_SHA="$(printf '%s' "$PINS" | grep -oE '@[0-9a-f]{40}' | tr -d '@' || true)"
+          case "$CANON_TAG" in
+            *-*) echo "::error::autofix: pre-release canon pin '${CANON_TAG}' is not supported — pin a released ci/vX.Y.Z tag. infrastructure error, not a code failure."; exit 1 ;;
+          esac
+          FETCH_REF="${CANON_SHA:-$CANON_TAG}"
+          echo "::notice::autofix: adopted canon pin vladm3105/aidoc-flow-ci@${CANON_TAG} (fetching at ${FETCH_REF})"
+
+          # owner/repo hardcoded — never caller-derived (FT-15 D2).
           mkdir -p fixer-assets
           for pair in "scripts/litellm_client.py:litellm_client.py" "ai-review/fix-prompt.md:fix-prompt.md"; do
             src="${pair%%:*}"; dst="${pair##*:}"
             curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
               -o "fixer-assets/${dst}" \
-              "https://raw.githubusercontent.com/${CI_OWNER}/aidoc-flow-ci/${REF}/${src}" || {
+              "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${FETCH_REF}/${src}" || {
                 echo "::error::autofix: failed to fetch ${src} — infrastructure error, not a code failure."
                 exit 1
               }

@@ -1,6 +1,8 @@
 # PLAN-017 — FT-15 fix: make the adopted pin actually control the fetched assets
 
-> Status: PLANNING — awaiting review passes. Owning repo: `aidoc-flow-ci`.
+> Status: **IMPLEMENTED (code) 2026-07-21** — PR-A `docs-sync` (#236), PR-B
+> `doc-maintainer` (#237), PR-C `ai-review` (this PR). **Not yet verified live**:
+> per §5 the gate is the `ci/v2.10.0` cut + a pilot consumer re-pin (🔴 cross-repo). Owning repo: `aidoc-flow-ci`.
 > Closes **FT-15** (CONFIRMED LIVE 2026-07-21, `plans/FRAMEWORK-TODO.md`).
 > Scope: 3 reusables, 5 `workflow_ref` sites, **one reviewed PR per reusable**
 > (per FT-15's own instruction — these are in-production, security-reviewed

@@ -6,13 +6,14 @@ context compaction.
 
 ## Current state (2026-07-21)
 
-- **PLAN-017 (FT-15 fix) — PR-A + PR-B LANDED; PR-C (`ai-review`) is next.**
+- **PLAN-017 (FT-15 fix) — ALL THREE PRs LANDED (`docs-sync`, `doc-maintainer`,
+  `ai-review`). Code complete; NOT yet verified live.**
   `docs-sync` (#236) and `doc-maintainer` (both sites) now resolve the canon tag
-  from the consumer's own adopted pin and hardcode the owner. **PR-C is the hard
-  one** — the review job has no `actions/checkout` by design (IPLAN-0024), so it
-  uses `workflow_ref` as a *locator* only and resolves at a trusted,
-  event-selected ref (`pull_request.base.ref` / `repository.default_branch`); see
-  PLAN-017 §4 PR-C. **Not yet verified live:** canon has no self-caller for these
+  from the consumer's own adopted pin and hardcode the owner. PR-C (the merge gate) has no
+  `actions/checkout` by design (IPLAN-0024), so it reads the caller's workflow
+  over the API at a trusted, event-selected ref (`pull_request_target`→base,
+  `pull_request_review`→default, else default) and **discards** `workflow_ref`'s
+  own ref component. **Not yet verified live:** canon has no self-caller for these
   reusables, so their own CI cannot exercise them — verification is the
   `ci/v2.10.0` cut + a pilot consumer re-pin reading the `::notice::`, which is a
   🔴 cross-repo write (ops/inbox runbook). **FT-22** tracks porting the same

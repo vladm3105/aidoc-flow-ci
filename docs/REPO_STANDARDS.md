@@ -326,8 +326,20 @@ FT-22. Do not copy it as-is.) The rule:
   same wrong-version class through the other pin form;
 - distinguish "`.github/workflows/` unreadable" from "no pin found" (`grep` exit
   ≥2 vs 1), so the error cannot misdiagnose a correctly-installed caller;
+- **guard the fetched input itself** — a 200-with-empty-body, or a JSON body when
+  raw was requested, must be its own INFRASTRUCTURE error. Otherwise a transport
+  fault produces "no pin found" and sends an operator to audit a correct caller;
+- anchor the owner in the pattern (`vladm3105/aidoc-flow-ci/…`). Unanchored, a
+  pin naming a *different* owner's `aidoc-flow-ci` matches and then 404s against
+  the hardcoded owner — fail-closed, but with a confusing diagnostic;
 - **fail loud and INFRASTRUCTURE-classed in every one of those cases — never fall
   back to `main`**, which would silently restore the defect.
+
+**Install constraint (fail-closed, but worth knowing):** for reusables that
+resolve over the API (`ai-review`), `github.workflow_ref` names the **entry**
+workflow. A consumer that wraps a canon reusable inside its *own* `workflow_call`
+reusable has no canon pin in the entry file, so resolution hard-fails. Call canon
+reusables directly from the entry workflow.
 
 **Consequence for consumers:** a caller whose pin the resolver cannot read now
 hard-fails instead of silently fetching `main`. **Pre-release pins
