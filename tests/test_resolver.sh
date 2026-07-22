@@ -40,6 +40,14 @@ resolve() { # $1=fixture dir  $2=pattern
     | grep -ohE "$2" | sort -u
 }
 
+# Grep the FILE, never a slurped copy of it. `ai-review.yml` is ~96KB and passing
+# that through a shell variable + `printf '%s' "$1"` argument (what
+# assert_contains does) proved environment-sensitive: it worked locally and came
+# back empty in CI, which silently INVERTED the results — every `contains` failed
+# and the `absent` check spuriously passed. File-based greps have no such limit.
+has()   { if grep -qF -- "$2" "$1"; then _g "$3"; else _r "$3"; fi; }
+hasnt() { if grep -qF -- "$2" "$1"; then _r "$3"; else _g "$3"; fi; }
+
 FIX="$(mktemp -d)"; trap 'rm -rf "$FIX"' EXIT
 mkdir -p "$FIX/.github/workflows"
 put() { printf '%s\n' "$2" > "$FIX/.github/workflows/$1"; }
@@ -61,19 +69,18 @@ echo "== §4.2a properties present in every resolver (structural) =="
 # would be cargo-culting a property it cannot have.
 DIR_SCANNERS="doc-maintainer docs-sync standards-drift"
 for r in $DIR_SCANNERS; do
-  assert_contains "$(cat "$WF/$r.yml")" "--include='*.yml'" \
-    "$r: directory scan scoped to executable workflow files"
+  has "$WF/$r.yml" "--include='*.yml'" "$r: directory scan scoped to executable workflow files"
 done
-assert_absent "$(cat "$WF/ai-review.yml")" "--include='*.yml'" \
+hasnt "$WF/ai-review.yml" "--include='*.yml'" \
   "ai-review: single-file resolver correctly has no directory scope"
 
 for r in $REUSABLES; do
-  body="$(cat "$WF/$r.yml")"
-  assert_contains "$body" "'^[[:space:]]*uses:'"     "$r: only real uses: lines are read"
-  assert_contains "$body" 'vladm3105/aidoc-flow-ci/' "$r: canon owner anchored in the pattern"
-  assert_contains "$body" 'PIN_COUNT'                "$r: ambiguity is counted (fail-closed)"
-  assert_contains "$body" 'FETCH_REF'                "$r: fetches at the executed ref"
-  assert_contains "$body" '*-*)'                     "$r: pre-release pin rejected"
+  f="$WF/$r.yml"
+  has "$f" "'^[[:space:]]*uses:'"     "$r: only real uses: lines are read"
+  has "$f" 'vladm3105/aidoc-flow-ci/' "$r: canon owner anchored in the pattern"
+  has "$f" 'PIN_COUNT'                "$r: ambiguity is counted (fail-closed)"
+  has "$f" 'FETCH_REF'                "$r: fetches at the executed ref"
+  has "$f" '*-*)'                     "$r: pre-release pin rejected"
 done
 
 echo "== behavioural: the LIVE pattern against fixtures =="
