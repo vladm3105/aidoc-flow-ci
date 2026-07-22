@@ -7,7 +7,8 @@ context compaction.
 ## Current state (2026-07-21)
 
 - **PLAN-017 (FT-15 fix) — ALL THREE PRs LANDED (`docs-sync`, `doc-maintainer`,
-  `ai-review`). Code complete; NOT yet verified live.**
+  `ai-review`). Code complete; NOT yet verified live — verification runbook
+  PREPARED at `plans/ROLLOUT_plan017-verify.md` (🔴 needs a consumer re-pin).**
   `docs-sync` (#236) and `doc-maintainer` (both sites) now resolve the canon tag
   from the consumer's own adopted pin and hardcode the owner. PR-C (the merge gate) has no
   `actions/checkout` by design (IPLAN-0024), so it reads the caller's workflow
