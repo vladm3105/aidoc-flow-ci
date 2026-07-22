@@ -6,6 +6,20 @@ context compaction.
 
 ## Current state (2026-07-22)
 
+- **`ci/v2.11.0` SHIPPED (2026-07-22) — PLAN-018 Workstream A.** Tag on
+  `4984c35`, release published + marked Latest. The 🔴 founder FT-30 cold-start
+  dry-run passed GREEN on BOTH visibilities against throwaway repos, pinned to
+  the merge SHA (`CI_TAG=4984c35`): install.sh completed through all 18 labels
+  with no FAIL/404, `composition-{private,public}.yml` and `pre-commit.yml` both
+  resolved (F1/F2 live-verified), the fragment installed (F3), and the F4
+  runner-pool probe + LiteLLM note printed without aborting the script. Prep PR
+  #251 was expected-red pre-tag (FT-21 chicken-and-egg: version-sync + 11
+  self-pinned callers referencing a tag that didn't exist yet) and merged
+  `--admin` on unprotected main; the tag turned it green. **Single-repo release —
+  no consumer re-pinned.** NOTE: startup_failure self-caller runs are
+  non-retryable (FT-21 v2.9.0 lesson), so the post-release HANDOFF push is what
+  re-triggers them green.
+
 - **PLAN-018 Workstream A COMPLETE — all three cold-start blockers fixed on `main`
   (PR-A #247 F1, PR-B #248 F2/F3, PR-C #249 F4/F6/F7).** The `ci/v2.11.0` cut is now
   gated ONLY on the 🔴 founder-executed cold-start dry-run (FT-30, now a
