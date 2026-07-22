@@ -22,8 +22,12 @@
 #     --repo <owner/repo>
 #                     REQUIRED unless run in a checked-out consumer repo
 #                     (auto-detected via `gh repo view`).
-#     --ci-tag <tag>  canon tag (default: reads @ci/vX.Y.Z pin from
-#                     .github/workflows/*.yml; falls back to main).
+#     --ci-tag <ref>  canon tag OR commit SHA — used only as a raw.githubusercontent
+#                     ref (TEMPLATE_BASE + the check-pin-currency self-fetch), so
+#                     either form works. A SHA-pinned caller passes its SHA so the
+#                     template comparison matches what actually executed.
+#                     (default: reads @ci/vX.Y.Z pin from .github/workflows/*.yml;
+#                     falls back to main).
 #
 #     --strict       exit non-zero on drift or an uncheckable control; intended
 #                    for release/adoption gates. Default remains warning-only.

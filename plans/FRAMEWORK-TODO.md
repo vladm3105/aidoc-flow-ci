@@ -741,13 +741,29 @@ see because it ran none of its own reusables.
    interaction: a local-path caller carries no `@ci/vX.Y.Z` pin, so the resolver
    would fall back to the sibling self-caller's pin — worth designing, not
    bolting on.
-2. **`doc-maintainer`** self-caller — bigger (needs the bot App creds).
-3. **`ai-review`** self-caller — bigger still, and the highest-value one, since
-   that is the merge gate.
+2. **`doc-maintainer`** and **`ai-review`** self-callers — **BLOCKED on 🔴 runner
+   provisioning, not on effort.** Verified 2026-07-21: canon has every secret
+   (`LITELLM_*`, `APP_REVIEWER_1_*`) and is ARMED, but has **0 self-hosted
+   runners**, and the LiteLLM proxy is host-local (`172.17.0.1:4001`, canon's own
+   `CLAUDE.md`). Both reusables are LiteLLM-dependent (34 and 22 references);
+   `docs-sync` self-adopted precisely because it has **0** and is deterministic
+   Python. So an `ai-review` self-caller would either queue forever (self-hosted
+   labels, no pool) or fail unreachable (`ubuntu-latest`) — **either way it bricks
+   every canon PR.** Prerequisite: register a `ci-runner,single-use` pool for
+   `aidoc-flow-ci` on the proxy host. Do NOT add these callers before that.
+3. **PR-scope** (see item 1) applies to all three.
 
 ### FT-22 — `standards-drift.yml` resolver predates the FT-15 rule (both-forms + scan-scope + pre-release reject)
 
-**Status:** OPEN — one-line-ish extension, deliberately NOT bundled into PLAN-017 PR-A.
+**Status:** ✅ **CLOSED 2026-07-21.** Ported to the full §4.2a property list:
+`uses:`-line + `*.yml`/`*.yaml` scan scope, both pin forms, fail-closed on
+multiple distinct pins, pre-release rejected, `grep` exit ≥2 distinguished from
+no-match, and fetch-at-the-SHA. Also switched the script's `--ci-tag` to the
+executed ref: the script uses it purely as a raw-URL ref for `TEMPLATE_BASE` and
+its `check-pin-currency` self-fetch, so a SHA works identically — and a SHA-pinned
+caller must compare against the templates it actually executed. §4.2a's "do not
+copy `standards-drift.yml` as-is" warning is removed; both it and `docs-sync.yml`
+are now conformant exemplars.
 **Found:** 2026-07-21, PLAN-017 PR-A review (code-reviewer, MAJOR doc-consistency finding).
 
 `standards-drift.yml:83` pioneered "resolve the adopted tag from the consumer's

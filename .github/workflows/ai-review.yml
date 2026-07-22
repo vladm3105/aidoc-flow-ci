@@ -482,7 +482,7 @@ jobs:
           esac
 
           PINS="$(grep -hE '^[[:space:]]*uses:' "${caller_wf}" \
-            | grep -ohE 'aidoc-flow-ci/\.github/workflows/ai-review\.yml@([0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' \
+            | grep -ohE 'vladm3105/aidoc-flow-ci/\.github/workflows/ai-review\.yml@([0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' \
             | sort -u || true)"
           PIN_COUNT="$(printf '%s' "$PINS" | grep -c . || true)"
           [ "$PIN_COUNT" -ge 1 ] \
@@ -1257,7 +1257,7 @@ jobs:
           esac
 
           PINS="$(grep -hE '^[[:space:]]*uses:' "${caller_wf}" \
-            | grep -ohE 'aidoc-flow-ci/\.github/workflows/ai-review\.yml@([0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' \
+            | grep -ohE 'vladm3105/aidoc-flow-ci/\.github/workflows/ai-review\.yml@([0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' \
             | sort -u || true)"
           PIN_COUNT="$(printf '%s' "$PINS" | grep -c . || true)"
           [ "$PIN_COUNT" -ge 1 ] \

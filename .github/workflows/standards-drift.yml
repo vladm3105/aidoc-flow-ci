@@ -80,11 +80,44 @@ jobs:
           # Resolve the adopted canon tag from the consumer's OWN checked-out
           # standards-drift caller pin (actions/checkout above put it on disk).
           # Deterministic and pin-accurate; see the header for why not workflow_ref.
-          CANON_TAG="$(grep -rhoE 'aidoc-flow-ci/\.github/workflows/standards-drift\.yml@ci/v[0-9]+\.[0-9]+\.[0-9]+' .github/workflows/ 2>/dev/null \
-            | grep -oE 'ci/v[0-9]+\.[0-9]+\.[0-9]+' | sort -Vu | tail -1 || true)"
-          [ -n "$CANON_TAG" ] \
-            || { echo "::error::standards-drift: could not find the standards-drift '@ci/vX.Y.Z' pin in .github/workflows/ — is this caller installed from the canon template? INFRASTRUCTURE error, not a drift verdict."; exit 1; }
-          echo "::notice::standards-drift: adopted canon pin vladm3105/aidoc-flow-ci@${CANON_TAG}"
+          # FT-22: brought to the full docs/REPO_STANDARDS.md §4.2a property list —
+          # this workflow pioneered the approach but predated five of its rules.
+          [ -d .github/workflows ] \
+            || { echo "::error::standards-drift: .github/workflows/ not found after checkout — INFRASTRUCTURE error, not a drift verdict."; exit 1; }
+
+          # Read only real `uses:` lines in files GitHub actually executes: a
+          # *.yml.bak/*.disabled leftover or a commented-out example must never
+          # supply the tag (it would WIN the version sort — verified).
+          set +e
+          USES_LINES="$(grep -rhE --include='*.yml' --include='*.yaml' '^[[:space:]]*uses:' .github/workflows/)"
+          grc=$?
+          set -e
+          # grep rc: 0=match, 1=no match, >=2=real error (unreadable dir). Without
+          # this split, an I/O error is misreported as "caller not installed".
+          [ "$grc" -le 1 ] \
+            || { echo "::error::standards-drift: could not read .github/workflows/ (grep exit $grc) — INFRASTRUCTURE error, not a drift verdict."; exit 1; }
+
+          PINS="$(printf '%s\n' "$USES_LINES" \
+            | grep -ohE 'vladm3105/aidoc-flow-ci/\.github/workflows/standards-drift\.yml@([0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' \
+            | sort -u || true)"
+          PIN_COUNT="$(printf '%s' "$PINS" | grep -c . || true)"
+          [ "$PIN_COUNT" -ge 1 ] \
+            || { echo "::error::standards-drift: could not find a standards-drift '@ci/vX.Y.Z' pin on a 'uses:' line in .github/workflows/ — is this caller installed from the canon template? INFRASTRUCTURE error, not a drift verdict."; exit 1; }
+          # Fail CLOSED on ambiguity: only one reusable actually runs, so the
+          # correct tag is unknowable from the tree. Picking the highest would
+          # silently compare against a version the repo never adopted.
+          [ "$PIN_COUNT" -eq 1 ] \
+            || { echo "::error::standards-drift: found $PIN_COUNT differing standards-drift pins in .github/workflows/ — resolve to one. INFRASTRUCTURE error, not a drift verdict."; printf '%s\n' "$PINS" | sed 's/^/  /'; exit 1; }
+
+          CANON_TAG="$(printf '%s' "$PINS" | grep -oE 'ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?')"
+          CANON_SHA="$(printf '%s' "$PINS" | grep -oE '@[0-9a-f]{40}' | tr -d '@' || true)"
+          case "$CANON_TAG" in
+            *-*) echo "::error::standards-drift: pre-release canon pin '${CANON_TAG}' is not supported — pin a released ci/vX.Y.Z tag. INFRASTRUCTURE error, not a drift verdict."; exit 1 ;;
+          esac
+          # SHA-pinned caller → GitHub executes THAT SHA, so fetch from it; the
+          # trailing `# ci/vX.Y.Z` is documentation and can lag.
+          FETCH_REF="${CANON_SHA:-$CANON_TAG}"
+          echo "::notice::standards-drift: adopted canon pin vladm3105/aidoc-flow-ci@${CANON_TAG} (fetching at ${FETCH_REF})"
 
           # The consumer does not ship sync/. Fetch the script from the adopted
           # canon tag; owner/repo hardcoded to canonical canon (matching the
@@ -95,14 +128,19 @@ jobs:
           SCRIPT="$(mktemp)"
           curl -fsSL --retry 3 --retry-delay 2 \
             -o "$SCRIPT" \
-            "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CANON_TAG}/sync/check-standards-drift.sh" \
-            || { echo "::error::standards-drift: could not fetch check-standards-drift.sh from vladm3105/aidoc-flow-ci@${CANON_TAG} — INFRASTRUCTURE error, not a drift verdict. Re-run."; exit 1; }
+            "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${FETCH_REF}/sync/check-standards-drift.sh" \
+            || { echo "::error::standards-drift: could not fetch check-standards-drift.sh from vladm3105/aidoc-flow-ci@${FETCH_REF} — INFRASTRUCTURE error, not a drift verdict. Re-run."; exit 1; }
           [ -s "$SCRIPT" ] \
             || { echo "::error::standards-drift: fetched check-standards-drift.sh is empty"; exit 1; }
 
           # --ci-tag pins the comparison base (tier templates + pin-currency) to
           # the SAME adopted tag — deterministic; the consumer compares against
           # exactly the version it adopted.
-          args=(--tier "$TIER" --repo "$GH_REPO" --ci-tag "$CANON_TAG")
+          # FETCH_REF, not CANON_TAG: the script uses this purely as a
+          # raw.githubusercontent ref for TEMPLATE_BASE + its check-pin-currency
+          # self-fetch, so a 40-hex SHA works identically — and a SHA-pinned
+          # caller must compare against the templates it actually executed, not a
+          # tag whose trailing comment may lag. Identical for plain-tag pins.
+          args=(--tier "$TIER" --repo "$GH_REPO" --ci-tag "$FETCH_REF")
           [ "$STRICT" = "true" ] && args+=(--strict)
           bash "$SCRIPT" "${args[@]}"

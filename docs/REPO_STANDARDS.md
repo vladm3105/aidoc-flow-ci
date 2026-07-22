@@ -297,10 +297,9 @@ adopters 404 against `<their-org>/aidoc-flow-ci`. This was live in production
 until FT-15 (confirmed 2026-07-21); `github.job_workflow_sha` is not a
 substitute because it is not accessible as a `${{ }}` expression.
 
-The canonical resolver — **copy `docs-sync.yml`**, which implements the full
-rule. (`standards-drift.yml` pioneered the approach but predates the
-both-forms + scan-scope requirements below and is pending the same extension —
-FT-22. Do not copy it as-is.) The rule:
+The canonical resolver — **copy `docs-sync.yml`** (or `standards-drift.yml`,
+which pioneered the approach and was brought to this full property list by
+FT-22). The rule:
 
 - scan only files GitHub actually executes (`--include='*.yml' --include='*.yaml'`)
   and only real `uses:` lines. Without both filters a `*.yml.bak` / `*.disabled`

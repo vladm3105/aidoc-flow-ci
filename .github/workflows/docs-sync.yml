@@ -137,7 +137,7 @@ jobs:
             || { echo "::error::docs-sync: could not read .github/workflows/ (grep exit $grc) — INFRASTRUCTURE error, not a sync result."; exit 1; }
 
           PINS="$(printf '%s\n' "$USES_LINES" \
-            | grep -ohE 'aidoc-flow-ci/\.github/workflows/docs-sync\.yml@([0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' \
+            | grep -ohE 'vladm3105/aidoc-flow-ci/\.github/workflows/docs-sync\.yml@([0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' \
             | sort -u || true)"
           PIN_COUNT="$(printf '%s' "$PINS" | grep -c . || true)"
           [ "$PIN_COUNT" -ge 1 ] \
@@ -169,7 +169,7 @@ jobs:
           for op in changelog_stub version_sync cross_ref_repair; do
             curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
               -o ".docs-sync-scripts/${op}.py" "${BASE}/${op}.py" \
-              || { echo "::error::docs-sync: failed to fetch ${op}.py from vladm3105/aidoc-flow-ci@${CANON_TAG} — INFRASTRUCTURE error, not a sync result. Re-run."; exit 1; }
+              || { echo "::error::docs-sync: failed to fetch ${op}.py from vladm3105/aidoc-flow-ci@${FETCH_REF} — INFRASTRUCTURE error, not a sync result. Re-run."; exit 1; }
             chmod +x ".docs-sync-scripts/${op}.py"
           done
           ls -la .docs-sync-scripts/
