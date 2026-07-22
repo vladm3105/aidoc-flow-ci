@@ -594,6 +594,68 @@ LiteLLM) is unchanged and remains authoritative in operations.
 
 ---
 
+## CI-0013: Complete the canon before rolling it out; pre-rollout consumer drift is expected signal (2026-07-22)
+
+**Context**
+
+A five-lens pre-prod review scoped to onboarding a new private consumer
+(`aidoc-flow-feedback-desk`) found the cold-start path — `install.sh` on a repo
+with no prior canon surfaces — broken for 9 consecutive releases (FT-30), plus
+six further canon defects (FT-25 … FT-29, FT-31). Every existing fleet consumer
+adopted before `ci/v2.2.0`, so none of them exercised the broken path.
+
+This forced a sequencing question that PLAN-018 could not answer on its own:
+should canon fixes be constrained by "do not disturb the already-adopted fleet",
+or should canon be completed first and the fleet re-rolled afterwards?
+
+**Decision**
+
+Founder direction (2026-07-22): **complete `aidoc-flow-ci` first** — templates,
+scripts, flows, and rules — and roll the canon over to the other repos only once
+it is complete. Canon completeness is the goal; fleet propagation is a later,
+separate phase.
+
+Two consequences follow directly, and are decided here rather than per-PR:
+
+1. **Pre-rollout consumer drift is expected, correct signal — not damage.** When
+   canon adds a required surface (e.g. commit-stage hooks in
+   `install/templates/pre-commit-hook-block.yaml`), already-adopted consumers
+   will report `DRIFT` under `install/apply-standards.sh --check`. That report is
+   TRUE — those repos predate the completed canon — and it becomes the worklist
+   the later rollout consumes. Canon therefore asserts its full intended
+   standard and does NOT weaken a check to keep the stale fleet green.
+2. **The prohibition that survives is narrower: no SILENT WEAKENING of a live
+   gate.** Divergence is acceptable; quietly turning an enforcing gate off is
+   not. Concretely, a canon template change must never flip a consumer's
+   deliberately-graduated blocking gate to report-only through
+   `install.sh --update` (the `markdown-lint` `fail-on-findings` case,
+   PLAN-018 F6).
+
+**Consequences**
+
+- `apply-standards.sh --check` is expected to report fleet-wide drift on
+  `.pre-commit-config.yaml` between canon completion and rollout. This is an
+  operator-run report, not a CI gate — no workflow invokes `apply-standards.sh`
+  (`standards-drift.yml` runs `sync/check-standards-drift.sh`, which does not
+  inspect that file), so nothing goes red in the interim.
+- PLAN-018 is re-scoped from "unblock the feedback-desk onboarding" to canon
+  completeness; findings previously deferred to the FT ledger as out-of-scope
+  are pulled back in.
+- The rollout phase needs a migration path, and the one that exists is
+  **version-only**. FT-9 is RESOLVED (`ci/v1.9.0`, PLAN-006 W2) by adding
+  `install.sh --repin`, which surgically rewrites `@ci/vX.Y.Z` on `uses:` lines
+  and preserves per-repo customization. But `--update` — the path that adopts a
+  new template *body* — still wholesale-replaces every `safe_to_replace` caller
+  by design, and rolling a *completed* canon out is body-adoption, not a re-pin.
+  So the rollout will need per-repo caller reconciliation (runner labels,
+  `permissions:` blocks, trigger customizations), and canon should carry a
+  documented procedure for it. Tracked as part of this plan's Workstream D
+  rather than assumed.
+- Supersedes the working assumption in PLAN-018's original fix-contract item 6
+  ("no installed surface may diverge from its canon template").
+
+---
+
 <!-- Append new entries above this line; append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
 and update the superseded entry's "Consequences" section to reference
