@@ -6,9 +6,9 @@ context compaction.
 
 ## Current state (2026-07-22)
 
-- **PLAN-018 Workstream A / PR-A OPEN (F1 + regression cover) — the cold-start
-  404 is fixed on the branch, not yet on `main`, and canon is still NOT ready to
-  onboard a new repo.**
+- **PLAN-018 Workstream A / PR-A MERGED (#247, F1 + regression cover) — the
+  cold-start 404 is fixed on `main`, and canon is still NOT ready to onboard a
+  new repo.**
   `install.sh` now names each bootstrap caller template explicitly (three naming
   shapes, `docs/REPO_STANDARDS.md` §16.9); `tests/test_install.sh` (49 assertions)
   extracts and *evaluates* the caller block under both visibilities and
