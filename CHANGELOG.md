@@ -5,6 +5,29 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+_(empty — next changes land here)_
+
+## ci/v2.10.0 — 2026-07-21
+
+Minor: closes **FT-15** — the adopted `@ci/vX.Y.Z` pin now actually controls the
+assets fetched by all three affected reusables (`docs-sync` → `doc-maintainer` →
+`ai-review`). (`standards-drift` resolves from the caller pin already and never
+floated, but its resolver predates the §4.2a property list — tracked as FT-22.) Confirmed live 2026-07-21 that it did **not**: a
+consumer pinned `@ci/v2.0.1` logged `fetching assets from
+vladm3105/aidoc-flow-ci@refs/heads/main`, because inside a `workflow_call`
+reusable `github.workflow_ref` is the CALLER's ref — and its first path segment
+is the CALLER's owner, so external adopters 404'd. Workflow *logic* was always
+correctly pinned by GitHub; only the curl-fetched **assets** floated.
+
+**Consumers must re-pin to get the fix**, and two caller-surface requirements are
+new: a pin the resolver cannot read now hard-fails (instead of silently fetching
+`main`), and **pre-release (`-rc.N`) pins are unsupported**. All current consumers
+use plain semver pins, and none wraps a canon reusable inside its own
+`workflow_call` (which would defeat `ai-review`'s locator — see §4.2a's install
+constraint) — so there is no live impact. Rule: `docs/REPO_STANDARDS.md` §4.2a;
+plan: `plans/PLAN-017_ft-15-pinned-asset-fetch.md`; verification runbook:
+`plans/ROLLOUT_plan017-verify.md`.
+
 ### Fixed — `ai-review` resolves the adopted canon pin (FT-15 PR-C, PLAN-017)
 
 - **`ai-review.yml`** — both sites (the `ai-review` review job and the `autofix`
@@ -93,7 +116,6 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   `plans/PLAN-017_ft-15-pinned-asset-fetch.md`. **Consumers must re-pin to get
   the fix.**
 
-_(empty — next changes land here)_
 
 ## ci/v2.9.0 — 2026-07-20
 

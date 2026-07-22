@@ -74,7 +74,7 @@ prerequisite and prints a 🟢/🔴 readiness report before you touch the repo.
 ## Install on a new consumer repo
 
 ```sh
-bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.9.0/install/install.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.10.0/install/install.sh) \
   vladm3105/<consumer-repo> --visibility private
 ```
 
