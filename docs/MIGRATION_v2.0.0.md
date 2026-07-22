@@ -100,7 +100,7 @@ must be dropped from consumer caller `with:` blocks:
 ### 5. Repin all callers to `@ci/v2.0.0`
 
 ```bash
-CI_TAG=ci/v2.10.0 bash install.sh <owner/repo> --repin
+CI_TAG=ci/v2.11.0 bash install.sh <owner/repo> --repin
 ```
 
 `--repin` does a version-only pin bump (`@ci/vX.Y.Z` → `@ci/v2.0.0` on every
@@ -130,7 +130,7 @@ If the smoke passes, consumers can safely bump to `@ci/v2.0.0`.
 To revert a consumer from `ci/v2.0.0` to the last `ci/v1.x` tag:
 
 ```bash
-CI_TAG=ci/v2.10.0 bash install.sh <owner/repo> --repin
+CI_TAG=ci/v2.11.0 bash install.sh <owner/repo> --repin
 ```
 
 Then restore the deprecated vendor-CLI secrets and drop the LiteLLM secrets.
