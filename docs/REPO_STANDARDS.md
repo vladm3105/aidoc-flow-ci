@@ -1142,6 +1142,63 @@ stay in this document; the manifest is only the index (per PLAN-004 §6 R6).
   `.pre-commit-config.yaml` (canon block MERGED, not replaced). Re-run
   bootstrap `install.sh` to reconcile those.
 
+### 16.9 Bootstrap callers name their template explicitly — canon ships three naming shapes
+
+`install.sh`'s bootstrap path installs its default callers by naming each
+template **literally**. It must never derive the name from a pattern such as
+`workflows/<workflow>-<visibility>.yml`, because canon does not ship one naming
+convention — it ships three:
+
+| Caller template | public template | private template |
+| --- | --- | --- |
+| `ai-review` (bootstrapped) | `workflows/ai-review.yml` | same file (no variants — §4.1: one protected template, a visibility flip is a no-op) |
+| `composition` (bootstrapped) | `workflows/composition-public.yml` | `workflows/composition-private.yml` |
+| `pre-commit` (**not** bootstrapped today) | `workflows/pre-commit.yml` | `workflows/pre-commit-private.yml` |
+
+The bootstrap set is exactly the `auto_install: true` workflow entries in
+`manifest.json` (§16.8) — `ai-review` + `composition`. **`pre-commit` is listed
+here for its naming shape only**; wiring it into the bootstrap set is a separate,
+open defect (PLAN-018 F2: its check `call / Lint / format / security hooks` is
+required on every tier but umbrella, yet nothing installs its producer). Its row
+is what makes the "three shapes" point, so it belongs in the table — but this
+document must not read as though it is installed today.
+
+`pre-commit` is **asymmetric**: its public variant is the bare name, so an
+implementer generalising from `composition` writes `pre-commit-public.yml` — a
+file that does not exist — and breaks every public adopter. This is exactly how
+the derived form failed for `ai-review`: it requested
+`workflows/ai-review-private.yml`, deleted when the AI flows were unified, and
+the `|| exit 1` at the call site aborted every cold-start install before
+`config.json`, CODEOWNERS, `CLAUDE.md`, `pre_push_check.sh`, the pre-commit
+merge, and the label set. Canon had no cold-start exerciser, so it shipped
+undetected across nine releases.
+
+Two constraints follow, both enforced by `tests/test_install.sh`:
+
+- **The template path is a literal at the `fetch_template` call site.** A
+  variable form (`fetch_template "${TEMPLATES[$wf]}" …`) reintroduces the
+  derivation and disarms the check.
+- **The bootstrap caller installs live between the `BOOTSTRAP-CALLERS`
+  markers in `install.sh`, and the set they install — and each one's
+  resolution — must equal `manifest.json`'s, under both visibilities.**
+  Resolution is `visibility_variants[<visibility>]`, else `template`; the set
+  is the `auto_install: true` workflow entries. The installer hardcodes the
+  names; the manifest (§16.8) remains the documented authority, and the
+  equality is what keeps the two from drifting apart. It runs in **both
+  directions on purpose**: name-matching alone catches an existing-but-*wrong*
+  variant (a `-public` template on a private install) that file-existence does
+  not, while set-matching catches a caller being **dropped** — a stanza deleted
+  from the block leaves nothing behind for a name check to inspect. Adding a
+  bootstrap caller and flipping its `auto_install` are therefore one change.
+
+  **Enforcement limit, stated so it is not assumed away:** the containment check
+  reads only `fetch_template` calls whose destination is a literal beginning
+  `.github/workflows/`. A variable destination, or a workflow written with
+  `curl -o`/`cp`, is invisible to it. Set-equality is the backstop only for what
+  is **inside** the markers — it compares the block's own resolutions, so a
+  caller installed outside them in either of those forms is caught by nothing.
+  Install bootstrap callers inside the markers, with a literal destination.
+
 ## 17. Auto-merge for AI-opened PRs (two-layer default)
 
 Every non-paused, non-bootstrap workspace repo consumes both layers of

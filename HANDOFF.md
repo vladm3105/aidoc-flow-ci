@@ -6,13 +6,39 @@ context compaction.
 
 ## Current state (2026-07-22)
 
-- 🔴 **CANON IS NOT READY TO ONBOARD A NEW REPO — the cold-start path is broken
-  and has been for 9 releases.** Pre-prod review (5 lenses) scoped to onboarding
-  `feedback-desk` found the documented one-liner **dies on its first template
-  fetch**: `install/install.sh:462` builds `workflows/ai-review-${VISIBILITY}.yml`,
+- **PLAN-018 Workstream A / PR-A OPEN (F1 + regression cover) — the cold-start
+  404 is fixed on the branch, not yet on `main`, and canon is still NOT ready to
+  onboard a new repo.**
+  `install.sh` now names each bootstrap caller template explicitly (three naming
+  shapes, `docs/REPO_STANDARDS.md` §16.9); `tests/test_install.sh` (49 assertions)
+  extracts and *evaluates* the caller block under both visibilities and
+  cross-checks it against `manifest.json` **in both directions** — resolved
+  template names *and* the installed caller set (`auto_install: true`). Teeth
+  verified against eight seeded mutations plus one negative, and the PR-B change
+  (add the `pre-commit` stanza + flip its `auto_install`) verified to pass only
+  when both halves land together. **Two pre-push review cycles broke the test,
+  not the fix** — `install.sh` came through both clean. Cycle 1: deleting the
+  whole `composition` stanza passed with zero failures (the shape of the
+  still-open F2), plus substring-masked containment, a greedy match hiding a
+  derived argument behind a second call on one line, and an unbounded block on a
+  lost end marker. Cycle 2, on the fold itself: a backslash-wrapped call outside
+  the markers re-opened containment in a form ordinary line-wrapping produces,
+  and the new `set -euo pipefail` fidelity was defeated by calling the evaluator
+  in an `if` condition — the same `-e`-suppression trap `install.sh` documents
+  for `update_mode`. **Still open before an
+  onboard:** F2 + F3 (PR-B), F4/F6/F7 + the release-checklist dry-run (PR-C), and
+  the 🔴 founder-executed cold-start dry-run that gates the `ci/v2.11.0` cut —
+  its runbook must export `CI_TAG=<merge-sha>`, or it validates the pre-fix
+  templates. **The fix is unverified live**: canon is already adopted and cannot
+  self-exercise a cold start, which is precisely why F1 survived nine releases.
+
+- 🔴 **The cold-start path was broken for 9 releases (F1 — now fixed by PR-A,
+  above; retained for the reasoning).** Pre-prod review (5 lenses) scoped to
+  onboarding `feedback-desk` found the documented one-liner **died on its first
+  template fetch**: `install/install.sh:462` built `workflows/ai-review-${VISIBILITY}.yml`,
   but PLAN-013 deleted those variants at the `ci/v2.2.0` release commit —
   verified live, `ai-review-private.yml` → **404**, `ai-review.yml` → 200. The
-  `|| exit 1` kills the run before config.json, CODEOWNERS, CLAUDE.md,
+  `|| exit 1` killed the run before config.json, CODEOWNERS, CLAUDE.md,
   `pre_push_check.sh`, the pre-commit merge, and all 18 labels. Every fleet
   consumer adopted **before** v2.2.0, which is why no one hit it. Two more
   blockers survive the run: the bootstrap set omits the `pre-commit` caller that

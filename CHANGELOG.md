@@ -5,6 +5,89 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — cold-start `install.sh` fetched a template deleted at `ci/v2.2.0` (PLAN-018 F1, BLOCKER)
+
+- The bootstrap loop derived its caller templates as
+  `workflows/<workflow>-<visibility>.yml`, so a private install requested
+  `workflows/ai-review-private.yml` — a file removed when PLAN-013 unified the AI
+  flows into one protected template. `fetch_template` returns 1 on a failed
+  `curl` and the call site is `|| exit 1`, so **the documented one-liner died on
+  its first fetch**, before `config.json`, CODEOWNERS, `CLAUDE.md`,
+  `pre_push_check.sh`, the pre-commit merge, and all 18 labels. Every fleet
+  consumer adopted before `ci/v2.2.0`, and canon (already adopted) never runs its
+  own cold start — so it shipped undetected across nine releases.
+- **Each template is now named explicitly**, not derived. Canon ships three
+  naming shapes, not one convention: `ai-review` has no variants; `composition`
+  suffixes both; `pre-commit` is **asymmetric** — its public variant is the bare
+  name, so generalising from `composition` yields `pre-commit-public.yml`, which
+  does not exist, and reproduces the same 404 for every public adopter. New
+  `docs/REPO_STANDARDS.md` §16.9 records the table and the two constraints.
+- Deliberately **not** manifest-driven: `manifest.json` is fetched only inside
+  `update_mode`, which returns before bootstrap runs. Wiring it in would add a
+  network fetch, a parse, and a new hard-failure mode to the cold-start path to
+  replace a hardcoded string.
+
+### Added — `tests/test_install.sh`: regression cover for cold-start template resolution
+
+- **The obvious test would not have caught F1.** "Every `auto_install: true`
+  manifest entry's template exists" passes — the ai-review entry resolves to
+  `workflows/ai-review.yml`, which exists and always did. The manifest was never
+  wrong; `install.sh` was. So this suite checks the *installer's own* resolution,
+  then checks it against the manifest.
+- Four parts: (0) every `fetch_template` template argument is a **literal** — the
+  load-bearing form constraint, since a `TEMPLATES[$wf]` lookup would restore the
+  derivation and disarm everything below; (1) every literal resolves under
+  `install/templates/`; (2) the caller block is **extracted from `install.sh`
+  between `BOOTSTRAP-CALLERS` markers and evaluated** under both visibilities with
+  `fetch_template` stubbed, then checked against `manifest.json` **in both
+  directions** — each resolved template equals the `visibility_variants`
+  resolution for its consumer path, *and* the installed caller **set** equals the
+  manifest's `auto_install: true` workflow entries; (3) the three naming shapes
+  asserted against the template files. Containment (no `.github/workflows/`
+  install outside the markers) is a numeric line-range test, and both markers must
+  appear exactly once.
+- **Both directions are load-bearing.** Name-matching catches an existing-but-
+  *wrong* variant (a `-public` template on a private install) that file-existence
+  alone does not. Set-matching catches a caller being **dropped** — deleting a
+  stanza leaves nothing behind for a name check to inspect, so the first revision
+  of this suite passed with zero failures when the whole `composition` install was
+  removed. That is the shape of the sibling blocker F2 (the bootstrap set omits
+  the `pre-commit` caller whose check is required on every tier but umbrella).
+- **The block is evaluated, never re-implemented** — a test carrying its own copy
+  of the naming table passes happily while the installer rots. It is sourced under
+  the same `set -euo pipefail` as `install.sh`.
+- **Teeth verified**, per this repo's `test_negative.sh` discipline. Each mutation
+  below was applied and the suite confirmed to fail on it: the pre-fix derivation
+  restored (part 0, plus part 2 naming `ai-review-private.yml`);
+  `composition-public.yml` swapped into the private branch; the entire
+  `composition` stanza deleted; a stray duplicate call outside the markers
+  carrying a trailing comment; two calls sharing one line to hide a derived
+  argument behind a greedy match; the end marker removed; a call outside the
+  markers wrapped on a backslash continuation; a block statement failing *after*
+  both installs. The rule documented in an `install.sh` comment must *not* trip
+  containment — verified as a negative.
+- **Forward-compatible with F2's fix, and verified so.** Adding a `pre-commit`
+  stanza without flipping its manifest `auto_install` fails; flipping the manifest
+  without adding the stanza fails; doing both together passes. The two halves of
+  that change are coupled by construction.
+- **Extraction is over logical lines, not physical**, and every occurrence on a
+  line is examined. Both were live holes in the first revision: a greedy
+  `sed` match let a second call on the same line hide a derived argument, and a
+  backslash-wrapped call yielded a destination of `\` that skipped containment
+  entirely while *adding* two green assertions.
+- **The sandbox's exit status is asserted, not discarded.** Calling the evaluator
+  as `if eval_block …; then` silently defeated its own `set -euo pipefail` —
+  running a function in a condition disables `-e` for its entire body, the same
+  trap `install.sh` documents for `update_mode`. The rc is now captured from a
+  bare call.
+- **Known limit, recorded in §16.9 rather than implied away:** containment sees
+  only `fetch_template` calls with a literal `.github/workflows/…` destination. A
+  variable destination, or a `curl -o`/`cp`, is invisible to it. Set-equality
+  backstops only what is **inside** the markers — a caller installed outside them
+  in either of those forms is caught by nothing. Two residual extractor evasions
+  (a comment line ending in `\`; a trailing `\` on the file's last line) are
+  logged in `plans/FRAMEWORK-TODO.md`.
+
 ### Added — `tests/test_resolver.sh`: regression cover for the canon-pin resolver
 
 - The resolver is the mechanism **FT-15** broke, and it went undetected for months
