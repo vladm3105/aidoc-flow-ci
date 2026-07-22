@@ -8,7 +8,23 @@ deferred items belong in `plans/` or `HANDOFF.md` open threads.
 
 ---
 
-## Current release — ci/v2.9.0: runner canon templates (PLAN-016; prep merged, tag execution + consumer re-stamp remaining)
+## Current release — ci/v2.10.0: FT-15 pinned-asset-fetch fix (PLAN-017; prep merged, tag + pilot verification remaining)
+
+The adopted `@ci/vX.Y.Z` pin now actually controls the assets each affected
+reusable fetches. FT-15 was **confirmed live** 2026-07-21: a consumer pinned
+`@ci/v2.0.1` logged `fetching assets from vladm3105/aidoc-flow-ci@refs/heads/main`,
+because inside a `workflow_call` reusable `github.workflow_ref` is the CALLER's
+ref (and its first path segment the CALLER's owner, so external adopters 404'd).
+Fixed one reviewed PR per reusable — `docs-sync` (#236), `doc-maintainer` (#237),
+`ai-review` (#238) — each resolving the tag from the consumer's own adopted pin
+with the canon owner hardcoded, failing loud rather than falling back to `main`.
+Consumers must **re-pin** to get the fix; pre-release pins are now unsupported.
+Rule: `docs/REPO_STANDARDS.md` §4.2a. Remaining: 🔴 pilot consumer re-pin to
+verify live (`plans/ROLLOUT_plan017-verify.md`), then FT-22 (`standards-drift`
+resolver parity) and FT-23 (canon self-adoption so these reusables can
+self-verify).
+
+## Previous release — ci/v2.9.0: runner canon templates (PLAN-016)
 
 `install/templates/runner/` brings the runner reference implementation into
 canon (CI-0012): image spec with `libatomic1`, single-use supervisor with the
