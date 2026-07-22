@@ -271,7 +271,11 @@ canonical skip patterns:
 When onboarding a new repo (per `multi-project-guide.md`), adopt in this
 order — each step depends on the prior:
 
-1. **`pre-commit.yml`** — cheap, low-risk, catches mechanical issues cheaply.
+1. **`pre-commit.yml`** — **bootstrapped automatically** since PLAN-018 F2, so
+   this step is already done on a fresh `install.sh` run; it is listed here for
+   ordering context and for repos adopting workflows by hand. Its check is
+   required on every tier that has required checks at all (REPO_STANDARDS
+   §16.9), which is why it is no longer optional.
 2. **`markdown-lint.yml`** + **`links.yml` (offline mode)** — doc-quality
    floor.
 3. **`secret-scan.yml`** — defense-in-depth against accidental commit of

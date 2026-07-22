@@ -299,4 +299,46 @@ assert_ok "[ -f '$TEMPLATES/workflows/pre-commit-private.yml' ]" "pre-commit: -p
 assert_fail "[ -f '$TEMPLATES/workflows/pre-commit-public.yml' ]" \
   "pre-commit: no -public variant (the asymmetry — deriving one 404s)"
 
+# ---------------------------------------------------------------------------
+# Part 4 — the canon pre-commit fragment must select at least one hook at the
+# stage the reusable actually runs (PLAN-018 F3).
+#
+# The `pre-commit` reusable runs `pre-commit run --all-files` with NO
+# `--hook-stage` when `run-stage` is empty (its default), which selects the
+# `pre-commit` stage. A fragment whose hooks are all `stages: [pre-push]` matches
+# ZERO hooks, prints nothing, and exits 0 — a green REQUIRED check that inspected
+# nothing, on every fresh adopter. That was the shipped state for nine releases,
+# masked only on repos with a pre-existing rich config.
+#
+# Asserts the PROPERTY, not the specific hook ids: any hook running at the
+# default stage satisfies it. A hook with no `stages:` key runs at every stage,
+# so it counts.
+# ---------------------------------------------------------------------------
+echo ""
+echo "== canon pre-commit fragment selects hooks at the reusable's stage =="
+
+FRAGMENT="$TEMPLATES/pre-commit-hook-block.yaml"
+if [ -f "$FRAGMENT" ]; then _g "canon fragment exists"; else _r "canon fragment exists"; fi
+
+n_default_stage="$(python3 "$HERE/lib_count_stage_hooks.py" "$FRAGMENT" 2>/dev/null || echo ERR)"
+case "$n_default_stage" in
+  SKIP) printf '  \033[33mskip\033[0m PyYAML not installed — fragment stage count skipped\n' ;;
+  ERR)  _r "fragment stage count failed to run" ;;
+  *)    if [ "${n_default_stage:-0}" -gt 0 ]; then
+          _g "fragment has $n_default_stage hook(s) at the default (pre-commit) stage"
+        else
+          _r "fragment has ZERO default-stage hooks — the required check would inspect nothing"
+        fi ;;
+esac
+
+# The reusable's default really is the stage this part assumes — extracted from
+# the workflow, not restated here. If the empty-`run-stage` branch ever starts
+# passing --hook-stage, this is what says so out loud.
+PCWF="$ROOT/.github/workflows/pre-commit.yml"
+if grep -qE '^\s*pre-commit run --all-files --show-diff-on-failure$' "$PCWF"; then
+  _g "reusable's default branch runs with no --hook-stage (selects pre-commit stage)"
+else
+  _r "reusable's default branch no longer runs bare — Part 4's premise changed"
+fi
+
 suite_summary "test_install"

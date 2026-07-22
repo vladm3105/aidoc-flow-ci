@@ -202,7 +202,7 @@ pre-commit CI *caller* in this repo — only local hooks) green.
 ```
 W5 (quick green)  ─┐
 W1 (test suite)   ─┼─►  W2 (guardrails, FT-2 needed by W4)  ─►  W4 (arm gates)
-                   │                                            
+                   │
 W3 markdown-lint ──┘  (parallel; --fix remediation, labor-heavy)
 W3 docs-sync-live ─────────────────────►  (🔴 founder App; or defer to doc-maintainer)
 ```

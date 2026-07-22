@@ -16,7 +16,7 @@ reusable's job renders as **`call / <job-name>`** in the checks list:
 | `call / ai-review` | `ai-review.yml` | the AI review verdict |
 | `call / composition` | `composition.yml` | that the App's approval is COUNTED (identity gate) |
 | `call / verify` | `audit-trail.yml` → `audit-trail-check.yml` | the OPS-0069 audit-trail phrase |
-| `call / Lint / format / security hooks` | `pre-commit.yml` (adopted) | mechanical hygiene |
+| `call / Lint / format / security hooks` | `pre-commit.yml` (**bootstrapped**) | mechanical hygiene |
 | `call / gitleaks` | `secret-scan.yml` (adopted) | leaked-credential scan |
 
 `ai-review` + `composition` are a **pair** — require both, or neither

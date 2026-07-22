@@ -104,8 +104,14 @@ Full walkthrough: [`../docs/UPDATE_GUIDE.md`](../docs/UPDATE_GUIDE.md).
 1. **Clones** the consumer repo to `$PWD/aidoc-flow-ci-bootstrap-$$/consumer`
    (stable; not auto-deleted — inspect + commit after the script exits).
 2. **Drops the default callers** `.github/workflows/ai-review.yml` +
-   `composition.yml` (per-visibility templates). Preserves any existing
-   local files.
+   `composition.yml` + `pre-commit.yml`. Preserves any existing local
+   files. Template naming is **not** one convention — `ai-review` has no
+   per-visibility variants, `composition` suffixes both, and `pre-commit`'s
+   *public* variant is the bare name (see `../docs/REPO_STANDARDS.md`
+   §16.9). `pre-commit.yml` is bootstrapped **unconditionally**, regardless
+   of `--tier`: it emits `call / Lint / format / security hooks`, which is a
+   required status check on every tier that has required checks at all, and
+   is the bootstrap tier's only one.
 3. **Drops `.github/ai-review/config.json`** (the per-repo policy).
    Preserves existing.
 4. **Drops `.github/CODEOWNERS`** (owner routes substituted with
@@ -134,7 +140,7 @@ Full walkthrough: [`../docs/UPDATE_GUIDE.md`](../docs/UPDATE_GUIDE.md).
 
 The additional caller templates that ship in `install/templates/workflows/`
 (`labeler.yml`, `codeql.yml`, `markdown-lint.yml`, `links.yml`,
-`secret-scan.yml`, `pre-commit.yml`, `docs-sync.yml`, `doc-maintainer.yml`,
+`secret-scan.yml`, `docs-sync.yml`, `doc-maintainer.yml`,
 `auto-merge-ai-prs.yml`) are **not** bootstrapped automatically — the consumer
 chooses which to adopt per
 [`../docs/WORKFLOWS.md`](../docs/WORKFLOWS.md) §4 adoption sequencing.

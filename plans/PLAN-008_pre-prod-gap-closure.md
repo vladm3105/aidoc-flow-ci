@@ -383,4 +383,3 @@ pre-requisites per `HANDOFF.md:20-25`.
 40 citations verified against source; no fabrication found. All cited symbols resolve at cited lines. Plan groupings generate no merge conflicts when PRs are applied sequentially. No fix introduces a security regression.
 
 **Result:** ready — no further findings.
-

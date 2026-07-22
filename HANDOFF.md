@@ -6,6 +6,23 @@ context compaction.
 
 ## Current state (2026-07-22)
 
+- **PLAN-018 Workstream A / PR-B OPEN (F2 + F3) — the two remaining cold-start
+  blockers.** F2: `pre-commit` joins the bootstrap set **unconditionally** (its
+  check is required on every tier that has required checks, and is the bootstrap
+  tier's only one; without a producer, armed protection pins every PR on
+  "Expected — Waiting for status to be reported"). F3: the canon fragment ships
+  commit-stage hooks (`check-yaml`, `end-of-file-fixer`, `trailing-whitespace` at
+  `pre-commit-hooks` v6.0.0) so the required check inspects something — its only
+  hook was `pre-push`-staged, and the reusable's stage-less run selected **zero**
+  hooks and exited 0. Merge now de-dups by repo URL (a consumer on a different
+  `rev` was structurally unequal → duplicate `repos:` entry). Wave-0 self-adopted
+  by hand (the `CANON:` marker makes the merge no-op here) — which immediately
+  found trailing-whitespace / missing-newline defects in 4 of canon's own files.
+  **Known and accepted:** already-adopted consumers cannot receive the new hooks
+  (FT-32), so they flip to `DRIFT` — expected signal per CI-0013, and a report,
+  not a gate. Remaining in A: **PR-C** (F4/F6/F7 + the release-checklist
+  cold-start dry-run).
+
 - **PLAN-018 Workstream A / PR-A MERGED (#247, F1 + regression cover) — the
   cold-start 404 is fixed on `main`, and canon is still NOT ready to onboard a
   new repo.**
