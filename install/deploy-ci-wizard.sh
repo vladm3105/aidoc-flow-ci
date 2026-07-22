@@ -17,7 +17,29 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TPL="$HERE/templates"
-CI_TAG="$(cat "$HERE/../VERSION" 2>/dev/null | tr -d '[:space:]' || echo 'ci/v1.9.5')"
+# PLAN-018 F7 — fail loud, carry NO literal fallback.
+#
+# The previous form ended `|| echo 'ci/v1.9.5'`. That was not dead code: under
+# `set -euo pipefail` a missing or unreadable VERSION makes `cat` exit 1, the
+# pipeline exit 1, and the fallback FIRE — so the wizard scaffolded callers
+# pinned to ci/v1.9.5 while VERSION said ci/v2.10.0. Fourteen releases back,
+# green and silent, with nothing to indicate the pin was not the one requested.
+# (Verified by execution across all five modes: missing / empty / whitespace-only
+# / unreadable / good. The empty case produced the unresolvable `@` pin.)
+#
+# The obvious replacement dies before reaching its own guard: under `set -e` an
+# assignment whose command substitution fails terminates the script, and the
+# redirection error is reported before `2>/dev/null` applies to it. Hence the
+# explicit `|| CI_TAG=""` and the `2>/dev/null` BEFORE the `<` redirection.
+#
+# `tests/test_version_sync.sh` asserts this shipped behaviour, including the
+# missing-file case, so a literal fallback cannot reappear unnoticed.
+CI_TAG="$(tr -d '[:space:]' 2>/dev/null < "$HERE/../VERSION")" || CI_TAG=""
+[ -n "$CI_TAG" ] || {
+  echo "deploy-ci-wizard: cannot resolve the canon version — $HERE/../VERSION is missing, empty, or unreadable." >&2
+  echo "                  Refusing to scaffold: a guessed pin would silently write callers at the wrong canon tag." >&2
+  exit 2
+}
 BOT_ID="294948438"                    # aidoc-reviewer App bot-user id (App-global)
 GH="${GH:-gh}"
 
@@ -130,9 +152,27 @@ scaffold() {
     # normalize pin to current tag
     sed -i "s#@ci/v[0-9.]*#@$CI_TAG#g" "$dst"
     # single-template repos: for PRIVATE inject runner_labels into EVERY job's
-    # with: (handles multi-job links); for markdown-lint set report-only.
-    # (Variant workflows already bake in labels/report-only, so skip them.)
-    if [ ! -f "$TPL/workflows/$wf-$suffix.yml" ]; then
+    # with: (handles multi-job links). Variant templates already bake in their
+    # labels, and the injector re-checks that per job, so they are inert here.
+    #
+    # PLAN-018 F6 — markdown-lint runs the injector REGARDLESS of whether a
+    # variant exists. Gating the whole block on `[ ! -f <variant> ]` gave new
+    # PUBLIC adopters report-only (no markdown-lint-public.yml → injected) and
+    # new PRIVATE adopters a blocking gate (markdown-lint-private.yml exists →
+    # skipped), even though BOTH templates ship `fail-on-findings` commented out
+    # and carry the same rollout recommendation in their headers. The asymmetry
+    # was never intended — it was a side effect of which variant files happen to
+    # exist.
+    #
+    # The fix stays in the WIZARD, not the template. Uncommenting
+    # `fail-on-findings: false` in markdown-lint-private.yml would silently
+    # downgrade live gates: business/iplanic/interlog deliberately carry
+    # `fail-on-findings: true  # graduated to blocking (PLAN-007 W3)`, and the
+    # caller is safe_to_replace, so `--update --non-interactive` would replace
+    # them with a report-only canon template and turn three graduated blocking
+    # gates back off with nobody asking. Graduating a repo stays a per-repo,
+    # deliberate act (FT-11).
+    if [ ! -f "$TPL/workflows/$wf-$suffix.yml" ] || [ "$wf" = markdown-lint ]; then
       python3 - "$dst" "$wf" "$vis" <<'PY'
 import sys, re
 d, wf, vis = sys.argv[1], sys.argv[2], sys.argv[3]

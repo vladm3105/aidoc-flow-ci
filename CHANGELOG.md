@@ -5,6 +5,80 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — `deploy-ci-wizard.sh` silently scaffolded callers 14 releases back (PLAN-018 F7)
+
+- The wizard resolved its canon tag as
+  `CI_TAG="$(cat …/VERSION 2>/dev/null | tr -d … || echo 'ci/v1.9.5')"`. That
+  `|| echo` was **not** dead code: under `set -euo pipefail` a missing or
+  unreadable `VERSION` makes `cat` exit 1, the pipeline exit 1, and the fallback
+  **fire** — so the wizard scaffolded callers pinned to `ci/v1.9.5` while
+  `VERSION` said `ci/v2.10.0`, green and silent. (Two prior reviews called this
+  `||` dead because they read it and did not run it; execution is what corrected
+  the diagnosis.)
+- Now fails loud, carries no literal:
+  `CI_TAG="$(tr -d '[:space:]' 2>/dev/null < …/VERSION)" || CI_TAG=""` then a
+  `[ -n "$CI_TAG" ]` guard that exits 2. The `2>/dev/null` precedes the `<`
+  redirection because under `set -e` the redirection failure is reported before
+  the assignment's `2>/dev/null` would apply — the natural ordering dies before
+  reaching its own guard.
+- `tests/test_version_sync.sh` now covers the wizard too, by **executing** the
+  shipped resolution block against missing / whitespace-only / good `VERSION`
+  (not by re-reading its source), and asserts no literal `ci/v*` survives in the
+  resolution. Teeth verified against the restored fallback.
+
+### Fixed — the LiteLLM HTTP flag and the runner pool were missing from `install.sh` next-steps (PLAN-018 F4)
+
+- The next-steps block listed secrets and branch protection but never the two
+  prerequisites that hang or hard-fail a cold start:
+  - **the runner pool** — probed now, **visibility-independently**. The ai-review
+    template is visibility-uniform and pins the self-hosted pool for public repos
+    too, so a public adopter with no pool gets permanently-queued jobs just like
+    a private one; `timeout-minutes` starts at job *start*, so a never-started
+    job never times out. Gating the probe on `VISIBILITY=private` would reproduce
+    the anti-pattern the AI-flow routing avoids.
+  - **`litellm_allow_insecure_http`** — `litellm_client.py` hard-fails unless the
+    proxy is HTTPS or the flag is set, and it ships commented out. The workspace
+    proxy is HTTP on the docker bridge, so adopters of it must uncomment it.
+- **Output only.** `install.sh` does *not* uncomment the flag: `ai-review.yml` is
+  `safe_to_replace`, so a later `--update --non-interactive` would re-comment it
+  and the gate would go red — a breaking regression, not a silent weakening.
+  Whether canon should ship the flag enabled by default is a security default for
+  `DECISIONS.md`, not a side effect of this fix.
+
+### Fixed — the wizard gave new public and private adopters different `markdown-lint` gates (PLAN-018 F6)
+
+- The report-only injection (`fail-on-findings: false`) lived inside the wizard's
+  `[ ! -f <variant> ]` branch, so a **public** adopter (no `markdown-lint-public.yml`)
+  got report-only while a **private** adopter (a `-private.yml` exists) got a
+  blocking gate — even though both templates ship the flag commented out and carry
+  the same rollout recommendation. A pure wizard asymmetry driven by which variant
+  files happen to exist.
+- Fixed **in the wizard conditional**, scoped to `wf == markdown-lint`, so both
+  visibilities get report-only and no other single-template workflow is affected.
+  The shipped templates are untouched: uncommenting the flag in
+  `markdown-lint-private.yml` would let `--update --non-interactive` silently flip
+  `business` / `iplanic` / `interlog` — which deliberately graduated to blocking
+  (PLAN-007 W3) — back to report-only. Graduating a repo stays FT-11's per-repo,
+  deliberate act.
+
+### Release note — `docs-sync` caller grants `pull-requests: write` (PLAN-018 F5)
+
+- The `pull-requests: write` fix on `install/templates/workflows/docs-sync.yml`
+  (its dry-run `gh pr comment` 403s with `read`) ships with this tag. It is **not**
+  a cold-start fix — `docs-sync` is `auto_install: false` and the wizard flags it
+  as legacy for new v2 adopters — but already-adopted repos have been hitting the
+  403 silently. No new code; it is the release that carries the already-merged
+  template change to a tag.
+
+### Added — release checklist gains the 🔴 cold-start dry-run (PLAN-018 FT-30)
+
+- `docs/RELEASE_CHECKLIST.md` pre-tag step: before cutting a tag that changes
+  `install.sh`, the bootstrap set, or the pre-commit fragment, the founder runs
+  `install.sh` against a throwaway repo and confirms it completes through labels.
+  Canon cannot self-exercise a cold start — that is how F1 lived nine releases —
+  so this is the gate that would have caught it. The runbook **must** export
+  `CI_TAG=<merge-sha>`, or it validates the previous release's templates.
+
 ### Fixed — the required lint check had no producer (PLAN-018 F2, BLOCKER)
 
 - `install.sh` auto-installed only `ai-review` + `composition`, but

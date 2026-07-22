@@ -874,15 +874,49 @@ fi
 echo ""
 echo "==> done. Next steps (founder) — SECRETS BEFORE THE PR, or the first PR's ai-review gate fails:"
 echo "    1. Inspect bootstrapped files: cd $WORK_DIR/consumer && git diff"
-echo "    2. Add secrets to the consumer NOW (the ai-review gate hard-fails without them):"
+# PLAN-018 F4 — runner-pool probe, visibility-INDEPENDENT. The ai-review
+# template is visibility-uniform (PLAN-013) and pins the self-hosted pool for
+# PUBLIC repos too, so a public adopter with no pool gets permanently-queued
+# trust/review jobs just like a private one. GitHub's timeout-minutes starts at
+# job START, so a never-started (Queued) job never times out — the checks sit
+# pending with no error anywhere. Gating this probe on VISIBILITY=private would
+# reproduce exactly the fork-code-on-self-hosted anti-pattern the AI-flow
+# routing avoids. Output only: install.sh writes to no other repo.
+echo "    2. Runner pool — REQUIRED for the AI-flows on BOTH visibilities (the ai-review"
+echo "       review job pins the self-hosted pool even on public repos):"
+if command -v "${GH:-gh}" >/dev/null 2>&1; then
+  _runners="$("${GH:-gh}" api "repos/$TARGET_REPO/actions/runners" --jq '[.runners[]|select(.status=="online")|[.labels[].name]|join(",")]|join(" | ")' 2>/dev/null || echo '')"
+  if printf '%s' "$_runners" | grep -q 'ci-runner' && printf '%s' "$_runners" | grep -q 'single-use'; then
+    echo "         ✅ online ci-runner/single-use pool: $_runners"
+  else
+    echo "         🔴 NO online ci-runner/single-use pool — every AI-flow job will sit Queued forever"
+    echo "            (timeout-minutes never fires on a job that never starts). Register the pool per"
+    echo "            docs/runners.md §2/§3 (templates: install/templates/runner/). Do NOT use ubuntu-latest."
+  fi
+else
+  echo "         ⚠️  could not probe (gh unavailable) — confirm an online ci-runner/single-use pool exists;"
+  echo "            without it every AI-flow job sits Queued forever. docs/runners.md §2/§3."
+fi
+echo "    3. Add secrets to the consumer NOW (the ai-review gate hard-fails without them):"
 echo "         - APP_REVIEWER_1_ID + APP_REVIEWER_1_KEY   (reviewer GitHub App)"
 echo "         - LITELLM_BASE_URL + LITELLM_REVIEW_API_KEY (ai-review proxy; REQUIRED since ci/v2.0.0)"
 echo "         - LITELLM_DOC_API_KEY                        (only if adopting doc-maintainer)"
 echo "       You must already operate a reachable LiteLLM proxy — see docs/AI_CI_DEPLOYMENT.md §1."
-echo "    3. Set vars.APP_REVIEWER_1_BOT_ID = 294948438 (App-global; do NOT wait for a first review —"
+# PLAN-018 F4 — the LiteLLM HTTP flag. litellm_client.py hard-fails unless the
+# proxy scheme is HTTPS or litellm_allow_insecure_http is set, and the flag
+# ships COMMENTED OUT in the ai-review caller template. The workspace's only
+# proxy is HTTP on the docker bridge (172.17.0.1), so an adopter of it needs the
+# flag uncommented in .github/workflows/ai-review.yml. install.sh does NOT
+# uncomment it: ai-review.yml is safe_to_replace, so a later
+# --update --non-interactive would silently re-comment it and the gate would go
+# red — a breaking regression. This is operator-applied, by hand, deliberately."
+echo "       If your proxy is HTTP (e.g. the docker-bridge proxy at 172.17.0.1), UNCOMMENT"
+echo "         litellm_allow_insecure_http: true"
+echo "       in .github/workflows/ai-review.yml — the client hard-fails on a non-HTTPS URL without it."
+echo "    4. Set vars.APP_REVIEWER_1_BOT_ID = 294948438 (App-global; do NOT wait for a first review —"
 echo "       until it is set, composition runs INERT and enforces nothing)."
-echo "    4. Commit + push + open the adoption PR on the consumer."
-echo "    5. SERVER-SIDE STANDARDS — verified now against tier ${TIER:-<none>} (files installed ≠ standards on):"
+echo "    5. Commit + push + open the adoption PR on the consumer."
+echo "    6. SERVER-SIDE STANDARDS — verified now against tier ${TIER:-<none>} (files installed ≠ standards on):"
 if verify_standards "$TIER" "$TARGET_REPO"; then vrc=0; else vrc=$?; fi
 case "$vrc" in
   0) echo "       ✅ verified clean — branch protection + settings match the tier template." ;;
@@ -890,7 +924,7 @@ case "$vrc" in
   2) echo "       ⚠️  COULD NOT VERIFY — gh unauthenticated/missing tool, or the token lacks admin scope to read branch protection. Re-run: install.sh $TARGET_REPO --verify-standards --tier <tier> with an authenticated admin-scoped gh." ;;
   *) echo "       apply branch protection: docs/BRANCH_PROTECTION.md (tier table + arming)." ;;
 esac
-echo "    6. (Cleanup, your choice) rm -rf $WORK_DIR"
+echo "    7. (Cleanup, your choice) rm -rf $WORK_DIR"
 echo ""
 echo "    Full dependency-ordered playbook + a preflight that audits all of the above:"
 echo "      docs/AI_CI_DEPLOYMENT.md   +   install/deploy-ci-wizard.sh preflight <owner/repo>"
