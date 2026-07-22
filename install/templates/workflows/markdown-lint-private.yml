@@ -39,7 +39,7 @@ concurrency:
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v2.10.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v2.11.0
     with:
       runner_labels: '["self-hosted", "ci-runner", "single-use"]'
       globs: |

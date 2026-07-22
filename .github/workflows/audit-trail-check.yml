@@ -18,7 +18,7 @@
 #       types: [opened, synchronize, reopened]
 #   jobs:
 #     call:
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/audit-trail-check.yml@ci/v2.10.0
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/audit-trail-check.yml@ci/v2.11.0
 #       with:
 #         runner_labels: '"ubuntu-latest"'   # or the self-hosted ci-runner/single-use array for PRIVATE
 #       permissions:

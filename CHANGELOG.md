@@ -5,6 +5,13 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+## ci/v2.11.0 — 2026-07-22
+
+PLAN-018 Workstream A — the cold-start onboarding path, broken for nine releases
+and now fixed end-to-end (F1 → F7). MINOR: the bootstrap set gains the
+`pre-commit` caller and the canon fragment gains commit-stage hooks (additive
+consumer surfaces); no breaking input/schema changes.
+
 ### Fixed — `deploy-ci-wizard.sh` silently scaffolded callers 14 releases back (PLAN-018 F7)
 
 - The wizard resolved its canon tag as

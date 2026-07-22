@@ -28,7 +28,7 @@
 #     push: { branches: [main] }
 #   jobs:
 #     call:
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v2.10.0
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v2.11.0
 #       secrets: inherit
 
 name: docs-sync
