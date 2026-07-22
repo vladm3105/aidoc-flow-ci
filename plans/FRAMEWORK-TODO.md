@@ -677,6 +677,31 @@ consumer's `.github/workflows/` the same way — so each reusable needs its own
 analysis, which is why this stays an investigation, not a mechanical sweep.
 Correct any "pinned tag" determinism wording in their comments/docs to match.
 
+### FT-24 — canon's own Dependabot PRs: triage, and a paired-dependency defect in #222
+
+**Status:** OPEN — triaged 2026-07-21, deliberately NOT merged.
+
+Six Dependabot PRs sit on canon (#221–#225, #228). All show `suite=SUCCESS` — but
+that is precisely the FT-23 blind spot: **canon's suite never executes
+`ai-review`/`doc-maintainer`/`docs-sync`**, so a green suite is not evidence that
+a bumped action still works inside them. Merging on that signal is the
+overconfidence FT-15 already cost us once.
+
+| PR | Bump | Assessment |
+| --- | --- | --- |
+| **#222** | `download-artifact` 4.3.0 → **8.0.1** | ⛔ **Do not merge as-is — paired-dependency asymmetry.** `ai-review.yml:1126` downloads what `ai-review.yml:1052` uploads with **`upload-artifact` v4.6.2**, which Dependabot did not bump. The artifact backend changed across those majors, so bumping one half risks breaking the **autofix** path of the merge gate — the exact path canon cannot self-verify. Convert to a paired upload+download bump, or close. |
+| #223 | `checkout` 4.2.2 → 7.0.1 | Low risk / beneficial: canon already runs **v7.0.0 in 17 places**; this harmonises the **single** remaining v4.2.2 straggler (the autofix checkout) plus a patch bump on the rest. |
+| #221 | github-actions group (codeql / dep-scan / sast-scan) | Low blast radius — the scanners are opt-in (`auto_install: false`) and report-only. |
+| #224 / #225 | `setup-python` 6.3.0 → 7.0.0 · `setup-node` 6.4.0 → 7.0.0 | Major bumps, single-purpose, contained. |
+| **#228** | runner base image digest | Needs the **image actually rebuilt and the PLAN-016 build-verification gates re-run** before merge — a bad base digest bricks the self-hosted fleet. Runner infra, founder-adjacent. |
+
+**Recommended sequencing:** hold all six until the FT-15 pilot verification lands
+(`plans/ROLLOUT_plan017-verify.md`). `ci/v2.10.0` was just cut and the fleet is
+about to re-pin to it; adding unverifiable action bumps to `main` now means the
+*next* tag — the one consumers may adopt — carries changes nothing exercised.
+Once a consumer is on v2.10.0 and green, these can be merged in a batch and
+verified on that consumer.
+
 ### FT-23 — canon does not self-adopt `docs-sync`/`doc-maintainer`, so canon changes to them cannot self-verify
 
 **Status:** OPEN — surfaced by PLAN-017.
