@@ -170,7 +170,7 @@ jobs:
             echo "::warning::reviewer-App token cannot read ${OWNER}/${REPO} trust-config (App lacks contents:read?) — falling back to AI_REVIEW_TOKEN/GITHUB_TOKEN"
           fi
       - name: Checkout trust allowlist (trust_config_repo@trust_config_ref)
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ inputs.trust_config_repo }}
           ref: ${{ inputs.trust_config_ref }}
@@ -1204,7 +1204,7 @@ jobs:
       # this editing tree; it only appears in the pristine push clone below.
       - name: Checkout PR head (editing tree; read-only token; no persisted creds)
         if: ${{ steps.gate.outputs.proceed == '1' }}
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ github.repository }}
           ref: ${{ github.event.pull_request.head.sha }}
