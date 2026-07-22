@@ -149,7 +149,7 @@ jobs:
             || { echo "::error::doc-maintainer: could not read .github/workflows/ (grep exit $grc) — INFRASTRUCTURE error, not a maintenance result."; exit 1; }
 
           PINS="$(printf '%s\n' "$USES_LINES" \
-            | grep -ohE 'aidoc-flow-ci/\.github/workflows/doc-maintainer\.yml@([0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' \
+            | grep -ohE 'vladm3105/aidoc-flow-ci/\.github/workflows/doc-maintainer\.yml@([0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' \
             | sort -u || true)"
           PIN_COUNT="$(printf '%s' "$PINS" | grep -c . || true)"
           [ "$PIN_COUNT" -ge 1 ] \
@@ -251,7 +251,7 @@ jobs:
             || { echo "::error::doc-maintainer: could not read .github/workflows/ (grep exit $grc) — INFRASTRUCTURE error, not a maintenance result."; exit 1; }
 
           PINS="$(printf '%s\n' "$USES_LINES" \
-            | grep -ohE 'aidoc-flow-ci/\.github/workflows/doc-maintainer\.yml@([0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' \
+            | grep -ohE 'vladm3105/aidoc-flow-ci/\.github/workflows/doc-maintainer\.yml@([0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' \
             | sort -u || true)"
           PIN_COUNT="$(printf '%s' "$PINS" | grep -c . || true)"
           [ "$PIN_COUNT" -ge 1 ] \

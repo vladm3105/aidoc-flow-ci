@@ -5,6 +5,26 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — `standards-drift` resolver brought to the §4.2a property list (FT-22)
+
+- **`standards-drift.yml`** pioneered "resolve the tag from the consumer's own
+  pin" but predated five of the rules that grew out of FT-15. It now matches
+  `docs-sync`: `uses:`-line + `*.yml`/`*.yaml` scan scope (a `*.yml.bak` leftover
+  could previously win the version sort), both pin forms, fail-closed on multiple
+  distinct pins, pre-release rejected, `grep` exit ≥2 distinguished from no-match,
+  and fetch-at-the-SHA. Its `--ci-tag` now follows the executed ref too — the
+  script uses it purely as a raw-URL ref, so a SHA-pinned caller compares against
+  the templates it actually ran.
+- `docs/REPO_STANDARDS.md` §4.2a's "do not copy `standards-drift.yml` as-is"
+  warning is removed — both resolvers are now conformant exemplars.
+- **Owner-anchor applied across all 6 resolver sites** (`ai-review` ×2,
+  `doc-maintainer` ×2, `docs-sync`, `standards-drift`). §4.2a documented this rule
+  but no resolver implemented it: the pattern began at `aidoc-flow-ci/…`, so a pin
+  naming a *different* owner's `aidoc-flow-ci` matched and resolved that fork's
+  tag while the fetch hardcoded `vladm3105` — silently mixing sources. Now such a
+  pin fails loud instead. Anchoring only some would have created fresh drift, so
+  the sweep covers every site and the documented rule is finally true.
+
 ### Fixed — `docs-sync` caller template grants `pull-requests: write` (consumer-facing)
 
 - **`install/templates/workflows/docs-sync.yml`** granted `pull-requests: read`,
