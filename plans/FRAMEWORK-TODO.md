@@ -30,11 +30,11 @@ bare. That is a static check of the premise, not an execution of the reusable.
 
 **Fix sketch:** Workstream C, alongside the `ai-review`/`doc-maintainer`
 self-callers (FT-23). A `pre-commit` self-caller is cheaper than those two — it
-needs no LiteLLM secret and no App identity, and canon is a public repo so it can
-run on `ubuntu-latest` per the fork-code-executing rule. Likely the first
+needs no LiteLLM secret and no App identity, and canon is a public repo so it
+can run on `ubuntu-latest` per the fork-code-executing rule. Likely the first
 self-caller to land.
 
-### FT-37 — F2's producer is installed fleet-wide but only `operations` can run it
+### FT-37 — F2's producer ships fleet-wide but only `operations` can run it
 
 **Found:** 2026-07-22, PLAN-018 PR-B pre-push review.
 **Status:** OPEN — not a defect in F2; a rollout prerequisite F2 makes newly
@@ -73,7 +73,8 @@ present at that ref before pinning).
 a mutable tag and quietly undoes the pin. Nothing updates it: neither this
 repo's `.github/dependabot.yml` nor the consumer template
 `install/templates/dependabot.yml` declares a `pre-commit` ecosystem — they
-cover `github-actions`, `docker`, and (template only) `pip`/`npm`/`gitsubmodule`.
+cover `github-actions`, `docker`, and (template only)
+`pip`/`npm`/`gitsubmodule`.
 So the rev canon ships to every fresh adopter will silently age, and the
 workspace already shows the drift this produces: sibling repos currently sit at
 `v4.6.0` and `v5.0.0`.

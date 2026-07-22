@@ -906,8 +906,8 @@ hooks are `stages: [pre-push]` matches **zero** hooks, prints nothing, and exits
 
 Until PLAN-018 F3 the canon fragment was exactly that: one `pre-push`-staged
 local hook. Because `call / Lint / format / security hooks` is a required check
-on every tier that has required checks (§16.9), **a fresh adopter's only required
-gate was vacuous by construction**. Repos with a pre-existing rich config
+on every tier that has required checks (§16.9), **a fresh adopter's only
+required gate was vacuous by construction**. Repos with a pre-existing rich config
 (`operations`) masked it; a cold start could not.
 
 The fragment therefore ships commit-stage hooks — `check-yaml`,
@@ -927,7 +927,7 @@ discovered later:
   the collision, naming any canon hook ids they lack — silently merging would
   overwrite a deliberate rev, silently skipping would hide a missing
   canon-required hook. The de-dup is for **coherence, not validity**:
-  `pre-commit` does *not* reject duplicate entries (verified on 4.5.1 —
+  `pre-commit` does _not_ reject duplicate entries (verified on 4.5.1 —
   duplicate URLs at differing revs, and even duplicate hook ids, all validate
   and run), and four sibling repos ship two `repo: local` blocks today.
 - **`local` and `meta` are exempt from URL de-dup.** They are pseudo-repos, not
@@ -940,19 +940,19 @@ discovered later:
 - **The pin is a frozen SHA, not the tag.** `rev:` carries the commit SHA with a
   `# frozen: vX.Y.Z` trailer — the `pre-commit autoupdate --freeze` format. A
   plain `pre-commit autoupdate` (no `--freeze`) silently rewrites it back to a
-  mutable tag, which is a downgrade: `pre-commit` `pip install`s the cloned tree,
-  so the upstream build backend executes at install time on developer machines
+  mutable tag, which is a downgrade: `pre-commit` `pip install`s the cloned
+  tree, so the upstream build backend executes at install time on developer machines
   and on CI runners, and the ephemeral pool is cold every run (the reusable has
   no cache step) — a moved tag would reach the whole fleet within one CI cycle.
   **Bump with `--freeze`.**
 - **A consumer whose `repo: local` already defines `aidoc-flow-pre-push`** — the
   wrapper pattern this fragment itself documents, pointing at
   `scripts/pre_push_check_<repo>.sh` — is structurally unequal to canon's block,
-  so canon's is appended alongside and the config carries two hooks with that id,
-  with no collision WARN (pseudo-repos skip collision reporting). `pre-commit`
-  accepts it and both run; the wrapper already sources canon, so the duplicate is
-  redundant rather than harmful. Remove canon's copy by hand if the wrapper is in
-  use.
+  so canon's is appended alongside and the config carries two hooks with that
+  id, with no collision WARN (pseudo-repos skip collision reporting).
+  `pre-commit` accepts it and both run; the wrapper already sources canon, so
+  the duplicate is redundant rather than harmful. Remove canon's copy by hand
+  if the wrapper is in use.
 - **A consumer's kept `rev` will show permanent DRIFT.** `apply-standards.sh`
   subset-checks the consumer's file against the canon fragment line-for-line,
   including the `rev:` line, so a consumer whose deliberate rev the merge just
@@ -1241,11 +1241,11 @@ The bootstrap set is exactly the `auto_install: true` workflow entries in
 **`pre-commit` is bootstrapped unconditionally, not gated on `--tier`**, and is
 the one deliberate exception to `auto_install: false` for every non-bootstrap
 surface. It emits `call / Lint / format / security hooks`, a required status
-check on **every tier that has required checks at all** — all but umbrella, which
-deliberately has none — and the bootstrap tier's *only* required context. A
+check on **every tier that has required checks at all** — all but umbrella,
+which deliberately has none — and the bootstrap tier's _only_ required context. A
 required check with no producing workflow does not fail; it never reports, so
-armed protection pins every PR on *"Expected — Waiting for status to be
-reported"* indefinitely. `TIER` defaults to empty and the documented one-liner
+armed protection pins every PR on _"Expected — Waiting for status to be
+reported"_ indefinitely. `TIER` defaults to empty and the documented one-liner
 passes none, so a tier-gated install would leave the primary documented path
 without a producer. On umbrella the installed caller is advisory — additive, not
 harmful.
@@ -1272,7 +1272,7 @@ Two constraints follow, both enforced by `tests/test_install.sh`:
   is the `auto_install: true` workflow entries. The installer hardcodes the
   names; the manifest (§16.8) remains the documented authority, and the
   equality is what keeps the two from drifting apart. It runs in **both
-  directions on purpose**: name-matching alone catches an existing-but-*wrong*
+  directions on purpose**: name-matching alone catches an existing-but-_wrong_
   variant (a `-public` template on a private install) that file-existence does
   not, while set-matching catches a caller being **dropped** — a stanza deleted
   from the block leaves nothing behind for a name check to inspect. Adding a
