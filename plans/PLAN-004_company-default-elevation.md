@@ -1276,5 +1276,3 @@ and accepted rather than authorizing a Pass 6. Recorded here per OPS-0066
 **Result:** ready — founder-accepted 2026-07-09; gate green (61 citations,
 5 review passes); no further review pass authorized. Plan may open its PR
 (the A1–A6 / B / C / D / E sequence in §5).
-
-

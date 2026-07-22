@@ -5,6 +5,116 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — the required lint check had no producer (PLAN-018 F2, BLOCKER)
+
+- `install.sh` auto-installed only `ai-review` + `composition`, but
+  `call / Lint / format / security hooks` — emitted by the `pre-commit` caller —
+  is a required status check on **every tier that has required checks at all**
+  (all but umbrella, which deliberately has none) and is the bootstrap tier's
+  **only** required context. Arming protection after a successful install
+  therefore pinned every PR on *"Expected — Waiting for status to be reported"*
+  forever. A required check with no producing workflow does not fail — it never
+  reports, which is why this presents as a hang rather than a red check.
+- **`pre-commit` is now bootstrapped unconditionally**, not gated on `--tier`.
+  `TIER` defaults to empty and the documented one-liner passes none, so a
+  tier-gated fix would leave the primary documented path without a producer.
+  Because the context is required on every tier that requires anything,
+  unconditional installation is the minimum that satisfies any of them; on
+  umbrella the caller is simply advisory.
+- Deliberately **narrow**: the installer does not become tier-aware, and the
+  install set is not extended to the union each tier's protection template
+  requires. `auto_install: false` remains the rule for every other non-bootstrap
+  surface, with adoption via `deploy-ci-wizard`.
+- **Doc surfaces this falsified, all corrected here** rather than left
+  contradicting the code: `manifest.json`'s `auto_install` on the pre-commit
+  entry; `install/README.md`'s "the additional caller templates … `pre-commit.yml`
+  … are **not** bootstrapped automatically"; and its step 2 "Drops the default
+  callers `ai-review.yml` + `composition.yml` (per-visibility templates)", which
+  F2 falsifies on the caller list and F1 already falsified on "per-visibility".
+- `--verify-standards` now names this class instead of folding it into generic
+  drift: when a `branch-protection.contexts` difference is reported it adds a
+  note that a required check may have no producing workflow. **Report string
+  only** — the mode is standalone with no clone, so it cannot enumerate the
+  consumer's installed workflows; the automated required-context ↔ emitted-check
+  diff is the wizard validator (FT-18).
+
+### Fixed — the canon pre-commit fragment yielded a green check that linted nothing (PLAN-018 F3, BLOCKER)
+
+- The `pre-commit` reusable runs `pre-commit run --all-files` with **no**
+  `--hook-stage` when `run-stage` is empty (its default), which selects the
+  `pre-commit` stage. The canon fragment's only hook was `aidoc-flow-pre-push`
+  with `stages: [pre-push]` — **zero hooks matched, and the run exited 0**. So a
+  fresh adopter's only required gate passed while inspecting nothing, by
+  construction. Repos with a pre-existing rich config (`operations`) masked it; a
+  cold start could not.
+- The fragment now ships commit-stage hooks — `check-yaml`, `end-of-file-fixer`,
+  `trailing-whitespace` from `pre-commit/pre-commit-hooks`, **SHA-pinned** at
+  `3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0` (SHA resolved from
+  the upstream tag ref and all three hook ids confirmed present at it before
+  pinning). A tag would have been mutable state on infrastructure this workspace
+  does not control, and `pre-commit` `pip install`s the cloned tree — so the
+  upstream build backend runs at install time, on developer machines and on the
+  cold-every-run ephemeral CI pool. Canon SHA-pins every `uses:` for the same
+  reason. Bump with `pre-commit autoupdate --freeze`; a plain `autoupdate`
+  silently reverts it to a tag.
+- **Two costs, stated rather than glossed.** (1) This is canon's first
+  third-party `rev` — the fragment was `repo: local` only, with no network and no
+  upstream to track. Accepted because the alternative is canon maintaining its own
+  linters. The rev has no automated bump path (FT-35). (2) The merge now de-dups
+  by **repo URL**, not whole-entry structural equality: an adopter already using
+  `pre-commit-hooks` at a different `rev` was structurally unequal, so the old
+  rule appended a second entry for the same repo. On a URL collision the
+  consumer's entry and rev are **kept** and the collision is reported, naming any
+  canon hook ids they lack.
+- **A correction to the first draft of this entry:** it claimed `pre-commit`
+  *rejects* duplicate entries. It does not — verified on 4.5.1, duplicate URLs at
+  different revs and even duplicate hook ids all give `validate-config` rc=0 and
+  run. Four sibling repos ship two `repo: local` blocks in production today. The
+  de-dup is for coherence, not validity, and the false premise mattered: it made
+  collapsing `repo: local` look correct when it silently dropped canon's own
+  `aidoc-flow-pre-push` hook (see below).
+- **`local` and `meta` are exempt from URL de-dup — they are pseudo-repos, not
+  identities.** Keying on them treated a consumer's own `local` block as a
+  collision and never installed `aidoc-flow-pre-push`, dropping the OPS-0069
+  audit-trail check — permanently, since the `CANON:` marker makes every later
+  run a no-op. Caught in pre-push review by two independent reviewers; 4 of 8
+  workspace siblings would have hit it, including the only currently-unmarked
+  consumer. Now covered by `tests/test_precommit_merge.sh`.
+- **Wave-0 self-adoption, hand-applied.** This repo's `.pre-commit-config.yaml`
+  already carries the `CANON:` marker, so `install.sh`'s merge no-ops here and
+  would never deliver the hooks. Adding them immediately found real defects in
+  canon's own files — 4 files carried trailing whitespace or a missing final
+  newline (whitespace-only fixes, included here).
+- **Already-adopted consumers do not receive these hooks**, and that is a known
+  defect, not an oversight: bootstrap no-ops on the marker, `--update` excludes
+  `.pre-commit-config.yaml`, and `--apply` writes no content files, so the
+  fragment is un-upgradeable in an adopted repo (FT-32). Adding these lines flips
+  those repos to `DRIFT` under `apply-standards.sh --check` — expected signal and
+  the rollout worklist per CI-0013, not breakage. It is a report, not a gate; no
+  workflow invokes `apply-standards.sh`. Until FT-32 lands, F3 reaches new
+  adopters only.
+- **Detecting this class in general stays OFF the gating path.** `pre-commit run`
+  exits 0 and prints nothing whether zero hooks matched or all hooks passed, so
+  the only in-reusable implementation is an output-emptiness heuristic — and it
+  would flip any consumer running `run-stage: manual` with no `manual` hooks from
+  pass to fail on re-pin. The detector belongs operator-side (FT-31).
+
+### Added — `tests/test_install.sh` Part 4: the fragment must select hooks at the reusable's stage
+
+- Asserts the **property**, not the hook ids: at least one hook in the canon
+  fragment runs at the default `pre-commit` stage (a hook with no `stages:` key
+  runs at every stage, so it counts). Counting lives in
+  `tests/lib_count_stage_hooks.py`.
+- Also asserts the premise it depends on, extracted from the workflow rather than
+  restated: the reusable's empty-`run-stage` branch runs bare, with no
+  `--hook-stage`. If that ever changes, this says so out loud.
+- **Teeth verified:** restoring the pre-F3 fragment (pre-push hook only) fails
+  the stage count; making the reusable's default branch pass `--hook-stage` fails
+  the premise check.
+- The manifest set-equality check added with F1 did the work it was built for —
+  flipping `pre-commit`'s `auto_install` and adding the installer stanza had to
+  land together, and the suite went 49 → 55 assertions with no edit to the test.
+
 ### Fixed — cold-start `install.sh` fetched a template deleted at `ci/v2.2.0` (PLAN-018 F1, BLOCKER)
 
 - The bootstrap loop derived its caller templates as
@@ -1301,7 +1411,7 @@ but each broke correct behaviour:
   audit-trail, secret-scan, links, markdown-lint, labeler, docs-sync, codeql)
   on a new repo: prerequisites (🔴 founder vs 🟢 AI), dependency-ordered
   sequence, a gotchas checklist encoding every failure mode from the 2026-07
-  fleet rollout, verification protocol, and arming. 
+  fleet rollout, verification protocol, and arming.
 - **`install/deploy-ci-wizard.sh`** — safe read-only/scaffold wizard
   (`preflight`/`plan`/`scaffold`/`verify`) that audits prerequisites, picks the
   public/private variant + runner labels, and generates valid caller files

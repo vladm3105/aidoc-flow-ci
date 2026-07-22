@@ -896,6 +896,86 @@ operations classify-parity) live in a consumer wrapper
 checks. Wrapper preserves the canon's `set -uo pipefail` + rc-accumulator
 pattern. See PLAN-002 §4.8 for the operations wrapper reference.
 
+### 14.1a The canon fragment MUST carry commit-stage hooks
+
+The `pre-commit` reusable runs `pre-commit run --all-files` with **no
+`--hook-stage`** when its `run-stage` input is empty (the default), and
+`pre-commit` then selects the **`pre-commit` stage**. So a config whose only
+hooks are `stages: [pre-push]` matches **zero** hooks, prints nothing, and exits
+**0** — a green check that inspected nothing.
+
+Until PLAN-018 F3 the canon fragment was exactly that: one `pre-push`-staged
+local hook. Because `call / Lint / format / security hooks` is a required check
+on every tier that has required checks (§16.9), **a fresh adopter's only required
+gate was vacuous by construction**. Repos with a pre-existing rich config
+(`operations`) masked it; a cold start could not.
+
+The fragment therefore ships commit-stage hooks — `check-yaml`,
+`end-of-file-fixer`, `trailing-whitespace` from `pre-commit/pre-commit-hooks` —
+and canon self-adopts them (Wave 0). Two consequences, stated rather than
+discovered later:
+
+- **This is canon's first third-party `rev`.** The fragment was `repo: local`
+  only: no network, no upstream to track. Accepted because the alternative is
+  canon maintaining its own linters. The rev has **no automated bump path** —
+  neither canon's nor the consumer template's `dependabot.yml` covers a
+  `pre-commit` ecosystem (FT-35).
+- **The merge de-dups by repo URL, not whole-entry equality.** An adopter
+  already using `pre-commit-hooks` at a different `rev` is structurally unequal,
+  so the previous rule appended a second entry for the same repo. On a URL
+  collision `install.sh` **keeps the consumer's entry and its rev** and reports
+  the collision, naming any canon hook ids they lack — silently merging would
+  overwrite a deliberate rev, silently skipping would hide a missing
+  canon-required hook. The de-dup is for **coherence, not validity**:
+  `pre-commit` does *not* reject duplicate entries (verified on 4.5.1 —
+  duplicate URLs at differing revs, and even duplicate hook ids, all validate
+  and run), and four sibling repos ship two `repo: local` blocks today.
+- **`local` and `meta` are exempt from URL de-dup.** They are pseudo-repos, not
+  identities, and `pre-commit` permits any number of them. Keying de-dup on them
+  treats a consumer's own `local` block as a collision and never installs
+  `aidoc-flow-pre-push` — dropping the OPS-0069 audit-trail check, permanently,
+  because the `CANON:` marker makes every later `install.sh` run a no-op. Any
+  future change to this de-dup rule MUST preserve the exemption;
+  `tests/test_precommit_merge.sh` asserts it.
+- **The pin is a frozen SHA, not the tag.** `rev:` carries the commit SHA with a
+  `# frozen: vX.Y.Z` trailer — the `pre-commit autoupdate --freeze` format. A
+  plain `pre-commit autoupdate` (no `--freeze`) silently rewrites it back to a
+  mutable tag, which is a downgrade: `pre-commit` `pip install`s the cloned tree,
+  so the upstream build backend executes at install time on developer machines
+  and on CI runners, and the ephemeral pool is cold every run (the reusable has
+  no cache step) — a moved tag would reach the whole fleet within one CI cycle.
+  **Bump with `--freeze`.**
+- **A consumer whose `repo: local` already defines `aidoc-flow-pre-push`** — the
+  wrapper pattern this fragment itself documents, pointing at
+  `scripts/pre_push_check_<repo>.sh` — is structurally unequal to canon's block,
+  so canon's is appended alongside and the config carries two hooks with that id,
+  with no collision WARN (pseudo-repos skip collision reporting). `pre-commit`
+  accepts it and both run; the wrapper already sources canon, so the duplicate is
+  redundant rather than harmful. Remove canon's copy by hand if the wrapper is in
+  use.
+- **A consumer's kept `rev` will show permanent DRIFT.** `apply-standards.sh`
+  subset-checks the consumer's file against the canon fragment line-for-line,
+  including the `rev:` line, so a consumer whose deliberate rev the merge just
+  promised to keep reports DRIFT on it indefinitely. That is the one DRIFT the
+  rollout worklist cannot resolve without abandoning the kept rev — decide per
+  repo, do not "fix" it by overwriting the consumer's pin.
+
+**Detecting this class in general is deliberately NOT on the gating path.**
+`pre-commit run` exits 0 and prints nothing whether zero hooks matched or all
+hooks passed, so the only in-reusable implementation is an output-emptiness
+heuristic — and it would flip any consumer running `run-stage: manual` with no
+`manual` hooks from pass to fail on re-pin. The detector belongs operator-side
+(`install.sh`, the wizard preflight, the release checklist); moving it into the
+reusable is a separate proposal needing its own decision (FT-31).
+
+**Already-adopted consumers do not receive these hooks.** Bootstrap no-ops on
+the `CANON:` marker, `--update` excludes `.pre-commit-config.yaml`, and
+`--apply` writes no content files — so the fragment is un-upgradeable in an
+adopted repo (FT-32). Adding these lines flips those repos to `DRIFT` under
+`apply-standards.sh --check`, which is **expected signal and the rollout
+worklist**, not breakage. Until FT-32 lands, F3's benefit reaches new adopters
+only.
+
 ### 14.2 CI belt-and-suspenders
 
 **Reusable workflow:** `.github/workflows/audit-trail-check.yml` (this
@@ -1153,15 +1233,22 @@ convention — it ships three:
 | --- | --- | --- |
 | `ai-review` (bootstrapped) | `workflows/ai-review.yml` | same file (no variants — §4.1: one protected template, a visibility flip is a no-op) |
 | `composition` (bootstrapped) | `workflows/composition-public.yml` | `workflows/composition-private.yml` |
-| `pre-commit` (**not** bootstrapped today) | `workflows/pre-commit.yml` | `workflows/pre-commit-private.yml` |
+| `pre-commit` (bootstrapped) | `workflows/pre-commit.yml` | `workflows/pre-commit-private.yml` |
 
 The bootstrap set is exactly the `auto_install: true` workflow entries in
-`manifest.json` (§16.8) — `ai-review` + `composition`. **`pre-commit` is listed
-here for its naming shape only**; wiring it into the bootstrap set is a separate,
-open defect (PLAN-018 F2: its check `call / Lint / format / security hooks` is
-required on every tier but umbrella, yet nothing installs its producer). Its row
-is what makes the "three shapes" point, so it belongs in the table — but this
-document must not read as though it is installed today.
+`manifest.json` (§16.8) — `ai-review` + `composition` + `pre-commit`.
+
+**`pre-commit` is bootstrapped unconditionally, not gated on `--tier`**, and is
+the one deliberate exception to `auto_install: false` for every non-bootstrap
+surface. It emits `call / Lint / format / security hooks`, a required status
+check on **every tier that has required checks at all** — all but umbrella, which
+deliberately has none — and the bootstrap tier's *only* required context. A
+required check with no producing workflow does not fail; it never reports, so
+armed protection pins every PR on *"Expected — Waiting for status to be
+reported"* indefinitely. `TIER` defaults to empty and the documented one-liner
+passes none, so a tier-gated install would leave the primary documented path
+without a producer. On umbrella the installed caller is advisory — additive, not
+harmful.
 
 `pre-commit` is **asymmetric**: its public variant is the bare name, so an
 implementer generalising from `composition` writes `pre-commit-public.yml` — a

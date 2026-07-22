@@ -209,6 +209,32 @@ verify_standards() {
   fi
   n_drift="$(printf '%s' "$summary" | grep -oE '^[0-9]+')"
   n_fetch="$(printf '%s' "$summary" | grep -oE '[0-9]+ fetch' | grep -oE '^[0-9]+')"
+  # PLAN-018 F2 — name the "required context has no producing workflow" class
+  # rather than folding it into generic drift. That class does not present as a
+  # failing check; it presents as a check that never reports, so a PR sits on
+  # "Expected — Waiting for status to be reported" indefinitely and the operator
+  # has no reason to connect it to a contexts line in a drift report.
+  # REPORT-STRING ONLY — no new check. --verify-standards is standalone (no
+  # clone), so it cannot enumerate the consumer's installed workflows to know
+  # which contexts actually have producers; the automated form of that diff is
+  # the wizard validator (FT-18).
+  # Fires on TIER, not on a contexts delta. Gating it on the drift line was
+  # anti-correlated with the defect it describes: the canonical "required
+  # context has no producer" repo has contexts that MATCH canon exactly (that is
+  # what `apply-standards --apply` writes from the tier template), so no
+  # contexts line is emitted and the note never appeared in precisely the case
+  # F2 exists to fix — while firing on unrelated deltas that had no missing
+  # producer. Reading branch protection also needs an admin-scoped token, so the
+  # common operator path emits no contexts line at all.
+  # Umbrella is excluded because it deliberately has no required checks.
+  if [ "$tier" != "umbrella" ]; then
+    echo "     NOTE  every required context on tier '$tier' must be EMITTED by an"
+    echo "           installed caller in .github/workflows/. A required check with"
+    echo "           no producing workflow does not fail — it never reports, so PRs"
+    echo "           block on 'Expected — Waiting for status to be reported'"
+    echo "           indefinitely. This report compares SETTINGS, not producers;"
+    echo "           the producer diff is the wizard validator (FT-18)."
+  fi
   # Drift (branch protection / settings / actions-perms / labels) takes
   # precedence over an uncheckable control (drift is the actionable signal).
   if [ "${n_drift:-0}" -gt 0 ]; then return 1; fi
@@ -502,6 +528,26 @@ else
   fetch_template "workflows/composition-public.yml" ".github/workflows/composition.yml" || exit 1
   echo "  add       .github/workflows/composition.yml (public)"
 fi
+
+# pre-commit — ASYMMETRIC: the PUBLIC variant is the bare name (§16.9).
+#
+# PLAN-018 F2: installed UNCONDITIONALLY, not gated on --tier. `call / Lint /
+# format / security hooks` — emitted by this caller — is a required status check
+# on every tier that has required checks at all, and is the bootstrap tier's ONLY
+# required context. Without a producer, arming protection pins every PR on
+# "Expected — Waiting for status to be reported" forever. TIER defaults to "" and
+# the README's documented one-liner passes none, so a tier-gated fix would leave
+# the primary documented path undefined. On the umbrella tier (no required checks
+# at all) the installed caller is simply advisory — additive, not harmful.
+if [ -f ".github/workflows/pre-commit.yml" ]; then
+  echo "  preserve  .github/workflows/pre-commit.yml (already exists — local override)"
+elif [ "$VISIBILITY" = "private" ]; then
+  fetch_template "workflows/pre-commit-private.yml" ".github/workflows/pre-commit.yml" || exit 1
+  echo "  add       .github/workflows/pre-commit.yml (private)"
+else
+  fetch_template "workflows/pre-commit.yml" ".github/workflows/pre-commit.yml" || exit 1
+  echo "  add       .github/workflows/pre-commit.yml (public)"
+fi
 # <<< BOOTSTRAP-CALLERS <<<
 
 if [ -f ".github/ai-review/config.json" ]; then
@@ -639,7 +685,8 @@ else
   # rename(2), not cross-fs copy+unlink (which would leave a truncated
   # .pre-commit-config.yaml on SIGINT mid-mv).
   MERGE_TMP=$(mktemp ./.pre-commit-config.yaml.tmp.XXXXXX)
-  if python3 - "$PRECOMMIT_TMP" "$MERGE_TMP" "$yaml_lib" <<'PYEOF' ; then
+  MERGE_OUT=$(mktemp)
+  if python3 - "$PRECOMMIT_TMP" "$MERGE_TMP" "$yaml_lib" <<'PYEOF' > "$MERGE_OUT" ; then
 import sys
 
 canon_path, out_path, yaml_lib = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -666,6 +713,14 @@ except Exception as e:
     print(f"  FAIL  canon fragment parse error: {e}", file=sys.stderr)
     sys.exit(1)
 
+# A pre-commit config must be a MAPPING. A top-level list (or scalar) otherwise
+# reached `consumer.get(...)` below and died with a raw AttributeError before any
+# of the structural guards further down could report it.
+if not isinstance(consumer, dict):
+    print(f"  FAIL  .pre-commit-config.yaml must be a YAML mapping, got "
+          f"{type(consumer).__name__} — inspect the file", file=sys.stderr)
+    sys.exit(1)
+
 # Root-key upgrade: default_install_hook_types must include pre-push.
 # L1 fold: preserve consumer intent — if scalar (invalid but real), coerce
 # to a single-element list rather than resetting to canonical default.
@@ -681,12 +736,73 @@ for h in canon_hooks:
 consumer['default_install_hook_types'] = consumer_hooks
 
 # Append canon repos-block entries (which are hooks). Preserve existing.
+#
+# De-dup by repo URL, NOT whole-entry structural equality (PLAN-018 F3). Canon
+# now ships a third-party entry (pre-commit-hooks) as well as `repo: local`, and
+# an adopter who already uses that repo at a DIFFERENT rev is structurally
+# unequal — so the old rule appended a second `repos:` entry for the same repo.
+# NOTE: pre-commit does NOT reject that (verified on 4.5.1: duplicate URLs at
+# different revs, and duplicate hook ids, all give validate-config rc=0 and run).
+# The de-dup is for coherence, not validity — two entries for one repo at
+# different revs is confusing and runs the hook twice. On a URL collision the consumer's
+# entry (and their rev) is kept and the collision is REPORTED, listing the canon
+# hook ids they may be missing. Silently merging hook lists would overwrite a
+# deliberate consumer rev; silently skipping would hide that a canon-required
+# hook never arrived.
+#
+# `local` and `meta` are PSEUDO-repos, not identities. pre-commit permits any
+# number of them (verified: two `- repo: local` blocks give
+# `validate-config` rc=0 and both hooks run), and most consumers already have
+# one or more. Keying de-dup on them would treat the consumer's own local block
+# as a collision and never install canon's `aidoc-flow-pre-push` hook — silently
+# dropping the OPS-0069 audit-trail check, permanently, because the CANON marker
+# written below makes every later run a no-op. They keep the structural rule.
+PSEUDO_REPOS = ('local', 'meta')
 consumer_repos = consumer.setdefault('repos', [])
-for canon_repo in canon.get('repos', []):
-    # De-dup by structural equality. Canon uses `repo: local` + a
-    # single hook id `aidoc-flow-pre-push` — check for exact match.
-    if canon_repo not in consumer_repos:
-        consumer_repos.append(canon_repo)
+collisions = []
+try:
+    if not isinstance(consumer_repos, list):
+        raise TypeError(f"'repos' must be a list, got {type(consumer_repos).__name__}")
+    existing_by_url = {}
+    for r in consumer_repos:
+        if isinstance(r, dict) and isinstance(r.get('repo'), str):
+            existing_by_url.setdefault(r['repo'], r)
+    for canon_repo in canon.get('repos', []):
+        url = canon_repo.get('repo') if isinstance(canon_repo, dict) else None
+        if not isinstance(url, str):
+            continue
+        if url in PSEUDO_REPOS:
+            if canon_repo not in consumer_repos:
+                consumer_repos.append(canon_repo)
+            continue
+        if url not in existing_by_url:
+            consumer_repos.append(canon_repo)
+            existing_by_url[url] = canon_repo
+            continue
+        if canon_repo == existing_by_url[url]:
+            continue  # already exactly canon — nothing to say
+        have = {h.get('id') for h in (existing_by_url[url].get('hooks') or []) if isinstance(h, dict)}
+        want = {h.get('id') for h in (canon_repo.get('hooks') or []) if isinstance(h, dict)}
+        missing = sorted(i for i in (want - have) if i)
+        detail = f"missing canon hook id(s): {', '.join(missing)}" if missing else "hook ids all present"
+        # !r on every consumer-controlled value: YAML double-quoted scalars
+        # process escapes, so a config carrying \e[2K\r could rewrite the line
+        # the operator reads. repr() renders those inert.
+        collisions.append(
+            f"  WARN  .pre-commit-config.yaml already declares {url!r} "
+            f"(kept your entry, rev={existing_by_url[url].get('rev', 'n/a')!r}; canon ships "
+            f"rev={canon_repo.get('rev', 'n/a')!r}) — {detail}")
+except Exception as e:
+    # Same actionable shape as the load() failures above, not a raw traceback.
+    print(f"  FAIL  .pre-commit-config.yaml structure error: {e}", file=sys.stderr)
+    sys.exit(1)
+
+for line in collisions:
+    print(line, file=sys.stderr)
+# Machine-readable for the shell, so the summary line cannot claim a clean
+# append when a collision suppressed part of the canon block.
+if collisions:
+    print(f"COLLISIONS={len(collisions)}")
 
 with open(out_path, 'w') as f:
     # Preserve the canon marker line at top so future re-runs no-op.
@@ -694,9 +810,19 @@ with open(out_path, 'w') as f:
     dump(consumer, f)
 PYEOF
     mv "$MERGE_TMP" .pre-commit-config.yaml
-    echo "  merge     .pre-commit-config.yaml (canon block appended; default_install_hook_types upgraded if needed; ${yaml_lib}-backed)"
+    # Honest summary: a URL collision means part of the canon block was NOT
+    # appended (the consumer's entry was kept). Saying "canon block appended"
+    # in that case reports success for work that did not happen — and the WARN
+    # explaining it goes to stderr, which an operator reading stdout may miss.
+    if grep -q '^COLLISIONS=' "$MERGE_OUT"; then
+      _ncol="$(grep -oE '^COLLISIONS=[0-9]+' "$MERGE_OUT" | cut -d= -f2)"
+      echo "  merge     .pre-commit-config.yaml (PARTIAL — ${_ncol} repo collision(s); your entries kept, see WARN above; default_install_hook_types upgraded if needed; ${yaml_lib}-backed)"
+    else
+      echo "  merge     .pre-commit-config.yaml (canon block appended; default_install_hook_types upgraded if needed; ${yaml_lib}-backed)"
+    fi
+    rm -f "$MERGE_OUT"
   else
-    rm -f "$MERGE_TMP" "$PRECOMMIT_TMP"
+    rm -f "$MERGE_TMP" "$PRECOMMIT_TMP" "$MERGE_OUT"
     echo "  FAIL      .pre-commit-config.yaml merge failed — inspect manually" >&2
     exit 1
   fi

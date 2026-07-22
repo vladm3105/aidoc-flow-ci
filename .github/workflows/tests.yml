@@ -37,7 +37,12 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq shellcheck yamllint jq
+          # python3-yaml is EXPLICIT, not inherited. tests/test_precommit_merge.sh
+          # and tests/test_install.sh Part 4 both skip-with-notice when PyYAML is
+          # missing — a suite that reports 0 passed, 0 failed and exits 0. PyYAML
+          # currently arrives only as a transitive dependency of yamllint, so
+          # dropping or swapping that package would silently disarm both.
+          sudo apt-get install -y -qq shellcheck yamllint jq python3-yaml
           # Pinned + hash-verified binary: avoids both a floating tool and
           # dependence on whichever Go toolchain ubuntu-latest currently has.
           curl -fsSL https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o /tmp/actionlint.tgz

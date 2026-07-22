@@ -151,7 +151,8 @@
       "visibility_variants": {"public": "workflows/pre-commit.yml", "private": "workflows/pre-commit-private.yml"},
       "substitute": [],
       "safe_to_replace": true,
-      "auto_install": false
+      "_note": "PLAN-018 F2: auto_install=true — this caller emits `call / Lint / format / security hooks`, a REQUIRED status check on every tier that has required checks at all, and the bootstrap tier's only one. It is the sole exception to the auto_install=false-for-every-non-bootstrap-surface rule, because without a producer, armed protection pins every PR on a check that never reports. Naming is ASYMMETRIC (public variant is the bare name) — see REPO_STANDARDS.md §16.9.",
+      "auto_install": true
     },
     {
       "path": ".github/workflows/secret-scan.yml",

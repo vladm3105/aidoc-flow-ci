@@ -8,6 +8,87 @@ when resolved.
 
 ## Open
 
+### FT-36 — canon does not self-run the `pre-commit` reusable it ships
+
+**Found:** 2026-07-22, PLAN-018 PR-B pre-push review.
+**Status:** OPEN — same class as FT-23 and FT-34, and the same root cause as F1
+itself: canon ships a surface nothing exercises.
+
+`.github/workflows/pre-commit.yml` is the `workflow_call` definition; **no canon
+workflow calls it**. So PR-B's Wave-0 self-adoption of the commit-stage hooks is
+enforced only for developers who ran `pre-commit install` locally — canon's own
+CI never runs the reusable whose vacuity was PLAN-018 F3. A regression in the
+reusable's stage handling would ship to the fleet unseen, which is exactly how
+F3 survived.
+
+`tests/test_install.sh` Part 4 partly compensates: it asserts the fragment has
+default-stage hooks and that the reusable's empty-`run-stage` branch still runs
+bare. That is a static check of the premise, not an execution of the reusable.
+
+**Surfaces:** `.github/workflows/` (a self-caller), `docs/REPO_STANDARDS.md` §16
+(canon dogfoods its own canon).
+
+**Fix sketch:** Workstream C, alongside the `ai-review`/`doc-maintainer`
+self-callers (FT-23). A `pre-commit` self-caller is cheaper than those two — it
+needs no LiteLLM secret and no App identity, and canon is a public repo so it can
+run on `ubuntu-latest` per the fork-code-executing rule. Likely the first
+self-caller to land.
+
+### FT-37 — F2's producer is installed fleet-wide but only `operations` can run it
+
+**Found:** 2026-07-22, PLAN-018 PR-B pre-push review.
+**Status:** OPEN — not a defect in F2; a rollout prerequisite F2 makes newly
+load-bearing.
+
+PR-B installs the `pre-commit` caller unconditionally, including on private
+repos. Per the runner policy, private repos MUST run on
+`["self-hosted","ci-runner","single-use"]`, and only `operations` currently has
+that pool registered. On `business` / `iplanic` / `interlog` the newly-required
+check would **queue forever** — the same "never reports" symptom F2 exists to
+cure, arriving by a different route. `timeout-minutes` starts at job *start*, so
+it never fires.
+
+This is not new in kind (`ai-review` and `composition` bootstrap identically and
+have the same dependency), but F2 makes a *required* context depend on it.
+
+**Surfaces:** host runner registration (🔴 founder), `docs/runners.md`,
+`plans/PLAN-009_fleet-v2-cutover.md` Phase 0.
+
+**Fix sketch:** none in canon — this is the existing PLAN-009 Phase 0 pool
+registration, already 🔴-gated on the founder. Record here so the rollout
+sequencing does not treat "F2 landed" as "F2 is live for the fleet". Cross-check
+against PLAN-009 Phase 0 rather than duplicating its runbook.
+
+### FT-35 — canon's first third-party `rev` has no automated bump path
+
+**Found:** 2026-07-22, PLAN-018 PR-B (F3).
+**Status:** OPEN — non-blocking; the pin is correct today (`v6.0.0`, the current
+latest, verified against the upstream tag list, and all three hook ids confirmed
+present at that ref before pinning).
+
+`install/templates/pre-commit-hook-block.yaml` now pins
+`pre-commit/pre-commit-hooks` at a frozen-SHA `rev`
+(`3e8a870…  # frozen: v6.0.0`). Whatever bump path is chosen MUST use
+`pre-commit autoupdate --freeze` — a plain `autoupdate` rewrites the SHA back to
+a mutable tag and quietly undoes the pin. Nothing updates it: neither this
+repo's `.github/dependabot.yml` nor the consumer template
+`install/templates/dependabot.yml` declares a `pre-commit` ecosystem — they
+cover `github-actions`, `docker`, and (template only) `pip`/`npm`/`gitsubmodule`.
+So the rev canon ships to every fresh adopter will silently age, and the
+workspace already shows the drift this produces: sibling repos currently sit at
+`v4.6.0` and `v5.0.0`.
+
+**Surfaces:** `.github/dependabot.yml`, `install/templates/dependabot.yml`,
+`install/templates/pre-commit-hook-block.yaml`.
+
+**Fix sketch:** confirm FIRST whether Dependabot supports a `pre-commit`
+ecosystem — do not assume it does; if it does not, the remedy is a scheduled
+`pre-commit autoupdate` workflow opening a PR, or Renovate. Whichever is
+chosen must cover BOTH canon's own config and the shipped consumer template,
+or consumers inherit a pin nothing maintains. Pairs naturally with the
+Workstream C exerciser inventory: "who updates this surface" is the same
+question the inventory asks.
+
 ### FT-34 — canon does not dogfood its own markdown gate
 
 **Found:** 2026-07-22, PLAN-018 PR-A pre-push run.
