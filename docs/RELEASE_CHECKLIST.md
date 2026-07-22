@@ -29,6 +29,24 @@ each before proceeding to the next.
   tag being cut.
 - [ ] **`install.sh` fallback matches:** `CI_TAG_FALLBACK` in `install.sh`
   matches `VERSION`. Grep: `grep CI_TAG_FALLBACK install/install.sh`.
+- [ ] **🔴 COLD-START DRY-RUN (founder-executed) — PLAN-018 FT-30.** Canon is
+  already adopted, so it cannot exercise its own cold start; nothing else does
+  either, which is how F1 (a bootstrap template deleted at `ci/v2.2.0`) shipped
+  broken for nine releases. Before cutting a tag that changes `install.sh`, the
+  bootstrap set, or the pre-commit fragment, run `install.sh` against a
+  **throwaway repo** and confirm it completes through labels without error.
+  - This is a 🔴 write-to-another-repo action (it clones the target and creates
+    18 labels on it) — prepare it as an `ops/inbox` runbook and have the founder
+    execute it, exactly like PLAN-017's live-verification gate. The AI does not
+    run it in-session.
+  - **The runbook MUST `export CI_TAG=<merge-sha>`** (or the tag once it exists).
+    Without it the dry-run resolves `CI_TAG` from `VERSION`/the fallback and
+    fetches templates from the PREVIOUS release — validating the pre-fix files,
+    not the ones about to ship. This is the single most important line in the
+    runbook.
+  - Expected: the run reaches "creating canonical labels" and the final
+    next-steps block with no `FAIL`/`404`; the runner-pool probe and the
+    LiteLLM-HTTP note both print. Tear down the throwaway repo after.
 
 ## Tag + release
 

@@ -6,7 +6,23 @@ context compaction.
 
 ## Current state (2026-07-22)
 
-- **PLAN-018 Workstream A / PR-B OPEN (F2 + F3) — the two remaining cold-start
+- **PLAN-018 Workstream A / PR-C OPEN (F4 + F6 + F7 + FT-30) — the operator-facing
+  correctness PR; last of A before the `ci/v2.11.0` cut.** F7: `deploy-ci-wizard.sh`
+  silently scaffolded callers pinned 14 releases back (`|| echo 'ci/v1.9.5'` FIRES
+  under `set -e` on an unreadable VERSION) — now fails loud, and
+  `test_version_sync.sh` executes the shipped resolution to prove it. F4:
+  `install.sh` next-steps gain a visibility-independent runner-pool probe and the
+  `litellm_allow_insecure_http` note (output only — it does NOT uncomment the flag,
+  which `--update` would re-comment → red gate). F6: the wizard's markdown-lint
+  report-only injection was public-only; moved out of the `[ ! -f variant ]` branch
+  (scoped to markdown-lint) so both visibilities match, template untouched to avoid
+  the `business`/`iplanic`/`interlog` graduated-gate downgrade. F5: the docs-sync
+  `pull-requests: write` fix ships with the tag (no code). FT-30: the 🔴
+  founder-executed cold-start dry-run is now a release-checklist pre-tag item, with
+  the `CI_TAG=<merge-sha>` requirement called out. **After PR-C merges, A is
+  complete and the `ci/v2.11.0` cut is gated only on the FT-30 dry-run.**
+
+- **PLAN-018 Workstream A / PR-B MERGED (#248, F2 + F3) — the two remaining cold-start
   blockers.** F2: `pre-commit` joins the bootstrap set **unconditionally** (its
   check is required on every tier that has required checks, and is the bootstrap
   tier's only one; without a producer, armed protection pins every PR on
