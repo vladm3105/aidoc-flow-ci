@@ -455,14 +455,54 @@ if [ "$MODE_UPDATE" = 1 ]; then
 fi
 
 # Drop the default consumer-side callers. Preserve existing files.
-for wf in ai-review composition; do
-  if [ -f ".github/workflows/${wf}.yml" ]; then
-    echo "  preserve  .github/workflows/${wf}.yml (already exists — local override)"
-  else
-    fetch_template "workflows/${wf}-${VISIBILITY}.yml" ".github/workflows/${wf}.yml" || exit 1
-    echo "  add       .github/workflows/${wf}.yml"
-  fi
-done
+#
+# PLAN-018 F1: each template is named EXPLICITLY, never derived from
+# "${wf}-${VISIBILITY}.yml". Canon ships three distinct naming shapes, not one
+# convention, so any derivation is wrong for at least one workflow:
+#
+#   ai-review    public: workflows/ai-review.yml            private: same
+#                (PLAN-013 unified it into one protected template — no variants)
+#   composition  public: workflows/composition-public.yml   private: …-private.yml
+#   pre-commit   public: workflows/pre-commit.yml           private: …-private.yml
+#                (asymmetric — the PUBLIC variant is the bare name)
+#
+# The old derivation asked for workflows/ai-review-private.yml, deleted at
+# ci/v2.2.0: a 404 that killed every cold-start install before config.json,
+# CODEOWNERS, CLAUDE.md, pre_push_check.sh, the pre-commit merge, and the labels.
+#
+# LOAD-BEARING — do not refactor into a TEMPLATES[$wf] lookup or any other form
+# that makes fetch_template's first argument a variable. tests/test_install.sh
+# extracts the block between the markers below, evaluates it under both
+# visibilities with fetch_template stubbed, and cross-checks it against
+# manifest.json in BOTH directions: each resolved template must match the
+# visibility_variants resolution for its consumer path, and the installed caller
+# SET must equal the auto_install:true workflow entries. So adding a caller here
+# and flipping its auto_install are one change, and deleting a stanza fails
+# rather than silently shipping a cold start without that workflow.
+# It also asserts every fetch_template first argument in this file is a literal
+# and that no `.github/workflows/` install sits outside the markers — a variable
+# argument or a stray call site silently disarms that cover.
+
+# >>> BOOTSTRAP-CALLERS >>>  (extracted verbatim by tests/test_install.sh)
+# ai-review — single protected template, identical for both visibilities.
+if [ -f ".github/workflows/ai-review.yml" ]; then
+  echo "  preserve  .github/workflows/ai-review.yml (already exists — local override)"
+else
+  fetch_template "workflows/ai-review.yml" ".github/workflows/ai-review.yml" || exit 1
+  echo "  add       .github/workflows/ai-review.yml"
+fi
+
+# composition — per-visibility variants, both explicitly suffixed.
+if [ -f ".github/workflows/composition.yml" ]; then
+  echo "  preserve  .github/workflows/composition.yml (already exists — local override)"
+elif [ "$VISIBILITY" = "private" ]; then
+  fetch_template "workflows/composition-private.yml" ".github/workflows/composition.yml" || exit 1
+  echo "  add       .github/workflows/composition.yml (private)"
+else
+  fetch_template "workflows/composition-public.yml" ".github/workflows/composition.yml" || exit 1
+  echo "  add       .github/workflows/composition.yml (public)"
+fi
+# <<< BOOTSTRAP-CALLERS <<<
 
 if [ -f ".github/ai-review/config.json" ]; then
   echo "  preserve  .github/ai-review/config.json (already exists)"

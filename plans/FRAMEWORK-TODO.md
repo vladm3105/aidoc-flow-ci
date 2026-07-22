@@ -8,6 +8,65 @@ when resolved.
 
 ## Open
 
+### FT-34 — canon does not dogfood its own markdown gate
+
+**Found:** 2026-07-22, PLAN-018 PR-A pre-push run.
+**Status:** OPEN — non-blocking for PR-A, but it means every `.md` edit here
+produces a red local report that carries no information.
+
+`scripts/pre_push_check.sh` runs `markdownlint-cli2` over the changed `.md`
+files **in full**, and this repo ships **no `.markdownlint.json`**, so
+defaults apply — including `MD013` at 80 columns. Measured on an unmodified
+`origin/main` checkout with a one-line probe commit: **122 MD013 findings in
+`CHANGELOG.md` alone**, none of them introduced by the probe. Any change to
+that file therefore fails the check on prose nobody in this PR wrote.
+
+Three separate gaps behind it:
+
+1. **No config.** Canon ships `.markdownlint.json` to consumers as a template
+   surface (§4.4) but does not carry one itself.
+2. **`MD013` cannot be satisfied by the table rows** §16.9 and the tier tables
+   need; the usual remedy is `"tables": false`, which requires (1).
+3. **The gate is inert in both places it should bite** — no git hook is
+   installed here (`.git/hooks/pre-push` absent, so `pre_push_check.sh` only
+   runs when invoked by hand), and `.github/workflows/` has **no
+   `markdown-lint` self-caller** (only the reusable definition). So the rule is
+   enforced on consumers and on nobody here.
+
+**Surfaces:** `scripts/pre_push_check.sh`, a new root `.markdownlint.json`,
+`.github/workflows/` (a self-caller), `docs/REPO_STANDARDS.md` §4.4.
+
+**Fix sketch:** belongs with PLAN-018 Workstream C (the verification surface —
+this is the same "canon has no exerciser for its own rule" shape as F1). Add
+the repo's own `.markdownlint.json` matching the consumer template, reflow or
+grandfather the existing violations, then add the self-caller so the gate is
+real. Do NOT weaken the consumer-facing rule to make canon green.
+
+### FT-33 — `tests/test_install.sh`'s call extractor has two residual evasions
+
+**Found:** 2026-07-22, PLAN-018 PR-A cycle-3 pre-push review.
+**Status:** OPEN — non-blocking. Both need pathological bash, neither is
+reachable by ordinary drift, and the F1 defect class survives both (verified:
+part 2's evaluation still catches a derivation hidden behind either).
+
+The extractor joins backslash continuations into logical lines so a wrapped
+`fetch_template` call is not skipped by the containment check (the cycle-2
+finding). Two edges remain:
+
+1. **A comment line ending in `\` swallows the next line.** Bash comments never
+   continue, but the accumulator joins them, so `# note \` directly above a
+   stray `fetch_template` makes that call invisible to containment.
+2. **A trailing `\` on the file's last line never flushes the buffer**, dropping
+   a call held in it.
+
+**Surfaces:** `tests/test_install.sh` (the `python3` extractor in part 0).
+
+**Fix sketch:** test `line.lstrip().startswith("#")` *before* the
+`endswith("\\")` branch — that matches bash semantics and closes (1)
+completely; add a post-loop `if buf:` flush for (2). Three lines total. Fold
+when the extractor is next touched for another reason rather than re-opening a
+reviewed file for its own sake.
+
 ### FT-32 — the canon pre-commit fragment is un-upgradeable in any adopted consumer
 
 **Found:** 2026-07-22, PLAN-018 re-scope review (independent pass on Workstreams
