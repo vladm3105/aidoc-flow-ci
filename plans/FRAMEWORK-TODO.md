@@ -8,6 +8,152 @@ when resolved.
 
 ## Open
 
+### FT-31 — no mechanism to detect a required check that selected zero hooks
+
+**Found:** 2026-07-21, PLAN-018 Pass-1 review (deferred out of F3).
+**Status:** OPEN — deferred out of PLAN-018 F3 deliberately; needs a mechanism
+first.
+
+The general form of FT-30's third defect: `pre-commit run --all-files` prints
+nothing and exits 0 when no hook matches the stage, and pre-commit exposes no
+exit code, flag, or count distinguishing that from "all hooks passed" (hooks that
+match but have no files print `Skipped`, so only the fully-empty-stdout case is
+even distinguishable). PLAN-018 originally proposed making the reusable fail on
+zero-hooks and **dropped it**: the only implementation is an output-emptiness
+heuristic, and it would flip any consumer using `run-stage: manual` with no
+`manual` hooks from pass to fail on re-pin. PLAN-018 F3 therefore fixes only the
+canon-shipped fragment, and its fix contract is scoped to canon-*installed*
+configs — a consumer's own hook-less config can still produce a vacuous pass.
+**Needs:** a real signal (upstream feature request, or a canon-side pre-flight
+that parses the resolved config and counts stage-matching hooks) before this can
+be closed without breaking consumers.
+
+### FT-30 — the cold-start path has no exerciser, and drifted unnoticed for 9 releases
+
+**Found:** 2026-07-21, pre-prod review scoped to onboarding `feedback-desk`.
+**Status:** OPEN — PLAN-018 drafted (NOT ready; circuit-breaker tripped, 2
+founder items in its §7).
+
+Every fleet consumer adopted before `ci/v2.2.0`, so `install.sh` on a repo with
+**no** prior canon surfaces has had no exerciser since. Three defects accumulated
+in exactly that path, found only when scoping the `feedback-desk` onboarding:
+the documented one-liner 404s at `install/install.sh:462` (the
+`ai-review-${VISIBILITY}.yml` variants were deleted at the `ci/v2.2.0` release
+commit); the bootstrap install set does not include the `pre-commit` caller that
+emits `call / Lint / format / security hooks`, a required context on every tier
+but umbrella; and the canon pre-commit fragment ships a single `pre-push`-staged
+hook, so the reusable's stage-less `pre-commit run` selects **zero** hooks and
+exits 0 — a required check that inspects nothing, by construction, on every
+fresh adopter.
+
+**Fix sketch — the generalisable lesson, not the three bugs:** canon has no cold-start
+regression cover at all. `plans/PLAN-018_cold-start-onboarding-fixes.md` §4 makes
+the standing fix a **cold-start dry-run in `docs/RELEASE_CHECKLIST.md`**; without
+it the next nine releases can drift the same way. Note the dry-run is a 🔴
+cross-repo write (clone + 18 `gh label create` on the target), so it is
+founder-executed via `ops/inbox`.
+
+### FT-29 — `skip-ai-review` + INERT `composition` = an all-green PR with zero review
+
+**Found:** 2026-07-21, pre-prod review (security lens).
+**Status:** OPEN — provisioning-order hazard, not a code defect in isolation.
+
+`composition.yml:102-105` exits 0 with `::notice::composition INERT` when
+`vars.APP_REVIEWER_1_BOT_ID` is unset, and every branch-protection template pairs
+`call / composition` with `required_approving_review_count: 0`. During the
+ordinary partial-provisioning window (App secrets set, LiteLLM key or bot-id var
+still pending) the documented unstick label `skip-ai-review` makes ai-review
+conclude SUCCESS while INERT composition also concludes SUCCESS — **both required
+checks green, no review performed, zero approvals required.** `auto-merge-ai-prs`
+correctly refuses (it fails closed on an unset `EXPECTED_ID`), but a human or
+agent following the standing merge-on-green directive sees an all-green PR.
+
+**Fix sketch (any one closes it):** make `skip-ai-review` fail rather than pass
+under an unarmed App; have `apply-standards.sh` refuse to apply a protection
+template requiring `call / composition` while the bot-id var is unset; or make
+the documented rollout order (secrets + var **before** branch protection)
+machine-enforced rather than prose. PLAN-018 states the ordering; nothing checks it.
+
+### FT-28 — `ai-review`'s SHA-pin branch never verifies the SHA against its own tag comment
+
+**Found:** 2026-07-21, pre-prod review (security lens).
+**Status:** OPEN — defence-in-depth; not exploitable without repo-write.
+
+Post-FT-15, `ai-review.yml:495-501` resolves assets from the consumer's own pin
+and accepts either a tag or a `<40-hex> # ci/vX.Y.Z` form. The trailing tag is
+documented as "can lag" and is **never** checked against `CANON_SHA`, and
+`raw.githubusercontent.com` serves any commit object reachable in the public
+canon repo — including unmerged fork-PR commits. The fetched `litellm_client.py`
+is then executed on the runner holding the LiteLLM key and a minted App token.
+
+Not a fork-PR escalation (the caller file is read at a trusted, event-selected
+ref, and the shipped template pins tag-only), so this is review-integrity
+hardening: a pin reading as `ci/v2.10.0` in code review can execute never-merged
+code. **Fix:** peel the tag via `GET /git/ref/tags/$CANON_TAG` and hard-fail on
+mismatch; print `FETCH_REF` in the notice, not `CANON_TAG`.
+
+### FT-27 — privileged callers over-grant: `secrets: inherit` + actions-can-approve
+
+**Found:** 2026-07-21, pre-prod review (security lens).
+**Status:** OPEN — hardening bundle, no live exploit.
+
+(a) `composition-private.yml:45`, `auto-merge-ai-prs-private.yml:36`,
+`ai-review.yml:68`, `docs-sync.yml:45`, `doc-maintainer.yml:79` all use
+`secrets: inherit`, handing a tag-referenced reusable every secret the repo holds
+— though `composition.yml` reads exactly one, the automatic `secrets.GITHUB_TOKEN`,
+which needs no inherit at all. (b) `install/templates/actions-permissions.json`
+sets `can_approve_pull_request_reviews: true` for every adopter; GitHub bundles
+create+approve in that one toggle, and it is needed only by the opt-in
+doc-maintainer/docs-sync bot-PR flows. Harmless under
+`required_approving_review_count: 0`; a standing bypass if that count is ever
+raised. **Fix:** explicit `secrets:` maps per caller; default the toggle false
+and flip it in the bot-PR adoption runbook.
+
+### FT-26 — `codeql.yml`: tag-object SHA pin + no GHAS guard on private repos
+
+**Found:** 2026-07-21, pre-prod review (portability + correctness lenses).
+**Status:** OPEN — opt-in workflow, so no consumer is currently affected.
+
+`codeql.yml:97` pins `autobuild@21eb7f7842f33eafc83782b56fff2a2c43e9696f`, which
+is the **annotated tag object** for v4.36.1, not a commit — `GET
+/repos/github/codeql-action/commits/21eb7f78…` returns 422, while `init` (:89)
+and `analyze` (:114) correctly use the peeled commit
+`87557b9c84dde89fdd9b10e88954ac2f4248e463`. Runtime risk is low (tag objects are
+content-addressed) but it trips the workspace's own mandatory SHA audit, which is
+the canary that catches fabricated pins. Separately, `codeql.yml` has no
+fork/GHAS conditioning and no `continue-on-error` on `analyze`, unlike every
+other scanner — on a private repo without Advanced Security, `init` errors
+outright. **Fix:** repin to the commit SHA; document "private repos require GHAS"
+in the caller header and in the wizard's `plan` output.
+
+### FT-25 — adopter-facing gaps the cold-start review surfaced (grouped)
+
+**Found:** 2026-07-21, pre-prod review (correctness + docs lenses).
+**Status:** OPEN — four small, independent items.
+
+- **`labeler.yml` config is installable by no path.** It ships as
+  `install/templates/labeler.yml` but `install.sh` never fetches it, the wizard's
+  config copy omits it, and it is absent from `manifest.json` — so `--update` and
+  `sync/check-drift.sh` never see it. Yet `labeler` IS in the wizard's default
+  scaffold set, so `actions/labeler` runs with `configuration-path` pointing at
+  nothing. Same defect class as the audit-trail `_note` already records.
+- **`AI_CI_DEPLOYMENT.md` carries F1's naming trap for humans.** It tells
+  hand-copy adopters to use "the single template" for
+  `pre-commit`/`markdown-lint`/`links`/`labeler`/`doc-maintainer`, but all but
+  `doc-maintainer` gained `-private` variants at `ci/v2.1.0` — a private adopter
+  following that doc installs the label-less generic, which is the FT-9 brick.
+- **`deploy-ci-wizard.sh preflight` under-reports.** §3 checks only 5 of the 18
+  canonical labels, and §4 prints a raw 409 JSON blob as `unreadable/all-allowed`
+  when `allowed_actions != selected` — an unactionable warning on the one check
+  guarding the documented `startup_failure` mode. Read `/actions/permissions`
+  first and branch on `allowed_actions`.
+- **`verify` burns 10 minutes proving nothing on an adoption PR.** `ai-review`
+  (`pull_request_target`) and `composition`/`auto-merge` (`workflow_run`) resolve
+  their definition from the base ref, so on the PR that first *adds* them they do
+  not run; the wizard's poll never matches and runs its full 24 × 25 s. Break
+  early with an explicit "these triggers arm only after merge to the default
+  branch" note, and document the two-PR adoption shape.
+
 ### FT-1 — Branch-protection templates lag REPO_STANDARDS §2 on `call / verify`
 
 **RESOLVED (2026-07-12, PLAN-007 W2):** branch-protection templates + REPO_STANDARDS §2 corrected to the verified `call / …` emitted names (incl. `call / verify`); `tests/test_checknames.sh` guards against recurrence.

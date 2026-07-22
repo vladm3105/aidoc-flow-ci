@@ -4,7 +4,60 @@ Live cross-session resume point for the workspace CI + governance-workflow
 canon library. Read at session start; refresh at milestones and before
 context compaction.
 
-## Current state (2026-07-21)
+## Current state (2026-07-22)
+
+- 🔴 **CANON IS NOT READY TO ONBOARD A NEW REPO — the cold-start path is broken
+  and has been for 9 releases.** Pre-prod review (5 lenses) scoped to onboarding
+  `feedback-desk` found the documented one-liner **dies on its first template
+  fetch**: `install/install.sh:462` builds `workflows/ai-review-${VISIBILITY}.yml`,
+  but PLAN-013 deleted those variants at the `ci/v2.2.0` release commit —
+  verified live, `ai-review-private.yml` → **404**, `ai-review.yml` → 200. The
+  `|| exit 1` kills the run before config.json, CODEOWNERS, CLAUDE.md,
+  `pre_push_check.sh`, the pre-commit merge, and all 18 labels. Every fleet
+  consumer adopted **before** v2.2.0, which is why no one hit it. Two more
+  blockers survive the run: the bootstrap set omits the `pre-commit` caller that
+  emits `call / Lint / format / security hooks` (required on every tier but
+  umbrella), and the canon pre-commit fragment's only hook is `pre-push`-staged,
+  so the reusable's stage-less run selects **zero** hooks and exits 0 — a
+  required check that inspects nothing, on every fresh adopter. Full ranked
+  verdict + 6 lower findings: **FT-25 … FT-31**.
+
+- **PLAN-018 DRAFTED — `plans/PLAN-018_cold-start-onboarding-fixes.md`. Status:
+  NOT READY (OPS-0066 circuit-breaker tripped).** 6 fixes + 1 release-note
+  item, 47 cited claims, gate
+  green on citations. Three independent `verified-planning-reviewer` passes
+  returned **9 / 7 / 5** load-bearing findings; Pass 3 still found defects, so no
+  fourth pass was dispatched per OPS-0066. All mechanical corrections folded.
+  **Two founder items block PR-A** (plan §7): **OI-1** — F3's new third-party
+  hooks flip every already-adopted consumer to permanent DRIFT via
+  `apply-standards.sh:432`'s line-by-line `subset_check` (exempt it / accept +
+  remediate / keep the fragment `repo: local`); **OI-2** — the verification
+  runbook must pin `CI_TAG=<merge-sha>`, else run from merged `main` it fetches
+  `ci/v2.10.0`'s **old** fragment and "passes" against the exact vacuous config
+  F3 replaces. The runbook itself is 🔴 (clone + 18 `gh label create` on a
+  throwaway repo) → `ops/inbox`, and the `ci/v2.11.0` cut is blocked on it.
+
+- **Three review findings worth carrying forward as method, not just content:**
+  (1) I reported the wizard's `|| echo` VERSION fallback as dead code — it is
+  **not**; `set -euo pipefail` makes it fire, and the real defect is that an
+  unreadable `VERSION` silently scaffolds callers pinned **14 releases back**.
+  Two readings (a review lens and my own) missed it because both *read* the `||`
+  and neither *ran* it. (2) The first F6 fix would have silently downgraded three
+  live private repos — `business`/`iplanic`/`interlog` deliberately carry
+  `fail-on-findings: true`, and the caller is `safe_to_replace`, so the next
+  `--update` would have switched graduated blocking gates back off; the fix moved
+  to the wizard conditional where the defect actually lives. (3) Pass 2 caught
+  three defects the *Pass-1 fold itself* introduced — folding a review finding is
+  a code change and needs the same scrutiny as one.
+
+- **`feedback-desk` prerequisites — all 🔴, verified live via
+  `deploy-ci-wizard.sh preflight vladm3105/aidoc-flow-feedback-desk`:** no
+  `ci-runner,single-use` pool (private ⇒ every job queues forever; job
+  `timeout-minutes` starts at job *start*, so it never fires), all five secrets
+  missing, `APP_REVIEWER_1_BOT_ID` unset (⇒ composition INERT, see FT-29), only
+  GitHub's default labels. Not inherited — `vladm3105` is a personal account.
+  🟢 `allowed_actions: all` (no allowlist blocker); `default_workflow_permissions:
+  read` is fine — every caller template carries an explicit `permissions:` block.
 
 - **`ci/v2.10.0` SHIPPED (2026-07-21) — PLAN-017 / FT-15.** Tag `7398b63a4`,
   release published + marked Latest. Prep merged first per FT-21 (its
