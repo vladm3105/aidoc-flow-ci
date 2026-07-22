@@ -6,8 +6,18 @@ context compaction.
 
 ## Current state (2026-07-22)
 
-- **PLAN-018 Workstream A / PR-C OPEN (F4 + F6 + F7 + FT-30) — the operator-facing
-  correctness PR; last of A before the `ci/v2.11.0` cut.** F7: `deploy-ci-wizard.sh`
+- **PLAN-018 Workstream A COMPLETE — all three cold-start blockers fixed on `main`
+  (PR-A #247 F1, PR-B #248 F2/F3, PR-C #249 F4/F6/F7).** The `ci/v2.11.0` cut is now
+  gated ONLY on the 🔴 founder-executed cold-start dry-run (FT-30, now a
+  RELEASE_CHECKLIST pre-tag item) — its runbook MUST `export CI_TAG=<merge-sha>`
+  or it validates the pre-fix templates. Canon still cannot self-exercise a cold
+  start, so nothing on `main` proves the fixes live; the dry-run is that proof.
+  Next up: cut `ci/v2.11.0` (prep PR → tag → release), then Workstreams C
+  (verification surface / detectors) and B (canon-internal defects) per §8 — C
+  before B. FT-32 gates the rollout PHASE, not the v2.11.0 cut.
+
+- **PLAN-018 Workstream A / PR-C MERGED (#249, F4 + F6 + F7 + F5 + FT-30) — operator-facing
+  correctness.** F7: `deploy-ci-wizard.sh`
   silently scaffolded callers pinned 14 releases back (`|| echo 'ci/v1.9.5'` FIRES
   under `set -e` on an unreadable VERSION) — now fails loud, and
   `test_version_sync.sh` executes the shipped resolution to prove it. F4:
