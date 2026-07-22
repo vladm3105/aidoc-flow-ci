@@ -1,0 +1,43 @@
+{
+  "$schema": "https://aidoc-flow.io/schemas/docs-sync-config-v1.json",
+  "version": 1,
+  "_comment": "Canon self-adoption config (FT-23). Wave 0 self-adopts before Wave 1+ consumers pull, per CLAUDE.md. dry_run: true — this reports only; graduate to live after a run of zero-divergence reports, the same policy consumers follow.",
+
+  "dry_run": true,
+
+  "changelog_stub": {
+    "_comment": "Canon's CHANGELOG header is '## Unreleased' (NOT operations' '## [Unreleased]') — see CHANGELOG.md:6. Trigger paths are the surfaces whose changes are release-relevant and per this repo's own canon-source discipline must ship with a CHANGELOG entry: the reusables, the shipped templates, the canonical scripts, and the rulebook.",
+    "enabled": true,
+    "trigger_paths": [
+      ".github/workflows/*.yml",
+      "install/templates/**",
+      "scripts/**",
+      "sync/**",
+      "docs/REPO_STANDARDS.md"
+    ],
+    "destination": "CHANGELOG.md",
+    "section_header": "## Unreleased"
+  },
+
+  "version_sync": {
+    "_comment": "DISABLED deliberately, not by oversight. Canon already propagates VERSION with scripts/sync-version-refs.sh, which is wired as a pre-commit hook AND asserted by tests/test_version_sync.sh — a deterministic mechanism that runs before a commit exists, strictly stronger than a post-merge AI pass. Enabling this op would duplicate it and could contradict it. Revisit only if the canonical script is retired.",
+    "enabled": false,
+    "sources": []
+  },
+
+  "cross_ref_repair": {
+    "_comment": "alpha.1 stub upstream — keep disabled until the implementation lands (same posture as the operations pilot).",
+    "enabled": false,
+    "rename_threshold": 50,
+    "allowed_paths": ["CHANGELOG.md", "README.md", "docs/**", "*.md"]
+  },
+
+  "allowed_paths": [
+    "CHANGELOG.md",
+    "README.md",
+    "ROADMAP.md",
+    "HANDOFF.md",
+    "docs/**",
+    "*.md"
+  ]
+}

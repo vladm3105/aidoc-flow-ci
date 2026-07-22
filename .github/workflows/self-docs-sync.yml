@@ -1,0 +1,54 @@
+# self-docs-sync.yml — canon dogfoods the docs-sync reusable it ships.
+#
+# WHY A SEPARATE FILE: `.github/workflows/docs-sync.yml` in this repo IS the
+# reusable (workflow_call); it needs a CALLER to run on canon itself. Same shape
+# as `self-secret-scan.yml`, which exists for the same reason.
+#
+# WHY IT MATTERS BEYOND DOGFOODING (FT-23): canon ran NONE of these reusables,
+# so nothing here ever executed `docs-sync` at all — the blind spot that let
+# FT-15 (the adopted pin did not control the fetched assets) survive in
+# production across every consumer until it was caught by reading a CONSUMER's
+# run log. Now the released reusable runs on canon itself on every push to main
+# and emits its `::notice::` naming the resolved tag, so a regression surfaces at
+# home.
+#
+# SCOPE — be precise about what this does NOT do: it pins the RELEASED tag and
+# fires only on `push: [main]`, so it verifies the released reusable AFTER a
+# release, not a PR's own change to `docs-sync.yml`. Closing that needs a
+# PR-triggered job using a LOCAL `uses: ./.github/workflows/docs-sync.yml`
+# reference (expressions are not allowed in `uses:`, so a SHA cannot be
+# interpolated). Tracked as the FT-23 follow-up.
+#
+# Pinned to the released tag, not `main`, so canon consumes the same immutable
+# version its consumers do (and so the pin itself is what the resolver reads).
+#
+# SAFETY: `dry_run: true` in `.github/docs-sync.json` — the reusable gates every
+# repo-mutating step on it, so nothing is committed and no bot PR is opened.
+# It is NOT permission-free, though: the dry-run deliverable is a PR comment
+# (`gh pr comment`), so `pull-requests: write` is required. `contents` stays
+# `read`, which is what actually prevents writes to the tree. Graduate to live
+# only after a run of zero-divergence reports, per the policy consumers follow.
+
+name: self-docs-sync
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # See the template note: dry-run's deliverable IS a PR comment, so `write` is
+  # required even though nothing is committed.
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  call:
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v2.10.0
+    permissions:
+      contents: read
+      pull-requests: write
