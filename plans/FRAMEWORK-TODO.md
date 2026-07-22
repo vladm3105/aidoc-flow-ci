@@ -8,6 +8,38 @@ when resolved.
 
 ## Open
 
+### FT-32 — the canon pre-commit fragment is un-upgradeable in any adopted consumer
+
+**Found:** 2026-07-22, PLAN-018 re-scope review (independent pass on Workstreams
+B-D).
+**Status:** OPEN — blocks CI-0013's "drift report becomes the rollout worklist"
+from having any mechanism behind it. PLAN-018 Workstream D item 1.
+
+Once a consumer's `.pre-commit-config.yaml` carries the `# CANON: aidoc-flow-ci
+pre_push_check` marker, **no canon path can ever update the canon block again**:
+
+- **bootstrap** no-ops on the marker — `install/install.sh:579` prints
+  `preserve … (canon marker present — no-op)`;
+- **`--update`** excludes `.pre-commit-config.yaml` from the manifest walk
+  entirely (`install/install.sh:301`);
+- **`apply-standards.sh --apply`** applies only labels, repo settings,
+  actions-permissions and branch protection (`install/apply-standards.sh:782`) —
+  it never writes a content file, and this file is report-only (`:432`).
+
+`install/templates/manifest.json:12` instructs the operator to "Re-run
+`install.sh` to refresh those" for exactly this file. **That instruction is false
+once the marker exists** — the marker is what makes the re-run a no-op. The
+defect has been latent since PLAN-002 shipped the marker (nothing had yet needed
+to change the fragment); PLAN-018 F3 is the first change that does.
+
+**Fix sketch:** either (a) **version the marker** — `# CANON: aidoc-flow-ci
+pre_push_check v2` — and have the merge path re-merge when the consumer's marker
+version lags canon's, or (b) add an explicit `--refresh-hooks` path that
+re-merges the canon block idempotently regardless of marker. (a) is closer to the
+existing design and keeps one code path; (b) is more explicit but adds a mode.
+Either way `manifest.json:12`'s note and `install/README.md` step 6 must be
+corrected in the same PR.
+
 ### FT-31 — no mechanism to detect a required check that selected zero hooks
 
 **Found:** 2026-07-21, PLAN-018 Pass-1 review (deferred out of F3).
@@ -31,8 +63,10 @@ be closed without breaking consumers.
 ### FT-30 — the cold-start path has no exerciser, and drifted unnoticed for 9 releases
 
 **Found:** 2026-07-21, pre-prod review scoped to onboarding `feedback-desk`.
-**Status:** OPEN — PLAN-018 drafted (NOT ready; circuit-breaker tripped, 2
-founder items in its §7).
+**Status:** OPEN — PLAN-018 re-scoped to canon completeness (CI-0013). The
+`docs/RELEASE_CHECKLIST.md` cold-start item ships in **Workstream A, PR-C**
+(PLAN-018 §8) — NOT Workstream C, which would make A depend on C. The 🔴
+founder-executed dry-run is PLAN-018 §10. Both former founder items are closed.
 
 Every fleet consumer adopted before `ci/v2.2.0`, so `install.sh` on a repo with
 **no** prior canon surfaces has had no exerciser since. Three defects accumulated
@@ -47,7 +81,7 @@ exits 0 — a required check that inspects nothing, by construction, on every
 fresh adopter.
 
 **Fix sketch — the generalisable lesson, not the three bugs:** canon has no cold-start
-regression cover at all. `plans/PLAN-018_cold-start-onboarding-fixes.md` §4 makes
+regression cover at all. `plans/PLAN-018_canon-completeness.md` §8 (PR-C) makes
 the standing fix a **cold-start dry-run in `docs/RELEASE_CHECKLIST.md`**; without
 it the next nine releases can drift the same way. Note the dry-run is a 🔴
 cross-repo write (clone + 18 `gh label create` on the target), so it is

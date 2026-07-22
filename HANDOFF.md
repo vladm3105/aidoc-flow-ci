@@ -22,20 +22,39 @@ context compaction.
   required check that inspects nothing, on every fresh adopter. Full ranked
   verdict + 6 lower findings: **FT-25 … FT-31**.
 
-- **PLAN-018 DRAFTED — `plans/PLAN-018_cold-start-onboarding-fixes.md`. Status:
-  NOT READY (OPS-0066 circuit-breaker tripped).** 6 fixes + 1 release-note
-  item, 47 cited claims, gate
-  green on citations. Three independent `verified-planning-reviewer` passes
-  returned **9 / 7 / 5** load-bearing findings; Pass 3 still found defects, so no
-  fourth pass was dispatched per OPS-0066. All mechanical corrections folded.
-  **Two founder items block PR-A** (plan §7): **OI-1** — F3's new third-party
-  hooks flip every already-adopted consumer to permanent DRIFT via
-  `apply-standards.sh:432`'s line-by-line `subset_check` (exempt it / accept +
-  remediate / keep the fragment `repo: local`); **OI-2** — the verification
-  runbook must pin `CI_TAG=<merge-sha>`, else run from merged `main` it fetches
-  `ci/v2.10.0`'s **old** fragment and "passes" against the exact vacuous config
-  F3 replaces. The runbook itself is 🔴 (clone + 18 `gh label create` on a
-  throwaway repo) → `ops/inbox`, and the `ci/v2.11.0` cut is blocked on it.
+- **GOAL SET (founder, 2026-07-22) — `DECISIONS.md` CI-0013: complete
+  `aidoc-flow-ci` FIRST, roll the canon over to the other repos LATER.** Two
+  consequences decided with it: (1) **pre-rollout consumer drift is expected,
+  correct signal**, not damage — when canon adds a required surface, adopted
+  repos report DRIFT under `apply-standards.sh --check`, and that report becomes
+  the rollout worklist; canon does NOT weaken a check to keep the stale fleet
+  green. (2) The surviving prohibition is narrower: **no silent weakening of a
+  live gate** (a canon change must never flip a consumer's graduated blocking
+  gate to report-only via `--update`).
+
+- **PLAN-018 RE-SCOPED and READY — `plans/PLAN-018_canon-completeness.md`
+  (renamed from `…_cold-start-onboarding-fixes.md`).** Gate green: **52
+  citations, 7 review passes** (Passes 5-6 are two independent passes on the
+  re-scoped whole, returning 6 and 3 load-bearing; Pass 6 found only stale-wording
+  defects and no design errors). Four workstreams: **A** the three cold-start blockers
+  (unchanged, carries the 9/7/5-finding review history from Passes 1-3); **B**
+  seven canon-internal defects pulled back from the FT ledger; **C** the
+  verification surface — the systemic fix, sequenced AHEAD of B because it
+  contains the general form of two A blockers (FT-18 ⊃ F2, FT-31 ⊃ F3); **D**
+  rollout-readiness docs. Fleet-state (FT-5/11/12/13) and runner-infra
+  (FT-16/19/20) are explicitly out, with a rationale table.
+  **Both former founder items are CLOSED:** OI-1 by CI-0013 (ship the full
+  pre-commit fragment); OI-2 by specification — it was never a fork, the runbook
+  must export `CI_TAG=<merge-sha>` or it validates the pre-fix templates.
+
+- ⚠️ **Author error corrected — I told the founder the rollout migration path is
+  "FT-9-broken today". It is not: FT-9 is RESOLVED (`ci/v1.9.0`, PLAN-006 W2),
+  `--repin` is the safe version-only path.** The accurate residual concern is
+  narrower and now sits in the plan's contract item 8: rolling *completed* canon
+  out is **body adoption** via `--update`, which by design wholesale-replaces
+  every `safe_to_replace` caller, so the rollout needs a documented
+  reconciliation procedure (Workstream D) — not a bug fix. Caught by the
+  FT-ledger inventory contradicting the claim; CI-0013 was corrected pre-commit.
 
 - **Three review findings worth carrying forward as method, not just content:**
   (1) I reported the wizard's `|| echo` VERSION fallback as dead code — it is
