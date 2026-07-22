@@ -6,6 +6,17 @@ context compaction.
 
 ## Current state (2026-07-21)
 
+- **`ci/v2.10.0` SHIPPED (2026-07-21) — PLAN-017 / FT-15.** Tag `7398b63a4`,
+  release published + marked Latest. Prep merged first per FT-21 (its
+  `version-sync` check and the two self-pinned callers are expected-red until the
+  tag exists; `main` is unprotected so no admin bypass or force-push was needed),
+  then the tag was cut on the merge commit — **VERSION matched the tag at cut
+  time**, so no re-cut for coherence was required (the trap the v2.9.0 cut hit).
+  Post-release: full suite PASS (296 assertions), `--check-published` green.
+  **Still NOT verified live** — canon has no self-caller for these reusables, so
+  the 🔴 pilot consumer re-pin in `plans/ROLLOUT_plan017-verify.md` is what
+  actually closes FT-15. Fleet is uniformly stale as expected (PLAN-009).
+
 - **PLAN-017 (FT-15 fix) — ALL THREE PRs LANDED (`docs-sync`, `doc-maintainer`,
   `ai-review`). Code complete; NOT yet verified live — verification runbook
   PREPARED at `plans/ROLLOUT_plan017-verify.md` (🔴 needs a consumer re-pin).**
