@@ -751,7 +751,15 @@ see because it ran none of its own reusables.
    labels, no pool) or fail unreachable (`ubuntu-latest`) — **either way it bricks
    every canon PR.** Prerequisite: register a `ci-runner,single-use` pool for
    `aidoc-flow-ci` on the proxy host. Do NOT add these callers before that.
-3. **PR-scope** (see item 1) applies to all three.
+3. **PR-scope** (see item 1) applies to all three. **Partly mitigated 2026-07-21**
+   by `tests/test_resolver.sh`: the resolver — the actual load-bearing mechanism —
+   is now regression-tested on every PR against fixtures, with the patterns
+   EXTRACTED from the live workflows so the test cannot drift from what it guards.
+   Teeth verified: removing the owner anchor, or dropping the pre-release capture
+   (the FT-15 truncation bug), each fail the suite. This does not replace a real
+   self-caller — it covers the resolver, not the surrounding job — but it closes
+   the gap that mattered most, and it works for `ai-review`, where a self-caller
+   cannot exist until canon has a runner pool.
 
 ### FT-22 — `standards-drift.yml` resolver predates the FT-15 rule (both-forms + scan-scope + pre-release reject)
 

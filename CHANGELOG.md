@@ -5,6 +5,24 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — `tests/test_resolver.sh`: regression cover for the canon-pin resolver
+
+- The resolver is the mechanism **FT-15** broke, and it went undetected for months
+  across every consumer. Canon cannot execute `ai-review`/`doc-maintainer` in its
+  own CI (FT-23), so a regression there would ship unseen again. 55 assertions
+  across all four reusables: plain and commented-SHA pin forms, foreign owner
+  rejected, commented-out lines ignored, `*.yml.bak` leftovers unable to win the
+  version sort, pre-release captured whole (not truncated), and filename-keying
+  (one reusable's pattern never matches another's pin).
+- **Patterns are extracted from the live workflows, never copied into the test** —
+  a test carrying its own copy of the regex passes happily while the real one rots.
+- **Teeth verified**, per this repo's `test_negative.sh` discipline: removing the
+  owner anchor, and separately dropping the pre-release capture (the exact FT-15
+  truncation bug), each make the suite fail.
+- Records one deliberate asymmetry: `ai-review` is a **single-file** resolver (no
+  checkout by design), so it has no directory scope and the `--include` property
+  does not apply — asserted explicitly rather than cargo-culted.
+
 ### Fixed — `standards-drift` resolver brought to the §4.2a property list (FT-22)
 
 - **`standards-drift.yml`** pioneered "resolve the tag from the consumer's own
