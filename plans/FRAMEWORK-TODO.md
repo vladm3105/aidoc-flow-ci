@@ -720,12 +720,30 @@ This contradicts the repo's own stated discipline in `CLAUDE.md`: *"Wave 0 (this
 repo) self-adopts BEFORE Wave 1+ consumers pull. The canon-source dogfoods its own
 canon."*
 
-**Fix sketch:** add a `docs-sync` self-caller + `.github/docs-sync.json` with
-`dry_run: true` (canon has neither today, so docs-sync would exit at the opt-in
-guard even if called). That alone would have let PLAN-017 PR-A self-verify. A
-`doc-maintainer` self-caller is a bigger step (needs the bot App creds) and a
-self-`ai-review` bigger still — scope each separately. Value is not one-off: every
-future change to these reusables inherits the same blind spot.
+**PARTIALLY CLOSED 2026-07-21** — `docs-sync` self-caller +
+`.github/docs-sync.json` (dry-run) landed. **It paid for itself on day one:** the
+pre-push review found that the reusable's dry-run path posts a PR comment
+(`gh pr comment`) and therefore needs `pull-requests: write`, while both the
+shipped template (`install/templates/workflows/docs-sync.yml`) and every consumer
+caller grant only `read` — so the job fails 403 *exactly when it has something to
+report*, and is green only when idle. operations never hit it because `proposed`
+had always been 0. Fixed in the template (consumer-facing) and the new caller.
+That is the FT-23 thesis demonstrated: canon shipped a latent defect it could not
+see because it ran none of its own reusables.
+
+**Still open — three gaps:**
+
+1. **PR-scope.** The self-caller pins the RELEASED tag and fires on
+   `push: [main]`, so it verifies the released reusable *after* a release, not a
+   PR's own change to `docs-sync.yml`. Expressions are not permitted in `uses:`,
+   so a SHA cannot be interpolated — closing this needs a PR-triggered job using a
+   **local** `uses: ./.github/workflows/docs-sync.yml` reference. Note the
+   interaction: a local-path caller carries no `@ci/vX.Y.Z` pin, so the resolver
+   would fall back to the sibling self-caller's pin — worth designing, not
+   bolting on.
+2. **`doc-maintainer`** self-caller — bigger (needs the bot App creds).
+3. **`ai-review`** self-caller — bigger still, and the highest-value one, since
+   that is the merge gate.
 
 ### FT-22 — `standards-drift.yml` resolver predates the FT-15 rule (both-forms + scan-scope + pre-release reject)
 

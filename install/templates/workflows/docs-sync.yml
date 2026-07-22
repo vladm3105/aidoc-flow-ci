@@ -31,7 +31,11 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
+  # `write`, not `read`: in DRY-RUN the reusable posts its proposed edits as a PR
+  # comment (`gh pr comment`), which needs `pull-requests: write`. A callee cannot
+  # grant its own permissions — the caller must. With `read` the job fails 403
+  # exactly when it has something to report, and is green only when idle.
+  pull-requests: write
 
 jobs:
   call:

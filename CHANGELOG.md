@@ -5,7 +5,27 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-_(empty — next changes land here)_
+### Fixed — `docs-sync` caller template grants `pull-requests: write` (consumer-facing)
+
+- **`install/templates/workflows/docs-sync.yml`** granted `pull-requests: read`,
+  but the reusable's **dry-run** path posts its proposed edits as a PR comment
+  (`gh pr comment`), which needs `write`. A callee cannot grant its own
+  permissions. The job therefore failed 403 **exactly when it had something to
+  report**, and was green only when idle. Every consumer inherited this; it went
+  unnoticed because no consumer had yet produced a non-zero `proposed`.
+
+### Added — canon self-adopts `docs-sync` (FT-23)
+
+- **`.github/workflows/self-docs-sync.yml`** + **`.github/docs-sync.json`**
+  (dry-run): canon ran none of the reusables it ships, so a change to them could
+  not be exercised here at all — the blind spot that let FT-15 reach every
+  consumer. The released reusable now runs on canon's own pushes and emits the
+  resolved-pin `::notice::`. Per `CLAUDE.md`, Wave 0 self-adopts before Wave 1+
+  consumers pull. **Scope:** verifies the *released* reusable post-merge, not a
+  PR's own change — `uses:` forbids expressions, so that needs a local-path
+  PR job (FT-23 follow-up). `version_sync` is deliberately disabled: canon
+  already propagates VERSION via `scripts/sync-version-refs.sh`, wired to
+  pre-commit and asserted by the suite — strictly stronger than a post-merge pass.
 
 ## ci/v2.10.0 — 2026-07-21
 
