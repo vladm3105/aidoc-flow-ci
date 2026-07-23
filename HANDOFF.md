@@ -18,15 +18,22 @@ context compaction.
   caller passes an explicit map instead of `inherit`; additive, two-way completeness
   test, `contract` 272→275; security-auditor verdict READY — additive-safety
   confirmed against GitHub reusable-workflow docs — PR #272, squash `d70782e`).
-- **➡️ NEXT GATE: G2 — the 🔴 founder-executed cold-start dry-run.** The
-  **G1-merge-SHA is `d70782e7fc21c3a35bad287097d74cd99fd9241e`** (tip of `main`,
-  FT-42 squash). `plans/ROLLOUT_plan019-feedback-desk-coldstart.md` is now filled in
-  with that SHA (verified it resolves on raw.githubusercontent → HTTP 200) and
-  marked READY. Part A = `export CI_TAG=d70782e… && bash install/install.sh
-  vladm3105/aidoc-flow-feedback-desk --visibility private` — 🔴 founder-only
-  (writes to another repo). **Do NOT cut `ci/v2.12.0` until Part A runs GREEN.**
-  After G2: prep PR → tag `ci/v2.12.0` → G3 (FT-43…48) → G4 → fleet rollout.
-  Umbrella/HANDOFF NEXT bullet below stays superseded by this line.
+- **➡️ NEXT (AI-executable): G3 + G4 — the remaining flow-ci tasks (FT-43…52).**
+  These all ride the same `ci/v2.12.0` tag (additive surfaces), and several touch
+  `install.sh` + the templates the cold-start dry-run exercises (FT-47, FT-50,
+  FT-43) — so they land on `main` FIRST. G3 (ship-with-tag): FT-43 (label/draft
+  can supersede a RED ai-review — highest severity), FT-44, FT-45, FT-46, FT-47,
+  FT-48. G4 (before rollout): FT-49, FT-50, FT-51, FT-52 (FT-52 is 🔴 canon
+  self-governance). One FT per PR, OPS-0065 pre-push dispatch.
+- **G2 — the 🔴 founder cold-start dry-run — is the LAST flow-ci step, not the
+  next one.** It must validate the exact tree that becomes the tag, so it runs only
+  after G1 **+ G3 + G4** are all merged, pinned to the **final pre-tag `main` SHA**
+  (`git rev-parse origin/main`), NOT the G1 checkpoint `d70782e` (G3/G4 change the
+  installer + templates it exercises). `plans/ROLLOUT_plan019-feedback-desk-coldstart.md`
+  is reframed accordingly (⏳ NOT YET; pin = final SHA). Sequence:
+  **G3+G4 land → G2 dry-run GREEN → prep PR → tag `ci/v2.12.0` → fleet rollout.**
+  Do NOT cut the tag before G2 runs GREEN. Umbrella/HANDOFF NEXT bullet below stays
+  superseded by this line.
 - **PRE-PROD REVIEW of the `ci/v2.11.0..main` candidate → BLOCKER; PLAN-019
   authored + READY to close it. DO NOT cut `ci/v2.12.0` yet.** A 5-lens
   `ci-preprod-review` (security / correctness / docs / portability / governance)
@@ -65,24 +72,28 @@ context compaction.
   passes, 2 independent, zero load-bearing findings; gate green, 48 citations).
   Pass 2 caught FT-43's fix re-opening its own bypass (a step-level skip
   concluding SUCCESS supersedes a standing `request_changes`) → folded to
-  fail-closed-when-unarmed per the FT-29 `exit 1` model. Four gates: **G1**
-  (FT-39/40/41/42, before prep PR) → **G2** the 🔴 dry-run → **G3** ship-with-tag
-  (FT-43…48) → **G4** before-rollout (portability, canon self-governance,
-  governance-currency). Semver **MINOR → `ci/v2.12.0`**.
-- **`plans/ROLLOUT_plan019-feedback-desk-coldstart.md` — READY (🔴 founder-executed;
-  G1-SHA filled in, see the G1-COMPLETE line at the top of this section).**
-  feedback-desk verified a genuine cold start (no workflows / pre-commit / canon
-  ref) and **PRIVATE** with `APP_REVIEWER_1_BOT_ID` UNSET, so the runbook splits
-  **Part A** (installer cold-start = the FT-30 tag gate, visibility-independent)
-  from **Part B** (arm gates green = self-hosted pool + per-repo LiteLLM secrets +
-  App; PLAN-009 Phase-0 🔴, NOT a tag gate). The one load-bearing line:
-  `export CI_TAG=d70782e7fc21c3a35bad287097d74cd99fd9241e` or it validates the
-  pre-fix templates.
-- **NEXT:** ✅ Workstream A (G1) is DONE (see the G1-COMPLETE line above; all four
-  blockers merged, SHA `d70782e`). The remaining path is **G2** (🔴 founder runs
-  Part A on feedback-desk pinned to `d70782e`) → prep PR → tag `ci/v2.12.0` →
-  G3/G4 + fleet rollout. PLAN-019 files are committed (PR #268 + the four blocker
-  PRs).
+  fail-closed-when-unarmed per the FT-29 `exit 1` model. Four gates (by the BAR
+  each clears, not execution order): **G1** tag-cut blockers (FT-39/40/41/42),
+  **G2** the 🔴 dry-run (gates the `git tag`), **G3** ship-with-tag (FT-43…48),
+  **G4** before-rollout (FT-49…52: portability, canon self-governance,
+  governance-currency). **Execution order** (all G3/G4 ride the same tag, and some
+  change the installer/templates the dry-run exercises): G1 → G3 → G4 → **G2 dry-run
+  LAST** → tag → rollout (see the NEXT lines at the top of this section). Semver
+  **MINOR → `ci/v2.12.0`**.
+- **`plans/ROLLOUT_plan019-feedback-desk-coldstart.md` — ⏳ NOT YET (🔴
+  founder-executed; runs LAST, after G3+G4 — see the NEXT lines at the top of this
+  section).** feedback-desk verified a genuine cold start (no workflows /
+  pre-commit / canon ref) and **PRIVATE** with `APP_REVIEWER_1_BOT_ID` UNSET, so the
+  runbook splits **Part A** (installer cold-start = the FT-30 tag gate,
+  visibility-independent) from **Part B** (arm gates green = self-hosted pool +
+  per-repo LiteLLM secrets + App; PLAN-009 Phase-0 🔴, NOT a tag gate). The one
+  load-bearing line: `export CI_TAG="$(git rev-parse origin/main)"` (the final
+  pre-tag SHA once G3+G4 are merged) or it validates the pre-fix templates.
+- **NEXT:** ✅ G1 (Workstream A) DONE. The remaining flow-ci work is **G3 + G4
+  (FT-43…52)** — AI-executable, one FT per PR — which land FIRST. **Then** G2 (the
+  🔴 founder cold-start dry-run, pinned to the final pre-tag `main` SHA) runs as the
+  LAST validation → prep PR → tag `ci/v2.12.0` → fleet rollout. PLAN-019 files are
+  committed (PR #268 + the four G1 blocker PRs #269–#272).
 - **PLAN-018 COMPLETE — all four workstreams (A, C, B, D).** Workstream D closed
   it out:
   - **D1 / FT-32 (#265)** — the canon pre-commit fragment is refreshable in
