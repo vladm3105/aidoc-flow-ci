@@ -6,6 +6,17 @@ context compaction.
 
 ## Current state (2026-07-22)
 
+- **PLAN-018 Workstream B COMPLETE (FT-10 verified-resolved, last item).** All
+  canon-internal defects closed: FT-26 codeql pin (#259), FT-27 least-privilege
+  (#260), FT-28 SHA-peel (#261), FT-29 zero-review window (#262), FT-25 adopter
+  gaps (#263), + FT-14/FT-10 verified already-resolved (2 stale ledger entries
+  the verify-before-fixing triage caught). **Deferred within B (by priority, not
+  size):** FT-4 (cosmetic CHANGELOG history), FT-6 (trust-config inputs), and the
+  **ai-review `secrets: inherit` → explicit-map** conversion (needs adding
+  `secrets:` declarations to the reusable + its own security review — the one
+  FT-27 piece that isn't caller-only). **PLAN-018 status: Workstreams A + C + B
+  done; D (rollout readiness) not started; fleet rollout gated on FT-32 per CI-0013.**
+
 - **PLAN-018 Workstream B / PR B5 (FT-25 adopter gaps ×4) OPEN.** Wizard scaffolds
   the labeler config starter; preflight surveys all 18 labels + branches on
   allowed_actions (no masked 409); verify short-circuits on the pre-merge adoption

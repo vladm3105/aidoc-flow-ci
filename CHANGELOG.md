@@ -5,6 +5,14 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Triage — FT-10 (runner-self pool-nickname in docs) already resolved
+
+- Verified the nickname-as-registration usage FT-10 was filed for is gone: every
+  `runner-self` mention across `docs/` + `LABELS.md` now frames it as the retired
+  placeholder to avoid (no doc tells a reader to register/target it), and the
+  `["self-hosted","ci-runner","single-use"]` (CI-0007) labels are canonical. No
+  change needed; ledger marked resolved. This closes **PLAN-018 Workstream B**.
+
 ### Fixed — adopter-facing gaps in the wizard + deployment docs (PLAN-018 FT-25, Workstream B)
 
 - **labeler config was installable by no path.** The `labeler` caller uses
