@@ -5,6 +5,23 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — `required-context-map.py` validates the job-key half of a context (PLAN-019 FT-45)
+
+- A required status-check context is `<caller-job-key> / <reusable-job-name>`, but
+  the validator split on `" / "` and used only `<name>`, dropping the job key. A
+  context with the right name but a **wrong job key** (e.g. `call / check-standards-drift`
+  when `standards-drift`'s caller job is keyed `drift`) resolved as "producer
+  installed" — yet that context is never emitted, so arming it would pin every PR
+  forever (the F2 hang this tool exists to generalize).
+- The map now parses each caller template's `jobs:` and records which job **keys**
+  call each reusable, then a context resolves to a producer only when its
+  `<jobid>` matches a caller job that actually calls the reusable. Correct
+  `drift / check-standards-drift` resolves; `call / check-standards-drift` flags `?`.
+- `test_required_contexts.sh` (21 → 23): a wrong-job-key context must be flagged,
+  the correct one must resolve; dropping the job-key check goes red. All 15 shipped
+  `call /`-keyed contexts still resolve (they're latent-only — no template had a
+  wrong key, but the validator no longer accepts one).
+
 ### Fixed — the pre-commit refresh now reports a kept-but-changed canon hook (PLAN-019 FT-44)
 
 - The pseudo-repo (`local`) merge filtered canon hooks by `id` only, so a canon
