@@ -707,6 +707,18 @@ customized caller — do a surgical `@ci/v*` sed instead.**
 
 ### FT-10 — `runner-self` still used as a pool-nickname across reference docs
 
+**Status:** ALREADY RESOLVED — verified 2026-07-23 (PLAN-018 Workstream B triage).
+The nickname-as-registration-label usage this was filed for (runners.md §2
+registration steps, `troubleshooting.md`, `LABELS.md:121`) was cleaned up in
+subsequent doc work. Every remaining `runner-self` mention across `docs/` +
+`LABELS.md` now frames it as **the retired placeholder to avoid** — e.g.
+`AI_CI_DEPLOYMENT.md:271` "`runner-self` is a placeholder, NOT a registered
+label", `runners.md:14` the migration note. Verified: no doc tells a reader to
+register/use/target `runner-self` as a pool label (grep for
+`use|register|labels:|runner_labels|--labels` + `runner-self` → zero hits); the
+canonical `["self-hosted","ci-runner","single-use"]` (CI-0007) labels are used
+throughout. No fix needed; recorded so the ledger is not re-worked.
+
 **Found:** 2026-07-11, v1.9.0 doc-consistency review (documentation-specialist).
 **Surface:** after v1.9.0 removed `runner-self` from the shipped templates, the
 reference docs still use `runner-self` as the *nickname* for the self-hosted pool
