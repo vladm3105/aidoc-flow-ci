@@ -11,8 +11,14 @@ when resolved.
 ### FT-36 — canon does not self-run the `pre-commit` reusable it ships
 
 **Found:** 2026-07-22, PLAN-018 PR-B pre-push review.
-**Status:** OPEN — same class as FT-23 and FT-34, and the same root cause as F1
-itself: canon ships a surface nothing exercises.
+**Status:** CLOSED (PLAN-018 Workstream C / PR C4, 2026-07-23) —
+`.github/workflows/self-pre-commit.yml` runs canon's `.pre-commit-config.yaml`
+through the `pre-commit` reusable on every PR (public → ubuntu-latest, pinned to
+the released tag). Canon self-runs 4 of its 16 reusables now (was 3). Adoption
+surfaced a real non-conformance (`VERSION` had no trailing newline →
+`end-of-file-fixer`), fixed, with the release checklist updated so a future prep
+does not reintroduce it. Original root cause: canon ships a surface nothing
+exercises (same class as FT-23, FT-34).
 
 `.github/workflows/pre-commit.yml` is the `workflow_call` definition; **no canon
 workflow calls it**. So PR-B's Wave-0 self-adoption of the commit-stage hooks is

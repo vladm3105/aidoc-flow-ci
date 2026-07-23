@@ -35,7 +35,10 @@ each before proceeding to the next.
   from CHANGELOG.md into a `## ci/vX.Y.Z — <date>` section. Promote
   `## Unreleased` entries to the new tag header.
 - [ ] **VERSION bumped:** `VERSION` file reads `ci/vX.Y.Z`. Must match the
-  tag being cut.
+  tag being cut. Write it **with a trailing newline** (`echo "ci/vX.Y.Z" >
+  VERSION`, not `printf` without `\n`) — canon's own `self-pre-commit` gate runs
+  `end-of-file-fixer` and a newline-less `VERSION` fails it. All readers strip
+  whitespace, so the newline is inert to resolution.
 - [ ] **`install.sh` fallback matches:** `CI_TAG_FALLBACK` in `install.sh`
   matches `VERSION`. Grep: `grep CI_TAG_FALLBACK install/install.sh`.
 - [ ] **🔴 COLD-START DRY-RUN (founder-executed) — PLAN-018 FT-30.** Canon is

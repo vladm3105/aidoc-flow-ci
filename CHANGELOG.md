@@ -5,6 +5,23 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — canon self-runs its own `pre-commit` gate (PLAN-018 FT-36, Workstream C)
+
+- `.github/workflows/self-pre-commit.yml` — a caller that runs canon's
+  `.pre-commit-config.yaml` through the `pre-commit` **reusable** on every PR.
+  Until now canon shipped the reusable but never ran it on itself — the "no
+  exerciser for canon's own output" root cause behind F1/F3. Canon now self-runs
+  4 of its 16 reusables (was 3).
+- Dogfooding immediately found a non-conformance in canon's own tree: `VERSION`
+  lacked a trailing newline (`end-of-file-fixer`). Fixed; all VERSION readers
+  strip whitespace so it is inert to resolution, and the release checklist now
+  says to write `VERSION` with a newline so a future prep does not reintroduce
+  the failure.
+- Public repo → `ubuntu-latest` (a fork-code lint flow must stay there, never the
+  self-hosted pool). Pinned to the released tag; `sync-version-refs.sh` keeps the
+  pin in step with `VERSION`.
+
+
 ### Added — required-context ↔ producer validator (PLAN-018 FT-18, Workstream C)
 
 - `install/required-context-map.py` DERIVES, for every required status-check

@@ -32,9 +32,10 @@ place, per PLAN-018 contract item 7.
 
 ## Reusable workflows (16)
 
-Canon ships 16 `workflow_call` reusables. It self-runs **3** of them today
-(`audit-trail-check`, `docs-sync`, `secret-scan` — a canon workflow carries a
-non-comment `uses:` at that reusable, so a regression fails canon's own checks);
+Canon ships 16 `workflow_call` reusables. It self-runs **4** of them today
+(`audit-trail-check`, `docs-sync`, `secret-scan`, `pre-commit` — a canon workflow
+carries a non-comment `uses:` at that reusable, so a regression fails canon's own
+checks);
 the rest are covered offline or descoped. (The table also lists the
 `audit-trail.yml` *caller* template — a consumer surface, not a 17th reusable.)
 
@@ -45,7 +46,7 @@ the rest are covered offline or descoped. (The table also lists the
 | `.github/workflows/docs-sync.yml` | `self-docs-sync.yml` self-caller; `test_resolver.sh` (pin resolver) | self-caller + offline-test |
 | `.github/workflows/secret-scan.yml` | `self-secret-scan.yml` self-caller | self-caller |
 | `.github/workflows/standards-drift.yml` | `test_resolver.sh` (pin resolver). `standards-drift-self.yml` runs `sync/check-standards-drift.sh` **directly**, NOT this reusable — the reusable's fetch/resolver wrapper is exercised only offline (its own header notes canon "does not exercise this fetch path") | offline-test |
-| `.github/workflows/pre-commit.yml` | `test_install.sh` Part 4 (fragment selects a stage-matching hook); merge covered by `test_precommit_merge.sh` | **unexercised** (no self-caller) — **FT-36** (self-caller lands in Workstream C / PR C4) |
+| `.github/workflows/pre-commit.yml` | `self-pre-commit.yml` self-caller (runs the reusable on canon's own config every PR); `test_install.sh` Part 4 (fragment selects a stage-matching hook); merge covered by `test_precommit_merge.sh` | self-caller + offline-test |
 | `.github/workflows/markdown-lint.yml` | — | **unexercised** — **FT-34** (self-caller + `.markdownlint.json` land in PR C4) |
 | `.github/workflows/ai-review.yml` | `test_resolver.sh` (resolver — the FT-15 surface), `test_checknames.sh`, `test_contract.sh` | descoped (library repo, founder 2026-07-22; live self-run needs LiteLLM + reviewer App + self-hosted pool this library does not warrant) + offline-test |
 | `.github/workflows/composition.yml` | `test_checknames.sh`, `test_contract.sh` | descoped (library; live self-run needs the reviewer App identity) + offline-test |
@@ -118,7 +119,7 @@ Not a workflow or script, but shipped to every adopter and therefore in scope fo
 
 | Gap | Surface | Closes in |
 | --- | --- | --- |
-| No `pre-commit` self-caller | `pre-commit.yml` | FT-36 → PR C4 |
+| ~~No `pre-commit` self-caller~~ | `pre-commit.yml` | **FT-36 CLOSED (PR C4)** — `self-pre-commit.yml` |
 | No `markdown-lint` self-caller + no canon `.markdownlint.json` | `markdown-lint.yml`, `.markdownlint.json` | FT-34 → PR C4 |
 | No automated rev bump | `pre-commit-hooks` rev | FT-35 |
 | ~~No zero-hook detector~~ | `pre-commit` config vacuity | **FT-31 CLOSED (PR C2)** — `install/check-precommit-hooks.sh`, operator-side |
