@@ -5,6 +5,30 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — exerciser inventory + completeness guard (PLAN-018 Workstream C, contract 7)
+
+- `docs/EXERCISER_INVENTORY.md` maps every consumer-facing surface canon ships —
+  16 reusable workflows, the `manifest.json` config/governance surfaces, the
+  canonical scripts, and the one third-party dependency — to the thing that
+  **exercises** it: a self-caller, an offline test, or an explicit
+  `unexercised — FT-NN` / `descoped — <reason>` record. F1 shipped broken for
+  nine releases because a surface had no exerciser and the gap was silent; this
+  makes the set explicit. Canon self-runs **3** of its 16 reusables today
+  (`audit-trail-check`, `docs-sync`, `secret-scan`); the rest are covered offline
+  or descoped, each with a reason.
+- `tests/test_exerciser_inventory.sh` keeps it complete: **every `manifest.json`
+  surface, every `workflow_call` reusable, and every canonical script must have a
+  row**, and every `unexercised` row must name its closing FT (or be explicitly
+  `accepted`). A new template added without a row fails the suite — the F1
+  failure mode (an untracked surface) caught at introduction. Teeth verified: a
+  phantom manifest surface and an orphan `unexercised` row each fail it.
+- Records the founder scope decision (2026-07-22): the `ai-review` /
+  `doc-maintainer` / `composition` self-callers are **descoped** for this library
+  repo (they would need a self-hosted pool + reviewer App purely to dogfood); the
+  resolver risk they would have covered live is carried offline by
+  `test_resolver.sh`. FT-23 is scoped down accordingly.
+
+
 ## ci/v2.11.0 — 2026-07-22
 
 PLAN-018 Workstream A — the cold-start onboarding path, broken for nine releases
