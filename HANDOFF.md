@@ -6,22 +6,27 @@ context compaction.
 
 ## Current state (2026-07-23)
 
-- **G1 (PLAN-019 Workstream A) IN PROGRESS — implementing the 4 tag-cut blockers,
-  each its own PR with OPS-0065 pre-push dispatch.** Done: **FT-39** (install.sh
-  fetch validation + `--update` no-TTY consent — PR #269 MERGED, squash `1066d2b`;
+- **G1 (PLAN-019 Workstream A) COMPLETE (2026-07-23) — all 4 tag-cut blockers
+  merged, each its own PR with OPS-0065 pre-push dispatch.** **FT-39** (install.sh
+  fetch validation + `--update` no-TTY consent — PR #269, squash `1066d2b`;
   OPS-0065 cycle-1 folded a MAJOR `<!--` false-reject of `pull_request_template.md`
-  plus a docs count fix, cycle-2 re-review CONFIRMED); **FT-40** (FT-28 SHA-peel guard
-  now driven not re-implemented — `resolver` 62→70, `if false;` mutation goes red —
-  PR #270 MERGED, squash `6bab677`); **FT-41** (markdown-lint blocking-default now
-  asserted — `contract` 271→272, default-flip goes red — PR #271 MERGED, squash
-  `ef72517`); **FT-42** (`ai-review` least-privilege secrets — reusable now declares
-  its 8 secrets, caller passes an explicit map instead of `inherit`; additive, two-
-  way completeness test, `contract` 272→275 — PR open). **This is the last G1
-  blocker.** Once FT-42 merges, **G1 is complete**: the G1-merge-SHA (its squash
-  commit on `main`) is what §6 Part-A pins `CI_TAG` to for the 🔴 founder cold-start
-  dry-run (G2) — do NOT cut `ci/v2.12.0` before that dry-run runs GREEN. Then
-  prep PR → tag → G3/G4 → fleet rollout. Umbrella/HANDOFF NEXT bullet below is
-  superseded by this line until G1 completes.
+  plus a docs count fix, cycle-2 re-review CONFIRMED); **FT-40** (FT-28 SHA-peel
+  guard now driven not re-implemented — `resolver` 62→70, `if false;` mutation goes
+  red — PR #270, squash `6bab677`); **FT-41** (markdown-lint blocking-default now
+  asserted — `contract` 271→272, default-flip goes red — PR #271, squash `ef72517`);
+  **FT-42** (`ai-review` least-privilege secrets — reusable declares its 8 secrets,
+  caller passes an explicit map instead of `inherit`; additive, two-way completeness
+  test, `contract` 272→275; security-auditor verdict READY — additive-safety
+  confirmed against GitHub reusable-workflow docs — PR #272, squash `d70782e`).
+- **➡️ NEXT GATE: G2 — the 🔴 founder-executed cold-start dry-run.** The
+  **G1-merge-SHA is `d70782e7fc21c3a35bad287097d74cd99fd9241e`** (tip of `main`,
+  FT-42 squash). `plans/ROLLOUT_plan019-feedback-desk-coldstart.md` is now filled in
+  with that SHA (verified it resolves on raw.githubusercontent → HTTP 200) and
+  marked READY. Part A = `export CI_TAG=d70782e… && bash install/install.sh
+  vladm3105/aidoc-flow-feedback-desk --visibility private` — 🔴 founder-only
+  (writes to another repo). **Do NOT cut `ci/v2.12.0` until Part A runs GREEN.**
+  After G2: prep PR → tag `ci/v2.12.0` → G3 (FT-43…48) → G4 → fleet rollout.
+  Umbrella/HANDOFF NEXT bullet below stays superseded by this line.
 - **PRE-PROD REVIEW of the `ci/v2.11.0..main` candidate → BLOCKER; PLAN-019
   authored + READY to close it. DO NOT cut `ci/v2.12.0` yet.** A 5-lens
   `ci-preprod-review` (security / correctness / docs / portability / governance)
@@ -64,18 +69,20 @@ context compaction.
   (FT-39/40/41/42, before prep PR) → **G2** the 🔴 dry-run → **G3** ship-with-tag
   (FT-43…48) → **G4** before-rollout (portability, canon self-governance,
   governance-currency). Semver **MINOR → `ci/v2.12.0`**.
-- **`plans/ROLLOUT_plan019-feedback-desk-coldstart.md` — staged** (🔴
-  founder-executed). feedback-desk verified a genuine cold start (no workflows /
-  pre-commit / canon ref) and **PRIVATE** with `APP_REVIEWER_1_BOT_ID` UNSET, so
-  the runbook splits **Part A** (installer cold-start = the FT-30 tag gate,
-  visibility-independent) from **Part B** (arm gates green = self-hosted pool +
-  per-repo LiteLLM secrets + App; PLAN-009 Phase-0 🔴, NOT a tag gate). The one
-  load-bearing line: `export CI_TAG=<G1-merge-sha>` or it validates the pre-fix
-  templates.
-- **NEXT:** implement Workstream A (G1, 4 blockers) — each its own PR with the
-  OPS-0065 pre-push dispatch — then prep PR → founder runs Part A on
-  feedback-desk pinned to the G1 merge SHA → tag `ci/v2.12.0`. G3/G4 + the fleet
-  rollout follow. PLAN-019 files are **not yet committed** (untracked in `plans/`).
+- **`plans/ROLLOUT_plan019-feedback-desk-coldstart.md` — READY (🔴 founder-executed;
+  G1-SHA filled in, see the G1-COMPLETE line at the top of this section).**
+  feedback-desk verified a genuine cold start (no workflows / pre-commit / canon
+  ref) and **PRIVATE** with `APP_REVIEWER_1_BOT_ID` UNSET, so the runbook splits
+  **Part A** (installer cold-start = the FT-30 tag gate, visibility-independent)
+  from **Part B** (arm gates green = self-hosted pool + per-repo LiteLLM secrets +
+  App; PLAN-009 Phase-0 🔴, NOT a tag gate). The one load-bearing line:
+  `export CI_TAG=d70782e7fc21c3a35bad287097d74cd99fd9241e` or it validates the
+  pre-fix templates.
+- **NEXT:** ✅ Workstream A (G1) is DONE (see the G1-COMPLETE line above; all four
+  blockers merged, SHA `d70782e`). The remaining path is **G2** (🔴 founder runs
+  Part A on feedback-desk pinned to `d70782e`) → prep PR → tag `ci/v2.12.0` →
+  G3/G4 + fleet rollout. PLAN-019 files are committed (PR #268 + the four blocker
+  PRs).
 - **PLAN-018 COMPLETE — all four workstreams (A, C, B, D).** Workstream D closed
   it out:
   - **D1 / FT-32 (#265)** — the canon pre-commit fragment is refreshable in

@@ -8,12 +8,18 @@
 > **Gating role:** Part A is the PLAN-018 **FT-30 cold-start dry-run** that
 > `docs/RELEASE_CHECKLIST.md` requires before the `ci/v2.12.0` tag is cut. Part B
 > completes feedback-desk's onboarding but does **not** gate the tag.
+>
+> ✅ **READY TO RUN — G1 is complete (2026-07-23).** All four Workstream-A blockers
+> merged to `main`: FT-39 (#269), FT-40 (#270), FT-41 (#271), FT-42 (#272). The
+> **G1-merge-SHA is `d70782e7fc21c3a35bad287097d74cd99fd9241e`** (tip of `main`,
+> FT-42 squash) and is filled in below — verified it resolves on
+> raw.githubusercontent (`VERSION` → HTTP 200). `export CI_TAG=` that SHA.
 
 | Field | Value |
 | --- | --- |
 | Target repo | `vladm3105/aidoc-flow-feedback-desk` (PRIVATE; default branch `main`) |
 | Current state | No `.github/workflows/`, no `.pre-commit-config.yaml`, canon not referenced, `APP_REVIEWER_1_BOT_ID` UNSET — a genuine cold start |
-| Blocked on | **Workstream A (G1) merged to `main`** — the dry-run must run the *fixed* `install.sh`. Do not run this before then. |
+| Blocked on | ✅ CLEARED — Workstream A (G1) merged to `main` (FT-39/40/41/42, PRs #269–#272; SHA `d70782e`). The dry-run now runs the *fixed* `install.sh`. |
 | Tier | product (private) → `composition-private.yml`, self-hosted runners |
 
 ---
@@ -21,7 +27,7 @@
 ## The single most important line
 
 ```bash
-export CI_TAG=<G1-merge-sha>        # the merge commit of the Workstream-A PR(s)
+export CI_TAG=d70782e7fc21c3a35bad287097d74cd99fd9241e        # the merge commit of the Workstream-A PR(s)
 ```
 
 Without it, `install.sh` resolves `CI_TAG` from `VERSION`/`CI_TAG_FALLBACK` (both
@@ -37,13 +43,13 @@ until the tag exists; after tagging, `CI_TAG=ci/v2.12.0` is equivalent.
 Run from a clean checkout of `aidoc-flow-ci` at the G1 merge SHA.
 
 ```bash
-export CI_TAG=<G1-merge-sha>
+export CI_TAG=d70782e7fc21c3a35bad287097d74cd99fd9241e
 bash install/install.sh vladm3105/aidoc-flow-feedback-desk --visibility private
 ```
 
 **Expected — GREEN:**
 
-- `==> using CI_TAG=<G1-merge-sha> (source: env)` — confirms the pin, not the fallback.
+- `==> using CI_TAG=d70782e7fc21c3a35bad287097d74cd99fd9241e (source: env)` — confirms the pin, not the fallback.
 - Every template fetch returns 200 — **no `404`, no `FAIL`**. (F1: the pre-`ci/v2.2.0`
   `ai-review-${VISIBILITY}.yml` 404 must not recur.)
 - `composition-private.yml` and `pre-commit.yml` are written and resolve (F2).
@@ -106,7 +112,7 @@ to register the pool.
 Part A is real onboarding, not a throwaway — feedback-desk keeps the installed
 files. If instead you want a pure throwaway FT-30 validation (no real repo
 touched), point `install.sh` at a scratch repo with the same
-`export CI_TAG=<G1-merge-sha>` and delete it after; Part A's GREEN criteria are
+`export CI_TAG=d70782e7fc21c3a35bad287097d74cd99fd9241e` and delete it after; Part A's GREEN criteria are
 identical. Either satisfies the tag gate; only the feedback-desk run also advances
 its onboarding.
 
