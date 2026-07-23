@@ -6,7 +6,16 @@
 #
 # Design decisions (research findings 2026-06-24):
 #   - SHA-pinned to v4.36.1 (the latest tagged release). v3 enters
-#     deprecation Dec 2026; v4 is the supported major.
+#     deprecation Dec 2026; v4 is the supported major. All three steps
+#     (init / autobuild / analyze) pin the PEELED COMMIT
+#     87557b9c84dde89fdd9b10e88954ac2f4248e463, not the annotated tag
+#     object (21eb7f78…) — the tag object 422s on the commits API and
+#     trips the workspace's mandatory SHA audit (FT-26).
+#   - PRIVATE repos require GitHub Advanced Security (GHAS). Without it,
+#     `codeql-action/init` errors outright — there is no fork/GHAS guard
+#     here by design (a hard error is the right signal that GHAS is not
+#     enabled). Do NOT adopt codeql on a private repo before GHAS is on;
+#     the wizard's `plan` output flags this.
 #   - Explicit `languages` matrix (JSON array input) — auto-detect
 #     doesn't follow newly-added languages and breaks reproducibility.
 #   - `category: /language:${{matrix.language}}` — lets multiple
@@ -94,7 +103,7 @@ jobs:
 
       - name: Autobuild
         if: ${{ inputs.build-command == '' }}
-        uses: github/codeql-action/autobuild@21eb7f7842f33eafc83782b56fff2a2c43e9696f # v4.36.1
+        uses: github/codeql-action/autobuild@87557b9c84dde89fdd9b10e88954ac2f4248e463 # v4.36.1
 
       - name: Manual build
         if: ${{ inputs.build-command != '' }}

@@ -6,6 +6,15 @@ context compaction.
 
 ## Current state (2026-07-22)
 
+- **PLAN-018 Workstream B STARTED — PR B1 (FT-26 codeql pin + FT-14 triage) OPEN.**
+  codeql autobuild repinned tag-object→peeled-commit (matches init/analyze);
+  test_lint asserts the three codeql pins agree (teeth). GHAS-for-private
+  documented. FT-14 (yamllint hook vs CI) verified ALREADY RESOLVED (root
+  .yamllint.yaml added 2026-07-17) — no fix, marked in ledger. Remaining B:
+  FT-27 (over-grant secrets/can-approve), FT-28 (ai-review SHA peel), FT-29
+  (skip-ai-review+INERT-composition window), FT-25 (adopter gaps ×4), FT-10
+  (runner-self docs). Verifying each is still live before fixing (FT-14 was stale).
+
 - **PLAN-018 Workstream C COMPLETE — PR C5 (`scripts/release.sh`, FT-21) OPEN, last item.**
   release.sh encodes prep→merge→dry-run→tag with guards on all three v2.9.0
   failure modes (tag-before-prep-merge; tag-without-🔴-dry-run; VERSION-tree
