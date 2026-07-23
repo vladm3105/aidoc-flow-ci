@@ -6,6 +6,16 @@ context compaction.
 
 ## Current state (2026-07-22)
 
+- **PLAN-018 Workstream C / PR C3 (required-context validator, FT-18) OPEN.**
+  `install/required-context-map.py` derives context→producing-caller for every
+  tier's required contexts (context → reusable job → caller template → manifest
+  consumer path; no hardcoded table). Wizard preflight §6 diffs it against the
+  repo's installed workflows → per-tier "arming would hang: `call / X` needs
+  `<caller>` (not installed)" (the F2 hang, pre-arming). `test_required_contexts.sh`
+  (21) asserts the canon invariant (every required context has a producer) + the
+  audit-trail chain + teeth. FT-18 closed for the validator; inventory row +
+  gap closed. Remaining C: C4 (FT-36/FT-34 self-callers), C5 (FT-21 release.sh).
+
 - **PLAN-018 Workstream C / PR C2 (zero-hook detector, FT-31) OPEN.**
   `install/check-precommit-hooks.sh` — general form of F3; exits 1 when a
   `.pre-commit-config.yaml` selects zero hooks at the stage the reusable runs.

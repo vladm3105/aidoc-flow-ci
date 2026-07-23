@@ -5,6 +5,28 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — required-context ↔ producer validator (PLAN-018 FT-18, Workstream C)
+
+- `install/required-context-map.py` DERIVES, for every required status-check
+  context in every branch-protection tier template, the CONSUMER caller that must
+  be installed to produce it — the general form of F2 ("a required context has no
+  producing workflow, so arming pins every PR forever"). The chain is derived,
+  never hand-maintained (a hardcoded table is the F1 failure mode): context →
+  reusable job-name → caller template `uses:` → manifest consumer path. It
+  correctly resolves the non-obvious `call / verify` → `audit-trail.yml` (via the
+  `audit-trail-check` reusable, a different basename).
+- `deploy-ci-wizard.sh preflight` §6 diffs that map against the repo's installed
+  workflows and reports, **per tier**, any required context whose producer is not
+  installed — so an operator sees "arming at ops would hang: `call / gitleaks`
+  needs `secret-scan.yml` (not installed)" *before* arming, not at first-PR time.
+- `tests/test_required_contexts.sh` (21 assertions) asserts the **canon
+  invariant** — every required context in every tier resolves to a producer, or
+  the test is red (F2 latent in canon itself) — plus the non-obvious chains and
+  teeth (removing the `secret-scan` caller templates orphans `call / gitleaks`).
+  Complements `test_checknames.sh`, which checks the prior link (context → real
+  reusable job).
+
+
 ### Added — zero-hook detector (PLAN-018 FT-31, Workstream C)
 
 - `install/check-precommit-hooks.sh` — the general form of F3. It parses a

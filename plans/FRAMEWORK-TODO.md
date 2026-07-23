@@ -1178,6 +1178,20 @@ rerun does not re-read labels).
 
 ### FT-18 — deploy wizard has no required-context ↔ emitted-check-name validator; 🔴-step prep/verify is under-automated (builds the guard for FT-12's class)
 
+**Status:** CLOSED for the required-context validator (PLAN-018 Workstream C /
+PR C3, 2026-07-22). `install/required-context-map.py` DERIVES, for every required
+context in every tier template, the consumer caller that must be installed to
+produce it (context → reusable job-name → caller template → manifest consumer
+path — no hand-maintained table). `deploy-ci-wizard.sh preflight §6` diffs that
+map against the repo's installed workflows and reports, per tier, any required
+context whose producer is not installed (the F2 hang, before arming).
+`test_required_contexts.sh` asserts the canon invariant (every required context
+has a producer, or the test is red — F2 latent in canon), the non-obvious chains
+(`call / verify` → audit-trail caller via the audit-trail-check reusable), and
+teeth. The remaining FT-18 scope — the broader PLAN-009 Phase 0 preflight
+(per-repo LiteLLM secrets, pool registration) — stays open and 🔴 founder-manual;
+the live phantom-context instances remain FT-12.
+
 **Found:** 2026-07-20 — iplanic `main` carried the orphaned required
 context `Lint / format / security hooks` (real check: `call / Lint / format
 / security hooks`); every PR blocked at green until a founder settings edit.
