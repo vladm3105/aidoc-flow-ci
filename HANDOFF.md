@@ -4,7 +4,45 @@ Live cross-session resume point for the workspace CI + governance-workflow
 canon library. Read at session start; refresh at milestones and before
 context compaction.
 
-## Current state (2026-07-22)
+## Current state (2026-07-23)
+
+- **PLAN-018 COMPLETE — all four workstreams (A, C, B, D).** Workstream D closed
+  it out:
+  - **D1 / FT-32 (#265)** — the canon pre-commit fragment is refreshable in
+    already-adopted consumers. The `CANON:` marker is now **versioned**
+    (`# CANON: aidoc-flow-ci pre_push_check vN`, canon at **v2**); bootstrap
+    re-merges a consumer whose `vN` lags, then stamps canon's so the next run
+    no-ops. Before this an adopted consumer was frozen forever (bootstrap no-op'd
+    on the marker, `--update` excludes the file, `--apply` writes no content), so
+    `manifest.json`'s "re-run install.sh to refresh those" was **false** for it.
+    **Additions only** — a `rev` bump, or a new hook id inside a repo the consumer
+    already declares, is reported and left unapplied; a partial merge still stamps
+    `vN` (required to converge) and now says the named lines stay unapplied.
+    `tests/test_precommit_refresh.sh` is new and covers the DECISION, which had
+    no coverage at all: a review mutated the compare back to always-no-op —
+    restoring the exact fleet-wide freeze — and the whole suite stayed green.
+  - **D2 (#266)** — `docs/UPDATE_GUIDE.md` gains the body-adoption reconciliation
+    procedure (`--repin` is the default; `--update` replaces all 16
+    `safe_to_replace` bodies and discards per-repo `runner_labels_*`/
+    `permissions:`/triggers, failing on the *next* PR rather than at update time)
+    and the drift-report-as-rollout-worklist section. Also corrected the
+    `ci/v2.0.0` migration step 4, which recommended `--repin` **then**
+    `--update` — the FT-9 hazard, sitting in the guide as a recommendation.
+
+- **NEXT: the fleet rollout is unblocked** (CI-0013's "drift report becomes the
+  rollout worklist" now has a mechanism behind it). Start from
+  `docs/UPDATE_GUIDE.md` § "Reading the drift report as the rollout worklist".
+  Note **FT-38**: `operations`, `framework`, `iplanic`, `iplan-runner` declare
+  `pre-commit-hooks` at a mutable `rev: v5.0.0` that the refresh **cannot** move
+  to canon's SHA pin — named per-repo decisions in the worklist, not delivered.
+  Simulated refresh across all 7 siblings: missing canon lines 19→6 (operations),
+  18→1 (framework, iplanic), 5→0 (interlog, engramory, iplan-standard), 1→1
+  (iplan-runner).
+
+- **Still deferred from B** (by priority, not size): FT-4 (cosmetic CHANGELOG
+  history), FT-6 (trust-config inputs), and the **ai-review `secrets: inherit` →
+  explicit-map** conversion (needs `secrets:` declarations on the reusable + its
+  own security review). Also open: FT-33, FT-35, FT-36, FT-37.
 
 - **PLAN-018 Workstream B COMPLETE (FT-10 verified-resolved, last item).** All
   canon-internal defects closed: FT-26 codeql pin (#259), FT-27 least-privilege
