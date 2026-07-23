@@ -8,6 +8,42 @@ when resolved.
 
 ## Open
 
+### FT-38 — four fleet repos pin `pre-commit-hooks` at a mutable rev the refresh cannot move
+
+**Found:** 2026-07-23, PLAN-018 Workstream D / PR D1 pre-push review (fleet
+simulation across all 7 sibling configs).
+**Status:** OPEN — a rollout worklist item, not a defect in FT-32.
+
+FT-32's refresh is **additive only**: on a repo-URL collision the merge keeps the
+consumer's entry and only WARNs. `operations`, `framework`, `iplanic` and
+`iplan-runner` already declare
+`https://github.com/pre-commit/pre-commit-hooks` at **`rev: v5.0.0`** — a mutable
+git tag — so the refresh delivers canon's other lines but cannot move them to
+canon's SHA pin (`3e8a8703…`, frozen v6.0.0).
+
+That matters more than a normal drift item because of what the fragment itself
+argues: pre-commit `pip install`s the cloned tree, so the upstream build backend
+runs arbitrary code at INSTALL time on developer machines and on the ephemeral
+CI pool, which re-resolves the ref every run — a moved tag reaches the fleet
+within one CI cycle. Canon SHA-pins every `uses:` for exactly this reason
+(REPO_STANDARDS §4.3).
+
+Simulated refresh outcome (missing canon lines, before → after):
+
+| repo | before | after | residual |
+| --- | --- | --- | --- |
+| operations | 19 | 6 | kept `rev`, wrapper `name:`/`entry:`, flow-style root key |
+| framework | 18 | 1 | kept `rev` |
+| iplanic | 18 | 1 | kept `rev` |
+| iplan-runner | 1 | 1 | kept `rev` |
+| interlog / engramory / iplan-standard | 5 | 0 | — |
+
+**Fix sketch:** per-repo decision during the rollout wave, not a canon change —
+each repo either accepts canon's SHA pin (drop their `rev:` line and let the
+refresh deliver it) or documents why it keeps `v5.0.0`. Do **not** make the merge
+overwrite a consumer `rev`: that is the property protecting deliberate pins.
+Revisit only if the fleet converges on canon's pin anyway.
+
 ### FT-36 — canon does not self-run the `pre-commit` reusable it ships
 
 **Found:** 2026-07-22, PLAN-018 PR-B pre-push review.
@@ -167,8 +203,32 @@ reviewed file for its own sake.
 
 **Found:** 2026-07-22, PLAN-018 re-scope review (independent pass on Workstreams
 B-D).
-**Status:** OPEN — blocks CI-0013's "drift report becomes the rollout worklist"
-from having any mechanism behind it. PLAN-018 Workstream D item 1.
+**Status:** CLOSED (PLAN-018 Workstream D / PR D1, 2026-07-23) — the `CANON:`
+marker is now VERSIONED (`# CANON: aidoc-flow-ci pre_push_check vN`, canon at
+**v2**) and `install.sh` bootstrap RE-MERGES when a consumer's `vN` is older than
+canon's, then stamps canon's (so the next run no-ops). That makes
+`manifest.json`'s "re-run install.sh to refresh those" TRUE for this file for the
+first time — previously ANY marker meant no-op forever, and with `--update`
+excluding the file and `--apply` writing no content, an adopted consumer could
+never receive a fragment change. Chose the versioned marker over a new
+`--refresh-hooks` mode precisely because it makes the DOCUMENTED path real rather
+than adding a second one. The re-merge is additive and, for the `local`
+pseudo-repo, de-duped by hook `id` — so a legacy consumer gets the missing canon
+hooks WITHOUT duplicating one it already carries (a wart the first cut had, caught
+by testing the refresh end-to-end). `test_precommit_merge.sh` guards the merge
+output; `tests/test_precommit_refresh.sh` (new) guards the DECISION — it extracts
+the block from `install.sh` between `# >>> PRECOMMIT-MERGE >>>` markers and drives
+the version matrix, because a pre-push review restored the exact freeze by
+mutation and the whole suite stayed green. **This unblocks CI-0013's "drift report
+becomes the rollout worklist" — there is now a mechanism behind it.**
+**BUMP `vN` whenever the fragment changes**, or adopted consumers stay frozen.
+
+**Scope of the fix — additions only.** The re-merge never overwrites a consumer
+entry, so a `rev` bump or a new hook id *inside a repo they already declare* is
+reported, not applied; a partial merge stamps `vN` anyway (required to converge)
+and prints that the named lines stay unapplied. On today's fleet that leaves four
+repos on a mutable `rev: v5.0.0` for `pre-commit-hooks` — **named per-repo items
+on the rollout worklist**, not something the refresh closes. Filed as **FT-38**.
 
 Once a consumer's `.pre-commit-config.yaml` carries the `# CANON: aidoc-flow-ci
 pre_push_check` marker, **no canon path can ever update the canon block again**:

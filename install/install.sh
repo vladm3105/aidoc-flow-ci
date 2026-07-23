@@ -651,20 +651,48 @@ if [ -n "$_missing_tools" ]; then
 fi
 
 # .pre-commit-config.yaml — merge canon hook block idempotently.
-# Idempotency key: canonical marker `# CANON: aidoc-flow-ci pre_push_check`.
-# If present → no-op. If absent → merge (append hook block; upgrade
-# default_install_hook_types root key from [pre-commit] → [pre-commit,
-# pre-push] if consumer had only [pre-commit]).
+# Idempotency key: canonical marker `# CANON: aidoc-flow-ci pre_push_check vN`.
+#
+# PLAN-018 FT-32 — the marker is VERSIONED so this file is refreshable. Before,
+# any marker at all meant no-op forever: bootstrap skipped, `--update` excludes
+# this file from the manifest walk, and `--apply` writes no content files — so an
+# adopted consumer could NEVER receive a canon change to the fragment, and
+# manifest.json's "re-run install.sh to refresh those" was FALSE for it. Now:
+#   no marker            → merge (first adoption)
+#   marker vN  <  canon  → RE-MERGE (the refresh path; additive + de-duped, so
+#                          consumer entries are never clobbered) and stamp vCANON
+#   marker vN  >= canon  → no-op preserve (steady state)
+# An unversioned legacy marker counts as v1.
+# >>> PRECOMMIT-MERGE >>>  (extracted verbatim by tests/test_precommit_refresh.sh
+# — keep these markers; the test drives THIS code rather than a copy of it.)
 PRECOMMIT_TMP=$(mktemp)
 fetch_template "pre-commit-hook-block.yaml" "$PRECOMMIT_TMP" || { rm -f "$PRECOMMIT_TMP"; exit 1; }
+CANON_MARK_RE='# CANON: aidoc-flow-ci pre_push_check'
+# Marker-version parse, anchored at BOTH ends. Line-start, so an unrelated
+# consumer comment that merely mentions `pre_push_check v1` is not read as THEIR
+# marker (that would trigger a spurious re-merge on an already-current repo);
+# digits-at-end, so a line carrying two versioned mentions cannot produce a
+# multi-line capture (`[` would then print `integer expression expected` to the
+# operator and mis-compare). Unversioned or absent ⇒ 1.
+marker_version() { # $1 = file → prints N
+  local _v
+  _v="$(grep -m1 -oE "^${CANON_MARK_RE} v[0-9]+" "$1" 2>/dev/null | grep -oE '[0-9]+$' || true)"
+  printf '%s' "${_v:-1}"
+}
+CANON_MARK_LINE="$(grep -m1 -E "^${CANON_MARK_RE}" "$PRECOMMIT_TMP" || echo "$CANON_MARK_RE")"
+CANON_MARK_V="$(marker_version "$PRECOMMIT_TMP")"
 if [ ! -f ".pre-commit-config.yaml" ]; then
   # Consumer has no pre-commit config — install canon fragment verbatim.
-  # (Canon fragment carries the marker at line 1 → subsequent re-runs no-op.)
+  # (Canon fragment carries the versioned marker at line 1 → re-runs no-op.)
   cp "$PRECOMMIT_TMP" .pre-commit-config.yaml
-  echo "  add       .pre-commit-config.yaml (from canon fragment)"
-elif grep -qF "# CANON: aidoc-flow-ci pre_push_check" .pre-commit-config.yaml; then
-  echo "  preserve  .pre-commit-config.yaml (canon marker present — no-op)"
+  echo "  add       .pre-commit-config.yaml (from canon fragment, marker v${CANON_MARK_V})"
+elif grep -qE "^${CANON_MARK_RE}" .pre-commit-config.yaml \
+     && { _cmv="$(marker_version .pre-commit-config.yaml)"; [ "$_cmv" -ge "$CANON_MARK_V" ]; }; then
+  echo "  preserve  .pre-commit-config.yaml (canon marker v${_cmv} >= canon v${CANON_MARK_V} — no-op)"
 else
+  if grep -qE "^${CANON_MARK_RE}" .pre-commit-config.yaml 2>/dev/null; then
+    echo "  refresh   .pre-commit-config.yaml (canon marker v${_cmv:-1} < canon v${CANON_MARK_V} — re-merging the canon block; FT-32)"
+  fi
   # M2 fold: fail-fast on missing YAML library BEFORE entering merge, so
   # the operator gets an actionable message instead of a generic FAIL.
   # M1 fold: prefer ruamel.yaml (round-trip preserves consumer comments);
@@ -686,10 +714,11 @@ else
   # .pre-commit-config.yaml on SIGINT mid-mv).
   MERGE_TMP=$(mktemp ./.pre-commit-config.yaml.tmp.XXXXXX)
   MERGE_OUT=$(mktemp)
-  if python3 - "$PRECOMMIT_TMP" "$MERGE_TMP" "$yaml_lib" <<'PYEOF' > "$MERGE_OUT" ; then
+  if python3 - "$PRECOMMIT_TMP" "$MERGE_TMP" "$yaml_lib" "$CANON_MARK_LINE" <<'PYEOF' > "$MERGE_OUT" ; then
 import sys
 
 canon_path, out_path, yaml_lib = sys.argv[1], sys.argv[2], sys.argv[3]
+canon_marker = sys.argv[4] if len(sys.argv) > 4 else "# CANON: aidoc-flow-ci pre_push_check"
 
 if yaml_lib == "ruamel":
     from ruamel.yaml import YAML
@@ -755,8 +784,12 @@ consumer['default_install_hook_types'] = consumer_hooks
 # `validate-config` rc=0 and both hooks run), and most consumers already have
 # one or more. Keying de-dup on them would treat the consumer's own local block
 # as a collision and never install canon's `aidoc-flow-pre-push` hook — silently
-# dropping the OPS-0069 audit-trail check, permanently, because the CANON marker
-# written below makes every later run a no-op. They keep the structural rule.
+# dropping the OPS-0069 audit-trail check. So they are exempt from URL keying and
+# de-dup by HOOK ID instead: a consumer missing `aidoc-flow-pre-push` still
+# receives it, one that already carries it gets no duplicate. (Before FT-32 that
+# drop was permanent — the marker made every later run a no-op. A version bump
+# now re-merges, but only ADDITIVELY: an existing hook id is left as-is, which is
+# what preserves a consumer's `pre_push_check_<repo>.sh` wrapper entry.)
 PSEUDO_REPOS = ('local', 'meta')
 consumer_repos = consumer.setdefault('repos', [])
 collisions = []
@@ -772,8 +805,20 @@ try:
         if not isinstance(url, str):
             continue
         if url in PSEUDO_REPOS:
-            if canon_repo not in consumer_repos:
-                consumer_repos.append(canon_repo)
+            # Append only the canon hooks whose `id` the consumer does not already
+            # have. Structural equality alone (the B2 form) is right for a FIRST
+            # adoption but DUPLICATES the hook on an FT-32 refresh: a legacy or
+            # locally-customized `aidoc-flow-pre-push` is structurally unequal to
+            # canon's, so canon's copy got appended alongside it. Filtering by id
+            # keeps B2's guarantee (a consumer missing the hook still gets it)
+            # without duplicating one they already carry.
+            have_ids = {h.get('id') for r in consumer_repos if isinstance(r, dict)
+                        for h in (r.get('hooks') or []) if isinstance(h, dict)}
+            missing_hooks = [h for h in (canon_repo.get('hooks') or [])
+                             if isinstance(h, dict) and h.get('id') not in have_ids]
+            if missing_hooks:
+                blk = dict(canon_repo); blk['hooks'] = missing_hooks
+                consumer_repos.append(blk)
             continue
         if url not in existing_by_url:
             consumer_repos.append(canon_repo)
@@ -804,10 +849,23 @@ for line in collisions:
 if collisions:
     print(f"COLLISIONS={len(collisions)}")
 
+# Dump to a buffer first so the consumer's OWN copy of the marker can be dropped.
+# ruamel round-trips the leading comment, so without this a refreshed config
+# accumulates one stale `# CANON:` line per refresh (v1, then v1+v2, ...). The
+# shell reads the version with `grep -m1`, so behaviour stayed correct, but the
+# litter is permanent and misreads as "adopted twice".
+import io
+_buf = io.StringIO()
+dump(consumer, _buf)
+_body = "".join(l for l in _buf.getvalue().splitlines(keepends=True)
+                if not l.startswith("# CANON: aidoc-flow-ci pre_push_check"))
+
 with open(out_path, 'w') as f:
-    # Preserve the canon marker line at top so future re-runs no-op.
-    f.write("# CANON: aidoc-flow-ci pre_push_check (idempotency marker per PLAN-002 §5.2)\n")
-    dump(consumer, f)
+    # Stamp CANON'S marker line (passed in as argv[4]) — not a hardcoded string.
+    # On a refresh this REPLACES the consumer's stale vN with canon's, which is
+    # what makes the next run a no-op instead of re-merging forever (FT-32).
+    f.write(canon_marker.rstrip("\n") + "\n")
+    f.write(_body)
 PYEOF
     mv "$MERGE_TMP" .pre-commit-config.yaml
     # Honest summary: a URL collision means part of the canon block was NOT
@@ -817,6 +875,13 @@ PYEOF
     if grep -q '^COLLISIONS=' "$MERGE_OUT"; then
       _ncol="$(grep -oE '^COLLISIONS=[0-9]+' "$MERGE_OUT" | cut -d= -f2)"
       echo "  merge     .pre-commit-config.yaml (PARTIAL — ${_ncol} repo collision(s); your entries kept, see WARN above; default_install_hook_types upgraded if needed; ${yaml_lib}-backed)"
+      # The marker is stamped even on a PARTIAL merge — it has to be, or every
+      # later run would re-merge, re-WARN and never converge. The cost is that
+      # the file then LOOKS current while the collided canon lines are still
+      # missing, so say so here: this is the operator's only notice, and the
+      # residual is exactly what the rollout worklist is for (CI-0013).
+      echo "            NOTE  marker stamped v${CANON_MARK_V} — install.sh will NOT revisit this file. The canon lines named in the WARN(s) above stay UNAPPLIED until merged by hand."
+      echo "                  The refresh delivers ADDITIONS only (new repo entries; new hook ids in canon's 'local' block). A rev bump, or a new hook id inside a repo you already declare, is REPORTED — never applied."
     else
       echo "  merge     .pre-commit-config.yaml (canon block appended; default_install_hook_types upgraded if needed; ${yaml_lib}-backed)"
     fi
@@ -828,6 +893,7 @@ PYEOF
   fi
 fi
 rm -f "$PRECOMMIT_TMP"
+# <<< PRECOMMIT-MERGE <<<
 
 # PLAN-018 FT-31 — the zero-hook detector. Verify the .pre-commit-config.yaml we
 # just produced actually selects a hook at the stage the `pre-commit` reusable

@@ -1,4 +1,4 @@
-# CANON: aidoc-flow-ci pre_push_check (idempotency marker per PLAN-002 §5.2)
+# CANON: aidoc-flow-ci pre_push_check v2 (idempotency marker per PLAN-002 §5.2)
 #
 # Canonical pre-commit fragment wiring the canon pre_push_check.sh hook.
 # `install/install.sh` merges this block into a consumer's
@@ -22,11 +22,12 @@ default_install_hook_types:
 - pre-push
 
 repos:
-# Wave-0 self-adoption of the canon fragment's commit-stage hooks (PLAN-018 F3).
-# Hand-added: this file already carries the CANON marker, so install.sh's merge
-# no-ops here and would never deliver them — the canon-dogfoods-its-own-canon
-# rule in CLAUDE.md requires canon to carry what it ships. (That the merge cannot
-# reach an already-marked config is FT-32, a real defect, not this file's doing.)
+# Wave-0 self-adoption of the canon fragment's commit-stage hooks (PLAN-018 F3),
+# per the canon-dogfoods-its-own-canon rule in CLAUDE.md. Originally hand-added
+# because an already-marked config was unreachable by the merge; FT-32 fixed that
+# (the marker above carries canon's CURRENT vN, so this file is in steady state
+# and install.sh no-ops on it for the right reason rather than the broken one).
+# Keep the marker in step with install/templates/pre-commit-hook-block.yaml.
 - repo: https://github.com/pre-commit/pre-commit-hooks
   # SHA-pinned, not tag-pinned. A git tag is attacker-mutable state on
   # infrastructure this workspace does not control, and pre-commit `pip install`s
