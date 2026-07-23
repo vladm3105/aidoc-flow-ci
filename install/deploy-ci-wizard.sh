@@ -187,7 +187,8 @@ plan() {
    6. auto-merge-ai-prs    (inert without ai-review)
    7. doc-maintainer (dry-run)  (LiteLLM required; live-mode App is 🔴)
       docs-sync is legacy and should not be co-installed on new v2 adopters.
-   8. codeql               (skip docs-only repos)
+   8. codeql               (skip docs-only repos; PRIVATE repos need GHAS —
+                            without Advanced Security codeql-action/init errors)
   Variant: $([ "$vis" = PRIVATE ] && echo 'PRIVATE → runner_labels ["self-hosted","ci-runner","single-use"]' || echo 'PUBLIC → ubuntu-latest')
   Each PR: branch-first · pin @$CI_TAG · CHANGELOG entry · OPS-0069 audit phrase · verify green.
   Gotchas: docs/AI_CI_DEPLOYMENT.md §5.  Verify: §6.  Arm: §7.

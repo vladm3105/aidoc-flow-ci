@@ -306,7 +306,14 @@ and flip it in the bot-PR adoption runbook.
 ### FT-26 — `codeql.yml`: tag-object SHA pin + no GHAS guard on private repos
 
 **Found:** 2026-07-21, pre-prod review (portability + correctness lenses).
-**Status:** OPEN — opt-in workflow, so no consumer is currently affected.
+**Status:** CLOSED (PLAN-018 Workstream B / PR B1, 2026-07-23) — `autobuild`
+repinned from the annotated tag object `21eb7f78…` to the peeled commit
+`87557b9c84dde89fdd9b10e88954ac2f4248e463` (v4.36.1), matching `init`/`analyze`;
+verified by peeling the tag ref via the git API. `test_lint.sh` now asserts all
+three `codeql-action` steps pin ONE commit (teeth: a tag-object drift fails it).
+The GHAS requirement for private repos is documented in the reusable header and
+the wizard `plan` output — a hard `init` error is the intended signal, so no
+fork/GHAS guard is added.
 
 `codeql.yml:97` pins `autobuild@21eb7f7842f33eafc83782b56fff2a2c43e9696f`, which
 is the **annotated tag object** for v4.36.1, not a commit — `GET
@@ -816,6 +823,15 @@ PLAN number). Consumer-side callers are cross-repo work and go through the
 ops/inbox runbook, never a direct edit from a canon session.
 
 ### FT-14 — `pre_push_check.sh`'s yamllint is stricter than canon's own CI gate, so canon fails its own hook
+
+**Status:** ALREADY RESOLVED — verified 2026-07-23 (PLAN-018 Workstream B triage).
+A root `.yamllint.yaml` was added `2026-07-17` (the day after this was filed), and
+`pre_push_check.sh:105-106` invokes `yamllint -c .yamllint.yaml` when it is
+present (which it now always is), so the hook uses the SAME relaxed profile as
+`tests/test_lint.sh`. Confirmed green on `main`: `yamllint -c .yamllint.yaml`
+over `.github/workflows/` + templates returns rc 0. No fix needed; recorded here
+so the ledger is not re-worked. `install/templates/.yamllint.yaml` also exists,
+so consumers get the profile too.
 
 **Found:** 2026-07-16, running `scripts/pre_push_check.sh` while closing the
 flowci-feedback findings.

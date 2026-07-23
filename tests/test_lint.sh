@@ -36,4 +36,21 @@ if command -v actionlint >/dev/null 2>&1; then
 elif [ "${CI:-}" = "true" ]; then _r "actionlint missing in CI"
 else printf '  \033[33mskip\033[0m actionlint not installed (CI installs it)\n'; fi
 
+echo "== codeql-action steps pin one PEELED COMMIT, not a tag object (FT-26) =="
+# init/autobuild/analyze must all pin the SAME 40-hex SHA. The FT-26 defect was
+# autobuild pinning the annotated TAG OBJECT (422s on the commits API, trips the
+# mandatory SHA audit) while the siblings used the peeled commit. A single distinct
+# SHA proves they agree; a tag-object drift makes this count > 1.
+cql_shas="$(grep -oE 'github/codeql-action/[a-z-]+@[0-9a-f]{40}' .github/workflows/codeql.yml | grep -oE '[0-9a-f]{40}$' | sort -u)"
+cql_n="$(printf '%s\n' "$cql_shas" | grep -c . || true)"
+if [ "$cql_n" = "1" ]; then _g "codeql-action pins are one commit ($cql_shas)"
+else _r "codeql-action pins disagree ($cql_n distinct SHAs) — a tag-object/commit mismatch (FT-26):"; printf '%s\n' "$cql_shas" | sed 's/^/      /'; fi
+# Belt: the single agreed SHA must not be the KNOWN-BAD v4.36.1 tag object — the
+# 'agree' check alone would pass if all three drifted to it together.
+if grep -q '21eb7f7842f33eafc83782b56fff2a2c43e9696f' .github/workflows/codeql.yml; then
+  _r "codeql.yml pins the v4.36.1 tag OBJECT (21eb7f78) — use the peeled commit 87557b9c (FT-26)"
+else
+  _g "codeql.yml does not pin the known-bad v4.36.1 tag object"
+fi
+
 suite_summary "lint"

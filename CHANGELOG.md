@@ -5,6 +5,25 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — `codeql.yml` autobuild pinned the tag object, not the peeled commit (PLAN-018 FT-26, Workstream B)
+
+- `autobuild` pinned the annotated **tag object** `21eb7f78…` (v4.36.1) while
+  `init`/`analyze` correctly used the peeled **commit** `87557b9c…`. The tag
+  object 422s on GitHub's commits API and trips the workspace's mandatory SHA
+  audit — the canary that catches fabricated pins. Repinned to the commit
+  (verified by peeling the tag ref via the git API). `test_lint.sh` now asserts
+  all three `codeql-action` steps pin one commit, so the drift cannot recur.
+- Documented that **private repos require GitHub Advanced Security** (in the
+  reusable header and the wizard `plan` output) — without it `codeql-action/init`
+  errors outright, and a hard error is the intended signal (no fork/GHAS guard).
+
+### Triage — FT-14 (yamllint hook stricter than CI) already resolved
+
+- Verified the `pre_push_check.sh` yamllint / CI-gate mismatch was fixed when a
+  root `.yamllint.yaml` was added on `2026-07-17`; the hook now uses the same
+  relaxed profile as `tests/test_lint.sh`. No change needed; the FT ledger entry
+  is marked resolved.
+
 ### Added — `scripts/release.sh`: release sequencing tool (PLAN-018 FT-21, Workstream C)
 
 - Encodes the prep → merge → dry-run → tag ordering that was tribal knowledge and
