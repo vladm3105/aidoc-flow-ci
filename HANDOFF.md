@@ -13,12 +13,15 @@ context compaction.
   plus a docs count fix, cycle-2 re-review CONFIRMED); **FT-40** (FT-28 SHA-peel guard
   now driven not re-implemented — `resolver` 62→70, `if false;` mutation goes red —
   PR #270 MERGED, squash `6bab677`); **FT-41** (markdown-lint blocking-default now
-  asserted — `contract` 271→272, default-flip goes red — PR open). NEXT within G1:
-  **FT-42** (`ai-review` `secrets:` explicit-map — the last G1 blocker). The
-  **G1-merge-SHA** that the §6
-  Part-A dry-run pins `CI_TAG` to is not known until all four land; do NOT cut
-  `ci/v2.12.0` before G2. Umbrella/HANDOFF NEXT bullet below is superseded by this
-  line until G1 completes.
+  asserted — `contract` 271→272, default-flip goes red — PR #271 MERGED, squash
+  `ef72517`); **FT-42** (`ai-review` least-privilege secrets — reusable now declares
+  its 8 secrets, caller passes an explicit map instead of `inherit`; additive, two-
+  way completeness test, `contract` 272→275 — PR open). **This is the last G1
+  blocker.** Once FT-42 merges, **G1 is complete**: the G1-merge-SHA (its squash
+  commit on `main`) is what §6 Part-A pins `CI_TAG` to for the 🔴 founder cold-start
+  dry-run (G2) — do NOT cut `ci/v2.12.0` before that dry-run runs GREEN. Then
+  prep PR → tag → G3/G4 → fleet rollout. Umbrella/HANDOFF NEXT bullet below is
+  superseded by this line until G1 completes.
 - **PRE-PROD REVIEW of the `ci/v2.11.0..main` candidate → BLOCKER; PLAN-019
   authored + READY to close it. DO NOT cut `ci/v2.12.0` yet.** A 5-lens
   `ci-preprod-review` (security / correctness / docs / portability / governance)

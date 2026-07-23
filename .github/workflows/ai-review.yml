@@ -66,6 +66,31 @@ on:
         description: 'Git ref of `trust_config_repo` to read the trust config from — must be a trusted, non-PR-writable ref. Default `main`.'
         type: string
         default: 'main'
+    # FT-42: declare the secrets the body reads so a caller can pass an explicit
+    # least-privilege map instead of `secrets: inherit` — the FT-27 conversion this
+    # reusable could not take before, because no `secrets:` block existed. All
+    # `required: false`: each flow self-skips when its secret is unset (an unset
+    # secret is an empty string inside the reusable whether inherited or mapped, so
+    # this is behaviour-preserving). GITHUB_TOKEN is auto-provided and must NOT be
+    # declared here. ADDITIVE: existing `secrets: inherit` callers keep working —
+    # `inherit` forwards every secret by name regardless of this block.
+    secrets:
+      APP_REVIEWER_1_ID:
+        required: false
+      APP_REVIEWER_1_KEY:
+        required: false
+      APP_AUTOFIX_ID:
+        required: false
+      APP_AUTOFIX_KEY:
+        required: false
+      AI_REVIEW_TOKEN:
+        required: false
+      LITELLM_BASE_URL:
+        required: false
+      LITELLM_REVIEW_API_KEY:
+        required: false
+      LITELLM_FIX_API_KEY:
+        required: false
 
 permissions: {}
 

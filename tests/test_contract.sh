@@ -290,16 +290,40 @@ TW=install/templates/workflows
 for f in composition-private composition-public; do
   assert_ok "! grep -qE '^[[:space:]]*secrets:' '$TW/$f.yml'" "$f: no secrets: block (reads only GITHUB_TOKEN)"
 done
-# these declare their secrets → explicit map, never inherit.
-for f in doc-maintainer docs-sync auto-merge-ai-prs-public auto-merge-ai-prs-private; do
+# these declare their secrets → explicit map, never inherit. FT-42 added ai-review
+# to this set (its reusable now declares a secrets: block, so the caller can pass
+# an explicit least-privilege map instead of blanket inherit).
+for f in ai-review doc-maintainer docs-sync auto-merge-ai-prs-public auto-merge-ai-prs-private; do
   assert_ok "! grep -qE '^[[:space:]]*secrets: inherit' '$TW/$f.yml'" "$f: no blanket secrets: inherit"
   assert_ok "grep -qE '^[[:space:]]*secrets:' '$TW/$f.yml'" "$f: has an explicit secrets: map"
 done
 assert_ok "grep -q 'AIDOC_FLOW_BOT_ID: \${{ secrets.AIDOC_FLOW_BOT_ID }}' '$TW/doc-maintainer.yml'" "doc-maintainer: explicit bot-id secret"
 assert_ok "grep -q 'APP_REVIEWER_1_ID: \${{ secrets.APP_REVIEWER_1_ID }}' '$TW/auto-merge-ai-prs-private.yml'" "auto-merge: explicit reviewer secret"
-# ai-review is the DELIBERATE exception (its reusable declares no secrets, so it
-# needs inherit); documenting that keeps the exception explicit, not accidental.
-assert_ok "grep -qE '^[[:space:]]*secrets: inherit' '$TW/ai-review.yml'" "ai-review: keeps inherit (reusable declares no secrets — documented FT-27 exception)"
+# FT-42: ai-review's reusable now DECLARES its secrets (was the FT-27 exception —
+# no secrets: block existed, forcing inherit). Assert the contract both ways:
+# every secret the reusable body reads (except the auto-provided GITHUB_TOKEN) is
+# declared in workflow_call.secrets AND forwarded by the caller template — the
+# same completeness the other AI-flows already meet.
+assert_ok "grep -q 'APP_REVIEWER_1_ID: \${{ secrets.APP_REVIEWER_1_ID }}' '$TW/ai-review.yml'" "ai-review: caller forwards the reviewer secret explicitly (FT-42)"
+ai_review_secret_gaps="$(python3 - <<'PYEOF'
+import yaml, re
+body = open(".github/workflows/ai-review.yml").read()
+used = set(re.findall(r'secrets\.([A-Z_0-9]+)', body)) - {"GITHUB_TOKEN"}
+d = yaml.safe_load(body)
+on = d.get(True, d.get("on", {}))
+declared = set((on.get("workflow_call", {}).get("secrets") or {}).keys())
+forwarded = set(re.findall(r'^\s*([A-Z_0-9]+):\s*\$\{\{\s*secrets\.',
+                           open("install/templates/workflows/ai-review.yml").read(), re.M))
+gaps = []
+if used - declared: gaps.append("undeclared:" + ",".join(sorted(used - declared)))
+if used - forwarded: gaps.append("not-forwarded:" + ",".join(sorted(used - forwarded)))
+# Also fail if the caller forwards a secret the reusable does NOT declare — GitHub
+# rejects an undeclared secret in an explicit map with a startup_failure (0 jobs).
+if forwarded - declared: gaps.append("forwarded-undeclared:" + ",".join(sorted(forwarded - declared)))
+print("; ".join(gaps))
+PYEOF
+)"
+assert_eq "$ai_review_secret_gaps" "" "ai-review: every body secret is declared in workflow_call.secrets AND forwarded by the caller (FT-42 completeness)"
 # FT-27b: auto-PR-approval defaults OFF.
 assert_ok "python3 -c \"import json,sys; sys.exit(0 if json.load(open('install/templates/actions-permissions.json'))['workflow']['can_approve_pull_request_reviews'] is False else 1)\"" "actions-permissions: can_approve_pull_request_reviews defaults false"
 
