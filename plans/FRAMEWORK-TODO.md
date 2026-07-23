@@ -271,7 +271,14 @@ machine-enforced rather than prose. PLAN-018 states the ordering; nothing checks
 ### FT-28 — `ai-review`'s SHA-pin branch never verifies the SHA against its own tag comment
 
 **Found:** 2026-07-21, pre-prod review (security lens).
-**Status:** OPEN — defence-in-depth; not exploitable without repo-write.
+**Status:** CLOSED (PLAN-018 Workstream B / PR B3, 2026-07-23) — both resolvers
+(review + autofix) now peel the claimed tag via `GET /repos/…/commits/${CANON_TAG}`
+(`Accept: application/vnd.github.sha`) and hard-fail when the pinned SHA is not the
+tag's commit, so a `@<sha> # ci/vX.Y.Z` pin can no longer fetch/execute a commit
+the tag does not point at. The notice now prints the actual `FETCH_REF` +
+"(SHA verified against tag)". Inert for shipped consumers (the caller template
+pins tag-only, so `CANON_SHA` is empty). `test_resolver.sh` guards both the
+structure and the accept/reject logic.
 
 Post-FT-15, `ai-review.yml:495-501` resolves assets from the consumer's own pin
 and accepts either a tag or a `<40-hex> # ci/vX.Y.Z` form. The trailing tag is

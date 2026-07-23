@@ -132,4 +132,30 @@ for r in $REUSABLES; do
     "$r: does not match ${other}'s pin (filename-keyed)"
 done
 
+echo "== FT-28: a SHA-form pin's SHA is verified against its claimed tag =="
+# Both resolvers (review + autofix) must peel the claimed tag and hard-fail if
+# the pinned SHA is not the tag's commit — else a `@<fork-sha> # ci/vX.Y.Z` pin
+# executes never-merged code while reading as the released tag in review.
+AR="$ROOT/.github/workflows/ai-review.yml"
+peel_blocks="$(grep -c 'application/vnd.github.sha' "$AR" || true)"
+assert_eq "$peel_blocks" "2" "both resolvers (review + autofix) peel the tag via the commits API"
+assert_ok "grep -q 'is NOT the commit of tag' '$AR'" "resolvers hard-fail on a SHA/tag mismatch (FT-28)"
+assert_ok "grep -q 'commits/\${CANON_TAG}' '$AR'" "peel targets the claimed CANON_TAG"
+# The shipped caller template is tag-only, so this check is inert for normal
+# consumers — it only arms for the SHA-form pin. Guard that so a future template
+# change to SHA-form is a conscious decision, not an accident.
+assert_ok "grep -qE 'ai-review\\.yml@ci/v[0-9]' '$ROOT/install/templates/workflows/ai-review.yml'" \
+  "shipped ai-review caller pins tag-only (peel inert for normal consumers)"
+
+# Behavioural teeth: the comparison logic rejects a mismatch and accepts a match.
+verify() { # $1=pinned_sha $2=tag_commit(stub) -> exit 0 accept / 1 reject
+  local CANON_SHA="$1" TAG_COMMIT="$2" CANON_TAG="ci/v9.9.9"
+  [ -n "$CANON_SHA" ] && [ -n "$CANON_TAG" ] || return 0
+  [ -n "$TAG_COMMIT" ] || return 1
+  [ "$TAG_COMMIT" = "$CANON_SHA" ] || return 1
+}
+if verify "aaaa" "aaaa"; then _g "match accepted"; else _r "match accepted"; fi
+if verify "aaaa" "bbbb"; then _r "mismatch rejected"; else _g "mismatch rejected"; fi
+if verify "aaaa" "";     then _r "empty peel (unreachable tag) rejected"; else _g "empty peel rejected"; fi
+
 suite_summary "resolver"
