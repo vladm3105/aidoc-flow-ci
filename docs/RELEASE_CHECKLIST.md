@@ -3,6 +3,15 @@
 Run before cutting every `ci/vX.Y.Z` tag. Items are ordered — complete
 each before proceeding to the next.
 
+**`scripts/release.sh` automates the mechanical steps and enforces the
+ordering (FT-21):** `release.sh prep <ci/vX.Y.Z>` does the VERSION bump, ref
+sync, and CHANGELOG promotion on a prep branch (and tells you the one
+expected-red check); after the prep PR is merged and the 🔴 FT-30 dry-run
+passes, `release.sh tag <ci/vX.Y.Z> --dry-run-verified` cuts the tag and
+publishes the release. The checklist below is the human-judgment layer around
+it — the script refuses to tag out of order, but it cannot run the 🔴 dry-run
+for you.
+
 ## Pre-tag
 
 - [ ] **Schema validation:** `python3 -m json.tool docs/router-config.schema.json >/dev/null`
