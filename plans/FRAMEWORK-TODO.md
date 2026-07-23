@@ -250,7 +250,24 @@ founder-executed via `ops/inbox`.
 ### FT-29 — `skip-ai-review` + INERT `composition` = an all-green PR with zero review
 
 **Found:** 2026-07-21, pre-prod review (security lens).
-**Status:** OPEN — provisioning-order hazard, not a code defect in isolation.
+**Status:** CLOSED (PLAN-018 Workstream B / PR B4, 2026-07-23) — fix option (1),
+the most robust (catches every arming path, not just `apply-standards`). The
+`ai-review` skip-notice step's `label` branch now reads `vars.APP_REVIEWER_1_BOT_ID`
+and **fails closed** when it is unset: `skip-ai-review` carries a PRIOR approval
+forward, but only `composition` (inert until that var is set) can have counted
+one, so the skip is a fiction while the App is unarmed. `call / ai-review` goes
+RED → the zero-review merge window is closed. R3 / review-event skips are
+unaffected (they only fire when the App HAS approved at HEAD). `test_contract.sh`
+guards the structure + the block/allow logic.
+**Known residual (out of FT-29 scope, human-merge-gated):** a non-allowlisted
+author / fork PR skips the whole `ai-review` job (trust gate), which reports
+green; with INERT composition that is also both-green-zero-review. It is
+materially safer than the label path and NOT closed here: `auto-merge` never
+fires for untrusted authors (human merge required), and the trust job posts
+`ai:human-review-required` + a "needs human review" PR comment, so the PR is
+self-documenting as unreviewed — unlike the label path's reassuring "prior
+approval carried forward" notice. Left as-is by design; revisit if the
+human-merge floor is ever weakened.
 
 `composition.yml:102-105` exits 0 with `::notice::composition INERT` when
 `vars.APP_REVIEWER_1_BOT_ID` is unset, and every branch-protection template pairs

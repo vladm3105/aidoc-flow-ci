@@ -6,6 +6,12 @@ context compaction.
 
 ## Current state (2026-07-22)
 
+- **PLAN-018 Workstream B / PR B4 (FT-29 zero-review window) OPEN — closes the
+  security cluster.** ai-review's skip-notice `label` branch now fails closed when
+  `vars.APP_REVIEWER_1_BOT_ID` is unset (composition inert), so skip-ai-review +
+  inert composition can no longer merge with zero review. Option (1) — catches
+  every arming path. Remaining B: FT-25 (adopter gaps ×4), FT-10 (runner-self docs).
+
 - **PLAN-018 Workstream B / PR B3 (FT-28 ai-review SHA peel) OPEN.** Both resolvers
   (review + autofix) peel the claimed tag via the commits API and hard-fail if the
   pinned SHA ≠ the tag's commit — so `@<fork-sha> # ci/vX.Y.Z` can't execute

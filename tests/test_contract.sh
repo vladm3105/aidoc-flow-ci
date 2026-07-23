@@ -287,4 +287,21 @@ assert_ok "grep -qE '^[[:space:]]*secrets: inherit' '$TW/ai-review.yml'" "ai-rev
 # FT-27b: auto-PR-approval defaults OFF.
 assert_ok "python3 -c \"import json,sys; sys.exit(0 if json.load(open('install/templates/actions-permissions.json'))['workflow']['can_approve_pull_request_reviews'] is False else 1)\"" "actions-permissions: can_approve_pull_request_reviews defaults false"
 
+echo "== FT-29: skip-ai-review fails closed while composition is INERT =="
+AR=.github/workflows/ai-review.yml
+# The skip-notice step's `label)` branch must refuse to conclude green when the
+# reviewer App is not armed — else skip-ai-review + inert composition = both
+# required checks green with zero review.
+assert_ok "grep -q 'COMPOSITION_BOT_ID: \${{ vars.APP_REVIEWER_1_BOT_ID }}' '$AR'" "ai-review reads composition's arm state"
+assert_ok "grep -q 'merge with ZERO review (FT-29)' '$AR'" "skip-ai-review label branch fails closed on inert composition"
+# Behavioural teeth: the close logic blocks label+inert, allows label+armed, and
+# leaves the r3/review-event skips untouched.
+skip_ok() { # $1=SKIP_REASON $2=COMPOSITION_BOT_ID -> 0 proceed(green) / 1 fail(blocked)
+  case "$1" in label) [ -n "$2" ] || return 1 ;; esac; return 0
+}
+if skip_ok label "";     then _r "label + inert composition blocked"; else _g "label + inert composition blocked"; fi
+if skip_ok label "294948438"; then _g "label + armed composition proceeds"; else _r "label + armed composition proceeds"; fi
+if skip_ok r3 "";        then _g "r3 skip unaffected by composition arm state"; else _r "r3 skip unaffected"; fi
+if skip_ok review-event ""; then _g "review-event skip unaffected"; else _r "review-event skip unaffected"; fi
+
 suite_summary "contract"
