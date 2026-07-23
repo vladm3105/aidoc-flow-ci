@@ -1274,6 +1274,19 @@ provisioner reports done (wizard-side sibling: FT-18).
 
 ### FT-21 — release cut has no sequencing tool: prep-merge→tag ordering is tribal, and the self-pin chicken-and-egg guarantees one red run
 
+**Status:** CLOSED (PLAN-018 Workstream C / PR C5, 2026-07-23) —
+`scripts/release.sh` encodes the sequence with guards on all three v2.9.0 failure
+modes: `prep <ci/vX.Y.Z>` (branch + VERSION-with-newline + sync-version-refs +
+CHANGELOG promotion, and detects the ONE expected-red — version-sync's latest-tag
+assertion — vs a real one); `tag <ci/vX.Y.Z> --dry-run-verified` refuses unless
+on up-to-date main AND `VERSION` on the tree already equals the version (the (1)
+guard: no tag pointing at the old version) AND the `--dry-run-verified` flag is
+present (the 🔴 FT-30 gate). Chicken-and-egg handled per **option (a)**: the
+expected one-red-run is documented, not worked around with a mutable `@main` pin
+or a fragile pre-merge tag. `test_release.sh` drives every guard rejection.
+`docs/RELEASE_CHECKLIST.md` points at it. This is the last Workstream C item —
+canon's "no exerciser / tribal-knowledge" gaps are now closed.
+
 **Found:** 2026-07-20, the ci/v2.9.0 cut — three failure modes in one release:
 (1) the tag was cut BEFORE the release-prep PR merged → tag pointed at a
 tree whose internal `VERSION` said v2.8.0 and whose consumer templates

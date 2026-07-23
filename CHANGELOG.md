@@ -5,6 +5,25 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — `scripts/release.sh`: release sequencing tool (PLAN-018 FT-21, Workstream C)
+
+- Encodes the prep → merge → dry-run → tag ordering that was tribal knowledge and
+  that the `ci/v2.9.0` cut got wrong three ways. `release.sh prep <ci/vX.Y.Z>`
+  creates the prep branch and does the VERSION bump (with a trailing newline —
+  FT-36), `sync-version-refs.sh`, and CHANGELOG promotion; it runs the suite and
+  distinguishes the **one expected-red** (version-sync's latest-tag assertion,
+  which the tag will clear) from a real failure.
+- `release.sh tag <ci/vX.Y.Z> --dry-run-verified` refuses to cut unless it is on
+  up-to-date `main`, `VERSION` on the tree **already equals** the version (guards
+  the v2.9.0 mistake of a tag pointing at the old version), and the
+  `--dry-run-verified` flag is present — the 🔴 FT-30 cold-start dry-run gates the
+  cut and the script cannot run it for you. It then tags `HEAD`, pushes, and
+  `gh release create --latest` from the CHANGELOG section.
+- Chicken-and-egg (the prep PR's self-pins reference a tag that cannot exist yet)
+  handled per FT-21 **option (a)** — the expected one-red-run is documented, not
+  worked around with a mutable `@main` pin. `tests/test_release.sh` drives every
+  guard rejection; `docs/RELEASE_CHECKLIST.md` points at the tool.
+
 ### Added — canon dogfoods its own markdown-lint gate, blocking (PLAN-018 FT-34, Workstream C)
 
 - `.github/workflows/self-markdown-lint.yml` runs canon's root `.markdownlint.json`

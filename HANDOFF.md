@@ -6,6 +6,17 @@ context compaction.
 
 ## Current state (2026-07-22)
 
+- **PLAN-018 Workstream C COMPLETE — PR C5 (`scripts/release.sh`, FT-21) OPEN, last item.**
+  release.sh encodes prep→merge→dry-run→tag with guards on all three v2.9.0
+  failure modes (tag-before-prep-merge; tag-without-🔴-dry-run; VERSION-tree
+  mismatch); `test_release.sh` drives the rejections; RELEASE_CHECKLIST points at
+  it. With C5, Workstream C's verification surface is done: exerciser inventory +
+  guard (C1), zero-hook detector (C2), required-context validator (C3), pre-commit
+  - markdown self-callers (C4a/b), release tool (C5). Canon self-runs 5/16
+  reusables and its "no exerciser / tribal-knowledge" gaps are closed. **Remaining
+  PLAN-018: Workstream B** (canon-internal defect closure) + Workstream D (rollout
+  readiness); the fleet rollout stays gated on FT-32 per CI-0013.
+
 - **PLAN-018 Workstream C / PR C4b (markdown-lint self-caller, FT-34) OPEN.**
   Canon now carries a root `.markdownlint.json` (= shipped template + `MD004:dash`)
   and runs `self-markdown-lint.yml` **blocking**; canon self-runs 5 of 16
