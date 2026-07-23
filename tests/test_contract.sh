@@ -304,4 +304,29 @@ if skip_ok label "294948438"; then _g "label + armed composition proceeds"; else
 if skip_ok r3 "";        then _g "r3 skip unaffected by composition arm state"; else _r "r3 skip unaffected"; fi
 if skip_ok review-event ""; then _g "review-event skip unaffected"; else _r "review-event skip unaffected"; fi
 
+echo "== FT-25: adopter-facing wizard/doc gaps =="
+WZ=install/deploy-ci-wizard.sh
+# .1 labeler config is now installable (scaffold drops the starter when labeler is chosen).
+assert_ok "grep -q 'cp \"\$TPL/labeler.yml\" \"\$dir/.github/labeler.yml\"' '$WZ'" "wizard scaffolds .github/labeler.yml for labeler"
+# behavioural: scaffolding labeler drops the config; not scaffolding it does not.
+_b25="$(mktemp -d)"; printf '#!/usr/bin/env bash\n[ "$1" = repo ] && echo PUBLIC && exit 0\nexit 0\n' > "$_b25/gh"; chmod +x "$_b25/gh"
+GH="$_b25/gh" bash "$WZ" scaffold acme/demo "$_b25/withlab" labeler >/dev/null 2>&1
+GH="$_b25/gh" bash "$WZ" scaffold acme/demo "$_b25/nolab" links >/dev/null 2>&1
+assert_ok "[ -f '$_b25/withlab/.github/labeler.yml' ]" "scaffold labeler → .github/labeler.yml present"
+assert_ok "[ ! -f '$_b25/nolab/.github/labeler.yml' ]" "scaffold without labeler → no labeler.yml"
+rm -rf "$_b25"
+# .3a preflight surveys ALL canon labels from labels.json, not a hardcoded 5.
+assert_ok "grep -q 'templates/labels.json' '$WZ'" "preflight reads the full label set from labels.json"
+assert_absent "$(sed -n '/hdr \"3. Canon labels\"/,/hdr \"4./p' "$WZ")" "for l in ai:review-passed ai:review-changes ai:human-review-required skip-ai-review skip-audit-trail" "preflight no longer hardcodes 5 labels"
+# .3b §4 reads /actions/permissions and branches on allowed_actions (no raw 409 mask).
+assert_ok "grep -q 'repos/\$repo/actions/permissions.*allowed_actions' '$WZ'" "preflight reads allowed_actions first"
+# local_only + selected-without-github-owned BOTH startup_failure (canon reusables
+# use actions/* + github/*), so neither is a green state.
+assert_ok "grep -q 'local_only BLOCKS GitHub-authored actions' '$WZ'" "preflight flags local_only as a block (not green)"
+assert_ok "grep -q 'github_owned_allowed' '$WZ'" "preflight also requires github-owned actions on the selected branch"
+# .4 verify short-circuits when the caller is not yet on the default branch.
+assert_ok "grep -q 'is not on the default branch yet' '$WZ'" "verify handles the pre-merge adoption PR (no 10-min empty poll)"
+# .2 doc no longer tells private adopters to use the single generic template.
+assert_ok "grep -q 'On a private repo use the' docs/AI_CI_DEPLOYMENT.md && grep -q 'FT-9 brick' docs/AI_CI_DEPLOYMENT.md" "AI_CI_DEPLOYMENT names the -private variants (FT-9 brick)"
+
 suite_summary "contract"

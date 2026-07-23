@@ -5,6 +5,28 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — adopter-facing gaps in the wizard + deployment docs (PLAN-018 FT-25, Workstream B)
+
+- **labeler config was installable by no path.** The `labeler` caller uses
+  `configuration-path: .github/labeler.yml`, but the starter `labeler.yml` template
+  was never copied — a scaffolded labeler ran against a missing config. The wizard
+  `scaffold` now drops the starter when labeler is chosen (operator customizes it).
+- **`deploy-ci-wizard.sh preflight`** now surveys **all** canonical labels from
+  `labels.json` (was a hardcoded 5 of 18), and reads `/actions/permissions` and
+  branches on `allowed_actions` instead of masking a 409 from the selected-actions
+  endpoint as `unreadable/all-allowed`. Because canon reusables use `actions/*` +
+  `github/*` internally, "green" requires more than the aidoc-flow-ci reference
+  being reachable: `local_only` (blocks GitHub-authored actions) and `selected`
+  **without** `github_owned_allowed` both `startup_failure` and are now flagged
+  🔴, not passed as OK — the one check guarding that mode.
+- **`verify`** short-circuits when the caller is not yet on the default branch: the
+  `pull_request_target` / `workflow_run` gates resolve their definition from the
+  default branch, so on the PR that first *adds* them they do not run — the poll
+  used to burn 24×25s matching nothing. It now names the two-PR adoption shape.
+- **`AI_CI_DEPLOYMENT.md`** step 2 now tells private adopters to use the `-private`
+  variant (naming the FT-9 brick) instead of the single-template advice that
+  predates the `-private` variants.
+
 ### Fixed — `skip-ai-review` no longer opens a zero-review merge window (PLAN-018 FT-29, Workstream B)
 
 - `composition` is INERT (passes green) until `vars.APP_REVIEWER_1_BOT_ID` is set,
