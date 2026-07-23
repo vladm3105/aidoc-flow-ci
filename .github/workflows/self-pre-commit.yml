@@ -1,0 +1,42 @@
+# self-pre-commit.yml — canon dogfoods the pre-commit gate it ships (PLAN-018 FT-36).
+#
+# WHY A SEPARATE FILE: `.github/workflows/pre-commit.yml` in this repo IS the
+# reusable (workflow_call); it needs a CALLER to run on canon's own PRs. Until
+# now canon shipped the pre-commit reusable but never ran it on itself — the
+# exact "no exerciser for canon's own output" root cause behind F1/F3. This runs
+# canon's `.pre-commit-config.yaml` (check-yaml / end-of-file-fixer /
+# trailing-whitespace at the pre-commit stage, plus the sync-version-refs local
+# hook) through the reusable, so a regression in the reusable's stage handling
+# fails canon's OWN checks rather than shipping to the fleet unseen.
+#
+# Non-redundant with tests.yml (shellcheck/yamllint/actionlint) and the local
+# pre-push hook (pre-push stage, not run here): this exercises the pre-commit
+# STAGE the reusable defaults to — the stage F3's vacuous-check bug lived in.
+#
+# Public repo → ubuntu-latest (default runner_labels). This is a fork-code lint
+# flow (`on: pull_request` runs the PR's own files), which MUST stay ubuntu-latest
+# on a public repo — moving it to the self-hosted pool is the untrusted-code leak
+# (see docs/security.md §3 / docs/runners.md §5a). Pinned to the released tag, not
+# main, so canon consumes the same immutable version its consumers do;
+# sync-version-refs.sh keeps the pin in step with VERSION.
+
+name: self-pre-commit
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  call:
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/pre-commit.yml@ci/v2.11.0
+    permissions:
+      contents: read

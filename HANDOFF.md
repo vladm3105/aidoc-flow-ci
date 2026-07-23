@@ -6,6 +6,15 @@ context compaction.
 
 ## Current state (2026-07-22)
 
+- **PLAN-018 Workstream C / PR C4a (pre-commit self-caller, FT-36) OPEN.**
+  `.github/workflows/self-pre-commit.yml` — canon now runs its own pre-commit
+  reusable on every PR (public → ubuntu-latest, pinned to the released tag),
+  self-running 4 of 16 reusables (was 3). Dogfooding immediately caught
+  `VERSION` missing a trailing newline (end-of-file-fixer); fixed + release
+  checklist updated. FT-36 closed; inventory row flipped. Remaining C: **C4b**
+  markdown-lint self-caller (FT-34 — needs a canon `.markdownlint.json` + the
+  174-pre-existing-findings decision, its own PR), then **C5** release.sh (FT-21).
+
 - **PLAN-018 Workstream C / PR C3 (required-context validator, FT-18) OPEN.**
   `install/required-context-map.py` derives context→producing-caller for every
   tier's required contexts (context → reusable job → caller template → manifest
