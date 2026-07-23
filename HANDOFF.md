@@ -6,6 +6,15 @@ context compaction.
 
 ## Current state (2026-07-22)
 
+- **PLAN-018 Workstream B / PR B2 (FT-27 least-privilege) OPEN.** AI-flow callers
+  converted off blanket `secrets: inherit`: composition drops the block (only
+  GITHUB_TOKEN); doc-maintainer/docs-sync/auto-merge get explicit maps of their
+  declared secrets. `can_approve_pull_request_reviews` defaulted false. test_contract
+  guards all. **ai-review keeps inherit** (reusable declares no secrets) — its
+  conversion is a tracked follow-up (needs reusable secret declarations + security
+  review). Remaining B: FT-28 (ai-review SHA peel), FT-29 (skip-ai-review+INERT
+  window), FT-25 (adopter gaps), FT-10 (runner-self docs).
+
 - **PLAN-018 Workstream B STARTED — PR B1 (FT-26 codeql pin + FT-14 triage) OPEN.**
   codeql autobuild repinned tag-object→peeled-commit (matches init/analyze);
   test_lint asserts the three codeql pins agree (teeth). GHAS-for-private

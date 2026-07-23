@@ -30,4 +30,5 @@ jobs:
     uses: vladm3105/aidoc-flow-ci/.github/workflows/composition.yml@ci/v2.11.0
     with:
       runner_labels: '"ubuntu-latest"'
-    secrets: inherit  # pragma: allowlist secret
+    # No `secrets:` block — composition reads only the automatic GITHUB_TOKEN
+    # (FT-27 least-privilege; `inherit` would hand it every repo secret).

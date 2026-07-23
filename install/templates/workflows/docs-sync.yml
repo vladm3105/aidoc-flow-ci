@@ -42,4 +42,7 @@ jobs:
     uses: vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v2.11.0
     with:
       runner_labels: '["self-hosted", "ci-runner", "single-use"]'
-    secrets: inherit  # pragma: allowlist secret
+    # Explicit map (FT-27 least-privilege) — exactly the secrets the reusable declares.
+    secrets:
+      AIDOC_FLOW_BOT_ID: ${{ secrets.AIDOC_FLOW_BOT_ID }}
+      AIDOC_FLOW_BOT_KEY: ${{ secrets.AIDOC_FLOW_BOT_KEY }}

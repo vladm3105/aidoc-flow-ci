@@ -289,7 +289,20 @@ mismatch; print `FETCH_REF` in the notice, not `CANON_TAG`.
 ### FT-27 — privileged callers over-grant: `secrets: inherit` + actions-can-approve
 
 **Found:** 2026-07-21, pre-prod review (security lens).
-**Status:** OPEN — hardening bundle, no live exploit.
+**Status:** MOSTLY RESOLVED (PLAN-018 Workstream B / PR B2, 2026-07-23). (a)
+`composition-{private,public}` lost `secrets: inherit` entirely (composition
+reads only the automatic `GITHUB_TOKEN`); `doc-maintainer`, `docs-sync`,
+`auto-merge-ai-prs-{public,private}` now pass **explicit** `secrets:` maps of
+exactly the secrets their reusables DECLARE. `test_contract.sh` guards each.
+(b) `actions-permissions.json` `can_approve_pull_request_reviews` defaulted
+**false**, with a note to flip it in the bot-PR adoption runbook.
+**REMAINING:** `ai-review.yml`'s caller keeps `secrets: inherit` because the
+`ai-review` REUSABLE declares no `secrets:` block — it reads 8 inherited
+secrets undeclared. Converting it to an explicit map requires adding `secrets:`
+declarations to the reusable (a security-sensitive change to the core gate);
+tracked as its own follow-up so the enumeration + security review get their own
+PR. Documented as a deliberate exception in `test_contract.sh` so it is not
+accidental.
 
 (a) `composition-private.yml:45`, `auto-merge-ai-prs-private.yml:36`,
 `ai-review.yml:68`, `docs-sync.yml:45`, `doc-maintainer.yml:79` all use
