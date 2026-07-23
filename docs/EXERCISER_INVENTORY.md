@@ -97,6 +97,8 @@ installer/update path plus the offline tests that drive it.
 | `install/deploy-ci-wizard.sh` | `test_version_sync.sh` (VERSION resolution); scaffold path | offline-test |
 | `install/apply-standards.sh` | `test_scripts.sh` | offline-test |
 | `install/check-precommit-hooks.sh` | `test_precommit_stage.sh` (exit 0/1/2 on green/vacuous/undeterminable configs; agrees with the reusable's default stage) | offline-test |
+| `install/required-context-map.py` | `test_required_contexts.sh` (the invariant + non-obvious chains + teeth) | offline-test |
+| `tests/lib_count_stage_hooks.py` | `test_install.sh` Part 4 (fragment stage count) | offline-test |
 | `install/set-litellm-secrets.sh` | — | **unexercised** — operator helper, no consumer surface, low risk; `accepted-no-FT` |
 | `scripts/sync-version-refs.sh` | `test_version_sync.sh`; pre-commit hook | self-caller + offline-test |
 | `sync/check-drift.sh` | `test_scripts.sh` | offline-test |
@@ -120,4 +122,4 @@ Not a workflow or script, but shipped to every adopter and therefore in scope fo
 | No `markdown-lint` self-caller + no canon `.markdownlint.json` | `markdown-lint.yml`, `.markdownlint.json` | FT-34 → PR C4 |
 | No automated rev bump | `pre-commit-hooks` rev | FT-35 |
 | ~~No zero-hook detector~~ | `pre-commit` config vacuity | **FT-31 CLOSED (PR C2)** — `install/check-precommit-hooks.sh`, operator-side |
-| No required-context ↔ producer validator | branch-protection contexts | FT-18 → PR C3 |
+| ~~No required-context ↔ producer validator~~ | branch-protection contexts | **FT-18 CLOSED (PR C3)** — `install/required-context-map.py` + wizard preflight §6 |

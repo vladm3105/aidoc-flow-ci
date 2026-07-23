@@ -132,6 +132,42 @@ preflight() {
       rm -f "$pctmp"
     fi
   fi
+
+  # PLAN-018 FT-18 — required-context ↔ producer validator (general form of F2).
+  # For each tier, does every required status-check context have an INSTALLED
+  # caller producing it? A required context with no producer never reports, so
+  # arming protection at that tier pins every PR on "Expected — Waiting for
+  # status to be reported" forever (exactly F2). The context->producer map is
+  # DERIVED from canon (required-context-map.py), never hand-maintained.
+  hdr "6. Required-context producers (FT-18) — would arming brick a PR?"
+  local mapout; mapout="$(python3 "$HERE/required-context-map.py" "$HERE/.." 2>/dev/null || echo '')"
+  if [ -z "$mapout" ] || [ "$mapout" = SKIP ]; then
+    c_wn "could not derive the required-context map (PyYAML missing?) — cannot check producers"
+  else
+    # List tiers from the template FILES (not only tiers the map emitted rows
+    # for) so umbrella — which has no required contexts — still gets a line
+    # rather than being silently omitted.
+    local tiers; tiers="$(ls "$HERE"/templates/branch-protection-*.json 2>/dev/null | sed -E 's#.*/branch-protection-(.*)\.json#\1#' | sort -u)"
+    local t
+    for t in $tiers; do
+      local missing="" ctx producer nreq=0
+      while IFS=$'\t' read -r ctx producer; do
+        nreq=$((nreq+1))
+        case "$producer" in
+          '?non-call') : ;;  # a bare (repo-local) required context — no canon producer expected, not a defect
+          '?') missing="$missing\n       · $ctx → canon ships NO producer — canon defect" ;;
+          *) echo "$have" | grep -qw "$producer" || missing="$missing\n       · $ctx → needs $producer (NOT installed)" ;;
+        esac
+      done < <(printf '%s\n' "$mapout" | awk -F'\t' -v tt="$t" '$1==tt{print $2"\t"$3}')
+      if [ "$nreq" -eq 0 ]; then
+        c_ok "$t: no required contexts (nothing to produce)"
+      elif [ -z "$missing" ]; then
+        c_ok "$t: all $nreq required-context producer(s) installed"
+      else
+        c_no "$t: arming would HANG PRs — required context(s) with no installed producer:$(printf '%b' "$missing")"
+      fi
+    done
+  fi
   echo; echo "→ Next: 'plan $repo' then 'scaffold $repo <dir>'. See docs/AI_CI_DEPLOYMENT.md."
 }
 
