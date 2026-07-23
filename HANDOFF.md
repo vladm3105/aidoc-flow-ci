@@ -21,9 +21,11 @@ context compaction.
 - **➡️ NEXT (AI-executable): G3 + G4 — the remaining flow-ci tasks (FT-43…52).**
   These all ride the same `ci/v2.12.0` tag (additive surfaces), and several touch
   `install.sh` + the templates the cold-start dry-run exercises (FT-47, FT-50,
-  FT-43) — so they land on `main` FIRST. G3 (ship-with-tag): FT-43 (label/draft
-  can supersede a RED ai-review — highest severity), FT-44, FT-45, FT-46, FT-47,
-  FT-48. G4 (before rollout): FT-49, FT-50, FT-51, FT-52 (FT-52 is 🔴 canon
+  FT-43) — so they land on `main` FIRST. G3 (ship-with-tag): ✅ **FT-43** (label/draft
+  can supersede a RED ai-review — fail-closed-when-unarmed via a driven guard +
+  unarmed job-`if:` clause + concurrency exclusion + draft triggers; `contract`
+  275→283, 4 mutations red — PR open), then FT-44, FT-45, FT-46, FT-47, FT-48.
+  G4 (before rollout): FT-49, FT-50, FT-51, FT-52 (FT-52 is 🔴 canon
   self-governance). One FT per PR, OPS-0065 pre-push dispatch.
 - **G2 — the 🔴 founder cold-start dry-run — is the LAST flow-ci step, not the
   next one.** It must validate the exact tree that becomes the tag, so it runs only

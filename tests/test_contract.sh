@@ -344,6 +344,44 @@ if skip_ok label "294948438"; then _g "label + armed composition proceeds"; else
 if skip_ok r3 "";        then _g "r3 skip unaffected by composition arm state"; else _r "r3 skip unaffected"; fi
 if skip_ok review-event ""; then _g "review-event skip unaffected"; else _r "review-event skip unaffected"; fi
 
+echo "== FT-43: a label/draft event cannot supersede a RED ai-review while unarmed =="
+ARTPL=install/templates/workflows/ai-review.yml
+# (1) template triggers cover the draft transitions (a draft→ready must trigger a
+# real review, not merge un-reviewed) — parsed, not grepped loosely.
+ft43_triggers="$(python3 - "$ARTPL" <<'PYEOF'
+import yaml, sys
+d = yaml.safe_load(open(sys.argv[1]))
+on = d.get(True, d.get("on", {}))
+types = set((on.get("pull_request_target", {}) or {}).get("types", []))
+need = {"ready_for_review", "converted_to_draft"}
+print(",".join(sorted(need - types)) or "OK")
+PYEOF
+)"
+assert_eq "$ft43_triggers" "OK" "template pull_request_target adds ready_for_review + converted_to_draft (FT-43)"
+# (2) a label/unlabel event must not cancel an in-flight genuine review.
+assert_ok "grep -qE \"cancel-in-progress: \\\\\$\\{\\{ github.event.action != 'labeled'\" '$AR'" \
+  "concurrency excludes label events from cancel-in-progress (FT-43)"
+# (3) both jobs' if: gain the unarmed clause — armed repos still clean-skip a
+# would-skip event (composition holds); unarmed repos RUN so the guard fails closed.
+unarmed_ifs=$(grep -Fc "vars.APP_REVIEWER_1_BOT_ID == ''" "$AR" || true)
+assert_ok "[ ${unarmed_ifs:-0} -ge 2 ]" "trust + ai-review job if: both carry the FT-43 unarmed clause (found ${unarmed_ifs})"
+# (4) DRIVEN teeth: extract the shipped fail-closed guard and run it — armed
+# (COMPOSITION_BOT_ID set) exits 0; unarmed exits 1. Not a re-implementation.
+fstart="$(grep -c '# >>> FT43-FAIL-CLOSED >>>' "$AR" || true)"
+fend="$(grep -c '# <<< FT43-FAIL-CLOSED <<<' "$AR" || true)"
+assert_eq "$fstart" "1" "exactly one FT43-FAIL-CLOSED start marker"
+assert_eq "$fend" "1" "exactly one FT43-FAIL-CLOSED end marker"
+FS="$(grep -n '# >>> FT43-FAIL-CLOSED >>>' "$AR" | cut -d: -f1)"
+FE="$(grep -n '# <<< FT43-FAIL-CLOSED <<<' "$AR" | cut -d: -f1)"
+FT43_GUARD="$(mktemp)"; awk "NR>${FS} && NR<${FE}" "$AR" > "$FT43_GUARD"
+assert_ok "grep -q 'exit 1' '$FT43_GUARD'" "FT-43 guard block extracted (carries the fail-closed exit)"
+drive_ft43() { # $1=COMPOSITION_BOT_ID -> rc
+  { echo 'set -uo pipefail'; printf 'COMPOSITION_BOT_ID=%s\n' "$1"; echo 'EVENT_ACTION=labeled'; cat "$FT43_GUARD"; } \
+    | bash >/dev/null 2>&1
+}
+drive_ft43 ""; assert_eq "$?" "1" "unarmed (COMPOSITION_BOT_ID unset) → guard FAILS CLOSED (rc=1) — the FT-43 teeth"
+drive_ft43 "294948438"; assert_eq "$?" "0" "armed (COMPOSITION_BOT_ID set) → guard proceeds (rc=0; composition holds)"
+
 echo "== FT-25: adopter-facing wizard/doc gaps =="
 WZ=install/deploy-ci-wizard.sh
 # .1 labeler config is now installable (scaffold drops the starter when labeler is chosen).

@@ -8,6 +8,26 @@ when resolved.
 
 ## Open
 
+### FT-43 — a label/draft event can supersede a RED `ai-review`
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G3 ship-with-tag).
+**Surface:** `.github/workflows/ai-review.yml` `trust` + `ai-review` job-level
+`if:` skip on non-`skip-ai-review` label events and drafts; the caller template
+subscribes to `labeled,unlabeled`, omits `ready_for_review`; concurrency
+`cancel-in-progress: true`.
+**Effect:** a skipped required job reports green, so a label applied after a
+`request_changes` flips `call / ai-review` green. Armed repos are covered by
+`composition` (defence-in-depth loss); a not-yet-armed adopter (composition INERT)
+has a real both-checks-green bypass.
+**Fix (fail-closed, NOT step-level-skip — a fresh SUCCESS supersedes):** job-level
+`if:` on both jobs gains an unarmed clause (`vars.APP_REVIEWER_1_BOT_ID == ''`) so
+armed repos still clean-skip (composition holds) but unarmed repos RUN and a new
+first step (`FT43-FAIL-CLOSED`, extracted + driven) `exit 1`s — the FT-29 model.
+`cancel-in-progress` excludes label events; template adds `ready_for_review` +
+`converted_to_draft`. `test_contract.sh` 275→283; four mutations go red.
+**RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream B / G3):** see CHANGELOG
+`## Unreleased`.
+
 ### FT-42 — `ai-review`'s `secrets: inherit` is structurally forced, not deferred
 
 **Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G1 tag-cut blocker).
