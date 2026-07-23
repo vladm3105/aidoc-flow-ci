@@ -5,6 +5,28 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Docs — body-adoption reconciliation + the drift report as the rollout worklist (PLAN-018 Workstream D items 2-3)
+
+- `docs/UPDATE_GUIDE.md` gains **"Body adoption vs re-pin"**. `--repin` and
+  `--update` are not two strengths of one operation: `--repin` changes only the
+  `@ci/vX.Y.Z` string, while `--update` replaces the **body** of all 16
+  `safe_to_replace` surfaces (the 15 workflow callers + `dependabot.yml`) and
+  discards every per-repo `runner_labels_*`, `permissions:`, trigger and tuned
+  input. None of that fails at update time — it fails on the next PR, as a job
+  stuck in `queued` or a `startup_failure` with zero jobs. Documents the live
+  case (`framework` pins `runner_labels_*: '"ubuntu-latest"'` against canon's
+  self-hosted array) and a reconciliation gate on the resulting diff.
+- Corrects the `ci/v2.0.0` migration quick-reference, whose step 4 recommended
+  `--repin` **then** `--update`. That migration is secrets + config + a pin bump
+  and does not need body adoption; the unconditional `--update` was the exact
+  hazard FT-9 already paid for once.
+- `docs/UPDATE_GUIDE.md` gains **"Reading the drift report as the rollout
+  worklist"** — per CI-0013 canon completes first and consumers roll out after,
+  so pre-rollout `DRIFT` is expected signal. Sorts findings into deliverable /
+  deliberate / not-yet-provisioned and names the four known permanent-drift
+  members, so the next operator does not "fix" drift by weakening canon.
+- Completes **PLAN-018 Workstream D** (item 1 shipped in #265).
+
 ### Fixed — the canon pre-commit fragment is refreshable in adopted consumers (PLAN-018 FT-32, Workstream D)
 
 - An adopted consumer was **frozen forever**: bootstrap no-op'd on the `CANON:`

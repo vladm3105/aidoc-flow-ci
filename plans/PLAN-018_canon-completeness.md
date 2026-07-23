@@ -519,6 +519,14 @@ anticipates has no documented procedure. Deliverables:
    this is expected signal and is the input to the rollout, so the next operator
    does not read it as breakage and "fix" it by weakening canon.
 
+**Status: all three delivered.**
+
+| # | Where | Note |
+| --- | --- | --- |
+| 1 | PR D1 (#265) | Versioned `CANON: … vN` marker; bootstrap re-merges a lagging consumer. **Additions only** — a `rev` bump on a repo they already declare is reported, not applied, leaving four repos on a mutable `rev: v5.0.0` (**FT-38**). `tests/test_precommit_refresh.sh` covers the decision. |
+| 2 | `docs/UPDATE_GUIDE.md` § Body adoption vs re-pin | `--repin` is the default; body adoption is the deliberate exception. Names the 16 replaceable surfaces, what they drop, and a reconciliation gate on the resulting diff. Also corrects the `v2.0.0` migration step 4, which recommended `--repin` **then** `--update` — the exact hazard FT-9 paid for. |
+| 3 | `docs/UPDATE_GUIDE.md` § Reading the drift report | Three buckets (deliverable / deliberate / not-yet-provisioned) and the four known permanent-drift members, so a persistently drifted line reads as a question rather than a defect. |
+
 ## 7. Explicitly OUT of scope (and why)
 
 Not deferred vaguely — these are the entries the inventory classifies as
