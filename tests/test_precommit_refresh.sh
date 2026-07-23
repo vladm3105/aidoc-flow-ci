@@ -177,5 +177,39 @@ assert_eq "$DECISION" "refresh" "wrapper consumer is refreshed"
 assert_ok "grep -q 'pre_push_check_ops.sh' '$OUT'" "consumer's wrapper entry survives the refresh"
 n_pp="$(grep -c 'id: aidoc-flow-pre-push' "$OUT")"
 assert_eq "$n_pp" "1" "wrapper is not duplicated by canon's copy"
+# FT-44: canon's aidoc-flow-pre-push differs from this consumer's wrapper (body,
+# not just id), so it is kept-but-changed. That MUST be REPORTED — a WARN naming
+# the modified hook, and a NON-clean summary (the modified-hook-skip NOTE), not the
+# silent "canon block appended". Before FT-44 the id-only filter skipped it clean.
+assert_ok "grep -q 'canon ships a MODIFIED version' '$TMP/err'" "FT-44: a kept-but-changed canon hook emits a WARN"
+assert_ok "grep -q 'modified-hook skip' '$TMP/out'" "FT-44: the summary reports the modified-hook skip (not a clean append)"
+assert_ok "grep -q 'stay UNAPPLIED' '$TMP/out'" "FT-44: the NOTE says canon's change stays unapplied"
+
+# The clean path must STAY clean: a consumer whose aidoc-flow-pre-push is
+# byte-identical to canon's local block emits NO modified-hook WARN. Guards
+# against the FT-44 signal false-firing on an unchanged hook. Built from canon's
+# OWN local block (extracted, not re-typed) so it cannot drift out of identity.
+CANON_LOCAL="$(sed -n '/^- repo: local/,$p' "$FRAGMENT")"
+decide "$(printf '# CANON: aidoc-flow-ci pre_push_check v1\nrepos:\n%s\n' "$CANON_LOCAL")" "$FRAGMENT"
+assert_ok "! grep -q 'canon ships a MODIFIED version' '$TMP/err'" "FT-44: an IDENTICAL canon local hook emits no modified-hook WARN"
+assert_ok "! grep -q 'modified-hook skip' '$TMP/out'" "FT-44: an IDENTICAL canon local hook yields no modified-hook skip in the summary"
+
+# CONTENT-identical but KEY-REORDERED must ALSO emit no WARN. ruamel's
+# CommentedMap has an order-insensitive __eq__ but an order-sensitive inherited
+# __ne__, so a naive `a != b` false-flags this; `not (a == b)` is correct. This
+# case goes RED under `!=` and green under the fix.
+decide "$(printf '%s' '# CANON: aidoc-flow-ci pre_push_check v1
+repos:
+- repo: local
+  hooks:
+  - name: aidoc-flow canon pre-push validation + OPS-0069 audit-trail check
+    id: aidoc-flow-pre-push
+    always_run: true
+    entry: scripts/pre_push_check.sh
+    pass_filenames: false
+    language: script
+    stages:
+    - pre-push')" "$FRAGMENT"
+assert_ok "! grep -q 'canon ships a MODIFIED version' '$TMP/err'" "FT-44: a key-REORDERED but content-identical canon hook emits no WARN (ruamel __ne__ trap)"
 
 suite_summary "precommit-refresh"

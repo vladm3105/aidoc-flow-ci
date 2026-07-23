@@ -24,7 +24,10 @@ context compaction.
   FT-43) — so they land on `main` FIRST. G3 (ship-with-tag): ✅ **FT-43** (label/draft
   can supersede a RED ai-review — fail-closed-when-unarmed via a driven guard +
   unarmed job-`if:` clause + concurrency exclusion + draft triggers; `contract`
-  275→283, 4 mutations red — PR open), then FT-44, FT-45, FT-46, FT-47, FT-48.
+  275→283, 4 mutations red — PR #275 MERGED `3066b3a`; security-auditor READY on a
+  full truth table), ✅ **FT-44** (pre-commit refresh reports a kept-but-changed
+  canon hook via a `SKIPPED_HOOKS` NOTE + fixed a latent `pipefail` abort;
+  `precommit-refresh` 18→24 — PR open), then FT-45, FT-46, FT-47, FT-48.
   G4 (before rollout): FT-49, FT-50, FT-51, FT-52 (FT-52 is 🔴 canon
   self-governance). One FT per PR, OPS-0065 pre-push dispatch.
 - **G2 — the 🔴 founder cold-start dry-run — is the LAST flow-ci step, not the

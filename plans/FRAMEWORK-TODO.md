@@ -8,6 +8,25 @@ when resolved.
 
 ## Open
 
+### FT-44 — FT-32 silently under-delivers a *modified* hook
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G3 ship-with-tag).
+**Surface:** `install/install.sh` pseudo-repo (`local`) merge — filtered canon
+hooks by `id` only, recorded no collision for a present-but-changed hook, and
+printed the clean "canon block appended" summary.
+**Effect:** a canon `local` hook whose id the consumer has but whose body changed
+(a customized `aidoc-flow-pre-push`) was silently kept — no WARN, no NOTE, marker
+stamped anyway — contradicting the merge's promise that a kept canon change is
+REPORTED. Most-likely future case: a bumped `aidoc-flow-pre-push`.
+**Fix:** detect a present-but-not-identical canon `local` hook, emit a distinct
+`WARN` + a `SKIPPED_HOOKS=` signal routed to the partial-merge NOTE path (not the
+clean summary); additions-only preservation unchanged. Also fixed a latent
+`pipefail` abort the signal exposed (COLLISIONS/SKIPPED_HOOKS greps now
+`|| true`-guarded). `test_precommit_refresh.sh` 18→24; disabling the detection
+goes red.
+**RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream B / G3):** see CHANGELOG
+`## Unreleased`.
+
 ### FT-43 — a label/draft event can supersede a RED `ai-review`
 
 **Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G3 ship-with-tag).
