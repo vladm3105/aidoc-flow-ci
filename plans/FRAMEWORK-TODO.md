@@ -8,6 +8,28 @@ when resolved.
 
 ## Open
 
+### FT-42 — `ai-review`'s `secrets: inherit` is structurally forced, not deferred
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G1 tag-cut blocker).
+**Surface:** `.github/workflows/ai-review.yml` `workflow_call` (declared `inputs:`
+only, no `secrets:` block) while the body reads 8 secrets;
+`install/templates/workflows/ai-review.yml` (`secrets: inherit`).
+**Effect:** a caller *cannot* pass an explicit least-privilege map when the
+reusable declares no `secrets:` block, so `ai-review` was forced onto blanket
+`inherit` — the workspace's largest standing secret-trust surface (it was the one
+AI-flow the FT-27 pass could not convert), widening to each newly-armed consumer
+at rollout.
+**Fix:** declare all 8 secrets in the reusable's `workflow_call.secrets`
+(`required: false`; `GITHUB_TOKEN` stays auto-provided, not declared); flip the
+caller template to an explicit map. Additive — existing `inherit` callers keep
+working (GitHub forwards inherited secrets by name regardless), unset = empty
+inside the reusable either way, so self-skip behaviour is unchanged.
+`test_contract.sh` adds a two-way completeness check (declared AND forwarded);
+revert-to-inherit / drop-a-declared / drop-a-forwarded each go red (`contract`
+272 → 275). Closes the FT-27 residual.
+**RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream A / G1):** see CHANGELOG
+`## Unreleased`.
+
 ### FT-41 — `markdown-lint`'s blocking default is unasserted
 
 **Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G1 tag-cut blocker).

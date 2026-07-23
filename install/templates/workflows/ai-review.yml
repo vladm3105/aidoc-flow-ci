@@ -65,4 +65,15 @@ jobs:
       # trust_config_ref: main
       # NOTE: this override does NOT yet reach the composition gate, which reads
       # the consumer repo's own .github/ai-review/config.json@main (FT-6).
-    secrets: inherit  # pragma: allowlist secret
+    # FT-42: explicit least-privilege map (was `secrets: inherit`). Only the
+    # secrets this reusable declares are forwarded; an unset one passes empty and
+    # the matching flow self-skips (reusable inputs are all `required: false`).
+    secrets:
+      APP_REVIEWER_1_ID: ${{ secrets.APP_REVIEWER_1_ID }}
+      APP_REVIEWER_1_KEY: ${{ secrets.APP_REVIEWER_1_KEY }}
+      APP_AUTOFIX_ID: ${{ secrets.APP_AUTOFIX_ID }}
+      APP_AUTOFIX_KEY: ${{ secrets.APP_AUTOFIX_KEY }}
+      AI_REVIEW_TOKEN: ${{ secrets.AI_REVIEW_TOKEN }}
+      LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
+      LITELLM_REVIEW_API_KEY: ${{ secrets.LITELLM_REVIEW_API_KEY }}
+      LITELLM_FIX_API_KEY: ${{ secrets.LITELLM_FIX_API_KEY }}

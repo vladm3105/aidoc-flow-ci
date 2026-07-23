@@ -5,6 +5,31 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — `ai-review` least-privilege secrets (PLAN-019 FT-42, G1 tag-cut blocker)
+
+- The `ai-review` reusable's `workflow_call` declared **`inputs:` only, no
+  `secrets:` block**, while its body reads 8 secrets — so a caller physically
+  could not pass an explicit map and was **forced** onto `secrets: inherit`. This
+  is why the FT-27 least-privilege pass converted `docs-sync` / `doc-maintainer` /
+  `auto-merge` but not this one; it was the workspace's largest standing
+  secret-trust surface, widening on every newly-armed consumer at rollout.
+- The reusable now **declares** all 8 secrets (`APP_REVIEWER_1_ID`,
+  `APP_REVIEWER_1_KEY`, `APP_AUTOFIX_ID`, `APP_AUTOFIX_KEY`, `AI_REVIEW_TOKEN`,
+  `LITELLM_BASE_URL`, `LITELLM_REVIEW_API_KEY`, `LITELLM_FIX_API_KEY`), each
+  `required: false`, and the caller template passes an **explicit map** instead of
+  `secrets: inherit`. `GITHUB_TOKEN` stays auto-provided (never declared).
+- **Additive — no consumer break.** The `secrets:` block is a callable-surface
+  *addition*; existing `secrets: inherit` callers keep working (GitHub forwards
+  inherited secrets by name regardless of the declared block), and an unset secret
+  is an empty string inside the reusable whether inherited or mapped, so each
+  flow's self-skip behaviour is unchanged.
+- `test_contract.sh` moves `ai-review` into the explicit-map group (no blanket
+  `inherit`) and adds a two-way completeness check: every secret the reusable body
+  reads (minus `GITHUB_TOKEN`) is **declared** in `workflow_call.secrets` **and
+  forwarded** by the caller template, and no forwarded secret is *undeclared* (a
+  `startup_failure` class). Reverting to `inherit`, or any declared/forwarded-set
+  mismatch, goes red (`contract` 272 → 275).
+
 ### Testing — `markdown-lint`'s blocking default is now asserted (PLAN-019 FT-41, G1 tag-cut blocker)
 
 - The three report-only scanners (dep-scan / trivy / sast) assert their *callers*
