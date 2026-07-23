@@ -6,6 +6,60 @@ context compaction.
 
 ## Current state (2026-07-23)
 
+- **PRE-PROD REVIEW of the `ci/v2.11.0..main` candidate → BLOCKER; PLAN-019
+  authored + READY to close it. DO NOT cut `ci/v2.12.0` yet.** A 5-lens
+  `ci-preprod-review` (security / correctness / docs / portability / governance)
+  ran on the release candidate. HANDOFF's "PLAN-018 A/C/B/D complete" verified
+  **substantially true** (FT ledger, CHANGELOG `## Unreleased` complete 1:1,
+  FT-32 mechanism converges across all 8 siblings) — but "plan complete" ≠ "tag
+  can be cut," and it cannot right now. Findings (each verified against source;
+  2 agent claims downgraded on verification):
+  - **G1 tag-cut blockers:** FT-39 `fetch_template` has no `test -s`/shape check
+    and `--update` infers non-interactive from a missing TTY → a 200-empty fetch
+    can 0-byte the fleet's gates *and* silently freeze FT-32 refresh (fails open);
+    FT-40 the FT-28 SHA-peel guard is untested (mutation `if false;` → resolver
+    suite still 62/0 — the test re-implements `verify()` instead of driving the
+    shipped step); FT-41 markdown-lint's blocking default is unasserted (mutation
+    `true→false` → contract suite still 271/0); FT-42 `ai-review`'s
+    `secrets: inherit` is **structurally forced** (the reusable's `workflow_call`
+    declares NO `secrets:` block, so callers can't pass a map) — the largest
+    standing secret-trust risk, ~15-line fix.
+  - **🔴 FT-30 cold-start dry-run NOT satisfied for this candidate** — the only
+    recorded run was `CI_TAG=4984c35` (the v2.11.0 SHA), before the D1 refresh
+    logic + marker-version change existed; `install.sh`, manifest, and the
+    fragment all changed since. `release.sh tag` refuses without it.
+  - **Other verified:** label/draft event can supersede a RED `ai-review`
+    (FT-43 — armed `composition` still blocks today, so not a live both-checks
+    hole *while armed*); FT-44 FT-32 silently under-delivers a *modified* hook;
+    FT-45 `required-context-map.py` drops the job-id half; canon `main` has NO
+    branch protection + NO tag ruleset while its own template names it product-
+    tier (S1); `verified_allowed: true` wider than §4.3 + canon's live
+    `can_approve_pull_request_reviews: true` vs template `false` (FT-27 unapplied);
+    `FLEET_BRANCH_PROTECTION_ARMING.md:66` imperatively repins to `ci/v2.1.0`
+    (10 releases back); GNU-only `sed -i` + unguarded `mapfile` on adopter macOS.
+  - **Strong positives (do not regress):** action supply chain exemplary (all
+    SHA-pinned, allowlist-clean, binaries checksummed); zero shell injection;
+    autofix separation-of-duties; public-repo fork-safety holds.
+- **`plans/PLAN-019_preprod-review-closure.md` — READY** (verified-planning: 3
+  passes, 2 independent, zero load-bearing findings; gate green, 48 citations).
+  Pass 2 caught FT-43's fix re-opening its own bypass (a step-level skip
+  concluding SUCCESS supersedes a standing `request_changes`) → folded to
+  fail-closed-when-unarmed per the FT-29 `exit 1` model. Four gates: **G1**
+  (FT-39/40/41/42, before prep PR) → **G2** the 🔴 dry-run → **G3** ship-with-tag
+  (FT-43…48) → **G4** before-rollout (portability, canon self-governance,
+  governance-currency). Semver **MINOR → `ci/v2.12.0`**.
+- **`plans/ROLLOUT_plan019-feedback-desk-coldstart.md` — staged** (🔴
+  founder-executed). feedback-desk verified a genuine cold start (no workflows /
+  pre-commit / canon ref) and **PRIVATE** with `APP_REVIEWER_1_BOT_ID` UNSET, so
+  the runbook splits **Part A** (installer cold-start = the FT-30 tag gate,
+  visibility-independent) from **Part B** (arm gates green = self-hosted pool +
+  per-repo LiteLLM secrets + App; PLAN-009 Phase-0 🔴, NOT a tag gate). The one
+  load-bearing line: `export CI_TAG=<G1-merge-sha>` or it validates the pre-fix
+  templates.
+- **NEXT:** implement Workstream A (G1, 4 blockers) — each its own PR with the
+  OPS-0065 pre-push dispatch — then prep PR → founder runs Part A on
+  feedback-desk pinned to the G1 merge SHA → tag `ci/v2.12.0`. G3/G4 + the fleet
+  rollout follow. PLAN-019 files are **not yet committed** (untracked in `plans/`).
 - **PLAN-018 COMPLETE — all four workstreams (A, C, B, D).** Workstream D closed
   it out:
   - **D1 / FT-32 (#265)** — the canon pre-commit fragment is refreshable in
