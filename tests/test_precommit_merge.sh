@@ -27,6 +27,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 INSTALL="$ROOT/install/install.sh"
 FRAGMENT="$ROOT/install/templates/pre-commit-hook-block.yaml"
+CANON_MARK="$(grep -m1 -F "# CANON: aidoc-flow-ci pre_push_check" "$FRAGMENT")"
 
 if ! python3 -c 'import yaml' 2>/dev/null && ! python3 -c 'import ruamel.yaml' 2>/dev/null; then
   # In CI a missing YAML library is a BROKEN GATE, not an environment quirk: this
@@ -54,7 +55,7 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 python3 - "$INSTALL" > "$TMP/merge.py" <<'PY'
 import re, sys
 src = open(sys.argv[1], encoding="utf-8").read()
-m = re.search(r'python3 - "\$PRECOMMIT_TMP" "\$MERGE_TMP" "\$yaml_lib" <<\'PYEOF\'[^\n]*\n(.*?)\nPYEOF',
+m = re.search(r'python3 - "\$PRECOMMIT_TMP" "\$MERGE_TMP" "\$yaml_lib"[^<]*<<\'PYEOF\'[^\n]*\n(.*?)\nPYEOF',
               src, re.S)
 sys.stdout.write(m.group(1) if m else "")
 PY
@@ -68,7 +69,9 @@ merge() { # $1 = consumer config content; sets $OUT/$ERR/$RC
   local dir="$TMP/run-$RANDOM$RANDOM"
   mkdir -p "$dir"
   printf '%s\n' "$1" > "$dir/.pre-commit-config.yaml"
-  ( cd "$dir" && python3 "$TMP/merge.py" "$FRAGMENT" "$dir/out.yaml" "$LIB" ) \
+  # argv[4] = canon's marker line (FT-32 versioned-marker refresh); the merge
+  # stamps it so a refreshed config carries canon's vN.
+  ( cd "$dir" && python3 "$TMP/merge.py" "$FRAGMENT" "$dir/out.yaml" "$LIB" "$CANON_MARK" ) \
     >"$TMP/stdout" 2>"$TMP/stderr"
   RC=$?
   OUT="$dir/out.yaml"; ERR="$(cat "$TMP/stderr")"
@@ -135,6 +138,30 @@ merge "$first"
 assert_eq "$RC" "0" "second merge succeeds"
 n2="$(grep -c 'aidoc-flow-pre-push' "$OUT")"
 assert_eq "$n2" "1" "re-merging does not duplicate the canon hook"
+
+# --- FT-32: the versioned-marker REFRESH path --------------------------------
+# Before FT-32 an adopted consumer was frozen: any marker → bootstrap no-op,
+# `--update` excludes this file, `--apply` writes no content. A legacy (v1/
+# unversioned) consumer must now RECEIVE canon's newer block — and must not get
+# a DUPLICATE of a hook it already carries.
+echo ""
+echo "== FT-32: a legacy-marker consumer receives the newer canon block =="
+merge '# CANON: aidoc-flow-ci pre_push_check (idempotency marker per PLAN-002 §5.2)
+repos:
+- repo: local
+  hooks:
+  - id: aidoc-flow-pre-push
+    name: legacy pre-push
+    entry: scripts/pre_push_check.sh
+    language: script
+    stages: [pre-push]'
+assert_eq "$RC" "0" "refresh merge succeeds on a legacy-marker consumer"
+if has_hook "$OUT" "check-yaml"; then _g "refresh DELIVERS the newer canon hooks (F3 commit-stage)"
+else _r "refresh did not deliver the newer canon hooks — consumer still frozen (FT-32)"; fi
+n_pp="$(grep -c 'id: aidoc-flow-pre-push' "$OUT")"
+assert_eq "$n_pp" "1" "refresh does NOT duplicate a hook the consumer already has"
+# the stamped marker must be CANON's version, else the next run re-merges forever
+assert_ok "head -1 '$OUT' | grep -qF '$CANON_MARK'" "refresh stamps canon's marker version (next run no-ops)"
 
 # --- malformed / hostile consumer input --------------------------------------
 # The merge must FAIL CLOSED with an actionable message, never a traceback and

@@ -5,6 +5,41 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — the canon pre-commit fragment is refreshable in adopted consumers (PLAN-018 FT-32, Workstream D)
+
+- An adopted consumer was **frozen forever**: bootstrap no-op'd on the `CANON:`
+  marker, `--update` excludes `.pre-commit-config.yaml` from the manifest walk, and
+  `--apply` writes no content files — so no canon path could deliver a fragment
+  change, and `manifest.json`'s "re-run `install.sh` to refresh those" was **false**
+  for that file. F3's commit-stage hooks reached new adopters only.
+- The marker is now **versioned** (`# CANON: aidoc-flow-ci pre_push_check vN`,
+  canon at **v2**). Bootstrap **re-merges** when a consumer's `vN` is older than
+  canon's and stamps canon's version, so the next run no-ops. This makes the
+  documented "re-run install.sh" path real rather than adding a second one
+  (`--refresh-hooks` was the alternative and was rejected for that reason).
+- The re-merge is additive and, for the `local` pseudo-repo, **de-duped by hook
+  `id`**: a legacy consumer receives the canon hooks it lacks without a duplicate
+  of one it already carries. (The first cut duplicated `aidoc-flow-pre-push` on
+  every legacy consumer — caught by testing the refresh end-to-end.)
+- **The refresh delivers ADDITIONS ONLY** — new repo entries and new hook ids in
+  canon's `local` block. A `rev` bump, or a new hook id inside a repo the consumer
+  already declares, is **reported as a `WARN` and left unapplied** so their entry
+  is never clobbered; a partial merge still stamps `vN` (it must, to converge) and
+  says on stdout that the named lines stay unapplied. Four fleet repos pin
+  `pre-commit-hooks` at a mutable `rev: v5.0.0` that the refresh therefore cannot
+  move to canon's SHA — per-repo items on the rollout worklist, not delivered.
+  Full matrix in `docs/REPO_STANDARDS.md` §14.1a.
+- **BUMP `vN` whenever the fragment changes**, or adopted consumers stay frozen.
+  `tests/test_precommit_refresh.sh` (new) drives the decision block extracted from
+  `install.sh` across the version matrix — no-marker, legacy, equal, newer,
+  two-digit — plus convergence, wrapper preservation and the anchored marker
+  parse; `test_precommit_merge.sh` continues to guard the merge output. The
+  earlier suite passed with the freeze restored by mutation, which is why the
+  decision now has its own cover.
+- Canon dogfoods v2 in its own `.pre-commit-config.yaml` (CLAUDE.md Wave-0 rule).
+- **This unblocks CI-0013's "drift report becomes the rollout worklist"** — the
+  fleet-rollout phase now has a mechanism behind it.
+
 ### Triage — FT-10 (runner-self pool-nickname in docs) already resolved
 
 - Verified the nickname-as-registration usage FT-10 was filed for is gone: every

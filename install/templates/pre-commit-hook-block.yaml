@@ -1,4 +1,13 @@
-# CANON: aidoc-flow-ci pre_push_check (idempotency marker per PLAN-002 §5.2)
+# CANON: aidoc-flow-ci pre_push_check v2 (idempotency marker per PLAN-002 §5.2)
+#
+# MARKER VERSION (PLAN-018 FT-32). The trailing `vN` is the REFRESH KEY: bootstrap
+# re-merges this block when a consumer's marker version is LOWER than canon's, so a
+# canon change to the fragment can actually reach an already-adopted repo. Before
+# this, an adopted consumer was frozen forever (bootstrap no-op'd on the marker,
+# `--update` excludes this file, `--apply` writes no content) and manifest.json's
+# "re-run install.sh to refresh those" was FALSE for it. BUMP vN whenever the block
+# below changes; the merge is additive + de-dups, so a re-merge never clobbers
+# consumer entries.
 #
 # Canonical pre-commit fragment wiring the canon pre_push_check.sh hook.
 # `install/install.sh` merges this block into a consumer's

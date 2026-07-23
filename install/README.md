@@ -127,6 +127,25 @@ Full walkthrough: [`../docs/UPDATE_GUIDE.md`](../docs/UPDATE_GUIDE.md).
    `.pre-commit-config.yaml` idempotently (via a `# CANON:` marker). The
    merge needs `ruamel.yaml` or `pyyaml` (see Prerequisites) and upgrades
    `default_install_hook_types` to include `pre-push`.
+
+   The marker is **versioned** (`# CANON: … vN`, PLAN-018 FT-32). Bootstrap
+   re-merges when a consumer's `vN` is older than canon's, then stamps
+   canon's — so a fragment change reaches already-adopted repos, and the run
+   after that no-ops. Three things an operator should expect:
+
+   - **Full bootstrap only.** `--update` returns before this step, so it
+     never refreshes the hook block; `--repin` is version-only. Re-run
+     `install.sh <owner/repo>` to pick up a fragment change.
+   - **Additive only.** New repo entries and new hook ids in canon's `local`
+     block are delivered. A `rev` bump — or a new hook id inside a repo the
+     consumer already declares — is reported as a `WARN` and left unapplied,
+     so a consumer's `pre_push_check_<repo>.sh` wrapper entry and their
+     pinned revs are never clobbered. A partial merge says so on stdout and
+     still stamps the marker; resolve the named lines by hand.
+   - **The whole file is rewritten**, not appended to — the merge round-trips
+     the YAML, so a refresh PR shows re-indentation beyond the added lines.
+     Install `ruamel.yaml` first (see Prerequisites): under the `pyyaml`
+     fallback the round-trip **strips the consumer's comments**.
 7. **Creates the 18 canonical labels** via `gh label create` (idempotent +
    fail-loud — prefetches existing labels, exits nonzero on real
    failures): 7 state/control (`ai:review-passed`, `ai:review-changes`,

@@ -957,18 +957,21 @@ discovered later:
   **Bump with `--freeze`.**
 - **A consumer whose `repo: local` already defines `aidoc-flow-pre-push`** — the
   wrapper pattern this fragment itself documents, pointing at
-  `scripts/pre_push_check_<repo>.sh` — is structurally unequal to canon's block,
-  so canon's is appended alongside and the config carries two hooks with that
-  id, with no collision WARN (pseudo-repos skip collision reporting).
-  `pre-commit` accepts it and both run; the wrapper already sources canon, so
-  the duplicate is redundant rather than harmful. Remove canon's copy by hand
-  if the wrapper is in use.
-- **A consumer's kept `rev` will show permanent DRIFT.** `apply-standards.sh`
-  subset-checks the consumer's file against the canon fragment line-for-line,
-  including the `rev:` line, so a consumer whose deliberate rev the merge just
-  promised to keep reports DRIFT on it indefinitely. That is the one DRIFT the
-  rollout worklist cannot resolve without abandoning the kept rev — decide per
-  repo, do not "fix" it by overwriting the consumer's pin.
+  `scripts/pre_push_check_<repo>.sh` — keeps their entry untouched. The `local`
+  pseudo-repo de-dups by hook `id`, so canon's copy is skipped entirely and the
+  config carries exactly one hook with that id. (Before FT-32 the rule was
+  whole-entry structural equality, which appended canon's alongside and required
+  removing it by hand.)
+- **Three residual DRIFT classes `apply-standards.sh --check` cannot resolve.**
+  It subset-checks the consumer's file against the canon fragment
+  line-for-line, so anything the merge deliberately declines to overwrite
+  reports DRIFT indefinitely: (a) a consumer's **kept `rev`**, which the merge
+  just promised to keep; (b) a wrapper hook's own `name:` / `entry:` lines,
+  preserved by the id-level de-dup above; (c) a consumer writing
+  `default_install_hook_types` in **flow style** (`[pre-commit, pre-push]`),
+  which is semantically canon but not a verbatim line match. All three are
+  per-repo decisions for the rollout worklist — do **not** "fix" them by
+  overwriting a consumer's pin or wrapper.
 
 **Detecting this class in general is deliberately NOT on the gating path.**
 `pre-commit run` exits 0 and prints nothing whether zero hooks matched or all
@@ -978,13 +981,41 @@ heuristic — and it would flip any consumer running `run-stage: manual` with no
 (`install.sh`, the wizard preflight, the release checklist); moving it into the
 reusable is a separate proposal needing its own decision (FT-31).
 
-**Already-adopted consumers do not receive these hooks.** Bootstrap no-ops on
-the `CANON:` marker, `--update` excludes `.pre-commit-config.yaml`, and
-`--apply` writes no content files — so the fragment is un-upgradeable in an
-adopted repo (FT-32). Adding these lines flips those repos to `DRIFT` under
+**Already-adopted consumers DO now receive fragment changes (FT-32, resolved).**
+The `CANON:` marker is **versioned** (`# CANON: aidoc-flow-ci pre_push_check vN`)
+and bootstrap **re-merges** when a consumer's `vN` is older than canon's, then
+stamps canon's. `--update` still excludes `.pre-commit-config.yaml` and `--apply`
+still writes no content files — `install.sh` (re-run) is the single refresh path,
+which is what `manifest.json`'s "re-run install.sh to refresh those" always
+claimed and, before FT-32, was false for this file. **Bump `vN` whenever the
+fragment changes** — necessary, though not on its own sufficient (see the limit
+below); without the bump, adopted consumers stay frozen.
+
+**The refresh delivers ADDITIONS ONLY.** The re-merge never overwrites a
+consumer entry, which is what makes it safe to run unattended — and is also its
+limit:
+
+| fragment change | reaches an adopted consumer? |
+| --- | --- |
+| new `repo:` block | yes |
+| new hook id in canon's `local` block | yes |
+| `rev` bump on a repo they already declare | **no** — `WARN` only |
+| new hook id inside a repo they already declare | **no** — `WARN` only |
+| change to a hook id they already carry (`entry`, `stages`, `args`) | **no** — id de-dup skips it |
+
+A partial merge still stamps canon's `vN` (it must, or the run would never
+converge), so `install.sh` will not revisit the file: it prints the unapplied
+lines and they stay unapplied until merged by hand. On the current fleet this
+is load-bearing — four repos declare `pre-commit-hooks` at a **mutable
+`rev: v5.0.0`**, and the refresh cannot move them to canon's SHA pin. Treat
+those as named per-repo items on the rollout worklist, not as delivered.
+
+Two operational notes for a refresh PR: the merge **round-trips the whole
+file**, so the diff shows re-indentation well beyond the added lines; and it
+requires `ruamel.yaml` — under the `pyyaml` fallback the round-trip **strips
+the consumer's comments**. Adding canon's lines flips repos to `DRIFT` under
 `apply-standards.sh --check`, which is **expected signal and the rollout
-worklist**, not breakage. Until FT-32 lands, F3's benefit reaches new adopters
-only.
+worklist**, not breakage.
 
 ### 14.2 CI belt-and-suspenders
 

@@ -270,6 +270,10 @@ So the fragment is **un-upgradeable in any adopted consumer**, and
 pre-existing defect the marker design has always had; F3 is simply the first
 change that needs it. Closing it is a Workstream D deliverable (§6 item 1), and
 it is filed as **FT-32**. Until it lands, F3's benefit reaches new adopters only.
+**Landed in Workstream D** (versioned `CANON:` marker): adopted consumers now
+receive F3's hooks on a re-run. Additions only — a `rev` bump on a repo they
+already declare is still reported rather than applied (`docs/REPO_STANDARDS.md`
+§14.1a).
 
 **Deferred, with the reason stated:** the first draft also proposed making the
 reusable *fail when zero hooks are selected* — the general fix for this class.
@@ -660,6 +664,14 @@ of them executions:
 Prepared as `ops/inbox` runbooks; not executed in-session.
 
 ## Claim ledger
+
+**Point-in-time.** Every row records what was verified **at plan-authoring
+time**, with the line number as it stood then. Executing this plan deliberately
+falsifies some of them — rows 19 and 20 describe the pre-F3/pre-FT-32 merge
+behaviour that Workstreams A and D were written to change. Rows are not rewritten
+as work lands: the ledger is the evidence base for why the plan was written, and
+back-dating it would erase that. For current behaviour read
+`docs/REPO_STANDARDS.md` §14.1/§14.1a.
 
 | # | Claim | Symbol | Citation |
 |---|---|---|---|
