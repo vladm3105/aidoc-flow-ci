@@ -6,6 +6,13 @@ context compaction.
 
 ## Current state (2026-07-22)
 
+- **PLAN-018 Workstream B / PR B3 (FT-28 ai-review SHA peel) OPEN.** Both resolvers
+  (review + autofix) peel the claimed tag via the commits API and hard-fail if the
+  pinned SHA ≠ the tag's commit — so `@<fork-sha> # ci/vX.Y.Z` can't execute
+  unmerged code while reading as the released tag. Inert for shipped consumers
+  (tag-only pin). test_resolver guards it. Remaining B: FT-29 (skip-ai-review+INERT
+  window), FT-25 (adopter gaps), FT-10 (runner-self docs).
+
 - **PLAN-018 Workstream B / PR B2 (FT-27 least-privilege) OPEN.** AI-flow callers
   converted off blanket `secrets: inherit`: composition drops the block (only
   GITHUB_TOKEN); doc-maintainer/docs-sync/auto-merge get explicit maps of their

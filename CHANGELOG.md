@@ -5,6 +5,20 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — `ai-review` now verifies a SHA-form pin against its claimed tag (PLAN-018 FT-28, Workstream B)
+
+- Post-FT-15 the resolver accepts a `@<40-hex> # ci/vX.Y.Z` pin and fetched
+  review/fixer assets from the SHA, but **never checked the trailing tag against
+  it** — and `raw.githubusercontent` serves any commit reachable in the public
+  canon repo, including never-merged fork-PR commits, while the comment reads as
+  the released version in code review. Both resolvers (review + autofix) now peel
+  the claimed tag via the commits API and **hard-fail on a SHA/tag mismatch**, so
+  a misleading `# ci/vX.Y.Z` cannot execute code the tag does not point at. The
+  notice prints the actual fetch ref + "(SHA verified against tag)".
+- Inert for shipped consumers — the caller template pins tag-only, so the check
+  only arms for the SHA-form pin. `test_resolver.sh` guards it (structure +
+  accept/reject teeth).
+
 ### Changed — least-privilege on the AI-flow callers (PLAN-018 FT-27, Workstream B)
 
 - The privileged callers handed a tag-referenced reusable **every** repo secret

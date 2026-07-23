@@ -498,10 +498,24 @@ jobs:
           case "$CANON_TAG" in
             *-*) echo "::error::ai-review: pre-release canon pin '${CANON_TAG}' is not supported — pin a released ci/vX.Y.Z tag. INFRASTRUCTURE error, NOT a verdict."; exit 1 ;;
           esac
-          # SHA-pinned caller → GitHub executes THAT SHA, so fetch assets from it;
-          # the trailing `# ci/vX.Y.Z` is documentation and can lag.
+          # SHA-pinned caller → GitHub executes THAT SHA, so fetch assets from it.
           FETCH_REF="${CANON_SHA:-$CANON_TAG}"
-          echo "::notice::ai-review: adopted canon pin vladm3105/aidoc-flow-ci@${CANON_TAG} (fetching at ${FETCH_REF})"
+          # FT-28: a SHA-form pin (@<sha> # ci/vX.Y.Z) fetches from the SHA, but
+          # raw.githubusercontent serves ANY commit reachable in the public canon
+          # repo — including never-merged fork-PR commits — while the trailing tag
+          # comment reads as the released version in code review. Verify the pinned
+          # SHA IS the commit the claimed tag points to, so a misleading
+          # `# ci/vX.Y.Z` cannot execute code the tag does not point at. owner/repo
+          # hardcoded, never caller-derived (FT-15 D2).
+          if [ -n "$CANON_SHA" ] && [ -n "$CANON_TAG" ]; then
+            TAG_COMMIT="$(curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github.sha" \
+              "https://api.github.com/repos/vladm3105/aidoc-flow-ci/commits/${CANON_TAG}" 2>/dev/null || true)"
+            [ -n "$TAG_COMMIT" ] || { echo "::error::ai-review: could not peel canon tag ${CANON_TAG} to verify the pinned SHA — INFRASTRUCTURE error, NOT a verdict. Re-run."; exit 1; }
+            [ "$TAG_COMMIT" = "$CANON_SHA" ] || { echo "::error::ai-review: pinned SHA ${CANON_SHA} is NOT the commit of tag ${CANON_TAG} (tag → ${TAG_COMMIT}). The pin's '# ${CANON_TAG}' comment is misleading; refusing to fetch review assets from an unverified commit (FT-28). INFRASTRUCTURE error, NOT a verdict."; exit 1; }
+          fi
+          echo "::notice::ai-review: adopted canon pin vladm3105/aidoc-flow-ci@${CANON_TAG} — fetching at ${FETCH_REF}$([ -n "$CANON_SHA" ] && echo ' (SHA verified against tag)')"
 
           # Fetch rubric + schema from aidoc-flow-ci (PUBLIC; raw works unauth).
           # owner/repo hardcoded — never caller-derived (FT-15 D2).
@@ -1271,7 +1285,18 @@ jobs:
             *-*) echo "::error::autofix: pre-release canon pin '${CANON_TAG}' is not supported — pin a released ci/vX.Y.Z tag. infrastructure error, not a code failure."; exit 1 ;;
           esac
           FETCH_REF="${CANON_SHA:-$CANON_TAG}"
-          echo "::notice::autofix: adopted canon pin vladm3105/aidoc-flow-ci@${CANON_TAG} (fetching at ${FETCH_REF})"
+          # FT-28: verify a SHA-form pin's SHA IS the commit of its claimed tag,
+          # so a misleading `# ci/vX.Y.Z` cannot make autofix fetch (and execute)
+          # never-merged code. Same check as the review resolver above.
+          if [ -n "$CANON_SHA" ] && [ -n "$CANON_TAG" ]; then
+            TAG_COMMIT="$(curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github.sha" \
+              "https://api.github.com/repos/vladm3105/aidoc-flow-ci/commits/${CANON_TAG}" 2>/dev/null || true)"
+            [ -n "$TAG_COMMIT" ] || { echo "::error::autofix: could not peel canon tag ${CANON_TAG} to verify the pinned SHA — infrastructure error, not a code failure."; exit 1; }
+            [ "$TAG_COMMIT" = "$CANON_SHA" ] || { echo "::error::autofix: pinned SHA ${CANON_SHA} is NOT the commit of tag ${CANON_TAG} (tag → ${TAG_COMMIT}). The pin's '# ${CANON_TAG}' comment is misleading; refusing to fetch fixer assets from an unverified commit (FT-28). infrastructure error, not a code failure."; exit 1; }
+          fi
+          echo "::notice::autofix: adopted canon pin vladm3105/aidoc-flow-ci@${CANON_TAG} — fetching at ${FETCH_REF}$([ -n "$CANON_SHA" ] && echo ' (SHA verified against tag)')"
 
           # owner/repo hardcoded — never caller-derived (FT-15 D2).
           mkdir -p fixer-assets
