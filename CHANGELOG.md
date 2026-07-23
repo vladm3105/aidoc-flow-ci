@@ -5,6 +5,31 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — the pre-commit refresh now reports a kept-but-changed canon hook (PLAN-019 FT-44)
+
+- The pseudo-repo (`local`) merge filtered canon hooks by `id` only, so a canon
+  `local` hook whose **id the consumer has but whose body changed** (a customized
+  `aidoc-flow-pre-push`) was silently kept — no collision recorded, and the summary
+  printed the clean "canon block appended". That contradicted the merge's own
+  promise that a kept canon change is REPORTED, so an operator never learned canon
+  shipped a hook update their config still overrides.
+- The merge now detects a present-but-not-identical canon `local` hook, emits a
+  distinct `WARN` naming it, and routes it through a new `SKIPPED_HOOKS=` signal to
+  the **partial-merge NOTE** path (not the clean summary) — the same honesty the
+  URL-collision path already had. Additions-only behaviour is unchanged (the
+  consumer's hook is still preserved, never clobbered).
+- The change-detection uses `not (a == b)`, **not** `a != b`: ruamel's
+  `CommentedMap` (the preferred backend) overrides `__eq__` order-insensitively but
+  inherits an order-sensitive `__ne__`, so `!=` would false-flag a key-reordered but
+  content-identical hook as changed (a spurious WARN on healthy configs). A
+  reordered-key test covers it (red under `!=`).
+- Also fixes a latent `set -euo pipefail` abort the new signal surfaced: the summary
+  block's `grep -oE '^COLLISIONS='` failed the pipeline when only one of the two
+  signals was present; both greps are now `|| true`-guarded with `${:-0}` fallbacks.
+- `test_precommit_refresh.sh` (18 → 24): a modified-body hook must emit the WARN +
+  NOTE; a byte-identical AND a key-reordered canon hook must emit neither; disabling
+  the detection, or reverting to `!=`, goes red.
+
 ### Security — a label/draft event can no longer supersede a RED `ai-review` while unarmed (PLAN-019 FT-43)
 
 - `ai-review.yml`'s `trust` and `ai-review` jobs skipped (job-level `if:`) on any

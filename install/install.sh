@@ -849,6 +849,7 @@ consumer['default_install_hook_types'] = consumer_hooks
 PSEUDO_REPOS = ('local', 'meta')
 consumer_repos = consumer.setdefault('repos', [])
 collisions = []
+skipped_hooks = []  # FT-44: canon local hooks the consumer has by id but with a changed body
 try:
     if not isinstance(consumer_repos, list):
         raise TypeError(f"'repos' must be a list, got {type(consumer_repos).__name__}")
@@ -868,13 +869,41 @@ try:
             # canon's, so canon's copy got appended alongside it. Filtering by id
             # keeps B2's guarantee (a consumer missing the hook still gets it)
             # without duplicating one they already carry.
-            have_ids = {h.get('id') for r in consumer_repos if isinstance(r, dict)
-                        for h in (r.get('hooks') or []) if isinstance(h, dict)}
+            # Map the consumer's local hook id -> its dict (local hooks live in
+            # pseudo-repo entries), so we can tell "missing" from "present but
+            # changed". setdefault keeps the FIRST occurrence, matching how
+            # pre-commit resolves a duplicated id.
+            consumer_hooks_by_id = {}
+            for r in consumer_repos:
+                if isinstance(r, dict) and r.get('repo') in PSEUDO_REPOS:
+                    for h in (r.get('hooks') or []):
+                        if isinstance(h, dict) and h.get('id'):
+                            consumer_hooks_by_id.setdefault(h['id'], h)
+            have_ids = set(consumer_hooks_by_id)
             missing_hooks = [h for h in (canon_repo.get('hooks') or [])
                              if isinstance(h, dict) and h.get('id') not in have_ids]
             if missing_hooks:
                 blk = dict(canon_repo); blk['hooks'] = missing_hooks
                 consumer_repos.append(blk)
+            # FT-44: a canon local hook whose id the consumer HAS but whose body
+            # DIFFERS is intentionally NOT clobbered (the refresh is additions-only,
+            # preserving a customized wrapper), but it must be REPORTED — else the
+            # summary prints a clean "canon block appended" and the operator never
+            # learns canon shipped a changed hook their config still overrides.
+            # Most-likely future case: a bumped `aidoc-flow-pre-push`.
+            for h in (canon_repo.get('hooks') or []):
+                if not (isinstance(h, dict) and h.get('id') in have_ids):
+                    continue
+                # Use `not (a == b)`, NOT `a != b`: ruamel's CommentedMap (the
+                # preferred backend) overrides `__eq__` order-INsensitively but
+                # inherits an order-SENSITIVE `__ne__` from OrderedDict, so `!=`
+                # would falsely flag a key-reordered but content-identical hook as
+                # changed — a spurious WARN on healthy configs.
+                if not (h == consumer_hooks_by_id.get(h.get('id'))):
+                    skipped_hooks.append(
+                        f"  WARN  .pre-commit-config.yaml keeps your {h.get('id')!r} hook "
+                        f"(in {url!r}) — canon ships a MODIFIED version; your copy is preserved "
+                        f"(additions-only), so canon's change stays UNAPPLIED until merged by hand.")
             continue
         if url not in existing_by_url:
             consumer_repos.append(canon_repo)
@@ -900,10 +929,15 @@ except Exception as e:
 
 for line in collisions:
     print(line, file=sys.stderr)
+for line in skipped_hooks:
+    print(line, file=sys.stderr)
 # Machine-readable for the shell, so the summary line cannot claim a clean
-# append when a collision suppressed part of the canon block.
+# append when a collision suppressed part of the canon block, or when a canon
+# local hook was kept-but-changed (FT-44).
 if collisions:
     print(f"COLLISIONS={len(collisions)}")
+if skipped_hooks:
+    print(f"SKIPPED_HOOKS={len(skipped_hooks)}")
 
 # Dump to a buffer first so the consumer's OWN copy of the marker can be dropped.
 # ruamel round-trips the leading comment, so without this a refreshed config
@@ -928,9 +962,13 @@ PYEOF
     # appended (the consumer's entry was kept). Saying "canon block appended"
     # in that case reports success for work that did not happen — and the WARN
     # explaining it goes to stderr, which an operator reading stdout may miss.
-    if grep -q '^COLLISIONS=' "$MERGE_OUT"; then
-      _ncol="$(grep -oE '^COLLISIONS=[0-9]+' "$MERGE_OUT" | cut -d= -f2)"
-      echo "  merge     .pre-commit-config.yaml (PARTIAL — ${_ncol} repo collision(s); your entries kept, see WARN above; default_install_hook_types upgraded if needed; ${yaml_lib}-backed)"
+    if grep -qE '^(COLLISIONS|SKIPPED_HOOKS)=' "$MERGE_OUT"; then
+      # `|| true`: under `set -euo pipefail` a non-matching grep would fail the
+      # pipeline (only ONE of the two signals may be present) and abort before the
+      # summary prints. Empty → the ${:-0} fallbacks below render it 0.
+      _ncol="$(grep -oE '^COLLISIONS=[0-9]+' "$MERGE_OUT" | cut -d= -f2 || true)"
+      _nskip="$(grep -oE '^SKIPPED_HOOKS=[0-9]+' "$MERGE_OUT" | cut -d= -f2 || true)"
+      echo "  merge     .pre-commit-config.yaml (PARTIAL — ${_ncol:-0} repo collision(s), ${_nskip:-0} modified-hook skip(s); your entries kept, see WARN above; default_install_hook_types upgraded if needed; ${yaml_lib}-backed)"
       # The marker is stamped even on a PARTIAL merge — it has to be, or every
       # later run would re-merge, re-WARN and never converge. The cost is that
       # the file then LOOKS current while the collided canon lines are still
