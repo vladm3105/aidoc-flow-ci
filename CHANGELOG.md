@@ -5,6 +5,22 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — `skip-ai-review` no longer opens a zero-review merge window (PLAN-018 FT-29, Workstream B)
+
+- `composition` is INERT (passes green) until `vars.APP_REVIEWER_1_BOT_ID` is set,
+  and the branch-protection templates pair `call / composition` with
+  `required_approving_review_count: 0`. During partial provisioning (App secrets
+  set, bot-id var pending) the `skip-ai-review` label made `ai-review` conclude
+  SUCCESS while INERT `composition` also concluded SUCCESS — **both required
+  checks green, zero review, zero approvals.**
+- The `ai-review` skip-notice step's `label` branch now **fails closed** when
+  `vars.APP_REVIEWER_1_BOT_ID` is unset: `skip-ai-review` carries a prior approval
+  forward, but only `composition` can have counted one, and it is inert until the
+  App is armed — so the skip is a fiction. `call / ai-review` goes red instead of
+  green, closing the window regardless of how branch protection was armed. The R3
+  and review-event skips are unaffected (they only fire when the App has approved
+  at HEAD). `test_contract.sh` guards it.
+
 ### Fixed — `ai-review` now verifies a SHA-form pin against its claimed tag (PLAN-018 FT-28, Workstream B)
 
 - Post-FT-15 the resolver accepts a `@<40-hex> # ci/vX.Y.Z` pin and fetched

@@ -1039,9 +1039,24 @@ jobs:
           GH_REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           SKIP_REASON: ${{ env.SKIP_REASON }}
+          # FT-29: composition's arm state. skip-ai-review carries a PRIOR approval
+          # forward, but only `composition` (the identity gate) can have counted one,
+          # and it is INERT until this var is set.
+          COMPOSITION_BOT_ID: ${{ vars.APP_REVIEWER_1_BOT_ID }}
         run: |
           case "${SKIP_REASON:-}" in
             label)
+              # FT-29: if composition is INERT (COMPOSITION_BOT_ID unset — reviewer
+              # App not armed), no approval was ever counted, so "carry the prior
+              # approval forward" is a fiction. skip-ai-review + inert composition
+              # = both required checks green with ZERO review and zero approvals.
+              # Fail closed: the skip is only safe once the gate that counts
+              # approvals is armed. (R3 / review-event skips are unaffected — they
+              # only fire when the App HAS approved at HEAD, i.e. armed.)
+              if [ -z "${COMPOSITION_BOT_ID:-}" ]; then
+                echo "::error::ai-review: 'skip-ai-review' cannot carry an approval forward while composition is INERT (vars.APP_REVIEWER_1_BOT_ID is unset — the reviewer App is not armed, so no approval was ever counted). Passing the skip here would merge with ZERO review (FT-29). Arm APP_REVIEWER_1_BOT_ID + the App secrets BEFORE using skip-ai-review, or remove the label for a full review."
+                exit 1
+              fi
               echo "::notice::ai-review SKIPPED — 'skip-ai-review' label present. Prior approval carried forward; the reviewer was not re-run (only other checks were being iterated). Remove the label to force a fresh review."
               gh pr comment "$PR" --body "### AI review — ⏭️ skipped (carried forward)
               The \`skip-ai-review\` label is set, so the reviewer was **not re-run** on this push (prior approval carried forward — intended for iterating on *other* checks without changing reviewed code). Remove the label to force a fresh review." >/dev/null 2>&1 || true
