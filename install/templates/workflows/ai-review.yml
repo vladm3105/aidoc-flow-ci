@@ -25,7 +25,10 @@
 name: ai-review
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    # FT-43: ready_for_review + converted_to_draft so a draft→ready transition
+    # triggers a real review (and a ready→draft is seen by the fail-closed guard),
+    # rather than a code-changed-while-draft PR going straight to merge un-reviewed.
+    types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review, converted_to_draft]
   pull_request_review:
     types: [submitted]
 

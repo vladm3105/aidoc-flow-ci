@@ -5,6 +5,37 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Security — a label/draft event can no longer supersede a RED `ai-review` while unarmed (PLAN-019 FT-43)
+
+- `ai-review.yml`'s `trust` and `ai-review` jobs skipped (job-level `if:`) on any
+  `labeled`/`unlabeled` event that wasn't `skip-ai-review`, and on drafts. A
+  **skipped required job reports green**, so a label applied after a
+  `request_changes` flipped `call / ai-review` green — superseding the RED. On an
+  **armed** repo `composition` independently holds the RED, so this was
+  defence-in-depth loss; on a **not-yet-armed** adopter (composition INERT) it was
+  a real both-checks-green bypass.
+- The naive fix (relocate to a step-level skip that concludes SUCCESS) does **not**
+  work: a fresh SUCCESS at the same HEAD *supersedes* a standing `request_changes`.
+  The fix instead **fails closed when unarmed**, mirroring the FT-29 model:
+  - The job-level `if:` on both jobs gains an unarmed clause
+    (`vars.APP_REVIEWER_1_BOT_ID == ''`): an **armed** repo still clean-skips a
+    would-skip event (composition holds the gate — unchanged behaviour), but an
+    **unarmed** repo RUNS the job so a new first step (`FT43-FAIL-CLOSED`, extracted
+    and driven by the tests) `exit 1`s — never emitting a green a label/draft event
+    could use to supersede a prior `request_changes`.
+  - `concurrency.cancel-in-progress` now excludes `labeled`/`unlabeled` events, so
+    the gate's own `ai:review-*` label writes can't cancel an in-flight review.
+  - The caller template adds `ready_for_review` + `converted_to_draft` triggers so a
+    draft→ready transition triggers a real review instead of merging un-reviewed.
+- `test_contract.sh` (275 → 283): parses the template trigger set, asserts the
+  concurrency exclusion + the unarmed clause on both jobs, and **drives** the
+  shipped guard (armed → rc 0, unarmed → rc 1). Four mutations each go red.
+- **Adopter note (by design):** on a **not-yet-armed** repo that requires
+  `call / ai-review`, any human label/unlabel or draft toggle now flips the check
+  RED (fail-closed) until a code push forces a fresh review — the error names the
+  remedy (arm `APP_REVIEWER_1_BOT_ID` + the App secrets). The armed fleet is
+  unaffected (behaviour byte-identical to before).
+
 ### Changed — `ai-review` least-privilege secrets (PLAN-019 FT-42, G1 tag-cut blocker)
 
 - The `ai-review` reusable's `workflow_call` declared **`inputs:` only, no

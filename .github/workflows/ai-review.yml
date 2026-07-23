@@ -96,7 +96,10 @@ permissions: {}
 
 concurrency:
   group: ai-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  # FT-43: a label/unlabel event must NOT cancel an in-flight genuine review (the
+  # gate's own `ai:review-*` label writes fire label events). Only code-changing
+  # events supersede a running review.
+  cancel-in-progress: ${{ github.event.action != 'labeled' && github.event.action != 'unlabeled' }}
 
 jobs:
   # ── Job 1: author-trust decision on DISPOSABLE infra ────────────────────────────
@@ -115,7 +118,16 @@ jobs:
   trust:
     # Run on normal events; on a label event run ONLY when it's `skip-ai-review` (so the gate's own
     # ai:review-* label writes don't re-trigger a wasteful round).
-    if: ${{ github.event.pull_request.draft == false && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'skip-ai-review') }}
+    # FT-43: when the reviewer App is UNARMED (`vars.APP_REVIEWER_1_BOT_ID` unset), run on a
+    # would-skip event (other label / draft) too — an armed repo may safely job-skip such an event
+    # to green because `composition` independently holds any standing `request_changes`, but an
+    # unarmed repo has no such gate, so a skipped-job green would SUPERSEDE a prior `request_changes`
+    # at this HEAD. Running lets the ai-review job's FT-43 guard fail closed instead.
+    if: >-
+      ${{ vars.APP_REVIEWER_1_BOT_ID == ''
+          || (github.event.pull_request.draft == false
+              && ((github.event.action != 'labeled' && github.event.action != 'unlabeled')
+                  || github.event.label.name == 'skip-ai-review')) }}
     runs-on: ${{ fromJSON(inputs.runner_labels_routine) }}
     timeout-minutes: 10
     permissions:
@@ -251,7 +263,16 @@ jobs:
   # fork PRs never reach this job, so nothing PR-triggered executes on our host for them.
   ai-review:
     needs: trust
-    if: ${{ needs.trust.outputs.ai_review_ok == 'true' && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'skip-ai-review') }}
+    # FT-43: keep the trust precondition as a HARD requirement (an untrusted author never runs the
+    # review job), but within it, mirror the trust job's unarmed clause: when the App is unarmed,
+    # run on a would-skip label/draft event so the FT-43 guard (first step) can fail closed rather
+    # than let a skipped-job green supersede a prior `request_changes`. Armed repos still job-skip
+    # such events (composition holds the gate).
+    if: >-
+      ${{ needs.trust.outputs.ai_review_ok == 'true'
+          && (vars.APP_REVIEWER_1_BOT_ID == ''
+              || ((github.event.action != 'labeled' && github.event.action != 'unlabeled')
+                  || github.event.label.name == 'skip-ai-review')) }}
     runs-on: ${{ fromJSON(inputs.runner_labels_review) }}
     timeout-minutes: 45
     permissions:
@@ -284,6 +305,35 @@ jobs:
       # only for the label case to avoid spamming label-cycles).
       SKIP_REASON: ${{ contains(github.event.pull_request.labels.*.name, 'skip-ai-review') && 'label' || '' }}
     steps:
+      # FT-43: this job only reaches a would-skip event (a draft, or a label/unlabel
+      # event that is NOT `skip-ai-review`) when the reviewer App is UNARMED — an
+      # armed repo job-SKIPS such events (the job-level `if:` above), letting
+      # `composition` independently hold any standing `request_changes`. Reaching
+      # here on such an event therefore means `vars.APP_REVIEWER_1_BOT_ID` is unset
+      # → `composition` is INERT → concluding a fresh SUCCESS would SUPERSEDE a prior
+      # `request_changes` at this HEAD with ZERO enforced review (branch protection
+      # keeps the latest run for a required context). Fail closed, mirroring the
+      # FT-29 model — never emit a green a label/draft event could use to bypass.
+      - name: FT-43 fail-closed (no superseding green on a label/draft event while unarmed)
+        if: ${{ (github.event.pull_request.draft == true) || ((github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'skip-ai-review') }}
+        env:
+          COMPOSITION_BOT_ID: ${{ vars.APP_REVIEWER_1_BOT_ID }}
+          EVENT_ACTION: ${{ github.event.action }}
+        run: |
+          set -uo pipefail
+          # >>> FT43-FAIL-CLOSED >>> (extracted + DRIVEN by tests/test_contract.sh with
+          # COMPOSITION_BOT_ID set/unset — keep these markers; the test runs THIS block,
+          # not a copy. Armed → exit 0 (defensive; composition holds); unarmed → exit 1.)
+          if [ -n "${COMPOSITION_BOT_ID:-}" ]; then
+            # Defensive: an armed repo should have job-skipped this event, so this is
+            # unreachable when armed. If somehow reached, composition holds the gate —
+            # do NOT fail; let the normal flow proceed.
+            echo "::notice::FT-43 guard: reviewer App armed (vars.APP_REVIEWER_1_BOT_ID set) — composition holds the gate; proceeding."
+            exit 0
+          fi
+          echo "::error::ai-review: a '${EVENT_ACTION:-label/draft}' event cannot conclude this required check while the reviewer App is UNARMED (vars.APP_REVIEWER_1_BOT_ID unset → composition INERT). Concluding SUCCESS here would supersede a prior 'request_changes' at this HEAD with zero enforced review (FT-43). Arm APP_REVIEWER_1_BOT_ID + the App secrets, or push a code change for a full review."
+          exit 1
+          # <<< FT43-FAIL-CLOSED <<<
       # IPLAN-0027 R3 early-exit (ci/v1.3.0+): skip the heavy reviewer CLI when the reviewer App has
       # ALREADY APPROVED the current HEAD SHA. Saves ~$0.10-0.20 + ~2-3 min per redundant re-fire
       # (typical case: label-cycle-retriggered ai-review after the verdict was already counted at
