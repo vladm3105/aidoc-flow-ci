@@ -507,6 +507,9 @@ jobs:
           # SHA IS the commit the claimed tag points to, so a misleading
           # `# ci/vX.Y.Z` cannot execute code the tag does not point at. owner/repo
           # hardcoded, never caller-derived (FT-15 D2).
+          # >>> FT28-PEEL-VERIFY >>> (extracted + DRIVEN by tests/test_resolver.sh
+          # with curl stubbed — keep these markers; the test runs THIS block, not a
+          # re-implemented copy. FT-40: a `if false;` mutation here must go red.)
           if [ -n "$CANON_SHA" ] && [ -n "$CANON_TAG" ]; then
             TAG_COMMIT="$(curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
               -H "Authorization: Bearer ${GITHUB_TOKEN}" \
@@ -515,6 +518,7 @@ jobs:
             [ -n "$TAG_COMMIT" ] || { echo "::error::ai-review: could not peel canon tag ${CANON_TAG} to verify the pinned SHA — INFRASTRUCTURE error, NOT a verdict. Re-run."; exit 1; }
             [ "$TAG_COMMIT" = "$CANON_SHA" ] || { echo "::error::ai-review: pinned SHA ${CANON_SHA} is NOT the commit of tag ${CANON_TAG} (tag → ${TAG_COMMIT}). The pin's '# ${CANON_TAG}' comment is misleading; refusing to fetch review assets from an unverified commit (FT-28). INFRASTRUCTURE error, NOT a verdict."; exit 1; }
           fi
+          # <<< FT28-PEEL-VERIFY <<<
           echo "::notice::ai-review: adopted canon pin vladm3105/aidoc-flow-ci@${CANON_TAG} — fetching at ${FETCH_REF}$([ -n "$CANON_SHA" ] && echo ' (SHA verified against tag)')"
 
           # Fetch rubric + schema from aidoc-flow-ci (PUBLIC; raw works unauth).
@@ -1303,6 +1307,9 @@ jobs:
           # FT-28: verify a SHA-form pin's SHA IS the commit of its claimed tag,
           # so a misleading `# ci/vX.Y.Z` cannot make autofix fetch (and execute)
           # never-merged code. Same check as the review resolver above.
+          # >>> FT28-PEEL-VERIFY >>> (extracted + DRIVEN by tests/test_resolver.sh
+          # with curl stubbed — keep these markers; the test runs THIS block, not a
+          # re-implemented copy. FT-40: a `if false;` mutation here must go red.)
           if [ -n "$CANON_SHA" ] && [ -n "$CANON_TAG" ]; then
             TAG_COMMIT="$(curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
               -H "Authorization: Bearer ${GITHUB_TOKEN}" \
@@ -1311,6 +1318,7 @@ jobs:
             [ -n "$TAG_COMMIT" ] || { echo "::error::autofix: could not peel canon tag ${CANON_TAG} to verify the pinned SHA — infrastructure error, not a code failure."; exit 1; }
             [ "$TAG_COMMIT" = "$CANON_SHA" ] || { echo "::error::autofix: pinned SHA ${CANON_SHA} is NOT the commit of tag ${CANON_TAG} (tag → ${TAG_COMMIT}). The pin's '# ${CANON_TAG}' comment is misleading; refusing to fetch fixer assets from an unverified commit (FT-28). infrastructure error, not a code failure."; exit 1; }
           fi
+          # <<< FT28-PEEL-VERIFY <<<
           echo "::notice::autofix: adopted canon pin vladm3105/aidoc-flow-ci@${CANON_TAG} — fetching at ${FETCH_REF}$([ -n "$CANON_SHA" ] && echo ' (SHA verified against tag)')"
 
           # owner/repo hardcoded — never caller-derived (FT-15 D2).

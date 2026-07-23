@@ -8,6 +8,26 @@ when resolved.
 
 ## Open
 
+### FT-40 — the FT-28 SHA-peel guard is untested; shipped code can be disabled with the suite green
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G1 tag-cut blocker).
+**Surface:** `.github/workflows/ai-review.yml` (both resolvers' FT-28 SHA/tag peel
+comparison); `tests/test_resolver.sh` `verify()` (a re-implementation, not the
+shipped block) + grep-presence assertions.
+**Effect:** verified by mutation — `if false;` on both resolvers' `if [ -n
+"$CANON_SHA" ] && [ -n "$CANON_TAG" ]` guard left `test_resolver.sh` at 62/0. The
+FT-28 gate (a `@<fork-sha> # ci/vX.Y.Z` pin cannot fetch/execute never-merged
+canon code) could be disabled and shipped to the fleet undetected, because canon
+has no self-caller that runs `ai-review` (FT-23).
+**Fix:** wrap each resolver's peel comparison in extractable
+`# >>> FT28-PEEL-VERIFY >>>` markers (comment-only, no behaviour change); drive
+BOTH shipped blocks from `test_resolver.sh` with `curl` stubbed — assert a
+matching SHA is accepted, a mismatch and an empty peel rejected, a tag-only pin
+skips the peel. Delete the `verify()` re-implementation. `if false;` (either
+resolver) and neutering the equality check now go red.
+**RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream A / G1):** see CHANGELOG
+`## Unreleased`.
+
 ### FT-39 — `fetch_template` writes whatever the transport returns; `--update` infers non-interactive from a missing TTY
 
 **Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G1 tag-cut blocker).

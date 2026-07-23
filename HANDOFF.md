@@ -6,6 +6,17 @@ context compaction.
 
 ## Current state (2026-07-23)
 
+- **G1 (PLAN-019 Workstream A) IN PROGRESS — implementing the 4 tag-cut blockers,
+  each its own PR with OPS-0065 pre-push dispatch.** Done: **FT-39** (install.sh
+  fetch validation + `--update` no-TTY consent — PR #269 MERGED, squash `1066d2b`;
+  OPS-0065 cycle-1 folded a MAJOR `<!--` false-reject of `pull_request_template.md`
+  plus a docs count fix, cycle-2 re-review CONFIRMED); **FT-40** (FT-28 SHA-peel guard
+  now driven not re-implemented — `resolver` 62→70, `if false;` mutation goes red —
+  PR open). NEXT within G1: **FT-41** (markdown-lint blocking-default assertion),
+  **FT-42** (`ai-review` `secrets:` explicit-map). The **G1-merge-SHA** that the §6
+  Part-A dry-run pins `CI_TAG` to is not known until all four land; do NOT cut
+  `ci/v2.12.0` before G2. Umbrella/HANDOFF NEXT bullet below is superseded by this
+  line until G1 completes.
 - **PRE-PROD REVIEW of the `ci/v2.11.0..main` candidate → BLOCKER; PLAN-019
   authored + READY to close it. DO NOT cut `ci/v2.12.0` yet.** A 5-lens
   `ci-preprod-review` (security / correctness / docs / portability / governance)
