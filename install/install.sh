@@ -278,6 +278,41 @@ cd "$WORK_DIR/consumer"
 # already has, so it must NOT litter empty dirs into the clone.
 [ "$MODE_UPDATE" = 1 ] || [ "$MODE_REPIN" = 1 ] || mkdir -p .github/workflows .github/ai-review
 
+# >>> FETCH-VALIDATE >>>  (extracted verbatim by tests/test_install.sh — keep
+# these markers; the test drives THIS code rather than a copy of it.)
+# FT-39: `curl -f` rejects a 4xx/5xx, but a proxy, CDN, or captive portal can
+# answer a request with a 200 whose body is EMPTY or an HTML error page. Writing
+# that over a canon gate template silently 0-bytes a required check; for the
+# pre-commit fragment it makes marker_version() read 1 and freezes every legacy
+# consumer's FT-32 refresh (fails open). Every fetched body is validated once,
+# here, before it is trusted. An optional 3rd arg names an extended-regex the
+# body MUST match (used for the versioned pre-commit marker).
+validate_fetched() { # $1 = fetched file  $2 = source name (for messages)  [$3 = required ERE]
+  local _f="$1" _src="$2" _need="${3:-}"
+  if [ ! -s "$_f" ]; then
+    echo "  FAIL  fetched ${_src} is empty (a 0-byte 200 body) — refusing (FT-39)" >&2
+    return 1
+  fi
+  # An HTML error page served 200 (a proxy/CDN/captive-portal splash) opens with
+  # an HTML-document tag (`<!DOCTYPE html>`, `<html …>`). Match THAT — not a bare
+  # `<`: a canon markdown template can legitimately open with an HTML comment
+  # (`pull_request_template.md` starts `<!--`), so a bare-`<` reject would false-
+  # fire on it. Inspect only a bounded prefix (whitespace/NUL stripped, lowered)
+  # so a pathological large 200 body is never slurped whole into memory.
+  local _head
+  _head="$(head -c 512 "$_f" 2>/dev/null | tr -d '[:space:]\000' | tr '[:upper:]' '[:lower:]')" || true
+  case "$_head" in
+    '<!doctype'*|'<html'*|'<head'*|'<body'*|'<title'*)
+      echo "  FAIL  fetched ${_src} opens with an HTML-document tag (an error page served 200?) — refusing (FT-39)" >&2
+      return 1 ;;
+  esac
+  if [ -n "$_need" ] && ! grep -qE "$_need" "$_f"; then
+    echo "  FAIL  fetched ${_src} is missing its required marker — refusing (FT-39; an empty/wrong body here silently freezes legacy-consumer refresh, FT-32)" >&2
+    return 1
+  fi
+}
+# <<< FETCH-VALIDATE <<<
+
 fetch_template() {
   # $1 = source path under install/templates/; $2 = destination path
   local src="$1" dst="$2"
@@ -285,6 +320,8 @@ fetch_template() {
     echo "  FAIL  failed to fetch ${TEMPLATE_BASE}/${src}" >&2
     return 1
   fi
+  # FT-39: reject an empty/HTML 200 body before it is written over a gate.
+  validate_fetched "$dst" "$src" || return 1
 }
 
 substitute_placeholders() {
@@ -381,6 +418,10 @@ PYEOF
       echo "  WARN  failed to fetch ${ctmpl} — skipping $cpath" >&2
       rm -f "$fetched"; continue
     fi
+    # FT-39: an empty/HTML 200 body must never diff-and-replace a good local
+    # file (a safe_to_replace surface under --non-interactive would be
+    # overwritten with the error page). validate_fetched logs the reason; skip.
+    validate_fetched "$fetched" "$ctmpl" || { rm -f "$fetched"; continue; }
     # Substitute uniformly: a template with no declared placeholders is a
     # no-op (and still passes the fail-closed assertion). This makes the
     # diff show what would ACTUALLY land (post-substitution content).
@@ -393,9 +434,17 @@ PYEOF
     # Label the canon side with the template name (not the mktemp path) so the
     # printed diff / audit log names which canon file the drift is against.
     diff -u --label "$cpath" --label "canon:$ctmpl" "$cpath" "$fetched" 2>/dev/null | sed 's/^/    /' | head -60 || true
-    if [ "$NONINTERACTIVE" = 1 ] || [ ! -t 0 ]; then
-      [ "$NONINTERACTIVE" != 1 ] && echo "  (no TTY — treating as --non-interactive)"
+    if [ "$NONINTERACTIVE" = 1 ]; then
+      # Explicit opt-in to the destructive auto-replace of safe_to_replace files.
       if [ "$csafe" = 1 ]; then action="r"; else action="k"; fi
+    elif [ ! -t 0 ]; then
+      # FT-39: a missing TTY is NOT consent to replace. Inferring
+      # --non-interactive from `[ ! -t 0 ]` meant a piped run (`bash <(curl …)
+      # --update`) silently overwrote every customized safe_to_replace caller
+      # with the canon body. With no TTY and no explicit --non-interactive we
+      # cannot prompt, so default to KEEP and tell the operator how to opt in.
+      echo "  (no TTY and no --non-interactive — keeping local; re-run with --non-interactive to auto-replace safe_to_replace surfaces)"
+      action="k"
     else
       printf "  [k]eep local / [r]eplace with canon / [d]iff-only (keep)? "
       read -r action || action="k"
@@ -668,6 +717,13 @@ fi
 PRECOMMIT_TMP=$(mktemp)
 fetch_template "pre-commit-hook-block.yaml" "$PRECOMMIT_TMP" || { rm -f "$PRECOMMIT_TMP"; exit 1; }
 CANON_MARK_RE='# CANON: aidoc-flow-ci pre_push_check'
+# FT-39: the fragment's entire refresh logic hinges on a versioned marker.
+# fetch_template already rejected an empty/HTML body, but a truncated or pre-v2
+# fragment would pass that and then make marker_version() read 1 → every legacy
+# consumer's refresh silently freezes (FT-32 fails open). Assert the versioned
+# marker is present before the file is trusted for the version compare.
+validate_fetched "$PRECOMMIT_TMP" "pre-commit-hook-block.yaml" "^${CANON_MARK_RE} v[0-9]+" \
+  || { rm -f "$PRECOMMIT_TMP"; exit 1; }
 # Marker-version parse, anchored at BOTH ends. Line-start, so an unrelated
 # consumer comment that merely mentions `pre_push_check v1` is not read as THEIR
 # marker (that would trigger a spurious re-merge on an already-current repo);

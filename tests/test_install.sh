@@ -341,4 +341,76 @@ else
   _r "reusable's default branch no longer runs bare — Part 4's premise changed"
 fi
 
+# ---------------------------------------------------------------------------
+# Part 5 — fetch body validation (FT-39). `curl -f` rejects a 4xx/5xx, but a
+# proxy/CDN can answer 200 with an empty or HTML body; writing that over a canon
+# gate template silently 0-bytes a required check, and for the pre-commit
+# fragment it makes marker_version() read 1 → the whole legacy fleet's refresh
+# freezes (FT-32 fails open). The validator is EXTRACTED from install.sh and
+# DRIVEN here, never re-implemented: a mutation removing the `-s`/HTML-tag/marker
+# checks must turn this red (the FT-40 lesson — a re-implemented check is no
+# teeth at all).
+# ---------------------------------------------------------------------------
+echo ""
+echo "== fetch body validation rejects empty / HTML / marker-less bodies (FT-39) =="
+
+vstart="$(grep -c '^# >>> FETCH-VALIDATE >>>' "$INSTALL")"
+vend="$(grep -c '^# <<< FETCH-VALIDATE <<<' "$INSTALL")"
+assert_eq "$vstart" "1" "exactly one FETCH-VALIDATE start marker"
+assert_eq "$vend" "1" "exactly one FETCH-VALIDATE end marker"
+
+VS="$(grep -n '^# >>> FETCH-VALIDATE >>>' "$INSTALL" | cut -d: -f1)"
+VE="$(grep -n '^# <<< FETCH-VALIDATE <<<' "$INSTALL" | cut -d: -f1)"
+assert_ok "[ '${VS:-0}' -lt '${VE:-0}' ]" "FETCH-VALIDATE start marker precedes end marker"
+sed -n "${VS},${VE}p" "$INSTALL" > "$TMP/validate.sh"
+assert_ok "[ -s '$TMP/validate.sh' ]" "FETCH-VALIDATE block found in install.sh"
+assert_ok "grep -q 'validate_fetched()' '$TMP/validate.sh'" "block defines validate_fetched"
+
+# Source the extracted block and drive the shipped function against crafted
+# bodies. Run in a subshell so the sourced definition does not leak, with
+# `set +e` so a non-zero return is captured, not fatal.
+(
+  set +e
+  # shellcheck disable=SC1090
+  . "$TMP/validate.sh"
+  : > "$TMP/f_empty"
+  printf '<!DOCTYPE html>\n<html><body>404</body></html>\n' > "$TMP/f_html"
+  printf '   \n\t<html>error</html>\n'                       > "$TMP/f_wsphtml"
+  printf 'repos:\n  - repo: local\n'                          > "$TMP/f_good"
+  printf '# CANON: aidoc-flow-ci pre_push_check v2\nrepos:\n' > "$TMP/f_frag"
+  # A canon markdown template can open with an HTML COMMENT (pull_request_template.md
+  # starts `<!--`). It must NOT be rejected as an HTML page (FT-39 review fold).
+  printf '<!-- Canonical PR template -->\n## Summary\n'        > "$TMP/f_mdcomment"
+  {
+    printf 'empty=%s\n'   "$(validate_fetched "$TMP/f_empty"   empty   2>/dev/null; echo $?)"
+    printf 'html=%s\n'    "$(validate_fetched "$TMP/f_html"    html    2>/dev/null; echo $?)"
+    printf 'wsphtml=%s\n' "$(validate_fetched "$TMP/f_wsphtml" wsphtml 2>/dev/null; echo $?)"
+    printf 'good=%s\n'    "$(validate_fetched "$TMP/f_good"    good    2>/dev/null; echo $?)"
+    printf 'mdcomment=%s\n' "$(validate_fetched "$TMP/f_mdcomment" mdcomment 2>/dev/null; echo $?)"
+    # 3rd arg = required marker. good body lacks it → reject; frag carries v2 → accept.
+    printf 'goodmark=%s\n' "$(validate_fetched "$TMP/f_good" good '^# CANON: aidoc-flow-ci pre_push_check v[0-9]+' 2>/dev/null; echo $?)"
+    printf 'fragmark=%s\n' "$(validate_fetched "$TMP/f_frag" frag '^# CANON: aidoc-flow-ci pre_push_check v[0-9]+' 2>/dev/null; echo $?)"
+  } > "$TMP/vres"
+)
+_res() { grep "^$1=" "$TMP/vres" | cut -d= -f2; }
+assert_eq "$(_res empty)"    "1" "empty body rejected (rc=1)"
+assert_eq "$(_res html)"     "1" "HTML body rejected (rc=1)"
+assert_eq "$(_res wsphtml)"  "1" "leading-whitespace HTML rejected (rc=1)"
+assert_eq "$(_res good)"     "0" "valid body accepted (rc=0)"
+assert_eq "$(_res mdcomment)" "0" "markdown body opening with '<!--' accepted, not HTML-rejected (rc=0)"
+assert_eq "$(_res goodmark)" "1" "marker-less body rejected when marker required (rc=1)"
+assert_eq "$(_res fragmark)" "0" "versioned-marker fragment accepted (rc=0)"
+
+# fetch_template must actually CALL the validator — otherwise the extracted-block
+# teeth above pass while the live fetch path is unguarded.
+assert_ok "grep -q 'validate_fetched \"\$dst\"' '$INSTALL'" \
+  "fetch_template invokes validate_fetched on its destination"
+# the pre-commit fragment fetch asserts the versioned marker (point 2).
+assert_ok "grep -q 'validate_fetched \"\$PRECOMMIT_TMP\"' '$INSTALL'" \
+  "pre-commit fragment fetch is marker-validated"
+
+# Point 3 — `--update` must not read a missing TTY as consent to replace.
+assert_ok "grep -q 'no TTY and no --non-interactive — keeping local' '$INSTALL'" \
+  "update: no-TTY-without-flag defaults to keep, not replace (FT-39)"
+
 suite_summary "test_install"

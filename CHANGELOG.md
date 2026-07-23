@@ -5,6 +5,36 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — `install.sh` fetch validation + `--update` no-TTY consent (PLAN-019 FT-39, G1 tag-cut blocker)
+
+- **`fetch_template` wrote whatever the transport returned.** `curl -f` rejects a
+  4xx/5xx, but a proxy, CDN, or captive portal can answer 200 with an **empty** or
+  **HTML** body — which was then written over a canon gate template, silently
+  0-byting a required check. A new `validate_fetched` helper (in extractable
+  `# >>> FETCH-VALIDATE >>>` markers) rejects an empty body or one that opens with
+  an HTML-document tag (`<!doctype`/`<html`/`<head`/`<body`/`<title`, matched on a
+  bounded whitespace-stripped prefix so a large body is never slurped whole, and
+  narrow enough not to false-fire on a markdown template opening with `<!--`);
+  every `fetch_template` call and the `--update` per-file fetch now validate once,
+  fail loud, and abort/skip rather than commit garbage.
+- **The pre-commit fragment's refresh could fail open (FT-32).** A truncated or
+  pre-`v2` fragment passed the empty/HTML check but made `marker_version()` read
+  `1`, silently freezing every legacy consumer's refresh. The fragment fetch now
+  asserts the versioned `^# CANON: aidoc-flow-ci pre_push_check v[0-9]+` marker
+  before the file is trusted for the version compare.
+- **`--update` inferred consent to replace from a missing TTY.** `[ ! -t 0 ]` was
+  read as `--non-interactive`, so a piped run (`bash <(curl …) --update`) silently
+  overwrote every customized `safe_to_replace` caller with the canon body. A
+  missing TTY now defaults to **keep-local**; the destructive auto-replace
+  requires an explicit `--non-interactive`.
+- `tests/test_install.sh` gains Part 5 (15 assertions): the validator is extracted
+  from `install.sh` and driven against empty / HTML / leading-whitespace-HTML /
+  `<!--`-markdown / marker-less bodies; three separate mutations (removing the
+  empty/HTML checks, removing the marker check, reverting the no-TTY default) each
+  turn the suite red.
+  `tests/test_precommit_refresh.sh` stubs `validate_fetched` (defined outside the
+  PRECOMMIT-MERGE markers) to keep isolating the version-compare decision.
+
 ### Docs — body-adoption reconciliation + the drift report as the rollout worklist (PLAN-018 Workstream D items 2-3)
 
 - `docs/UPDATE_GUIDE.md` gains **"Body adoption vs re-pin"**. `--repin` and
