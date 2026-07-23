@@ -12,8 +12,10 @@ context compaction.
   OPS-0065 cycle-1 folded a MAJOR `<!--` false-reject of `pull_request_template.md`
   plus a docs count fix, cycle-2 re-review CONFIRMED); **FT-40** (FT-28 SHA-peel guard
   now driven not re-implemented — `resolver` 62→70, `if false;` mutation goes red —
-  PR open). NEXT within G1: **FT-41** (markdown-lint blocking-default assertion),
-  **FT-42** (`ai-review` `secrets:` explicit-map). The **G1-merge-SHA** that the §6
+  PR #270 MERGED, squash `6bab677`); **FT-41** (markdown-lint blocking-default now
+  asserted — `contract` 271→272, default-flip goes red — PR open). NEXT within G1:
+  **FT-42** (`ai-review` `secrets:` explicit-map — the last G1 blocker). The
+  **G1-merge-SHA** that the §6
   Part-A dry-run pins `CI_TAG` to is not known until all four land; do NOT cut
   `ci/v2.12.0` before G2. Umbrella/HANDOFF NEXT bullet below is superseded by this
   line until G1 completes.

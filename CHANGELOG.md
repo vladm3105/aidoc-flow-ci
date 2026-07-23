@@ -5,6 +5,18 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Testing — `markdown-lint`'s blocking default is now asserted (PLAN-019 FT-41, G1 tag-cut blocker)
+
+- The three report-only scanners (dep-scan / trivy / sast) assert their *callers*
+  ship `fail-on-findings: false`, but the **inverse** invariant — the
+  `markdown-lint` reusable blocks by **default** (`fail-on-findings` input
+  `default: true`) — was unasserted. Flipping that default to `false` left
+  `tests/test_contract.sh` at 271/0, so canon could silently turn every consumer's
+  markdown gate report-only with the suite green.
+- `test_contract.sh` now parses the reusable's `fail-on-findings` input default
+  (via `yaml.safe_load`, handling PyYAML's bare-`on:`→`True` key) and asserts it is
+  `True`. A flip to `false` goes red (`contract` 271 → 272 assertions).
+
 ### Testing — the FT-28 SHA-peel guard is now driven, not re-implemented (PLAN-019 FT-40, G1 tag-cut blocker)
 
 - The FT-28 guard (both `ai-review.yml` resolvers verify a SHA-form pin's SHA IS
