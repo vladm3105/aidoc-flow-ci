@@ -8,6 +8,23 @@ when resolved.
 
 ## Open
 
+### FT-45 — `required-context-map.py` discards the job-id half of the context
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G3 ship-with-tag).
+**Surface:** `install/required-context-map.py` — `_jobid, name = ctx.split(" / ", 1)`
+dropped `_jobid`, validating only `<name>`.
+**Effect:** a context `<jobid> / <name>` with the right name but a wrong job key
+(e.g. `call / check-standards-drift` when the caller job is `drift`) validated as
+"producer installed", but is never emitted → arming it hangs every PR (the F2
+class this tool generalizes). Latent: no shipped branch-protection template had a
+wrong key, but the validator accepted one.
+**Fix:** parse each caller template's `jobs:`, record which job KEYS call each
+reusable (`reusable_to_jobkeys`); a context resolves only when its `<jobid>` is a
+caller job that actually calls the reusable. `test_required_contexts.sh` 21→23;
+dropping the check goes red; all 15 shipped `call /` contexts still resolve.
+**RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream B / G3):** see CHANGELOG
+`## Unreleased`.
+
 ### FT-44 — FT-32 silently under-delivers a *modified* hook
 
 **Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G3 ship-with-tag).
