@@ -6,6 +6,17 @@ context compaction.
 
 ## Current state (2026-07-22)
 
+- **PLAN-018 Workstream C STARTED — PR C1 (exerciser inventory) OPEN.** Post-`ci/v2.11.0`,
+  Workstream C is the verification surface that makes the fixes stay fixed.
+  Founder descope (2026-07-22): `aidoc-flow-ci` is a **library**, so the
+  ai-review/doc-maintainer self-callers (which need a self-hosted pool) are OUT —
+  `test_resolver.sh` covers the resolver offline. C1 ships
+  `docs/EXERCISER_INVENTORY.md` + `test_exerciser_inventory.sh` (every manifest
+  surface / reusable / script must have a row; unexercised rows must name an FT).
+  Remaining C PRs: C2 zero-hook detector (FT-31), C3 required-context validator
+  (FT-18), C4 pre-commit + markdown self-callers (FT-36/FT-34), C5
+  `scripts/release.sh` (FT-21). Then Workstream B.
+
 - **`ci/v2.11.0` SHIPPED (2026-07-22) — PLAN-018 Workstream A.** Tag on
   `4984c35`, release published + marked Latest. The 🔴 founder FT-30 cold-start
   dry-run passed GREEN on BOTH visibilities against throwaway repos, pinned to

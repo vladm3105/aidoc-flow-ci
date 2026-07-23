@@ -1025,8 +1025,21 @@ verified on that consumer.
 
 ### FT-23 — canon does not self-adopt `docs-sync`/`doc-maintainer`, so canon changes to them cannot self-verify
 
-**Status:** OPEN — surfaced by PLAN-017.
+**Status:** PARTIALLY RESOLVED / SCOPED-DOWN — surfaced by PLAN-017.
 **Found:** 2026-07-21, PLAN-017 verification planning.
+
+**SCOPE DECISION (founder, 2026-07-22):** `aidoc-flow-ci` is a **library**;
+running `ai-review`/`doc-maintainer`/`composition` on itself would require
+registering a `ci-runner,single-use` self-hosted pool + the reviewer App +
+LiteLLM secrets purely to dogfood — cost a library repo does not warrant. Those
+three self-callers are therefore **descoped**, not deferred. The regression risk
+that mattered — the pin **resolver** (FT-15) — is carried offline by
+`test_resolver.sh` (55 assertions), and the whole exercised/unexercised set is
+now recorded in `docs/EXERCISER_INVENTORY.md` with that reason. `docs-sync` +
+`secret-scan` + `standards-drift` + `audit-trail-check` already self-run; the two
+remaining GENUINE gaps that do NOT need the pool — `pre-commit` (FT-36) and
+`markdown-lint` (FT-34) — land in Workstream C / PR C4. What remains of FT-23
+after this is those two, plus the inventory that keeps the set honest.
 
 `aidoc-flow-ci` ships `ai-review`, `doc-maintainer`, and `docs-sync` as
 `workflow_call` reusables and has **no self-caller** for any of them (the only
