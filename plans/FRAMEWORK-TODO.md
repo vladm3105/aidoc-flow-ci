@@ -8,6 +8,22 @@ when resolved.
 
 ## Open
 
+### FT-41 — `markdown-lint`'s blocking default is unasserted
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G1 tag-cut blocker).
+**Surface:** `.github/workflows/markdown-lint.yml:63` (`fail-on-findings` input
+`default: true`); `tests/test_contract.sh` had no assertion on it.
+**Effect:** verified by mutation — `default: true → false` left
+`test_contract.sh` at 271/0. The three report-only scanners assert their callers
+ship `fail-on-findings: false`, but the inverse (markdown-lint blocks by default)
+was uncovered, so canon could flip the fleet's markdown gate to report-only with
+the suite green.
+**Fix:** `test_contract.sh` parses the reusable's `fail-on-findings` input default
+(`yaml.safe_load`, handling PyYAML's bare-`on:`→`True`) and asserts it is `True`;
+a flip to `false` goes red (`contract` 271 → 272).
+**RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream A / G1):** see CHANGELOG
+`## Unreleased`.
+
 ### FT-40 — the FT-28 SHA-peel guard is untested; shipped code can be disabled with the suite green
 
 **Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G1 tag-cut blocker).

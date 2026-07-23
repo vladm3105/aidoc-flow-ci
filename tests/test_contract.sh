@@ -122,6 +122,22 @@ for workflow in .github/workflows/tests.yml .github/workflows/links.yml .github/
 done
 assert_absent "$(cat .github/workflows/tests.yml)" '$HOME/.local/bin/actionlint' "actionlint install does not assume a user-local directory exists"
 assert_absent "$(cat install/templates/workflows/markdown-lint.yml)" $'    # with:\n    #   runner_labels:' "markdown-lint template does not suggest a duplicate with block"
+# FT-41: markdown-lint's fail-on-findings input defaults to TRUE (blocking gate).
+# The three report-only scanners (dep-scan/trivy/sast) assert their CALLERS ship
+# `fail-on-findings: false`; the inverse invariant — the markdown-lint REUSABLE
+# blocks by DEFAULT — was unasserted, so flipping its default to false would
+# silently turn every consumer's markdown gate report-only with the suite green.
+# Parse the input default (a bare `grep 'default: true'` would match any input).
+mdl_default="$(python3 - .github/workflows/markdown-lint.yml <<'PYEOF'
+import yaml, sys
+d = yaml.safe_load(open(sys.argv[1]))
+on = d.get(True, d.get("on", {}))   # PyYAML parses bare `on:` as boolean True
+wc = on.get("workflow_call", {}) if isinstance(on, dict) else {}
+inp = (wc.get("inputs") or {}).get("fail-on-findings", {})
+print(repr(inp.get("default")))
+PYEOF
+)"
+assert_eq "$mdl_default" "True" "markdown-lint fail-on-findings input defaults to True (blocking gate; FT-41 — a flip to false must go red)"
 assert_absent "$(grep 'git commit' .github/workflows/doc-maintainer.yml)" '[skip ci]' "doc-maintainer bot commits do not suppress normal CI"
 assert_ok "grep -q 'actions/upload-artifact@.*# v4.6.2' .github/workflows/doc-maintainer.yml" "doc-maintainer preserves dry-run patches as an artifact"
 assert_ok "jq -e '.auto_merge.high_risk_paths | index(\"**/DECISIONS.md\") and index(\"**/ROADMAP.md\") and index(\"**/HANDOFF.md\")' install/templates/doc-maintainer.json >/dev/null" "nested governance documents are high-risk by default"
