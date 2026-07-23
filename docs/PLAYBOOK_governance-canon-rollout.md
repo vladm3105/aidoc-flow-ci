@@ -15,7 +15,7 @@ a duplicate — always defer to §T-D for the load-bearing per-wave scope.
 - **PR-V1** (this repo, 2026-07-08) — 5 canon templates in
   `install/templates/` + `docs/REPO_STANDARDS.md` §16 + Wave 0
   self-adoption (this repo's `CLAUDE.md` + `HANDOFF.md` + `DECISIONS.md`
-  + `ROADMAP.md` created from templates).
+  - `ROADMAP.md` created from templates).
 - **PR-V2** (this repo, 2026-07-08) — `install/parse-governance-table.py`
   parser implementing §4.5 contract + `governance_check` in
   `install/apply-standards.sh` (fires in `--check` / `--dry-run` /

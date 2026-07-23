@@ -32,10 +32,10 @@ place, per PLAN-018 contract item 7.
 
 ## Reusable workflows (16)
 
-Canon ships 16 `workflow_call` reusables. It self-runs **4** of them today
-(`audit-trail-check`, `docs-sync`, `secret-scan`, `pre-commit` — a canon workflow
-carries a non-comment `uses:` at that reusable, so a regression fails canon's own
-checks);
+Canon ships 16 `workflow_call` reusables. It self-runs **5** of them today
+(`audit-trail-check`, `docs-sync`, `secret-scan`, `pre-commit`, `markdown-lint` —
+a canon workflow carries a non-comment `uses:` at that reusable, so a regression
+fails canon's own checks);
 the rest are covered offline or descoped. (The table also lists the
 `audit-trail.yml` *caller* template — a consumer surface, not a 17th reusable.)
 
@@ -47,7 +47,7 @@ the rest are covered offline or descoped. (The table also lists the
 | `.github/workflows/secret-scan.yml` | `self-secret-scan.yml` self-caller | self-caller |
 | `.github/workflows/standards-drift.yml` | `test_resolver.sh` (pin resolver). `standards-drift-self.yml` runs `sync/check-standards-drift.sh` **directly**, NOT this reusable — the reusable's fetch/resolver wrapper is exercised only offline (its own header notes canon "does not exercise this fetch path") | offline-test |
 | `.github/workflows/pre-commit.yml` | `self-pre-commit.yml` self-caller (runs the reusable on canon's own config every PR); `test_install.sh` Part 4 (fragment selects a stage-matching hook); merge covered by `test_precommit_merge.sh` | self-caller + offline-test |
-| `.github/workflows/markdown-lint.yml` | — | **unexercised** — **FT-34** (self-caller + `.markdownlint.json` land in PR C4) |
+| `.github/workflows/markdown-lint.yml` | `self-markdown-lint.yml` self-caller (blocking; runs canon's root `.markdownlint.json` on every PR) | self-caller |
 | `.github/workflows/ai-review.yml` | `test_resolver.sh` (resolver — the FT-15 surface), `test_checknames.sh`, `test_contract.sh` | descoped (library repo, founder 2026-07-22; live self-run needs LiteLLM + reviewer App + self-hosted pool this library does not warrant) + offline-test |
 | `.github/workflows/composition.yml` | `test_checknames.sh`, `test_contract.sh` | descoped (library; live self-run needs the reviewer App identity) + offline-test |
 | `.github/workflows/doc-maintainer.yml` | `test_resolver.sh` (resolver) | descoped (library; needs LiteLLM + App) + offline-test |
@@ -83,7 +83,7 @@ installer/update path plus the offline tests that drive it.
 | `.github/dependabot.yml` | `apply-standards.sh` subset-check (`test_scripts.sh`) | offline-test |
 | `.github/CODEOWNERS` | `install.sh` substitution (`test_install.sh`); `apply-standards.sh` | offline-test |
 | `.github/pull_request_template.md` | `--update` walk | offline-test |
-| `.markdownlint.json` | consumer surface; canon does not yet carry its own (**FT-34**) | **unexercised** — FT-34 |
+| `.markdownlint.json` | canon carries its own root copy (= shipped template); `self-markdown-lint.yml` enforces it | self-caller |
 | `.yamllint.yaml` | `install.sh` bootstrap; canon's own `.yamllint.yaml` drives `test_lint.sh` yamllint | self-caller + offline-test |
 | `.lychee.toml` | `links.yml` config; consumer-populated | descoped — consumer-customized |
 | `install/templates/pre-commit-hook-block.yaml` | `test_install.sh` Part 4 (stage-matching hook) + `test_precommit_merge.sh` (URL-keyed merge, pseudo-repo exemption, fail-closed) | offline-test — MERGED into the consumer file, not a 1:1 `manifest.json` surface |
@@ -120,7 +120,7 @@ Not a workflow or script, but shipped to every adopter and therefore in scope fo
 | Gap | Surface | Closes in |
 | --- | --- | --- |
 | ~~No `pre-commit` self-caller~~ | `pre-commit.yml` | **FT-36 CLOSED (PR C4)** — `self-pre-commit.yml` |
-| No `markdown-lint` self-caller + no canon `.markdownlint.json` | `markdown-lint.yml`, `.markdownlint.json` | FT-34 → PR C4 |
+| ~~No `markdown-lint` self-caller~~ | `markdown-lint.yml`, `.markdownlint.json` | **FT-34 CLOSED (PR C4b)** — `self-markdown-lint.yml` + root `.markdownlint.json` |
 | No automated rev bump | `pre-commit-hooks` rev | FT-35 |
 | ~~No zero-hook detector~~ | `pre-commit` config vacuity | **FT-31 CLOSED (PR C2)** — `install/check-precommit-hooks.sh`, operator-side |
 | ~~No required-context ↔ producer validator~~ | branch-protection contexts | **FT-18 CLOSED (PR C3)** — `install/required-context-map.py` + wizard preflight §6 |

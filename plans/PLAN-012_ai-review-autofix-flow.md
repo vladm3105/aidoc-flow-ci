@@ -190,7 +190,7 @@ any repo visibility:
 - **New reusable `.github/workflows/autofix.yml`** — a third job conceptually
   downstream of `trust` → `ai-review`. Two viable structures (design fork D-1,
   §5): (a) a **new job inside `ai-review.yml`** keyed on the verdict + `auto_fix_ok`
-  + tier; or (b) a **standalone `autofix.yml` reusable** the consumer wires as a
+  - tier; or (b) a **standalone `autofix.yml` reusable** the consumer wires as a
   second caller, triggered on the verdict artifact / a label. Recommendation: (a)
   — same-run, reads the verdict from a run-scoped artifact, no cross-workflow
   handoff — matching `IPLAN-0014`'s same-run architecture. (b) is simpler to gate
@@ -307,7 +307,8 @@ concrete typed sub-schema.
 `ai:autofix-applied` exists (Claim 8) but is **not** inherited design (Claim 15).
 Decision (D-3, §5): either (a) define it — the fixer step applies it when it
 pushes a fix commit, for auditability; or (b) drop it and rely on the bot commit
-+ escalation comment. Recommendation: **(a)** — a visible signal that a bot
+
+- escalation comment. Recommendation: **(a)** — a visible signal that a bot
 touched the PR is worth the one label write; wire it mutually-exclusive with an
 `ai:autofix-escalated` state at the cap.
 
@@ -489,7 +490,7 @@ against operations, not fabricated. **6 load-bearing findings, folded:**
 
 - **F1 (HIGH)** — the plan never surfaced that the fixer must check out the
   untrusted PR head (the one point the gate stops being diff-only). → Added §4.0
-  + Claim 21 (IPLAN-0013:100).
+  - Claim 21 (IPLAN-0013:100).
 - **F2 (HIGH)** — D-2 was mis-scoped as decision-free; D-2b (agent CLI on
   untrusted PR code) is a founder-load-bearing dependency reversal. → Pinned D-2a
   as a hard §8 constraint; §5/§7 updated; new founder fork §8.3.

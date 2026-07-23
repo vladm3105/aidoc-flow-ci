@@ -10,7 +10,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development
 > or superpowers:executing-plans. Steps use `- [ ]` checkboxes.
-
+>
 > **rev-2 re-baseline (2026-07-10):** A three-agent from-scratch review (security /
 > correctness / architecture) ran against the shipped source. Result: SHIP-WITH-FIXES.
 > This revision (a) marks **PR-B SHIPPED** (the B2 `startup_failure` fix landed as
@@ -113,7 +113,7 @@ no longer edits `auto-merge-ai-prs.yml`, so there is no PR-A∩PR-E overlap.)
   config fails the enforcer's schema check (`auto-merge-ai-prs.yml:195-199`) and disables
   it fail-closed; (iii) it contradicts the two-canonical-repo trust model (REPO_STANDARDS
   §0/§17). PR-E's valid remainder is surfacing the existing override in the onboarding doc
-  + the public-path verification/EXPERIMENTAL disposition.
+  - the public-path verification/EXPERIMENTAL disposition.
 - **D7 — governance-config knobs are inert; either wire them or annotate.** (NEW in rev 2.)
   No workflow reads `governance.locked_paths`, `governance.require_human_review`,
   `governance.code_owners`, `auto_merge.spec_paths_blocked`, `auto_merge.enabled`,
@@ -161,6 +161,7 @@ no longer edits `auto-merge-ai-prs.yml`, so there is no PR-A∩PR-E overlap.)
 ### Task PR-A: Enforcer governance floor + HEAD-relative carry-forward (B1 + D2)
 
 **Files:**
+
 - Modify: `.github/workflows/auto-merge-ai-prs.yml` (add a `GOV_LOCKED` floor before the
   re-arm; gate the `skip-ai-review` branch on it; rework the carry-forward approval check
   per D2; KEEP + correct the residual note)
@@ -168,6 +169,7 @@ no longer edits `auto-merge-ai-prs.yml`, so there is no PR-A∩PR-E overlap.)
   `skip-ai-review` carry-forward exit; add the D2 HEAD-relative check to the carry-forward)
 
 **Interfaces:**
+
 - Consumes: the reviewer-App identity (`vars.APP_REVIEWER_1_BOT_ID`) + reviews API already
   used at `auto-merge-ai-prs.yml:315`.
 - Produces: "a gov-locked PR is never auto-merged under any label combination, and
@@ -224,9 +226,11 @@ untouched. Security-verified diff-only-safe. Consumers propagate via `@ci/v1.7.1
 ### Task PR-C: Tag-existence guard (preventive — B3 break already resolved)
 
 **Files:**
+
 - Modify: `scripts/sync-version-refs.sh` (add a REMOTE tag-existence assertion to `--check`)
 
 **Interfaces:**
+
 - Produces: a shipped template pin always resolves to a *published* tag.
 
 - [ ] **Step 1 — (context, not a red repro).** B3's immediate break is RESOLVED:
@@ -253,11 +257,13 @@ untouched. Security-verified diff-only-safe. Consumers propagate via `@ci/v1.7.1
 ### Task PR-D: Reviewer-engine ↔ token reconciliation (HIGH — real, still present)
 
 **Files:**
+
 - Modify: `docs/REVIEWER_APP_ONBOARDING.md` (engine-token step)
 - Modify: `install/templates/workflows/ai-review-public.yml` + `ai-review-private.yml`
   (header note tying `reviewer:` to its key; only if the chosen default changes)
 
 **Interfaces:**
+
 - Produces: an adopter cannot arm a reviewer engine whose key they didn't set.
 
 - [ ] **Step 1 — the mismatch (verified present).** Onboarding lists/sets
@@ -277,12 +283,14 @@ untouched. Security-verified diff-only-safe. Consumers propagate via `@ci/v1.7.1
 ### Task PR-E: External-adopter onboarding + public-path disposition (HIGH — reduced)
 
 **Files:**
+
 - Modify: `docs/REVIEWER_APP_ONBOARDING.md` (surface the EXISTING `trust_config_repo`
   override for external adopters — no default change)
 - Modify: `install/templates/workflows/ai-review-public.yml` (public-runner reviewer path
   caveat)
 
 **Interfaces:**
+
 - Produces: a documented, working external-adopter path — without decentralizing trust.
 
 - [ ] **Step 1 — the real gap (post-D6).** The `trust_config_repo` override already exists
@@ -308,6 +316,7 @@ untouched. Security-verified diff-only-safe. Consumers propagate via `@ci/v1.7.1
 ### Task PR-F: Bootstrap/auto-merge guard + trust-policy log + governance-knobs (MED + D7)
 
 **Files:**
+
 - Modify: `install/apply-standards.sh` (guard)
 - Modify: `DECISIONS.md` (CI-NNNN for the trust boundary)
 - Modify: `install/templates/config.json.template` + `docs/REPO_STANDARDS.md` (D7:
@@ -338,6 +347,7 @@ untouched. Security-verified diff-only-safe. Consumers propagate via `@ci/v1.7.1
 ### Task PR-G: Cold-start docs + `composition ?ref=main` (MED)
 
 **Files:**
+
 - Modify: `docs/REVIEWER_APP_ONBOARDING.md` (repo-settings prerequisites — LAYER onto, do
   not duplicate, PLAN-004's version; PR-D also edits this file → coordinate)
 - Modify: `.github/workflows/composition.yml` (parameterize the config ref)
@@ -390,7 +400,7 @@ re-point any drift.
 | 5 | The reviewer input is pinned to codex in the private caller | `reviewer: codex` | install/templates/workflows/ai-review-private.yml:36 |
 | 6 | The public caller header maps OPENAI_API_KEY to reviewer codex | `OPENAI_API_KEY                           if reviewer: codex` | install/templates/workflows/ai-review-public.yml:11 |
 | 7 | The ai-review floor step is itself gated off under skip-ai-review (D1 premise) | `if: env.SKIP_REVIEW` | .github/workflows/ai-review.yml:205 |
-| 8 | The ai-review gate has a fail-closed governance floor locking .github/** etc. | `grep -qE '(^|/)governance/|(^|/)\.github/|(^|/)templates/ai-review/'` | .github/workflows/ai-review.yml:462 |
+| 8 | The ai-review gate has a fail-closed governance floor locking .github/** etc. | `grep -qE '(^\|/)governance/\|(^\|/)\.github/\|(^\|/)templates/ai-review/'` | .github/workflows/ai-review.yml:462 |
 | 9 | The enforcer's skip-ai-review branch runs with no preceding GOV_LOCKED floor (D1 gap) | `index("skip-ai-review")` | .github/workflows/auto-merge-ai-prs.yml:302 |
 | 10 | composition carries forward (exit-passes) on the skip-ai-review label | `composition carried forward` | .github/workflows/composition.yml:122 |
 | 11 | composition's governance floor is AFTER the skip carry-forward exit | `GOVERNANCE FLOOR (same globs as the ai-review gate)` | .github/workflows/composition.yml:179 |

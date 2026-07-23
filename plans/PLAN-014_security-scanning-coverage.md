@@ -17,7 +17,8 @@ repos (the bonus). **No paid GHAS feature is ever proposed.**
 report-only: `dep-scan` (`ci/v2.4.0`), `trivy-scan` (`ci/v2.5.0`), `sast-scan`
 (`ci/v2.6.0`), + deterministic autofix **preview** (`ci/v2.7.0`, Phase 4 preview
 subset). Each shipped with a full OPS-0065 pre-push security review (4 HIGH + 2 MEDIUM
-+ 1 LOW folded across the four releases). **Remaining:** Phase 5 (graduate
+
+- 1 LOW folded across the four releases). **Remaining:** Phase 5 (graduate
 `fail-on-findings` false→true per scanner — a **founder step**) + the deferred Phase 4
 push-back subset (batched with the 🔴 PLAN-012 autofix-App enablement). Original
 approval: founder 2026-07-18 — **all three scanners in**, **report-only first but
@@ -54,7 +55,7 @@ cloned from `secret-scan.yml`.**
 **What's missing (the gaps):**
 
 - **SCA / dependency-vulnerability gate** — Dependabot gives *alerts* (out-of-band)
-  + update PRs (Claim 6), but nothing **blocks a PR that introduces a known-CVE
+  - update PRs (Claim 6), but nothing **blocks a PR that introduces a known-CVE
   dependency**. No `osv-scanner`/`pip-audit`/`dependency-review` in the pipeline
   (Claim 5).
 - **Filesystem / IaC / misconfig scanning** — no `trivy`-class scan (Claim 5).
@@ -326,7 +327,8 @@ Citations are `file:line` opened and read.
 ### Pass 0 — 2026-07-18 — author (self)
 
 Drafted from direct reads of `secret-scan.yml` (the binary-install + fail-on-findings
-+ SARIF-upload pattern the new scanners clone), `codeql.yml` (native SAST →
+
+- SARIF-upload pattern the new scanners clone), `codeql.yml` (native SAST →
 Code scanning), `dependabot.yml`, REPO_STANDARDS §3 (the GHAS/private N/A matrix that
 forces the own-scanner CI gate) + §4.3 (binary-not-third-party-action allowlist),
 and `apply-standards.sh`. The design reuses one proven canon shape per tool rather

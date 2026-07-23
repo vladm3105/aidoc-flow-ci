@@ -30,7 +30,7 @@ For the broader architecture, see
 | Rebase conflict on shared CHANGELOG.md | [§12 CHANGELOG rebase conflicts](#12-changelog-rebase-conflicts-on-stacked-prs) |
 | Reusable workflow `startup_failure` (no logs, empty jobs) | [§13 Actions allowlist blocks reusable](#13-startup_failure--reusable-workflow-blocked-by-consumers-actions-allowlist) |
 | Reusable workflow `startup_failure` after §13 fix | [§14 Caller workflow_permissions blocks reusable](#14-startup_failure--callers-workflow_permissions-read-blocks-reusables-write) |
-| Stuck check on latest commit (no new push to retrigger) | [§15 Label-cycle retrigger](#15-stuck-check--label-cycle-retrigger) |
+| Stuck check on latest commit (no new push to retrigger) | [§15 Label-cycle retrigger](#15-stuck-check--label-cycle-retrigger--r3-force-fresh-path-civ130) |
 
 ## 1. Composition pre-ai-review race
 

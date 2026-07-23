@@ -1,0 +1,39 @@
+# self-markdown-lint.yml — canon dogfoods the markdown-lint gate it ships (PLAN-018 FT-34).
+#
+# WHY A SEPARATE FILE: `.github/workflows/markdown-lint.yml` in this repo IS the
+# reusable (workflow_call); it needs a CALLER to run on canon's own PRs. Canon
+# shipped the markdown-lint gate + the `.markdownlint.json` config template but
+# never ran either on itself — the "no exerciser for canon's own output" root
+# cause behind F1. Canon now carries its own root `.markdownlint.json` (the same
+# config it ships, MD004 pinned to dash) and this runs the reusable against it.
+#
+# BLOCKING (fail-on-findings defaults to true): canon's docs were brought into
+# full conformance with that config in the same change, so this is a real gate,
+# not report-only. cli2 auto-resolves the root `.markdownlint.json`, so no config
+# input is needed.
+#
+# Public repo → ubuntu-latest. markdown-lint runs the PR's own .md files (a fork's
+# included), so it MUST stay ubuntu-latest — moving a fork-code lint flow to the
+# self-hosted pool is the untrusted-code leak (docs/security.md §3). Pinned to the
+# released tag; sync-version-refs.sh keeps the pin in step with VERSION.
+
+name: self-markdown-lint
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  call:
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v2.11.0
+    permissions:
+      contents: read

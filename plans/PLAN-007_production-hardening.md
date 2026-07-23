@@ -51,10 +51,11 @@ A regression (e.g. the composition permissions-block omission, or the `--repin`
 SHA-pin gap) ships silently until a consumer hits it.
 
 **Deliverables:**
+
 1. `tests/` harness runnable locally + in CI:
    - **Static:** `actionlint` + `yamllint` over every `.github/workflows/*.yml`
      and `install/templates/workflows/*.yml`; `shellcheck` over `install/*.sh`
-     + `sync/*.sh` + `scripts/*.sh`.
+     - `sync/*.sh` + `scripts/*.sh`.
    - **Workflow-contract tests:** assert each reusable declares
      `on: workflow_call`, a `permissions:` block, SHA-or-tag-pinned `uses:`
      only on the allowlist (`actions/*`, `github/*`, `vladm3105/aidoc-flow-ci/*`),
@@ -127,6 +128,7 @@ doc-maintainer recorded).
 labor-heavy item.
 
 **Progress (2026-07-12):**
+
 - **business — GRADUATED** (business #57): 0 residual violations under its own
   `.markdownlint.json`, so a clean `fail-on-findings: false→true` flip. Merged
   via `--admin` because business's branch protection still requires the phantom
@@ -199,7 +201,7 @@ pre-commit CI *caller* in this repo — only local hooks) green.
 
 ## Sequencing
 
-```
+```text
 W5 (quick green)  ─┐
 W1 (test suite)   ─┼─►  W2 (guardrails, FT-2 needed by W4)  ─►  W4 (arm gates)
                    │
@@ -240,14 +242,17 @@ W4 arms once gates verified green + names confirmed. W3 runs in parallel
 ## Review log
 
 ### Pass 1 — 2026-07-12 — author (self)
+
 Drafted the 5 workstreams (N-for-N with the readiness-review gaps) + a 13-row
 Claim ledger with `file:line` citations verified against source. Ran the
 verified-planning gate; fixed 5 non-`path:line` citations (absence/multi-file
 rows re-anchored to concrete symbols). No design change; citation-form only.
 
 ### Pass 2 — 2026-07-12 — independent (general-purpose, fresh context)
+
 Adversarial review against real source. Confirmed all 13 citations mechanically
 accurate; surfaced **4 load-bearing** findings, all folded:
+
 - **LB-1:** FT-9 was already RESOLVED (ci/v1.9.0 `--repin`); W2 double-counted
   it + proposed speculative `--i-understand-clobber` scope. → Dropped FT-9 from
   W2 (kept only the genuine residual: `--update` still overwrites
@@ -267,6 +272,7 @@ accurate; surfaced **4 load-bearing** findings, all folded:
 directive not a fact, no pre-commit CI *caller* on this repo) also folded.
 
 ### Pass 3 — 2026-07-12 — independent (general-purpose, fresh context)
+
 Confirmation pass on the folded plan. Verified all 4 LB folds correct against
 source (FT-9 resolved at FRAMEWORK-TODO:239; docs-sync stub at docs-sync.yml:167;
 FT-6 locus at composition.yml:189; FT-1 at FRAMEWORK-TODO:11). One residual

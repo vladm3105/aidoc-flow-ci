@@ -190,13 +190,13 @@ business/interlog pool registration.
 | 5 | supervisor model is one-shot per job; image updates need no service restart | `each container is one-shot` | scripts/ci-runner/README.md:50 |
 | 6 | OPS-0075 marks legacy persistent runners transitional, must-disable | `transitional rollback paths only and must` | ops/DECISIONS.md:2896 |
 | 7 | provisioning default hardcodes operations as target repo | `TARGET_REPO="${TARGET_REPO:-vladm3105/aidoc-flow-operations}"` | scripts/ci-runner/provision-runner.sh:14 |
-| 8 | install.sh already takes per-consumer visibility — the split lives at install time, not in canon | `--visibility public|private` | install/install.sh:17 |
+| 8 | install.sh already takes per-consumer visibility — the split lives at install time, not in canon | `--visibility public\|private` | install/install.sh:17 |
 | 9 | provisioning script defaults to the transitional hybrid labels OPS-0075 retires | `self-hosted,aidoc,ci-ephemeral,ci-runner,single-use` | scripts/ci-runner/provision-runner.sh:15 |
 | 10 | provisioning script embeds an operations-only legacy-disable migration step | `step_old_runner_disable` | scripts/ci-runner/provision-runner.sh:107 |
 | 11 | the completed 2026-07-13 runbook hard-codes the script paths — vendoring keeps them valid; it stays historical | `bash scripts/ci-runner/build-image.sh` | ops/inbox/2026-07-13_founder_flow-ci-v2-operations-cutover.md:52 |
 | 12 | runner docs route all runner work to operations in §7, beyond the three URLs | `Reference image build` | docs/runners.md:274 |
 | 13 | operations contract-lock hard-asserts the runner service file exists — deletion self-blocks PR 2 | `new runner service is missing` | scripts/check-ci-contract.sh:64 |
-| 14 | `run-ephemeral.sh` is invoked from the repo checkout (README run surface; the load-bearing instance is the deployed unit's ExecStart at ci-runner@.service:23, whose `@`-path the gate regex cannot cite) — deletion wedges the live pool | `scripts/ci-runner/run-ephemeral.sh` | scripts/ci-runner/README.md:59 |
+| 14 | `run-ephemeral.sh` is invoked from the repo checkout (README run surface; the load-bearing instance is the deployed unit's ExecStart at `ci-runner@.service`:23, whose `@`-path the gate regex cannot cite) — deletion wedges the live pool | `scripts/ci-runner/run-ephemeral.sh` | scripts/ci-runner/README.md:59 |
 | 15 | onboarding routes private-repo provisioning through the in-repo script | `scripts/ci-runner/provision-runner.sh` | docs/REPO_ONBOARDING.md:90 |
 | 16 | the LIVE fleet-cutover runbook raw-cps the unit — must move to the provision-runner flow with the placeholder | `cp scripts/ci-runner/ci-runner@.service` | ops/inbox/2026-07-14_founder_flow-ci-v2-fleet-cutover-prereqs.md:165 |
 | 17 | the network-monitor unit hardcodes the operations checkout path — excluded from the canon template set | `ExecStart=/opt/data/aidoc-flow/operations/scripts/ci-runner/network-monitor.sh` | scripts/ci-runner/ci-network-monitor.service:7 |

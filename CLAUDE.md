@@ -13,7 +13,8 @@ protection), canonical scripts (`pre_push_check.sh`, `apply-standards.sh`,
 `parse-governance-table.py`), governance-file templates
 (`CLAUDE.md.template`, `HANDOFF.md.template`, `DECISIONS.md.template`,
 `ROADMAP.md.template`, `plans-README.md.template`), the ai-review rubric
-+ verdict schema at `ai-review/`, and per-language + per-tier rulebooks
+
+- verdict schema at `ai-review/`, and per-language + per-tier rulebooks
 in `docs/REPO_STANDARDS.md`.
 
 Semver-tagged (`ci/vX.Y.Z`); consumers pin via `uses:
@@ -103,7 +104,7 @@ what it says + (b) the canonical file path to READ for the full rule.
   the diff-class-matched sub-agents in parallel.
   → `../operations/CLAUDE.md` — search `OPS-0065` (text landmark, lives
   under `## Autonomy tiers`)
-  + `../operations/.claude/agents/review-prompts/INDEX.md`.
+  - `../operations/.claude/agents/review-prompts/INDEX.md`.
 - **OPS-0066 3-cycle circuit-breaker** — cap review→fix→re-review loops
   at 3 cycles; escalate to founder if not converged.
   → `../operations/CLAUDE.md` — search `OPS-0066` (text landmark, lives
