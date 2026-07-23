@@ -6,6 +6,12 @@ context compaction.
 
 ## Current state (2026-07-22)
 
+- **PLAN-018 Workstream B / PR B5 (FT-25 adopter gaps ×4) OPEN.** Wizard scaffolds
+  the labeler config starter; preflight surveys all 18 labels + branches on
+  allowed_actions (no masked 409); verify short-circuits on the pre-merge adoption
+  PR; AI_CI_DEPLOYMENT names the -private variants. test_contract guards all four.
+  **Only FT-10 (runner-self docs) remains in Workstream B** — then B is complete.
+
 - **PLAN-018 Workstream B / PR B4 (FT-29 zero-review window) OPEN — closes the
   security cluster.** ai-review's skip-notice `label` branch now fails closed when
   `vars.APP_REVIEWER_1_BOT_ID` is unset (composition inert), so skip-ai-review +

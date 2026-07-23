@@ -367,7 +367,20 @@ in the caller header and in the wizard's `plan` output.
 ### FT-25 — adopter-facing gaps the cold-start review surfaced (grouped)
 
 **Found:** 2026-07-21, pre-prod review (correctness + docs lenses).
-**Status:** OPEN — four small, independent items.
+**Status:** CLOSED (PLAN-018 Workstream B / PR B5, 2026-07-23) — all four:
+(1) the wizard `scaffold` now drops the `.github/labeler.yml` starter when
+labeler is chosen (was installable by no path → labeler ran against a missing
+config); (2) `AI_CI_DEPLOYMENT.md` §step-2 now says to use the `-private` variant
+on private repos and names the FT-9 brick, instead of the single-template advice
+that predates the `-private` variants; (3) `preflight` §3 surveys ALL canon labels
+from `labels.json` (was 5-of-18), and §4 reads `/actions/permissions` and branches
+on `allowed_actions` — flagging `local_only` and `selected`-without-`github_owned_allowed`
+as 🔴 blocks (canon reusables use `actions/*`+`github/*`, which those states block),
+not a masked 409;
+(4) `verify` short-circuits when the caller is not yet on the default branch —
+the `pull_request_target`/`workflow_run` gates arm only after merge, so on the
+adoption PR that ADDS them they do not run, and the old poll burned 24×25s
+matching nothing. `test_contract.sh` guards all four.
 
 - **`labeler.yml` config is installable by no path.** It ships as
   `install/templates/labeler.yml` but `install.sh` never fetches it, the wizard's

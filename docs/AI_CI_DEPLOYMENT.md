@@ -223,9 +223,13 @@ before arming checks that would block every future PR.
 For each workflow, per PR:
 
 1. **Branch first** (never commit to `main` directly).
-2. Copy the caller from `install/templates/workflows/<name>-{public,private}.yml`
-   (or the single template for `pre-commit`/`markdown-lint`/`links`/`labeler`/
-   `doc-maintainer`) to `.github/workflows/<name>.yml`.
+2. Copy the caller to `.github/workflows/<name>.yml`. **On a private repo use the
+   `-private.yml` variant** — `pre-commit`/`markdown-lint`/`links`/`labeler`/
+   `secret-scan`/`standards-drift` each ship `install/templates/workflows/<name>-private.yml`
+   (the bare-name `<name>.yml` is the PUBLIC template — `ubuntu-latest`/no labels,
+   which queues forever on a private repo's self-hosted pool, the FT-9 brick).
+   Only `doc-maintainer` (and the PLAN-013-unified `ai-review`) is genuinely
+   single-template.
 3. **Pin the tag** to the current `ci/vX.Y.Z`; for a PRIVATE repo add
    `runner_labels: '["self-hosted", "ci-runner", "single-use"]'` under `with:`.
 4. Add the repo-specific config file(s) (§4).

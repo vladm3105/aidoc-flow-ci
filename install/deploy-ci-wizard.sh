@@ -87,15 +87,55 @@ preflight() {
   [ "$missing" = 1 ] && c_wn "ai-review/composition cannot work until the 🔴 secrets land."
 
   hdr "3. Canon labels"
+  # PLAN-018 FT-25: check ALL canonical labels, not a hardcoded 5-of-18. Read the
+  # names from the shipped labels.json so a new canon label is surveyed for free.
   local labs; labs="$($GH label list -R "$repo" --json name -q '.[].name' 2>/dev/null || echo '')"
-  for l in ai:review-passed ai:review-changes ai:human-review-required skip-ai-review skip-audit-trail; do
-    echo "$labs" | grep -qx "$l" && c_ok "label $l" || c_wn "label $l missing → 🟢 gh label create $l -R $repo (see §1.4)"
-  done
+  local canon_labels; canon_labels="$(python3 -c "import json;print('\n'.join(l['name'] for l in json.load(open('$HERE/templates/labels.json'))))" 2>/dev/null || echo '')"
+  if [ -z "$canon_labels" ]; then
+    c_wn "could not read canon labels.json — cannot survey labels"
+  else
+    local _lmiss=0 l
+    while IFS= read -r l; do
+      [ -n "$l" ] || continue
+      echo "$labs" | grep -qx "$l" || { c_wn "label $l missing → 🟢 gh label create $l -R $repo"; _lmiss=$((_lmiss+1)); }
+    done <<< "$canon_labels"
+    [ "$_lmiss" -eq 0 ] && c_ok "all $(printf '%s\n' "$canon_labels" | grep -c .) canonical labels present" \
+      || c_wn "$_lmiss of $(printf '%s\n' "$canon_labels" | grep -c .) canonical labels missing (install.sh creates all on bootstrap)"
+  fi
 
   hdr "4. Allowed-actions policy"
-  local pol; pol="$($GH api "repos/$repo/actions/permissions/selected-actions" --jq '.patterns_allowed|join(", ")' 2>/dev/null || echo 'unreadable/all-allowed')"
-  echo "  patterns_allowed: $pol"
-  echo "$pol" | grep -q 'aidoc-flow-ci' && c_ok "aidoc-flow-ci allowlisted" || c_wn "confirm aidoc-flow-ci/* is allowlisted (else reusables startup_failure)"
+  # PLAN-018 FT-25: read /actions/permissions FIRST and branch on allowed_actions.
+  # The selected-actions endpoint 409s when allowed_actions != "selected", and the
+  # old `|| echo unreadable/all-allowed` masked distinct states behind one string.
+  # NB canon reusables use actions/* + github/* internally, so "green" requires
+  # more than the aidoc-flow-ci reference being reachable: local_only and
+  # selected-without-github-owned both BLOCK those and startup_failure.
+  local aa; aa="$($GH api "repos/$repo/actions/permissions" --jq '.allowed_actions // "unreadable"' 2>/dev/null || echo 'unreadable')"
+  case "$aa" in
+    all)
+      c_ok "allowed_actions=all — every action allowed; aidoc-flow-ci reusables run" ;;
+    local_only)
+      # local_only allows only SAME-OWNER actions/reusables — the aidoc-flow-ci
+      # reference is reachable (shared owner), but it BLOCKS GitHub-authored actions
+      # (actions/checkout, actions/* , github/*) that the canon reusables use
+      # internally, so their jobs startup_failure. NOT a green state.
+      c_no "allowed_actions=local_only BLOCKS GitHub-authored actions (actions/checkout, actions/*, github/*) that canon reusables use internally → they startup_failure. Set allowed_actions=all, or =selected WITH github-owned enabled + aidoc-flow-ci/* allowlisted." ;;
+    selected)
+      # Need BOTH: aidoc-flow-ci/* allowlisted AND github_owned_allowed — the
+      # reusables depend on actions/* + github/*, so an allowlist without
+      # github-owned still startup_failures.
+      local sa; sa="$($GH api "repos/$repo/actions/permissions/selected-actions" 2>/dev/null || echo '{}')"
+      local pol goa
+      pol="$(printf '%s' "$sa" | jq -r '(.patterns_allowed // [])|join(", ")' 2>/dev/null || echo '')"
+      goa="$(printf '%s' "$sa" | jq -r '.github_owned_allowed' 2>/dev/null || echo '')"
+      echo "  allowed_actions=selected; github_owned_allowed=${goa:-?}; patterns_allowed: ${pol:-<none>}"
+      local _sok=1
+      echo "$pol" | grep -q 'aidoc-flow-ci' || { c_no "aidoc-flow-ci/* NOT in patterns_allowed → reusables startup_failure. Add 'vladm3105/aidoc-flow-ci/*'."; _sok=0; }
+      [ "$goa" = "true" ] || { c_no "github_owned_allowed=${goa:-?} → actions/checkout + github/* (used inside canon reusables) are BLOCKED → startup_failure. Enable GitHub-owned actions."; _sok=0; }
+      [ "$_sok" = 1 ] && c_ok "aidoc-flow-ci/* allowlisted AND GitHub-owned actions enabled" ;;
+    *)
+      c_wn "could not read actions/permissions (auth/scope?) — confirm allowed_actions=all, or =selected WITH github-owned enabled + aidoc-flow-ci/* allowlisted (local_only will startup_failure)" ;;
+  esac
 
   hdr "5. Already-deployed workflows"
   # Resolve the repo's DEFAULT BRANCH once — do not assume `main`. A repo on
@@ -298,12 +338,26 @@ PY
       c_ok "config .github/ai-review/config.json"
       ;;
   esac
+  # PLAN-018 FT-25: labeler's caller uses `configuration-path: .github/labeler.yml`,
+  # but that config was installable by NO path — the starter `labeler.yml` template
+  # was never copied, so a scaffolded labeler ran against a missing config. Drop the
+  # starter when labeler is scaffolded; the operator customizes it (see REVIEW note).
+  case " $wfs " in
+    *" labeler "*)
+      if [ -f "$TPL/labeler.yml" ]; then
+        mkdir -p "$dir/.github"; cp "$TPL/labeler.yml" "$dir/.github/labeler.yml"
+        c_ok "config .github/labeler.yml (starter — MUST be customized to THIS repo's paths→labels)"
+      else
+        c_wn "labeler scaffolded but no starter labeler.yml template — author .github/labeler.yml by hand"
+      fi
+      ;;
+  esac
   cat <<EOF
 
   ⚠️  REVIEW before committing (docs/AI_CI_DEPLOYMENT.md §4-§5):
    - .markdownlint.json — DELETE it if the repo already has one (don't clobber).
    - .lychee.toml — add repo-specific cross-repo/sibling + debt excludes.
-   - .github/labeler.yml — author it: map THIS repo's paths → THIS repo's labels.
+   - .github/labeler.yml — CUSTOMIZE the scaffolded starter: map THIS repo's paths → THIS repo's labels.
    - set APP_REVIEWER_1_BOT_ID var (=$BOT_ID) if unset; ensure 🔴 App+secrets before ai-review.
   Then: branch-first, one PR per workflow, CHANGELOG + OPS-0069 phrase, verify (§6).
 EOF
@@ -312,6 +366,27 @@ EOF
 verify() {
   local repo="$1" pr="$2"
   hdr "Verifying ai-review + composition on $repo #$pr"
+  # PLAN-018 FT-25: ai-review (pull_request_target) and composition/auto-merge
+  # (workflow_run) resolve their workflow definition from the DEFAULT BRANCH, so on
+  # the PR that first ADDS them they do not run at all — the poll below would burn
+  # its full 24×25s matching nothing. Adoption is a TWO-PR shape: PR-1 merges the
+  # callers to the default branch; the gates arm on PR-2 onward. `verify` is only
+  # meaningful once the callers are on the default branch.
+  # Distinguish a confirmed 404 (caller genuinely not on the default branch → the
+  # pull_request_target/workflow_run gates cannot run on the PR that ADDS them, so
+  # skip the empty poll) from a transient/auth read error (do NOT false-skip and
+  # claim "not deployed" when we simply couldn't read — warn and poll anyway).
+  local _cout _crc
+  # `if …; then` captures the rc without `set -e` aborting on a non-zero gh exit
+  # (404 on the adoption PR is expected, not fatal).
+  if _cout="$($GH api "repos/$repo/contents/.github/workflows/ai-review.yml" 2>&1)"; then _crc=0; else _crc=$?; fi
+  if [ "$_crc" -ne 0 ]; then
+    if printf '%s' "$_cout" | grep -qiE '404|not found'; then
+      c_wn "ai-review.yml is not on the default branch yet — its pull_request_target trigger arms only AFTER the caller is merged there. If #$pr is the PR that ADDS it, the gate will NOT run here (two-PR adoption: merge the callers first, then verify on the next PR). Skipping the poll."
+      return 0
+    fi
+    c_wn "could not read the default branch (auth/scope/network?) — cannot confirm the caller is deployed; polling anyway."
+  fi
   local air_done=0
   for i in $(seq 1 24); do
     local air comp
