@@ -12,6 +12,15 @@ each before proceeding to the next.
 - [ ] **`sync-version-refs.sh` clean:** no stale version references in docs or
   installer left behind. Run `bash scripts/sync-version-refs.sh` and verify
   zero diffs.
+- [ ] **Zero-hook detector on the shipped fragment (FT-31):** a config resolved
+  from the canon pre-commit fragment must select at least one hook at the
+  pre-commit stage, or the required `call / Lint / format / security hooks` check
+  ships vacuous (F3). Run:
+  `bash install/check-precommit-hooks.sh install/templates/pre-commit-hook-block.yaml`
+  — it must exit 0. (This is the operator-side detector; it also runs in
+  `install.sh` post-merge and in `deploy-ci-wizard.sh preflight`. It is
+  deliberately NOT on the `pre-commit` reusable's gating path — see
+  `docs/REPO_STANDARDS.md` §14.1a.)
 - [ ] **OPS-0065 review complete:** at least 2 review passes, at least 1
   independent (fresh-context subagent), ≤3 cycles per OPS-0066. Final pass
   must state zero load-bearing findings.

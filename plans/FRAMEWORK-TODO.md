@@ -184,8 +184,13 @@ corrected in the same PR.
 ### FT-31 — no mechanism to detect a required check that selected zero hooks
 
 **Found:** 2026-07-21, PLAN-018 Pass-1 review (deferred out of F3).
-**Status:** OPEN — deferred out of PLAN-018 F3 deliberately; needs a mechanism
-first.
+**Status:** CLOSED (PLAN-018 Workstream C / PR C2, 2026-07-22) —
+`install/check-precommit-hooks.sh` counts hooks at the stage the `pre-commit`
+reusable runs and exits 1 at zero. Runs **operator-side only** (install.sh
+post-merge, `deploy-ci-wizard.sh preflight`, the release-checklist pre-tag step)
+— never on the reusable's gating path, so it cannot flip a consumer's green
+required check red (the constraint that deferred it out of F3). Config-parsing,
+not the output-emptiness heuristic F3 rejected. Driven by `test_precommit_stage.sh`.
 
 The general form of FT-30's third defect: `pre-commit run --all-files` prints
 nothing and exits 0 when no hook matches the stage, and pre-commit exposes no
