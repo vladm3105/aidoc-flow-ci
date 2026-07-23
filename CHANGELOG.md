@@ -5,6 +5,23 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Testing — the FT-28 SHA-peel guard is now driven, not re-implemented (PLAN-019 FT-40, G1 tag-cut blocker)
+
+- The FT-28 guard (both `ai-review.yml` resolvers verify a SHA-form pin's SHA IS
+  the commit of its claimed tag, so a `@<fork-sha> # ci/vX.Y.Z` cannot fetch and
+  execute never-merged code) was **untested**: `tests/test_resolver.sh` re-
+  implemented the comparison in a local `verify()` and otherwise made grep-presence
+  assertions, so mutating the shipped guard to `if false;` in both resolvers left
+  the suite at 62/0 — the gate could be disabled undetected.
+- Both guards are now wrapped in extractable `# >>> FT28-PEEL-VERIFY >>>` markers
+  (comment-only — **no runtime behaviour change**) and driven from the test with
+  `curl` stubbed to return a chosen tag-commit SHA: a matching SHA is accepted, a
+  mismatched SHA and an unreachable tag (empty peel) are rejected, and a tag-only
+  pin skips the peel — for **each** resolver (review + autofix). The `verify()`
+  re-implementation is deleted.
+- Teeth confirmed: `if false;` in both guards, and neutering the SHA equality
+  check, each turn the suite red (`resolver` 62 → 70 assertions).
+
 ### Fixed — `install.sh` fetch validation + `--update` no-TTY consent (PLAN-019 FT-39, G1 tag-cut blocker)
 
 - **`fetch_template` wrote whatever the transport returned.** `curl -f` rejects a

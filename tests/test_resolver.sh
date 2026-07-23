@@ -147,15 +147,58 @@ assert_ok "grep -q 'commits/\${CANON_TAG}' '$AR'" "peel targets the claimed CANO
 assert_ok "grep -qE 'ai-review\\.yml@ci/v[0-9]' '$ROOT/install/templates/workflows/ai-review.yml'" \
   "shipped ai-review caller pins tag-only (peel inert for normal consumers)"
 
-# Behavioural teeth: the comparison logic rejects a mismatch and accepts a match.
-verify() { # $1=pinned_sha $2=tag_commit(stub) -> exit 0 accept / 1 reject
-  local CANON_SHA="$1" TAG_COMMIT="$2" CANON_TAG="ci/v9.9.9"
-  [ -n "$CANON_SHA" ] && [ -n "$CANON_TAG" ] || return 0
-  [ -n "$TAG_COMMIT" ] || return 1
-  [ "$TAG_COMMIT" = "$CANON_SHA" ] || return 1
+# Behavioural teeth — DRIVE THE SHIPPED BLOCK, not a copy (FT-40). The prior
+# version re-implemented the comparison in a local `verify()`, so mutating the
+# real `ai-review.yml` guard (`if false;` in either resolver) left the suite
+# green — the shipped code could be disabled undetected. Now both FT28-PEEL-VERIFY
+# blocks are extracted from the workflow and run for real with `curl` stubbed to
+# return a chosen tag-commit SHA; a mutation to the shipped comparison must go red.
+SHA_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+SHA_B="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+nblocks="$(grep -c '# >>> FT28-PEEL-VERIFY >>>' "$AR" || true)"
+assert_eq "$nblocks" "2" "both resolvers carry an extractable FT28-PEEL-VERIFY block"
+
+# Extract the Nth block's body (comment lines inside are harmless when run).
+extract_peel() { # $1 = 1-based block index -> stdout
+  awk -v want="$1" '
+    /# >>> FT28-PEEL-VERIFY >>>/ { n++; inb=(n==want)?1:0; next }
+    /# <<< FT28-PEEL-VERIFY <<</ { inb=0; next }
+    inb { print }
+  ' "$AR"
 }
-if verify "aaaa" "aaaa"; then _g "match accepted"; else _r "match accepted"; fi
-if verify "aaaa" "bbbb"; then _r "mismatch rejected"; else _g "mismatch rejected"; fi
-if verify "aaaa" "";     then _r "empty peel (unreachable tag) rejected"; else _g "empty peel rejected"; fi
+
+# Run a block with curl stubbed. Mirrors the GitHub Actions default shell
+# (`bash -eo pipefail`, NOT -u). $2 = pinned CANON_SHA; $3 = SHA the stubbed curl
+# returns for the tag peel ('' = unreachable tag). Returns the block's exit code.
+drive_peel() { # $1=block-body-file $2=CANON_SHA $3=stub-tag-commit -> rc
+  {
+    echo 'set -eo pipefail'
+    printf 'CANON_SHA=%s\n' "$2"
+    echo 'CANON_TAG=ci/v9.9.9'
+    echo 'GITHUB_TOKEN=stub-token'
+    echo "curl() { printf '%s' '$3'; }"
+    cat "$1"
+  } > "$FIX/drive.sh"
+  ( bash "$FIX/drive.sh" ) >/dev/null 2>&1
+}
+
+for idx in 1 2; do
+  which="review"; [ "$idx" = 2 ] && which="autofix"
+  extract_peel "$idx" > "$FIX/peel-$idx.sh"
+  assert_ok "grep -q 'TAG_COMMIT' '$FIX/peel-$idx.sh'" "$which resolver: peel block extracted"
+
+  drive_peel "$FIX/peel-$idx.sh" "$SHA_A" "$SHA_A"
+  assert_eq "$?" "0" "$which resolver: SHA matching the peeled tag is ACCEPTED (rc=0)"
+
+  drive_peel "$FIX/peel-$idx.sh" "$SHA_A" "$SHA_B"
+  assert_eq "$?" "1" "$which resolver: SHA ≠ the tag's commit is REJECTED (rc=1) — the FT-28 teeth"
+
+  drive_peel "$FIX/peel-$idx.sh" "$SHA_A" ""
+  assert_eq "$?" "1" "$which resolver: an unreachable tag (empty peel) is REJECTED (rc=1)"
+
+  drive_peel "$FIX/peel-$idx.sh" "" "$SHA_B"
+  assert_eq "$?" "0" "$which resolver: a tag-only pin (no SHA) skips the peel (rc=0)"
+done
 
 suite_summary "resolver"
