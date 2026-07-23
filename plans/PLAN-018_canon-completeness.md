@@ -934,7 +934,8 @@ ready until a fresh `verified-planning-reviewer` pass covers the re-scoped whole
 Fresh `verified-planning-reviewer`, briefed that Workstreams B/C/D, the
 out-of-scope table, the re-sequencing and contract items 3/6/7/8 had **no**
 prior review, and tasked to attack those specifically. Returned **6 load-bearing
-+ 8 minor**; all re-verified at source before folding. It confirmed (a) FT
+
+- 8 minor**; all re-verified at source before folding. It confirmed (a) FT
 coverage is complete and non-duplicative across B/C/D/§7 — all 24 non-resolved
 entries appear exactly once — and (b) the FT-18 ⊃ F2 / FT-31 ⊃ F3 containment
 claim is true.

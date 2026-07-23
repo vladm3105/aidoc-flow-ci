@@ -40,6 +40,7 @@ serve as the changelog per its own CLAUDE.md, so no `CHANGELOG.md`
 exists at root) is not held to rules that assume the file exists.
 
 Also raise as `medium`+ when the PR:
+
 - contradicts a **locked decision** (PROJECT_GUIDE §3 / CLAUDE.md) without flagging it;
 - **self-executes a 🟡/🔴 action** (violates never-self-approve);
 - puts a **model identifier** in a commit message;

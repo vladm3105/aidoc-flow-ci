@@ -5,6 +5,29 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — canon dogfoods its own markdown-lint gate, blocking (PLAN-018 FT-34, Workstream C)
+
+- `.github/workflows/self-markdown-lint.yml` runs canon's root `.markdownlint.json`
+  through the `markdown-lint` reusable on every PR, **blocking** (`fail-on-findings`
+  default true). Canon shipped the gate + the config template but ran neither on
+  itself — the "no exerciser for canon's own output" root cause behind F1. Canon
+  now self-runs **5** of its 16 reusables (was 4).
+- Canon carries its own root `.markdownlint.json` (identical to the shipped
+  template) and its docs were brought into **full conformance** with it in the
+  same change: 347 findings under that config → 304 auto-fixed by
+  `markdownlint-cli2 --fix`, 43 fixed by hand (code-fence languages, `|`
+  escaped inside table-cell inline-code, `<placeholder>` tokens backticked,
+  wrapped `#NNN` issue-refs that read as H1 rejoined, two malformed tables).
+- **Shipped template change (consumer-facing):** `install/templates/.markdownlint.json`
+  gains `"MD004": { "style": "dash" }`. Without a pinned style, `--fix` normalizes
+  bullets to the unconventional `+`; pinning `dash` gives conventional `-` bullets
+  for every consumer. This is a template-only change (no reusable body change, no
+  `ci/` tag bump — §4.4).
+- **Correction to an earlier measurement:** the "174 MD013 findings" cited when
+  scoping this were measured against markdownlint's *default* config. Canon's
+  actual shipped standard has `MD013` (line-length) **off**, so no line reflow was
+  needed; the real work was structural.
+
 ### Added — canon self-runs its own `pre-commit` gate (PLAN-018 FT-36, Workstream C)
 
 - `.github/workflows/self-pre-commit.yml` — a caller that runs canon's
@@ -20,7 +43,6 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 - Public repo → `ubuntu-latest` (a fork-code lint flow must stay there, never the
   self-hosted pool). Pinned to the released tag; `sync-version-refs.sh` keeps the
   pin in step with `VERSION`.
-
 
 ### Added — required-context ↔ producer validator (PLAN-018 FT-18, Workstream C)
 
@@ -42,7 +64,6 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   teeth (removing the `secret-scan` caller templates orphans `call / gitleaks`).
   Complements `test_checknames.sh`, which checks the prior link (context → real
   reusable job).
-
 
 ### Added — zero-hook detector (PLAN-018 FT-31, Workstream C)
 
@@ -73,7 +94,6 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   and missing/unparseable/non-mapping inputs; plus the reusable's default-stage
   behaviour extracted from the workflow so the detector's premise can't drift.
 
-
 ### Added — exerciser inventory + completeness guard (PLAN-018 Workstream C, contract 7)
 
 - `docs/EXERCISER_INVENTORY.md` maps every consumer-facing surface canon ships —
@@ -96,7 +116,6 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   repo (they would need a self-hosted pool + reviewer App purely to dogfood); the
   resolver risk they would have covered live is carried offline by
   `test_resolver.sh`. FT-23 is scoped down accordingly.
-
 
 ## ci/v2.11.0 — 2026-07-22
 
@@ -540,7 +559,6 @@ plan: `plans/PLAN-017_ft-15-pinned-asset-fetch.md`; verification runbook:
 - First of three (`docs-sync` → `doc-maintainer` → `ai-review`) per
   `plans/PLAN-017_ft-15-pinned-asset-fetch.md`. **Consumers must re-pin to get
   the fix.**
-
 
 ## ci/v2.9.0 — 2026-07-20
 
@@ -1845,7 +1863,7 @@ Pre-prod hardening toward the company-default CI standard (per
   `docs/BRANCH_PROTECTION.md`; `multi-project-guide` §8 + PLAYBOOK fixes;
   `overrides.md` drift-check claim corrected (`diff`-based, param overrides
   ARE flagged) + stale examples reframed; `docs/README.md` 11→12 workflows
-  + stale "Planned" section gutted; `local-pre-push.md` §8 (dropped "not yet
+  - stale "Planned" section gutted; `local-pre-push.md` §8 (dropped "not yet
   available" + corrected the CI-gate exemption logic — it diverges from the
   local hook for spoof-resistance); `runners.md` external-adopter callout
   (`runner-self`/reference image are operations infra; adopters use
@@ -2081,12 +2099,13 @@ silently DRIFTed framework `#273` (which uses `*...*`).
   underscore-italic (both are valid GFM markdown italics; consumers
   may pick either interchangeably). This silently unblocks framework
   `#273` which had `errors: [1] missing-cell: empty` on its
-  `*(...)* ` separator row.
+  `*(...)*` separator row.
 
 **3 surfaces** (template + parser + this CHANGELOG entry). OPS-0061
 Rule 1 compliant.
 
 Post-fix parser status on all 4 Wave-adopted repos: `--check` exit 0.
+
 - aidoc-flow-ci CLAUDE.md: 6/6 required + 0 additional + 0 errors.
 - framework #273: 6/6 required + 3 additional + 0 errors (previously 1
   error on the `*...*` separator; silently resolved by parser fix).
@@ -2141,7 +2160,7 @@ Multi-agent self-review per OPS-0065 (documentation-specialist + code-reviewer p
   - Required-row matching by canonical-token substring (handoff, todo/
     backlog, decisions, plans/iplan, changelog, roadmap) — no forced
     label rename.
-  - "Not adopted [—-] <rationale>" prefix detected BEFORE any path
+  - "Not adopted [—-] `<rationale>`" prefix detected BEFORE any path
     extraction (per §4.5 F#7 fold).
   - Path cells strip surrounding backticks + parenthesized annotation
     before existence check.
@@ -2170,6 +2189,7 @@ Multi-agent self-review per OPS-0065 (documentation-specialist + code-reviewer p
 **Real-world validation** — parser tested against all 9 non-paused
 workspace consumer CLAUDE.md files. Surfaced Wave-rollout gaps
 matching PLAN-003 §5.5 expectations exactly:
+
 - aidoc-flow-ci: green (Wave 0 already self-adopted).
 - operations, business, framework, iplanic, iplan-runner, engramory:
   drift matching each repo's §5.4c scope.
@@ -2203,14 +2223,14 @@ Multi-agent self-review per OPS-0065 (code-reviewer + test-engineer + security-a
   `**Consequences**` / `**Origin**` sub-headers.
 - **`install/templates/ROADMAP.md.template`** (NEW) — minimal roadmap
   with `## Current phase`, `## Next phase`, `## Deferred / parked`
-  + maintenance protocol.
+  - maintenance protocol.
 - **`install/templates/plans-README.md.template`** (NEW) — content
   for consumer `plans/README.md` explaining per-repo plan naming
   convention (PLAN-NNNN default + IPLAN/TPLAN/DPLAN/MPLAN/RPLAN/
   CPLAN/SPLAN scoped prefixes) + verified-planning skill contract.
 - **`docs/REPO_STANDARDS.md`** §16 (NEW section) — codifies the
   project governance file canon: 6 required surfaces + additional-
-  row pattern + "Not adopted — <rationale>" cell format + template
+  row pattern + "Not adopted — `<rationale>`" cell format + template
   references. Includes 6 sub-sections: 16.1 required surfaces, 16.2
   additional rows, 16.3 CLAUDE.md template, 16.4 `--check-governance`
   mode (ships in PR-V2), 16.5 additional file templates, 16.6
@@ -2421,7 +2441,7 @@ Wave 3 resolves inline).
     check is the primary protection; commit-signature enforcement can
     add later as belt-and-suspenders.
 - **Origin:** PLAN-002 §5.3 PR-U3. PR-U4 (aidoc-flow-ci self-adoption)
-  + Wave 0–5 rollout follow.
+  - Wave 0–5 rollout follow.
 
 ### Changed — install.sh + apply-standards.sh coverage for self-review canon (PR-U2 of PLAN-002) (2026-07-08)
 
@@ -2918,7 +2938,7 @@ Wave 3 resolves inline).
     the new dual-mode behavior + cite `composition.yml:189` as the
     safeguard.
 - **Security model — single-factor protection at composition's filter
-  + defense-in-depth at the call site.** composition.yml:189 filters on
+  - defense-in-depth at the call site.** composition.yml:189 filters on
   `state == APPROVED AND user.id == APP_REVIEWER_1_BOT_ID AND user.type
   == Bot AND commit_id == HEAD_SHA`. Under Pivot 2 the App submission
   has `state == COMMENT` (hard-coded `--comment`) — state mismatch
@@ -3069,7 +3089,7 @@ Wave 3 resolves inline).
   associated doc-maintainer run. alpha.1 status: report-only; auto-
   dispatch in v1.4.1.
 - **Job-level permissions:** `contents: write` + `pull-requests: write`
-  + `issues: write` + `actions: read`. Last one required for the
+  - `issues: write` + `actions: read`. Last one required for the
   reconciler's `actions/runs` query per Pass-3 HIGH Finding #3.
 - **Recursion guards** (belt-and-suspenders): `[skip ci]` in bot
   commit message + `if: github.actor != 'aidoc-flow-bot[bot]'`.
@@ -3083,7 +3103,7 @@ Wave 3 resolves inline).
   v1.4.1 after dry-run validates the skeleton.
 - **PR-B coming next:** install templates
   (`install/templates/workflows/doc-maintainer-{private,public}.yml`)
-  + docs updates (architecture.md / security.md / troubleshooting.md).
+  - docs updates (architecture.md / security.md / troubleshooting.md).
 - **Plan:** [IPLAN-0025](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0025_ai-doc-maintainer.md)
   P1 PR-A (Phase 1 mechanism-only ship; full functionality in v1.4.1).
 - **Consumer impact:** consumers do NOT bump pin until v1.4.0 ships
@@ -3141,7 +3161,7 @@ Wave 3 resolves inline).
   `ai-review` job's `steps:` list (before "Fetch reviewer assets").
   Queries the same App-APPROVED-at-HEAD review set that
   `composition.yml` uses (matching `user.id == APP_REVIEWER_1_BOT_ID`
-  + `user.type == "Bot"` + `state == "APPROVED"` + `commit_id == HEAD_SHA`).
+  - `user.type == "Bot"` + `state == "APPROVED"` + `commit_id == HEAD_SHA`).
   When match found: writes `SKIP_REVIEW=1` + `SKIP_REASON=r3` to
   `$GITHUB_ENV` → all heavy downstream steps (`Fetch reviewer assets`,
   rubric run, App-token mint, verdict post, etc.) skip via their
@@ -3303,6 +3323,7 @@ Wave 3 resolves inline).
   else ...; fi` form, which bash explicitly exempts from `set -e`
   (per documented behavior). Non-zero exits now flow into the else
   branch + fallback path cleanly:
+
   ```bash
   if merge_err=$(GH_TOKEN="$APP_TOKEN" gh pr merge "$PR" --auto --merge 2>&1); then
     merge_rc=0
@@ -3310,6 +3331,7 @@ Wave 3 resolves inline).
     merge_rc=$?
   fi
   ```
+
 - **Why this wasn't caught pre-ship in v1.1.6:** the v1.1.6 self-
   review focused on logic + permission concerns (reviewer flagged
   `--auto` actor-attribution + stderr capture as MEDIUMs, both
@@ -3369,7 +3391,7 @@ Wave 3 resolves inline).
 - **Consumer impact:** consumers bump caller pin `@ci/v1.1.5` →
   `@ci/v1.1.6` to consume the fix.
 - **Validation (post-deploy verification required):** after operations
-  + framework pin-bump to `@ci/v1.1.6`, the **first auto-merged routine
+  - framework pin-bump to `@ci/v1.1.6`, the **first auto-merged routine
   PR** must be verified to:
   1. Have merge commit authored by `aidoc-reviewer[bot]` (not
      `github-actions[bot]`) — confirms the App-token arming carried
@@ -3410,7 +3432,7 @@ Wave 3 resolves inline).
   checkout to interact with; works today). `AI_REVIEW_TOKEN` secret
   (curl uses it for the PRIVATE operations@main fetch). All downstream
   paths (`./reviewer-assets/ai-review/{review-prompt.md,verdict.schema.json}`
-  + workspace-root `.github/ai-review/config.json`). Workflow
+  - workspace-root `.github/ai-review/config.json`). Workflow
   `workflow_call:` interface, inputs, runner_labels. Library pattern
   intact (IPLAN-0017 + IPLAN-0022 + IPLAN-0023 all unchanged).
 - **Asset retrieval shape:** rubric + schema from
@@ -3525,7 +3547,7 @@ Wave 3 resolves inline).
   future consumers.
 - **Phase C consumers now safe:** iplan-runner, business, iplanic,
   iplan-standard, web-site, engramory can onboard via `install.sh`
-  + get the correct triggers by default. Removes the per-consumer
+  - get the correct triggers by default. Removes the per-consumer
   hand-copy friction noted in the readiness assessment.
 
 ### Fixed — ci/v1.1.2: full clone of aidoc-flow-ci reviewer assets (sparse-checkout deemed unfixable after 2 attempts; 2026-06-26)
@@ -3584,6 +3606,7 @@ Wave 3 resolves inline).
 - All historical/already-shipped CHANGELOG entries with "ubuntu-latest"
   framing are left as-is (ship-date-fixed); only NEW docs going forward
   use class-first framing per §0.
+
 ### Fixed — ci/v1.1.1: sparse-checkout pattern fix (IPLAN-0022 PR-A bug; 2026-06-26)
 
 - **`.github/workflows/ai-review.yml`** "Checkout trusted reviewer
@@ -3772,7 +3795,7 @@ Wave 3 resolves inline).
 - **`install/templates/workflows/docs-sync.yml`** — caller template
   pinned at `@ci/v1.1.0-alpha.1`. Single template (works for both
   PRIVATE + PUBLIC). Documents prerequisites (founder creates App
-  + sets secrets) + the rollout phases per IPLAN-0018 §3.7
+  - sets secrets) + the rollout phases per IPLAN-0018 §3.7
   (operations pilot dry-run for 1 week → live → framework opts in
   → Phase C consumers).
 - **`install/templates/docs-sync.json`** — per-consumer config
@@ -3792,8 +3815,6 @@ logic + full operation implementations land in `ci/v1.1.0-alpha.2`
 after operations pilot validates the skeleton. Stable `ci/v1.1.0`
 ships after operations pilot graduates to live mode (≥5 merges
 with zero proposed-vs-applied file-set divergence).
-
-
 
 ## ci/v1.0.6 — 2026-06-24 — caller-template backport + docs hardening (post-framework-Phase-A)
 
@@ -3873,7 +3894,8 @@ the ≤3 limit. Atomic release-prep pattern (same precedent as
 W4.1 + W4.4 + v1.0.5): splitting creates incomplete intermediate
 states where some refs say "ci/v1.0.6" + others still say
 "ci/v1.0.2". Founder pre-approved this session: "Option 2 now"
-+ "Ship all of the above as v1.0.6".
+
+- "Ship all of the above as v1.0.6".
 
 ## ci/v1.0.5 — 2026-06-24 — fix: export reviewer auth env to "Run review" step
 
@@ -4015,7 +4037,7 @@ reusable pre-commit workflow.
   extended).
   - `codex` via `npm install -g @openai/codex@0.142.0` (pinned)
   - `claude` via `curl -fsSL https://claude.ai/install.sh | bash -s 2.1.89`
-    + `echo "$HOME/.local/bin" >> "$GITHUB_PATH"` (native installer
+    - `echo "$HOME/.local/bin" >> "$GITHUB_PATH"` (native installer
     drops binary at `~/.local/bin`; not on default PATH)
   - `actions/setup-node@v5.0.0` (SHA-pinned
     `a0853c24544627f65ddf259abe73b1d18a591444` — verified via `gh api`)
@@ -4037,7 +4059,7 @@ reusable pre-commit workflow.
   `@ci/v1.0.2`. Header comment rewritten to document the new install
   step + the required secrets + the unverified-in-CI caveat.
 - **Reusable `pre-commit.yml` workflow** (`.github/workflows/pre-commit.yml`)
-  + caller template (`install/templates/workflows/pre-commit.yml`).
+  - caller template (`install/templates/workflows/pre-commit.yml`).
   Eighth reusable workflow shipped. Wraps the standard
   `pre-commit run --all-files` pattern used by framework +
   iplan-runner + operations (all three repos had nearly identical
@@ -4050,7 +4072,7 @@ reusable pre-commit workflow.
   override to `"runner-self"`). Standard actions SHA-pinned per
   `feedback_verify_sha_pins` memory — both verified via `gh api`:
   `actions/checkout@v4.2.2` (`11bd71901bbe5b1630ceea73d27597364c9af683`)
-  + `actions/setup-python@v6.2.0` (`a309ff8b426b58ec0e2a45f0f869d46889d02405`).
+  - `actions/setup-python@v6.2.0` (`a309ff8b426b58ec0e2a45f0f869d46889d02405`).
 
 ## ci/v1.0.1 — 2026-06-24 — origin-based labels + 5 new reusable workflows + docs tree
 
@@ -4070,7 +4092,7 @@ inputs.
   clean `'"runner-self"'` in the per-visibility caller templates
 - **5 new consumer-facing docs** under `docs/` (architecture +
   runners + overrides + security + troubleshooting) + docs index
-  + LABELS.md area-namespace addition
+  - LABELS.md area-namespace addition
 - **All consumer caller templates pinned to `@ci/v1.0.1`**
   (existing v1.0.0 callers continue to work; consumers can
   optionally re-run `install.sh` to pick up the v1.0.1 templates)
@@ -4155,7 +4177,7 @@ inputs.
   versioning + tag scheme; local-overrides-shared rule pointer to
   `overrides.md`; drift detection (warning-only) pointer; and a
   pointer to operations governance for the deeper WHY (IPLAN-0017
-  + charter + DECISIONS). `docs/README.md` updated to list it.
+  - charter + DECISIONS). `docs/README.md` updated to list it.
 
 - **Reusable `secret-scan.yml` workflow** (`.github/workflows/secret-scan.yml`),
   caller template (`install/templates/workflows/secret-scan.yml`),

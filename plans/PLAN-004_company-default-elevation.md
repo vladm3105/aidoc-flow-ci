@@ -52,7 +52,7 @@ update path — plus supporting HIGH-tier hardening.
 - **BL-1 — De-brand templates.** `@vladm3105` hardcoded in 9 places in
   `install/templates/CODEOWNERS.template` + `install/templates/config.json.template:10`.
   `install/templates/CLAUDE.md.template` references canon via `../operations/*`
-  + `../aidoc-flow-ci/*` relative paths at 8 places — only resolve inside
+  - `../aidoc-flow-ci/*` relative paths at 8 places — only resolve inside
   the umbrella working tree. A company project cloned outside the umbrella
   gets dead canon links + broken CODEOWNERS the moment
   `require_code_owner_reviews: true` fires.
@@ -92,6 +92,7 @@ update path — plus supporting HIGH-tier hardening.
 ### 2.2 HIGH-tier hardening (bundled with corresponding BLOCKER PR)
 
 **Security:**
+
 - Two unpinned actions: `actions/create-github-app-token@v1`
   (`ai-review.yml:509` + `auto-merge-ai-prs.yml:95`), `actions/checkout@v7`
   (`ai-review.yml:105` — trust job).
@@ -103,6 +104,7 @@ update path — plus supporting HIGH-tier hardening.
 - Unpinned `npm install -g @anthropic-ai/claude-code` in `doc-maintainer.yml`.
 
 **Correctness:**
+
 - `composition.yml:76` — PR-author fallback uses
   `github.event.workflow_run.actor.login` (the label-applier). Correct is
   `github.event.workflow_run.pull_requests[0].user.login`.
@@ -116,6 +118,7 @@ update path — plus supporting HIGH-tier hardening.
   mid-migration.
 
 **Portability:**
+
 - Template caller versions pinned inconsistently across
   `install/templates/workflows/` (v1.0.6, v1.3.0, v1.5.1, v1.4.0, and one
   `v1.1.0-alpha.2`).
@@ -125,6 +128,7 @@ update path — plus supporting HIGH-tier hardening.
   under `## Unreleased`.
 
 **Governance:**
+
 - `HANDOFF.md:60` leaks `(this PR)` for merged PR #75 + omits 5 subsequent
   merges (#76-#80).
 - `plans/PLAN-002_workspace-standards-rollout.md:3` still `**Status:** DRAFT — 2026-07-07 EST`
@@ -172,7 +176,7 @@ Deferred to future plans / out of scope:
 - **Explicitly deferred/accepted review findings (Pass-4 traceability
   fold — deliberate dispositions, not silent drops):**
   - *Governance-surface mapping for non-code repos* (arch H4): PLAN-003
-    §4.1 Option-B already permits "Not adopted — <rationale>" declared
+    §4.1 Option-B already permits "Not adopted — `<rationale>`" declared
     omissions per surface; a Terraform or docs-only repo declines
     surfaces via that mechanism. No new machinery in this plan.
   - *Parameterizing the repo/tier lists in `docs/REPO_STANDARDS.md` §1*
@@ -361,7 +365,8 @@ Ship `VERSION` at repo root containing the current released tag
 substitute script in `scripts/`). `install.sh` reads `VERSION` when
 `CI_TAG` unset. `sync-version-refs.sh` (already exists per project
 memory) is extended to substitute the marker across README + install/README
-+ multi-project-guide + PLAYBOOK.
+
+- multi-project-guide + PLAYBOOK.
 
 **Precedence (Pass-2 R10 fix):** `CI_TAG` env var (if set)
 > `VERSION` file > hardcoded fallback. `install.sh` logs the winning
@@ -385,6 +390,7 @@ serves repo-local dev, CI, and the docs-substitution script.
 ### 4.5 Bash 4+ + Python + ruamel.yaml prereqs (portability HIGH)
 
 `install/README.md` gains a top-line "Prereqs" section listing:
+
 - `bash >= 4.0` (macOS: `brew install bash` OR skip `pre_push_check.sh`
   installation)
 - `python3` + one of `ruamel.yaml` | `pyyaml` (operator machine; not
@@ -469,14 +475,14 @@ Scope:
     2350+) stays as-is per §3 non-goals.
 11. **New docs added to PLAN-003 §5.5 rollout matrix** (Pass-2 cross-
     plan interaction): REVIEWER_APP_ONBOARDING.md + BRANCH_PROTECTION.md
-    + UPDATE_GUIDE.md are new canonical docs; their per-repo adoption
+    - UPDATE_GUIDE.md are new canonical docs; their per-repo adoption
     (which repos need which doc surfaced in their `CLAUDE.md`) is
     an addendum to PLAN-003 §5.5 shipped in a follow-up PLAN-003
     revision, not in this plan. This PR just publishes them in
     aidoc-flow-ci.
 12. **Drift-check per-file fix bundled here** (Pass-3 §5.2 sequencing
     resolution): the `sync/check-drift.sh:20` + `apply-standards.sh:185`
-    + `check-standards-drift.sh:79` per-file semver fix (§5.2 PR-B
+    - `check-standards-drift.sh:79` per-file semver fix (§5.2 PR-B
     item 4) lands in PR-A rather than PR-B so the PLAYBOOK redirect
     can safely point at the already-fixed drift-check tooling.
     PR-B's item 4 implementation ships with PR-A AND is logged in the
@@ -487,25 +493,25 @@ Scope:
 
 Additional doc riders folded from Pass-4 traceability audit:
 
-13. **`docs/overrides.md`** — fix the drift-check-semantics misstatement
+1. **`docs/overrides.md`** — fix the drift-check-semantics misstatement
     (parameter overrides ARE flagged by `diff -q`; docs H2) + the stale
     future-tense Phase-A reference (docs M6).
-14. **`docs/README.md`** — remove the "Planned (drafted on demand)"
+2. **`docs/README.md`** — remove the "Planned (drafted on demand)"
     entries that duplicate already-existing docs; fix the workflow-count
     mention (docs H3 + the docs/README instance of H1).
-15. **`docs/local-pre-push.md`** — fix §8's "not yet available in this
+3. **`docs/local-pre-push.md`** — fix §8's "not yet available in this
     release" claim; `audit-trail-check.yml` shipped (docs H4).
-16. **`docs/runners.md`** — mark the `runner-self` pre-baked-CLI pool as
+4. **`docs/runners.md`** — mark the `runner-self` pre-baked-CLI pool as
     aidoc-flow-operations infrastructure; add a "build your own runner
     image" pointer for external adopters (docs M5).
-17. **Template caller pin normalization** (Pass-4 M3 / arch H1): re-pin
+5. **Template caller pin normalization** (Pass-4 M3 / arch H1): re-pin
     every `install/templates/workflows/*.yml` `uses:` line to the
     single release tag cut by this PR (today they span `@ci/v1.0.6`
     to `@ci/v1.5.1` plus one `@ci/v1.1.0-alpha.2` at
     `install/templates/workflows/docs-sync.yml:33`). Add a release-cut
     check (actionlint rule or `scripts/` lint) asserting all template
     pins equal VERSION.
-18. **`DECISIONS.md` CI-0004 delegation-table entry** (gov M3): one
+6. **`DECISIONS.md` CI-0004 delegation-table entry** (gov M3): one
     entry citing which OPS-NNNN decision backs each shipped workflow
     policy (auto-merge → OPS-0062; ai-review dispatch → OPS-0065/0067;
     audit-trail → OPS-0069), closing the cross-repo traceability hop.
@@ -614,7 +620,7 @@ Scope:
 
 Additional items folded from Pass-4 traceability audit:
 
-5. **`install/apply-standards.sh:537-547` label-name URL-encoding**
+1. **`install/apply-standards.sh:537-547` label-name URL-encoding**
    (corr M1): the `gh api "repos/.../labels/${name}"` path interpolates
    a raw `ai:review-passed` — the `:` must be `%3A`-encoded or the GET
    404s and the label re-POSTs (422 WARN-noise) on every `--apply`. Add
@@ -624,16 +630,16 @@ Additional items folded from Pass-4 traceability audit:
    labels via `gh label create` (Python subprocess, `install.sh:245-262`),
    never a URL path, so there is no existing shim to copy. This is a
    net-new fix in apply-standards.sh.)
-6. **`audit-trail-check.yml:106` git-fetch diagnostics** (corr M2):
+2. **`audit-trail-check.yml:106` git-fetch diagnostics** (corr M2):
    capture the fetch stderr and echo it in the `cat-file` error branch
    instead of the bare `2>/dev/null || true`.
-7. **`timeout-minutes` sweep** (corr M5): add job-level
+3. **`timeout-minutes` sweep** (corr M5): add job-level
    `timeout-minutes` to the 9 reusables missing it (`ai-review` 45,
    `composition` 10, `codeql` 30, `links` 15, `pre-commit` 15,
    `secret-scan` 15, `markdown-lint` 10, `docs-sync` 15,
    `doc-maintainer` 30) — matching the pattern
    `auto-merge-ai-prs.yml:80` already ships.
-8. **`docs/troubleshooting.md` new entries** (docs M3): failure modes
+4. **`docs/troubleshooting.md` new entries** (docs M3): failure modes
    for `standards-drift.yml`, `audit-trail-check.yml`, and the
    install-time "`ruamel.yaml`/`pyyaml` not installed" exit — the top-3
    support questions the current install generates.
@@ -1011,8 +1017,8 @@ line is a hint. Citations resolve against `/opt/data/aidoc-flow/aidoc-flow-ci/`.
 
 ### Pass 1 — 2026-07-09 — author self-review
 
-_Author's own re-read; does not count as independent per verified-planning
-skill. Records intent to move to Pass 2._
+*Author's own re-read; does not count as independent per verified-planning
+skill. Records intent to move to Pass 2.*
 
 Structure: matches PLAN-001/002/003 shape (Purpose → Findings audit →
 Non-goals → Constraints → Deliverables → Risks → Success → Cross-refs).
@@ -1050,7 +1056,8 @@ missing-criteria/risk clusters.
 
 **All findings folded in this revision:**
 
-_Ledger (Part A):_
+*Ledger (Part A):*
+
 - Row 28 (`audit-trail-check.yml`) re-cited to `:94`
   (`PR_USER_TYPE: ${{ github.event.pull_request.user.type }}`) —
   was `:131` (proximity-fail).
@@ -1060,7 +1067,8 @@ _Ledger (Part A):_
   `HANDOFF.md:60/17/23` (governance-consistency claims);
   `doc-maintainer.yml:226` (npm install pin locus).
 
-_Design + deliverables (Part B):_
+*Design + deliverables (Part B):*
+
 - §4.1 dropped the pwd-based umbrella-detection heuristic; explicit
   `--canon-source-url` flag is required for full-URL emission.
   Added post-substitution `grep -q '\${' <outfile>` assertion.
@@ -1082,24 +1090,28 @@ _Design + deliverables (Part B):_
   (`feedback_verify_sha_pins`).
 - §5.4 item 3 removed heuristic per §4.1 revision.
 
-_Non-goals (added):_
+*Non-goals (added):*
+
 - Consumer-side pin-bump PRs on tag bumps (PLAN-002 §5.5 scope).
 - REPO_STANDARDS.md structural revision (add-only in PR-A).
 - Multi-agent elevation-readiness re-run (post-PR-E, not a deliverable).
 
-_Risks (added):_
+*Risks (added):*
+
 - R8 — PR-C bump strands stuck-green PR mid-flight; docs recovery.
 - R9 — unsubstituted `${...}` reaches consumer; grep-assertion mitigation.
 - R10 — stale `CI_TAG` env silently overrides VERSION; startup-log
   mitigation.
 
-_Success criteria (added):_
+*Success criteria (added):*
+
 - Criterion 11: all `actions/*@vN` SHA-pinned (grep-verified).
 - Criterion 12: composition.yml PR-author fallback correct.
 - Criterion 13: CHANGELOG dedup + per-tag H2 shape.
 - Criterion 14: consumer template fork-safety verified.
 
-_Not-load-bearing / accepted:_
+*Not-load-bearing / accepted:*
+
 - Row 8 line-hint drift (`Step 0 — Reconcile` at :140; buggy `exit 0`
   at :155). Symbol matches exactly at :140; passes PROXIMITY=3 window
   is 15 lines. Keeping symbol-authoritative; line points at step name
@@ -1171,7 +1183,7 @@ from the original 5-agent pre-prod review to plan dispositions.
 - **M6 (folded):** §4.4 VERSION curl-pipe mode defined (script-dir
   read + format guard; hardcoded fallback operative in curl-pipe).
 - **M7 (folded):** codeql fork-safety RE-DECIDED — keep `pull_request`
-  + fork-skip the SARIF upload; `pull_request_target` would duplicate
+  - fork-skip the SARIF upload; `pull_request_target` would duplicate
   existing push+cron coverage while green-lighting unanalyzed fork
   diffs. Supersedes the Pass-3 direction. Row 51 added.
 - **Minors (folded):** reconcile job-split env/steps replication

@@ -22,7 +22,7 @@ secrets), [`runners.md`](runners.md) (self-hosted pools),
 
 ## 0. TL;DR — the deployment in one screen
 
-```
+```text
 1. PREFLIGHT   →  determine visibility; verify runner pool (private), reviewer
                   App + secrets + bot-id var, labels, allowed-actions policy.
                   Some items are 🔴 FOUNDER-ONLY — you cannot do them.
@@ -78,6 +78,7 @@ Do NOT trust a stale doc's visibility column — always re-check with `gh`.
 ```bash
 gh api repos/<owner/repo>/actions/runners --jq '.runners[]|{name,status,labels:[.labels[].name]}'
 ```
+
 Expect an online runner with labels `self-hosted,ci-runner,single-use`. If none:
 **do not fall back to `ubuntu-latest`** — a private caller left on
 `ubuntu-latest` or the placeholder `runner-self` queues forever.
@@ -133,9 +134,11 @@ gh variable list -R <owner/repo> | grep APP_REVIEWER_1_BOT_ID
 - **`APP_REVIEWER_1_BOT_ID` variable → 🟢 you set it.** It's the App's bot-user
   id and is **App-global** (same on every repo): **`294948438`**. Set it
   directly — no need to wait for the first review to capture it:
+
   ```bash
   gh variable set APP_REVIEWER_1_BOT_ID -R <owner/repo> --body "294948438"
   ```
+
   Without it, `composition` runs **INERT** (passes without enforcing).
 - **Trust allowlist:** the repo's PRs are only auto-reviewed if the PR author is
   in `operations@main` `.github/ai-review/config.json` `trust.ai_review`
@@ -153,6 +156,7 @@ gh label create ai:human-review-required -R <owner/repo> --color fbca04 --force
 gh label create skip-ai-review           -R <owner/repo> --color ededed --force
 gh label create skip-audit-trail         -R <owner/repo> --color d876e3 --force
 ```
+
 Plus the diff-class / path labels your `.github/labeler.yml` references
 (`labeler` does NOT create labels). Canonical specs:
 `install/templates/labels.json`.
@@ -163,6 +167,7 @@ Plus the diff-class / path labels your `.github/labeler.yml` references
 gh api repos/<owner/repo>/actions/permissions/selected-actions \
   --jq '{patterns_allowed, verified_allowed, github_owned_allowed}'
 ```
+
 Should allow `vladm3105/aidoc-flow-ci/*`, `actions/*`, `github/*` (+ verified).
 This is why the reusables install tools as **binaries/npm**, never third-party
 marketplace actions (see §5). If a repo's policy is stricter, a caller that
@@ -297,7 +302,7 @@ Every one of these cost real debugging time. They are load-bearing.
    `business/…`/`operations/…` paths, add sibling excludes to `.lychee.toml`
    (`exclude = ["/business/", "/operations/", …]`). Also base the config on the
    canonical template — a hand-written one that omits `accept = ["200","206","429"]`
-   + host excludes will flake on the weekly external run, and the `include_fragments`
+   - host excludes will flake on the weekly external run, and the `include_fragments`
    key is INVALID in lychee 0.24.2 (fatal TOML parse error — fixed in the
    template `ci/v1.9.5`).
 8. **`markdown-lint`: NEVER clobber an existing `.markdownlint.json`.** If the
@@ -347,6 +352,7 @@ Every one of these cost real debugging time. They are load-bearing.
     branch protection includes `call / Lint / format / security hooks` as a
     required check. Even a docs-only or design-spec repo needs a minimal
     pre-commit config to satisfy it. A valid bare-minimum config:
+
     ```yaml
     repos:
       - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -357,6 +363,7 @@ Every one of these cost real debugging time. They are load-bearing.
           - id: end-of-file-fixer
           - id: trailing-whitespace
     ```
+
     If a repo genuinely has no checkable files, remove the check from branch
     protection rather than carrying a hollow pre-commit config.
 
@@ -372,10 +379,12 @@ After ai-review + composition are on `main`:
    - `call / ai-review` → **SUCCESS** (you'll often see a stale `CANCELLED` +
      a `SUCCESS` — the SUCCESS is the real one).
    - An **APPROVED review by `aidoc-reviewer[bot]`** (id `294948438`):
+
      ```bash
      gh api repos/<owner/repo>/pulls/<pr>/reviews \
        --jq '.[]|select(.user.type=="Bot")|{login:.user.login,id:.user.id,state:.state}'
      ```
+
    - `ai:review-passed` label applied.
    - `call / composition` → **SUCCESS** (fires on the App's review + on
      ai-review's `workflow_run`).
@@ -397,6 +406,7 @@ gh api -X PATCH repos/<owner/repo>/branches/main/protection/required_status_chec
   -f 'contexts[]=call / ai-review' -f 'contexts[]=call / composition' \
   -f 'contexts[]=call / verify'  # audit-trail
 ```
+
 (Or edit the full protection payload — see `install/templates/branch-protection-*.json`
 per tier.) Arming is a hard-to-reverse, blast-radius change — confirm with the
 human before arming a repo you don't own.

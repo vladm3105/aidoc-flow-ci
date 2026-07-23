@@ -233,23 +233,29 @@ doc-maintainer.yml, docs-sync.yml.
 
 1. **sync/check-pin-currency.sh:65,69** — Replace hardcoded `?ref=main`
    with dynamic default-branch resolution:
+
    ```bash
    default_branch=$(gh api "repos/$repo" -q '.default_branch' 2>/dev/null)
    [ -n "$default_branch" ] || default_branch=main
    ```
+
    Use `$default_branch` in the two `gh api ...?ref=$default_branch` calls.
    Same pattern as `composition.yml:177` and `auto-merge-ai-prs.yml:177`.
 
 2. **.github/workflows/ai-review.yml:405,412,423** — De-hardcode
    `vladm3105` in `raw.githubusercontent.com` fetch URLs. Parse the owner
    from `github.workflow_ref` (format: `owner/repo/.github/workflows/...@ref`):
+
    ```bash
    CI_OWNER=$(echo "${GITHUB_WORKFLOW_REF}" | cut -d/ -f1)
    ```
+
    Then construct URLs as:
+
    ```bash
    "https://raw.githubusercontent.com/${CI_OWNER}/aidoc-flow-ci/${REF}/ai-review/${f}"
    ```
+
    Fork-based adopters can then use their own fork. Non-fork adopters get
    the same `vladm3105` by default from their caller's `uses:` line.
 
@@ -316,8 +322,8 @@ pre-requisites per `HANDOFF.md:20-25`.
 | M8: No RELEASE_CHECKLIST.md | MEDIUM | PR #3 | 4 |
 | L1: codeql.yml eval anti-pattern | LOW | PR #4 | 4 |
 | L2: links.yml dead set -e | LOW | PR #4 | 5 |
-| L3: ai-review GITHUB_TOKEN fallback (doc fix) | LOW | Deferred — intentional design noted in security.md |
-| L4: pre_push_check.sh hardcoded ops URL | LOW | Deferred — cosmetic, post-v2 cleanup |
+| L3: ai-review GITHUB_TOKEN fallback (doc fix) | LOW | Deferred — intentional design noted in security.md | — |
+| L4: pre_push_check.sh hardcoded ops URL | LOW | Deferred — cosmetic, post-v2 cleanup | — |
 
 ## Claim ledger
 

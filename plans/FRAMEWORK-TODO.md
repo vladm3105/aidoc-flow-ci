@@ -99,8 +99,16 @@ question the inventory asks.
 ### FT-34 — canon does not dogfood its own markdown gate
 
 **Found:** 2026-07-22, PLAN-018 PR-A pre-push run.
-**Status:** OPEN — non-blocking for PR-A, but it means every `.md` edit here
-produces a red local report that carries no information.
+**Status:** CLOSED (PLAN-018 Workstream C / PR C4b, 2026-07-23) — canon carries
+its own root `.markdownlint.json` (= the shipped template, with `MD004` pinned to
+`dash` so `--fix` yields conventional `-` bullets) and runs
+`self-markdown-lint.yml` as a **blocking** gate. The 174 "MD013 findings" that
+prompted this were measured against markdownlint's DEFAULT config; canon's actual
+shipped standard has `MD013` **off**, so the real work was 347 structural nits
+(MD004/MD032/MD049/…), 304 auto-fixed by `markdownlint-cli2 --fix` and 43 fixed
+by hand (code-fence languages, `|`-in-table-cell escapes, wrapped issue-refs read
+as H1). Canon's docs are now fully conformant; the shipped template gained the
+same `MD004: dash` pin (consumer-facing improvement — consistent bullets).
 
 `scripts/pre_push_check.sh` runs `markdownlint-cli2` over the changed `.md`
 files **in full**, and this repo ships **no `.markdownlint.json`**, so
@@ -383,7 +391,15 @@ the canon strings, correct §2 + every `branch-protection-*.json`. Doc
 (`BRANCH_PROTECTION.md`) currently mirrors canon faithfully, so it self-
 corrects once canon is fixed.
 
-### FT-3 — `labels.json` `skip-ai-review` description corrected \n\n**Found:** 2026-07-09, PLAN-004 PR-A3 (`LABELS.md` rewrite).\n**Status:** RESOLVED — 2026-07-12.\n**Resolution:** `install/templates/labels.json:20` now reads "Operator override:\nsuppress re-review and carry forward a valid prior approval" — matches the actual\nbehavior (`ai-review.yml` SKIP_REVIEW + `composition.yml:110-117` carry-forward).\n`LABELS.md` already documented the correct behavior; the stale description was\ncosmetic only.
+### FT-3 — `labels.json` `skip-ai-review` description corrected
+
+**Found:** 2026-07-09, PLAN-004 PR-A3 (`LABELS.md` rewrite).
+**Status:** RESOLVED — 2026-07-12.
+**Resolution:** `install/templates/labels.json:20` now reads "Operator override:
+suppress re-review and carry forward a valid prior approval" — matches the actual
+behavior (`ai-review.yml` SKIP_REVIEW + `composition.yml:110-117` carry-forward).
+`LABELS.md` already documented the correct behavior; the stale description was
+cosmetic only.
 
 ### FT-4 — CHANGELOG back-catalog (v1.1.0–v1.6.0) not cut into per-tag `##` headers
 
@@ -660,6 +676,7 @@ graduations remain.**
 `markdown-lint`+`links`; `v1.9.5` `markdown-lint` `fail-on-findings` toggle +
 `.lychee.toml` `include_fragments` fix), and all content-check workflows are
 now deployed on every active repo (see `docs/WORKFLOWS.md` §2):
+
 - **`links`** — blocking (offline) on every repo (0 errors; debt repos ship a
   scoping `.lychee.toml`).
 - **`markdown-lint`** — deployed **report-only** (`fail-on-findings: false`);
@@ -668,6 +685,7 @@ now deployed on every active repo (see `docs/WORKFLOWS.md` §2):
   no App needed — the `aidoc-flow-bot` App is only for the live Apply step).
 
 **Remaining (deliberate opt-in graduations, NOT dev gaps):**
+
 - **`markdown-lint` report-only → blocking — DONE across all canon consumers
   (PLAN-007 W3, 2026-07-12).** Sequence: (1) founder chose to **relax the canon
   `.markdownlint.json`** (disable MD013/MD024/MD036 — workspace-legitimate
@@ -716,7 +734,7 @@ independent of the arming act:
   gitleaks). On the fix PR, `call / ai-review` + `call / composition` ran green —
   the earlier "skipped" was PR-specific, not a wiring defect. Its canon `call/…`
   gates are now armable.
-  - _Canon observation (low-priority):_ the reusable's default gitleaks
+  - *Canon observation (low-priority):* the reusable's default gitleaks
     allowlist path `(^|/)(vectors|fixtures|testdata|examples)/` misses compound
     names like `*-vectors/`. The `config-path` escape hatch is the intended
     per-consumer fix, so leaving the canon default strict (opt-in) is defensible;
@@ -853,7 +871,7 @@ already emits the resolved ref as a notice on **every** run, so no throwaway run
 was needed — the proof was in every historical log. Two consecutive `operations`
 runs (`29790683633` @ 2026-07-21T00:35, `29788760133` @ 2026-07-20T23:56):
 
-```
+```text
 ##[notice]ai-review fetching assets from vladm3105/aidoc-flow-ci@refs/heads/main
 ```
 

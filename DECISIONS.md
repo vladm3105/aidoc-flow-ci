@@ -25,7 +25,7 @@ Adopt approach B — flexible canonical — per PLAN-003 §4.1. Each repo's
 `CLAUDE.md` MUST contain a `## Per-repo governance` H2 section with a
 canonical table declaring where each of the 6 required surfaces lives.
 Canon parser (`--check-governance`, PR-V2) verifies each declared path
-exists on disk (or the cell is a valid "Not adopted — <rationale>"
+exists on disk (or the cell is a valid "Not adopted — `<rationale>`"
 line). Path variance is preserved; presence + declaration is enforced.
 
 **Consequences**
@@ -117,7 +117,7 @@ the same discipline.
 - Every future PLAN-NNN in this repo runs Pass 0 (author) → Pass 2
   (independent) → Pass 3 (fold) → Pass 4 (independent) → Pass 5 (fold)
   → Pass 6 (independent) at maximum. If Pass 6 doesn't APPROVE, halt
-  + surface.
+  - surface.
 - Author-fold pass discipline: Pass 3 + Pass 5 must be COMPLETE
   (address ALL findings from the preceding independent pass), not
   partial. Partial folds waste a review cycle.
@@ -245,7 +245,7 @@ a consumer-editable gov floor could be loosened by a PR. Wiring any of these
   consumer-side config toggle — closing the "bootstrap repo self-enables
   auto-merge" concern without new install tooling.
 - If a declarative knob is later wired, a new CI-NNNN records it and the `_note`
-  + this entry are annotated (append-only).
+  - this entry are annotated (append-only).
 
 **Origin**
 

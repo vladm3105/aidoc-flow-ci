@@ -54,7 +54,8 @@ per-repo and are not matrixed). Cell values:
 - **N/A** — not applicable (no matching surface)
 
 Actual state audited **2026-07-11** via `gh api repos/*/contents/.github/workflows`
-+ `gh repo view --json visibility` against every workspace repo (post
+
+- `gh repo view --json visibility` against every workspace repo (post
 content-check population; `ci/v1.9.5`). **The ai-review / composition / pre-commit /
 audit-trail cells were re-verified live 2026-07-14** (PLAN-009 exploration): every
 previously-flagged `⚠️ GAP`/`inert` caller now exists at `@ci/v1.9.5` — business

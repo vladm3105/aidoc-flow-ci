@@ -290,7 +290,8 @@ Phase 2 (ci/v1.3.0) dropped that trigger from the install template:
 composition is now driven by `pull_request_review` (App's APPROVED
 review submission) and `workflow_run` (consumer's `ai-review` caller
 completing — any conclusion). Both triggers carry the same BASE-ref
-+ secrets posture as `pull_request_target` (workflow code from
+
+- secrets posture as `pull_request_target` (workflow code from
 default branch; secrets available; no PR code checked out), so the
 security analysis above still applies — composition never executed
 fork code under `pull_request_target` either. The Phase-2 drop is

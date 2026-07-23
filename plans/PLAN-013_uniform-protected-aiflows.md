@@ -12,8 +12,8 @@ variants.**
 security-reviewed (a real wizard startup_failure bug caught + fixed). The §8 gate
 (self-hosted-on-public stance + public-repo capacity/DoS acceptance) was CLEARED by
 the founder and is now history. Foundational for [[PLAN-012]] (autofix), which
-adopts this model to reach public repos. _(Original pre-ship gate text below, kept
-as the record.)_ Do NOT implement past Phase 0 without approval.
+adopts this model to reach public repos. *(Original pre-ship gate text below, kept
+as the record.)* Do NOT implement past Phase 0 without approval.
 **Depends on:** sufficient **ephemeral self-hosted runner capacity** to also serve
 public repos' trust jobs (a 🔴 founder/ops capacity item — see §8.2).
 **Exit:** every AI-based flow (`ai-review`, `autofix`, `doc-maintainer`,
@@ -112,7 +112,7 @@ Every AI-based flow, on every repo, regardless of visibility:
 ## 4. Design / changes
 
 1. **Collapse the variant pairs.** For each AI-flow, replace `<flow>-private.yml`
-   + `<flow>-public.yml` with **one** `<flow>.yml` caller pinning
+   - `<flow>-public.yml` with **one** `<flow>.yml` caller pinning
    `runner_labels…: '["self-hosted","ci-runner","single-use"]'`. (Autofix ships
    single from the start per [[PLAN-012]].) **No deprecation shim needed:** the
    template is *copied into the consumer's fixed path* (`.github/workflows/<flow>.yml`)

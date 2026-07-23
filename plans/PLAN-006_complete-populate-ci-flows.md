@@ -39,6 +39,7 @@ Paused (skip): knowledge-rag, aidoc-flow-site.
 ## Workstreams
 
 ### W1 — Verify + unstick the v1.8.1 self-hosted migration
+
 - [x] operations — v1.8.1, 2-pool self-hosted, ai-review green (run 29154615751).
 - [x] business — v1.8.1, ci-ephemeral, ai-review green (13:44).
 - [~] iplanic — config correct; stale runner-self runs cancelled; fresh ai-review
@@ -47,9 +48,11 @@ Paused (skip): knowledge-rag, aidoc-flow-site.
   ai-review to confirm green (no open PR — next PR or a trigger).
 
 ### W2 — Canon prevention (closes FT-9) — *aidoc-flow-ci, my lane*
+
 The root cause: `install.sh --update` wholesale-replaces callers, and the
 `*-private.yml` templates ship the `runner-self` **placeholder** + `ubuntu-latest`
 on the lightweight callers. Until fixed, the next re-pin re-breaks the fleet.
+
 - [ ] `-private.yml` templates: emit real `["self-hosted","aidoc","ci-ephemeral"]`
   for **every** caller (ai-review/composition/auto-merge/doc-maintainer/docs-sync
   **and** audit-trail/pre-commit/links/markdown-lint/secret-scan/labeler). No
@@ -60,17 +63,20 @@ on the lightweight callers. Until fixed, the next re-pin re-breaks the fleet.
 - Requires verified-planning 2-cycle review before the PR (canon change).
 
 ### W3 — Apply strict self-hosted to live private consumers
+
 Migrate the lightweight callers (audit-trail, pre-commit, links, markdown-lint,
 secret-scan) to `ci-ephemeral` on operations/business/iplanic/interlog; sync
 stale pins (interlog `audit-trail.yml` @ci/v1.6.0 → current). Cross-repo (🔴):
 AI preps surgical diffs, founder pushes (or authorizes per-repo).
 
 ### W4 — Populate per-repo canon gaps
+
 Reliable adoption audit (existence + calls-aidoc-flow-ci, not a flaky content
 probe) → per repo, add missing applicable canon workflows via `install.sh`
 (bootstrap for absent, `--repin`/surgical for present). Cross-repo (🔴).
 
 ### W5 — Public-repo loose ends
+
 - iplan-runner #76 — pre-existing: 12 legacy plans fail `check-plan`; ai-review
   (→operations@main) failing. Fix plans or scope the hook; then re-pin.
 - engramory — `last-run=failure`; confirm stale vs real.
@@ -95,6 +101,7 @@ re-introducing `runner-self`).
 ## Review log
 
 ### Pass 0 — 2026-07-11 — author self-draft
+
 Scoped from the live fleet audit during the v1.8.1 self-hosted migration.
 Load-bearing facts (manifest set, `--update` clobber mechanism, `fromJSON`
 runner routing, `-private.yml` placeholder) verified against source this session.

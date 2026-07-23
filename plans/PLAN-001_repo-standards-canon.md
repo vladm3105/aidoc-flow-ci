@@ -43,8 +43,8 @@ Cross-repo audit surfaced substantial drift:
 - **Required-checks lists ad-hoc per-repo** (2 to 8 required checks; no
   baseline). Standardize by tier.
 - **GitHub security settings drift**: iplan-runner has `secret_scanning`
-  + `push_protection` DISABLED (public repo); engramory + iplan-standard
-  + aidoc-flow-ci have `dependabot_alerts` DISABLED. Standardize by
+  - `push_protection` DISABLED (public repo); engramory + iplan-standard
+  - aidoc-flow-ci have `dependabot_alerts` DISABLED. Standardize by
   visibility.
 - **Dependabot adopted on only 3 of 10 repos** (framework, business,
   iplan-runner). No canonical config template.
@@ -93,6 +93,7 @@ surfaces), and per CROSS_REPO_PLAYBOOKS.md T-C prereq-then-consumer pattern:
 **Purpose:** Single source of truth for what "compliant" means.
 
 **Contents:**
+
 - Tier taxonomy (§4 above, expanded)
 - Per-tier requirements table for: branch protection, security settings,
   labels, dependabot, CODEOWNERS, PR template, Actions permissions, merge
@@ -190,6 +191,7 @@ window pattern to roll compliance to each workspace repo:
   install per REPO_ONBOARDING.md).
 
 Rollout order per tier priority:
+
 1. **Governance** (framework, iplan-standard) — highest blast radius on
    spec/schema drift; get canon first.
 2. **Ops/private** (operations, business, iplanic) — internal-only, safe.

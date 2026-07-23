@@ -156,7 +156,7 @@ Nothing merges until these are confirmed live (`feedback_writes_to_other_repos_i
    the fork-facing `trust` job + every other check on `ubuntu-latest`. This is
    **safe** — forks are hard-set untrusted so the review job is skipped for them,
    and the review job runs **no PR code** (it curls the diff → LiteLLM). Rationale
-   + wiring: `docs/runners.md` §5a + `CLAUDE.md` "Runner policy". **No public HTTPS
+   - wiring: `docs/runners.md` §5a + `CLAUDE.md` "Runner policy". **No public HTTPS
    endpoint or tunnel needed.** Consequence: the **engramory pilot stays a public
    repo** — it just needs a self-hosted *review* runner on the proxy host + its
    LiteLLM secret; the private tier can proceed in parallel once its pools exist.
@@ -185,6 +185,7 @@ Nothing merges until these are confirmed live (`feedback_writes_to_other_repos_i
 ### Phase 1 — Pilot (public **engramory**, pending Phase 0 #1)
 
 On a feature branch:
+
 - **A** — `install.sh --repin` bump all `uses:` → `@ci/v2.0.1` (FT-9-safe;
   never `--update`). The `reviewer:` input is already commented out in every
   caller, so no active removed-input trips the bump.
@@ -240,6 +241,7 @@ On a feature branch:
 ### Phase 2 — Remaining public (framework, iplan-runner, iplan-standard)
 
 Repeat A + C (+ secret-scan audit) per repo, plus the new **Edit F** below.
+
 - **F — `runner_labels_review` → self-hosted** on the ai-review caller (Phase 0
   #2 resolution): set `runner_labels_review: '["self-hosted","ci-runner","single-use"]'`
   so the LiteLLM-facing review job reaches the private proxy; keep
@@ -261,6 +263,7 @@ Per repo: A, then **B** (two-token label swap across **every** private caller
 file — grep-verify no `aidoc`/`ci-ephemeral` remains and each array is a valid
 `ci-runner`+`single-use` pair), then **D** (`litellm_allow_insecure_http: true`
 on ai-review), plus:
+
 - **iplanic** — C (SHA); **delete duplicate** `standard-drift.yml` (local
   `actions/checkout` vendored check, distinct from `standards-drift.yml`).
 - **interlog** — **E** (add the `permissions: {contents: read, pull-requests: read}`

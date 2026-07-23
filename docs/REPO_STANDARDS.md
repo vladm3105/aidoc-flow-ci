@@ -89,6 +89,7 @@ All non-paused repos protect `main`. Tier drives the profile.
 | Allow deletion | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 **Rationale — required approving reviews:**
+
 - **Governance** requires ≥1 human because spec/schema changes carry the
   highest downstream blast radius (regeneration of tests, plugin
   templates, etc.).
@@ -306,13 +307,13 @@ FT-22). The rule:
   leftover or a commented-out example can supply the tag and **win** the version
   sort — a silent wrong-version hazard (verified, not theoretical);
 - key the pattern to **this reusable's own filename**, never an unkeyed one — an
-  unkeyed match can pick up the trailing comment on a line pinning a *different*
+  unkeyed match can pick up the trailing comment on a line pinning a _different_
   reusable and resolve the wrong tag;
 - accept both pin forms canon recognises: plain `@ci/vX.Y.Z` and the
   commented-SHA `@<40-hex> # ci/vX.Y.Z`;
 - **reject pre-release pins explicitly.** Capture any `-suffix` and hard-fail on
   it. Silently dropping it resolves `ci/v2.10.0-rc.1` to `ci/v2.10.0` — a real
-  but *different* tag once that ships, reintroducing the wrong-version class with
+  but _different_ tag once that ships, reintroducing the wrong-version class with
   a notice that looks correct;
 - **fail CLOSED when more than one distinct pin is found.** Only one reusable
   actually runs, so the correct tag is not knowable from the tree; picking the
@@ -329,14 +330,14 @@ FT-22). The rule:
   raw was requested, must be its own INFRASTRUCTURE error. Otherwise a transport
   fault produces "no pin found" and sends an operator to audit a correct caller;
 - anchor the owner in the pattern (`vladm3105/aidoc-flow-ci/…`). Unanchored, a
-  pin naming a *different* owner's `aidoc-flow-ci` matches and then 404s against
+  pin naming a _different_ owner's `aidoc-flow-ci` matches and then 404s against
   the hardcoded owner — fail-closed, but with a confusing diagnostic;
 - **fail loud and INFRASTRUCTURE-classed in every one of those cases — never fall
   back to `main`**, which would silently restore the defect.
 
 **Install constraint (fail-closed, but worth knowing):** for reusables that
 resolve over the API (`ai-review`), `github.workflow_ref` names the **entry**
-workflow. A consumer that wraps a canon reusable inside its *own* `workflow_call`
+workflow. A consumer that wraps a canon reusable inside its _own_ `workflow_call`
 reusable has no canon pin in the entry file, so resolution hard-fails. Call canon
 reusables directly from the entry workflow.
 
@@ -504,7 +505,7 @@ if ! jq -e --arg a "$AUTHOR" '(.trust.ai_review // []) | index($a)' "$CFG"; then
 fi
 ```
 
-treats *"this file is garbage"* as *"this author is not allowlisted"*. Measured
+treats _"this file is garbage"_ as _"this author is not allowlisted"_. Measured
 on `composition.yml` (fixed 2026-07-17): a malformed `config.json` on the
 default branch exited 4, satisfied `! jq -e`, and exempted **every author on
 every PR** — including trusted ones — turning the sole App-approval enforcement
@@ -549,6 +550,7 @@ workspace doc styles rather than defects:
 | `MD013` line-length | The 120-char limit fires on changelog data rows + long reference lines across every repo; enforcing it means hundreds of prose reflows. Disabled workspace-wide (founder decision 2026-07-12; accepts abandoning the line-length discipline). |
 | `MD024` duplicate-heading | keep-a-changelog inherently repeats `### Added`/`### Changed` per release; `siblings_only` did not fully suppress it. |
 | `MD036` emphasis-as-heading | Every `DECISIONS.md` uses `**Context**`/`**Decision**`/`**Consequences**`/`**Origin**` bold-labels by deliberate ADR style, not as headings. |
+| `MD004` unordered-list style | **Pinned to `dash`** (not disabled) — without a pinned style `--fix` normalizes bullets to the unconventional `+`; pinning `dash` gives conventional `-` bullets consistently. (PLAN-018 FT-34.) |
 
 `MD033` (inline HTML, allowlisted elements), `MD040` (code-fence language),
 `MD056` (table columns), and the rest stay **enforced** — those are genuine
@@ -557,6 +559,13 @@ cleanups a consumer fixes when graduating `fail-on-findings: false → true`
 change, no new `ci/` tag — do NOT bump `VERSION` for it (that would falsely flag
 every pinned consumer as stale via `check-pin-currency.sh`). Consumers adopt it
 by re-copying the config in their own graduation PR.
+
+**Canon dogfoods this config (PLAN-018 FT-34).** This repo carries its own root
+`.markdownlint.json` (identical to the shipped template) and runs
+`self-markdown-lint.yml` as a **blocking** gate on every PR — canon's docs were
+brought into full conformance in the same change. So a regression in the
+`markdown-lint` reusable, or a new non-conforming doc, fails canon's own checks
+rather than shipping to the fleet unseen.
 
 ## 5. Labels — canonical taxonomy
 
@@ -641,7 +650,7 @@ Template ships in `install/templates/dependabot.yml` (PR-B).
 Every non-paused repo ships `.github/CODEOWNERS` mapping path patterns
 to reviewer routing. Canonical shape:
 
-```
+```text
 # Global default: founder
 *                                       @vladm3105
 
@@ -681,6 +690,7 @@ not read as drift (§16.7).
 Every non-paused repo ships `.github/pull_request_template.md`.
 
 Contents (canonical):
+
 - Summary section
 - Files touched (self-check for OPS-0061 ≤3-surface rule)
 - Multi-agent review section (naming dispatched sub-agents + verdict — OPS-0069 audit-trail phrase belongs in the COMMIT MESSAGE, not the PR body; PR template reminds authors)
@@ -1088,13 +1098,13 @@ accepted — one row per surface preserves the distinct label + rationale.
 
 **Wrong (rejected by parser):**
 
-```
+```text
 | Live HANDOFF | HANDOFF.md, ops/HANDOFF.md |
 ```
 
 **Right (additional row per §16.2):**
 
-```
+```text
 | Live HANDOFF | HANDOFF.md |
 | _(additional rows below — optional)_ | |
 | Ops-side HANDOFF | ops/HANDOFF.md |
@@ -1194,7 +1204,7 @@ Discipline for this mechanism:
   drift against the `${CODEOWNER_HANDLE}` placeholder template, and a
   consumer that still hardcodes `@vladm3105` continues to pass. `install.sh`
   also installs `.github/CODEOWNERS` (substituted, preserve-if-exists), so a
-  fresh consumer gets a correctly-owned file for its tier. **Owner *identity*
+  fresh consumer gets a correctly-owned file for its tier. **Owner _identity_
   is intentionally out of drift scope:** the check cannot flag an owner
   pointed at a wrong/typo'd or malicious handle (the canon has no correct
   per-consumer handle to compare against). That is backstopped by branch

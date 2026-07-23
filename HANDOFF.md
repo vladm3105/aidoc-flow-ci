@@ -6,6 +6,16 @@ context compaction.
 
 ## Current state (2026-07-22)
 
+- **PLAN-018 Workstream C / PR C4b (markdown-lint self-caller, FT-34) OPEN.**
+  Canon now carries a root `.markdownlint.json` (= shipped template + `MD004:dash`)
+  and runs `self-markdown-lint.yml` **blocking**; canon self-runs 5 of 16
+  reusables (was 4). Canon's docs brought to full conformance: 347 findings →
+  304 auto-fixed + 43 manual (code-fence langs, table `|` escapes, wrapped
+  issue-refs read as H1). Shipped template gained `MD004:dash` (consumer-facing:
+  conventional `-` bullets). The "174 MD013" premise was wrong — canon's standard
+  has MD013 off; work was structural. FT-34 closed. **Remaining C: C5 —
+  `scripts/release.sh` (FT-21).** That completes Workstream C.
+
 - **PLAN-018 Workstream C / PR C4a (pre-commit self-caller, FT-36) OPEN.**
   `.github/workflows/self-pre-commit.yml` — canon now runs its own pre-commit
   reusable on every PR (public → ubuntu-latest, pinned to the released tag),
@@ -324,7 +334,7 @@ FT-15 first. Company-standard ratification is a 🔴 operations (OPS-NNNN) call.
 
 ---
 
-_History — `ci/v2.7.0`:_ **PLAN-014 (own-security-scanner suite,
+*History — `ci/v2.7.0`:* **PLAN-014 (own-security-scanner suite,
 "osv/trivy/semgrep, all in, report-only first") is IMPLEMENTED through Phase 4.
 Three report-only scanners + a deterministic autofix preview now ship on the
 uniform-protected + fork-guarded model (PLAN-013), each SHA/version-pinned with
@@ -588,11 +598,12 @@ suite (`tests/`, PR #143), W5 Dependabot prune (#137), W2 guardrails
   (see CHANGELOG "functional doc-maintainer …") — reconcile W3 docs-sync-live
   against it before provisioning the App.
 
-_Recent (2026-07-11):_ **PLAN-006 W4 content-check population — COMPLETE across all active repos.**
+*Recent (2026-07-11):* **PLAN-006 W4 content-check population — COMPLETE across all active repos.**
 Two releases fixed the canon (`ci/v1.9.4` binary-install for links+markdown-lint;
 `ci/v1.9.5` markdown-lint `fail-on-findings` toggle + `.lychee.toml`
 `include_fragments` invalid-key fix), then populated the fleet. Final state
 audited 2026-07-11 (see `docs/WORKFLOWS.md` §2):
+
 - **links** ✅ every active repo (lychee musl binary). operations + framework
   ship a `.lychee.toml` scoping out cross-repo `../sibling/` links (resolve only
   in the local workspace, not single-repo CI) + framework's `platforms/**`+
@@ -610,6 +621,7 @@ audited 2026-07-11 (see `docs/WORKFLOWS.md` §2):
 
 **Graduations status (history — 2026-07-12; W4 arming still founder-gated per
 current state above):**
+
 1. **markdown-lint report-only → blocking — DONE 2026-07-12** (all 6 consumers
    merged; the "259 residual/repo + `--fix`" framing was superseded by relaxing
    the canon `.markdownlint.json` per the founder decision). Only the
@@ -618,7 +630,7 @@ current state above):**
    App + `AIDOC_FLOW_BOT_ID`/`KEY` secrets per repo (only ci + operations have
    it); or fold into the now-functional `doc-maintainer.yml` supersession.
 
-_History (v1.9.4):_ **`ci/v1.9.4` SHIPPED (PLAN-006 W4 — content-check canon fix).** While
+*History (v1.9.4):* **`ci/v1.9.4` SHIPPED (PLAN-006 W4 — content-check canon fix).** While
 populating the missing content-check workflows, discovered the same
 allowed-actions defect that broke `secret-scan` also blocked **`links`** and
 **`markdown-lint`**: both wrapped third-party marketplace actions
@@ -632,6 +644,7 @@ strict cli2-0.23 rule, 348 hits/repo), and adds REPO_STANDARDS §4.3
 review: security READY, correctness clean, docs 4 findings folded.
 
 **W4 accurate fleet tally (canon workflows on 8 repos, real repo names):**
+
 - **labeler 8/8** ✅ (interlog #54 merged last; ci self-adopted).
 - **secret-scan 8/8 effective** ✅ (6 via `secret-scan.yml`; business + interlog
   covered by their own standalone `security.yml` gitleaks — confirmed clean 0
@@ -642,12 +655,12 @@ review: security READY, correctness clean, docs 4 findings folded.
   (canon relaxed + per-repo cleanup; see current-state above); links populated;
   docs-sync deployed dry-run (live-mode still 🔴 App). FT-11.
 
-_History (v1.9.0 → v1.9.3):_ **`ci/v1.9.0`** (PLAN-006 W2 — FT-9 fix + self-hosted policy). The
+*History (v1.9.0 → v1.9.3):* **`ci/v1.9.0`** (PLAN-006 W2 — FT-9 fix + self-hosted policy). The
 v1.8.1 consumer-sync sweep (via `install.sh --update`) clobbered the private
 callers' runner topology — the `-private.yml` templates shipped a `runner-self`
 **placeholder** that resolves to no registered runner, so every required check
-queued forever and bricked the gate (FT-9). Caught by ai-review on operations
-#244; remediated surgically across all 4 private repos. **All 4 private repos
+queued forever and bricked the gate (FT-9). Caught by ai-review on operations #244; remediated surgically across all 4 private repos. **All 4 private repos
+
 (operations/business/iplanic/interlog) are now on `@ci/v1.8.1` + self-hosted
 `ci-ephemeral`, ai-review proven green on operations/business/iplanic** (interlog
 confirms on next PR). v1.9.0 prevents recurrence: `-private.yml` templates now
@@ -658,11 +671,11 @@ version-only pin bump (never `--update` for a re-pin). Founder policy codified:
 lightweight callers + stale-pin sync (interlog audit-trail v1.6.0); W4 populate
 per-repo canon gaps; W5 public loose ends (iplan-runner #76, engramory).
 
-_History (2026-07-10):_ **PLAN-004 + PLAN-005 SHIPPED. Releases: `ci/v1.7.0`
+*History (2026-07-10):* **PLAN-004 + PLAN-005 SHIPPED. Releases: `ci/v1.7.0`
 (PLAN-004 elevation), `ci/v1.7.1` (caller permissions), `ci/v1.8.0` (PLAN-005
 A1/C/D/E/F/G), `ci/v1.8.1` (PLAN-005 PR-A part 2 / D2).** PLAN-005 7/7 complete.
 
-_History:_ **`ci/v1.7.1` PATCH** — PLAN-005 PR-B / B2: the `ai-review` caller
+*History:* **`ci/v1.7.1` PATCH** — PLAN-005 PR-B / B2: the `ai-review` caller
 templates shipped with no `permissions:` block → `startup_failure` on consumers
 under the canon `read` default (the pipeline never ran). Fixed by adding the
 caller `permissions:` block to both variants. Consumers re-pin `@ci/v1.7.1` or
@@ -691,6 +704,7 @@ so it's substantively fine, but it bypassed the PR record. Left on main (revert+
 redo would just churn history for an identical correct commit) — founder may
 redo via PR if the record matters.
 **Remaining:**
+
 - **PR-A part 2** (D2 HEAD-relative skip carry-forward — product-code
   approve-then-inject) — needs a LIVE §15 label-cycle smoke test (plan Step 7) on
   a scratch PR; §15 tension resolved in design (§15 keeps the approval AT HEAD).
@@ -792,7 +806,7 @@ enforcement, PR-U1/U2/U3/U4, 2026-07-08).
 3. `docs/REPO_STANDARDS.md` is the durable canon consumers follow. For PLAN-003
    rollout work, read `docs/PLAYBOOK_governance-canon-rollout.md` then defer to
    operations `docs/CROSS_REPO_PLAYBOOKS.md` §T-D.
-4. _History:_ PLAN-004 SHIPPED (A–E merged + `ci/v1.7.0` 2026-07-10); PLAN-006 W4
+4. *History:* PLAN-004 SHIPPED (A–E merged + `ci/v1.7.0` 2026-07-10); PLAN-006 W4
    content-check population COMPLETE (2026-07-11).
 
 ## Recent decisions
@@ -826,8 +840,7 @@ See `DECISIONS.md` for the full CI-NNNN record. Latest:
 Recent merges: `feat/unified-litellm-agents` (#154 — LiteLLM unification for
 `ci/v2.0.0`); PLAN-007 W1/W2/W3/W5 (test suite + guardrails + markdown-lint
 graduation + Dependabot prune); PLAN-006 W4 content-check population.
-Earlier: PLAN-003 PR-V1/V2/V4 (#73/#74/#75) + canon follow-ups; PLAN-004
-#82-#99; PLAN-005 #108-#114.
+Earlier: PLAN-003 PR-V1/V2/V4 (#73/#74/#75) + canon follow-ups; PLAN-004 #82-#99; PLAN-005 #108-#114.
 
 ---
 
