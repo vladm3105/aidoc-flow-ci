@@ -78,4 +78,25 @@ mut="$(python3 "$MAP" "$SB" 2>/dev/null || echo '')"
 gitleaks_prod="$(printf '%s\n' "$mut" | awk -F'\t' '$2=="call / gitleaks"{print $3; exit}')"
 assert_eq "$gitleaks_prod" "?" "with secret-scan caller templates removed, call / gitleaks has NO producer"
 
+# ---------------------------------------------------------------------------
+# 4. FT-45 — the JOB-KEY half of `<jobid> / <name>` is validated, not dropped.
+#    A required context resolves only when an installed caller job KEYED <jobid>
+#    calls the reusable. `standards-drift`'s caller job is `drift`, so
+#    `drift / check-standards-drift` is produced but `call / check-standards-drift`
+#    (same name, wrong key) is NOT — arming the latter would hang every PR. Before
+#    FT-45 the map dropped <jobid> and passed both.
+# ---------------------------------------------------------------------------
+echo ""
+echo "== FT-45: a wrong job-key resolves the name but is flagged as no producer =="
+SB2="$(mktemp -d)"; cp -r "$ROOT/.github" "$ROOT/install" "$SB2/" 2>/dev/null
+cat > "$SB2/install/templates/branch-protection-ft45.json" <<'JSON'
+{"required_status_checks": {"contexts": ["drift / check-standards-drift", "call / check-standards-drift"]}}
+JSON
+m45="$(python3 "$MAP" "$SB2" 2>/dev/null || echo '')"
+p_right="$(printf '%s\n' "$m45" | awk -F'\t' '$2=="drift / check-standards-drift"{print $3; exit}')"
+p_wrong="$(printf '%s\n' "$m45" | awk -F'\t' '$2=="call / check-standards-drift"{print $3; exit}')"
+assert_eq "$p_right" "standards-drift.yml" "correct job-key (drift / check-standards-drift) resolves to its caller"
+assert_eq "$p_wrong" "?" "wrong job-key (call / check-standards-drift) is FLAGGED, not passed (FT-45)"
+rm -rf "$SB2"
+
 suite_summary "required-contexts"

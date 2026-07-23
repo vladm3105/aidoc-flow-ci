@@ -57,16 +57,28 @@ for f in sorted(glob.glob(os.path.join(ROOT, ".github/workflows/*.yml"))):
         nm = jb.get("name", jk) if isinstance(jb, dict) else jk
         name_to_reusable.setdefault(nm, base)
 
-# 2. caller template -> the reusable basename it uses.
+# 2. caller template -> the reusable basename it uses, AND reusable -> the caller
+# JOB KEYS that call it. FT-45: a required context is `<caller-job-key> / <name>`;
+# validating only <name> lets a wrong <caller-job-key> pass, and that context is
+# never emitted (arming it hangs every PR — the F2 class). Parse jobs so the
+# job-key half is checked, not dropped.
 tmpl_to_reusable = {}
-USES = re.compile(r"uses:\s*\S*aidoc-flow-ci/\.github/workflows/([A-Za-z0-9._-]+\.yml)")
+reusable_to_jobkeys = {}
+USES = re.compile(r"aidoc-flow-ci/\.github/workflows/([A-Za-z0-9._-]+\.yml)")
 for f in sorted(glob.glob(os.path.join(ROOT, "install/templates/workflows/*.yml"))):
     try:
-        m = USES.search(open(f, encoding="utf-8").read())
-    except OSError:
+        d = yaml.safe_load(open(f, encoding="utf-8")) or {}
+    except Exception:
         continue
-    if m:
-        tmpl_to_reusable[os.path.basename(f)] = m.group(1)
+    tb = os.path.basename(f)
+    for jk, jb in (d.get("jobs") or {}).items():
+        uses = jb.get("uses") if isinstance(jb, dict) else None
+        m = USES.search(uses) if isinstance(uses, str) else None
+        if not m:
+            continue
+        reu = m.group(1)
+        tmpl_to_reusable.setdefault(tb, reu)
+        reusable_to_jobkeys.setdefault(reu, set()).add(jk)
 
 # 3. template basename -> consumer path basename (manifest, incl. visibility variants).
 try:
@@ -99,7 +111,14 @@ for tpl in sorted(glob.glob(os.path.join(ROOT, "install/templates/branch-protect
             # a bare (non-reusable) context — repo-local, no canon producer to map.
             print("%s\t%s\t?non-call" % (tier, ctx))
             continue
-        _jobid, name = ctx.split(" / ", 1)
+        jobid, name = ctx.split(" / ", 1)
         reu = name_to_reusable.get(name)
         cons = reusable_to_consumer.get(reu) if reu else None
+        # FT-45: the JOB-KEY half must match a caller job that actually calls this
+        # reusable. `<name>` resolving is not enough — `call / check-standards-drift`
+        # resolves the reusable but is never PRODUCED if the caller job is keyed
+        # `drift`, so branch protection would wait on it forever. A resolved name
+        # under an unproduced job-key is NOT a producer.
+        if cons and jobid not in reusable_to_jobkeys.get(reu, set()):
+            cons = None
         print("%s\t%s\t%s" % (tier, ctx, cons or "?"))
