@@ -76,6 +76,11 @@ decide() { # $1 = consumer config ('' = no file); $2 = fragment path → sets DE
     # weaker options would hide exactly that class of bug.
     echo 'set -euo pipefail'
     echo "fetch_template() { cp '$2' \"\$2\"; }"
+    # validate_fetched (FT-39) guards the fetched body's shape; it is defined
+    # OUTSIDE the PRECOMMIT-MERGE markers, so stub it here the same way as
+    # fetch_template. This test isolates the version-compare DECISION; the
+    # validator's own teeth are in tests/test_install.sh Part 5.
+    echo 'validate_fetched() { :; }'
     cat "$TMP/block.sh"
   } > "$dir/drive.sh"
   ( cd "$dir" && bash drive.sh ) >"$TMP/out" 2>"$TMP/err"

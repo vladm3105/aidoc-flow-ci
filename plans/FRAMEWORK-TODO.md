@@ -8,6 +8,32 @@ when resolved.
 
 ## Open
 
+### FT-39 — `fetch_template` writes whatever the transport returns; `--update` infers non-interactive from a missing TTY
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G1 tag-cut blocker).
+**Surface:** `install/install.sh` `fetch_template` (the `curl -fsSL … -o "$dst"`
+body); the `--update` per-file fetch; the `[ ! -t 0 ]` interactivity inference;
+the pre-commit fragment fetch feeding `marker_version()`.
+**Effect:** `curl -f` rejects a 4xx/5xx, but a proxy/CDN/captive portal can serve
+a **200 with an empty or HTML body**. Written over a canon gate template, that
+silently 0-bytes a required check; written as the pre-commit fragment, a
+truncated/pre-`v2` body makes `marker_version()` read `1` and freezes every
+legacy consumer's FT-32 refresh (fails open). Separately, `[ ! -t 0 ]` was read as
+`--non-interactive`, so a piped `--update` overwrote every customized
+`safe_to_replace` caller with the canon body without consent.
+**Fix:** new `validate_fetched` helper (extractable `# >>> FETCH-VALIDATE >>>`
+markers) rejects empty / HTML-document bodies (matched on the opening tag over a
+bounded prefix, so a markdown template opening with `<!--` is not false-rejected)
+and, with an optional 3rd arg, a missing required marker; `fetch_template` and the
+`--update` fetch both call it;
+the pre-commit fragment fetch asserts the versioned
+`^# CANON: aidoc-flow-ci pre_push_check v[0-9]+` marker; `--update` defaults a
+missing TTY to keep-local (destructive replace now needs explicit
+`--non-interactive`). Teeth: `tests/test_install.sh` Part 5 drives the extracted
+validator; three mutations each go red.
+**RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream A / G1):** see CHANGELOG
+`## Unreleased`.
+
 ### FT-38 — four fleet repos pin `pre-commit-hooks` at a mutable rev the refresh cannot move
 
 **Found:** 2026-07-23, PLAN-018 Workstream D / PR D1 pre-push review (fleet
