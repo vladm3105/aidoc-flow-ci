@@ -98,13 +98,40 @@ preflight() {
   echo "$pol" | grep -q 'aidoc-flow-ci' && c_ok "aidoc-flow-ci allowlisted" || c_wn "confirm aidoc-flow-ci/* is allowlisted (else reusables startup_failure)"
 
   hdr "5. Already-deployed workflows"
-  local have; have="$($GH api "repos/$repo/contents/.github/workflows?ref=main" --jq '[.[].name]|join(" ")' 2>/dev/null || echo '')"
+  # Resolve the repo's DEFAULT BRANCH once — do not assume `main`. A repo on
+  # `master`/`develop` would otherwise read as "no workflows" (and skip the
+  # FT-31 check below) rather than reporting its real state.
+  local defbr; defbr="$($GH api "repos/$repo" --jq '.default_branch' 2>/dev/null || echo main)"
+  [ -n "$defbr" ] || defbr=main
+  local have; have="$($GH api "repos/$repo/contents/.github/workflows?ref=$defbr" --jq '[.[].name]|join(" ")' 2>/dev/null || echo '')"
   for pair in $ALL_WF; do
     local wf="${pair%%:*}"
     echo "$have" | grep -qw "$wf.yml" && c_ok "$wf.yml present" || echo "     ·  $wf.yml — not yet"
   done
   echo "$have" | grep -qw 'security.yml'  && c_wn "ships own security.yml → treat secret-scan as covered-by-own (don't double-add)"
   echo "$have" | grep -qw 'docs-lint.yml' && c_wn "ships own docs-lint.yml → treat markdown-lint as covered-by-own (don't clobber .markdownlint.json)"
+
+  # PLAN-018 FT-31 — zero-hook detector. If the repo already runs the pre-commit
+  # caller, its required 'call / Lint / format / security hooks' check is only
+  # meaningful if the repo's .pre-commit-config.yaml selects a hook at the
+  # pre-commit stage. A config with only pre-push hooks passes green while
+  # inspecting nothing (F3). Same standalone check install.sh + the release
+  # checklist run — never on the reusable's gating path.
+  if echo "$have" | grep -qw 'pre-commit.yml'; then
+    local pcfg; pcfg="$($GH api "repos/$repo/contents/.pre-commit-config.yaml?ref=$defbr" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || echo '')"
+    if [ -z "$pcfg" ]; then
+      c_wn "pre-commit.yml present but .pre-commit-config.yaml unreadable — cannot verify the required check has hooks (FT-31)"
+    else
+      local pctmp; pctmp="$(mktemp)"; printf '%s' "$pcfg" > "$pctmp"
+      local pcrc; bash "$HERE/check-precommit-hooks.sh" "$pctmp" >/dev/null 2>&1 && pcrc=0 || pcrc=$?
+      case "$pcrc" in
+        0) c_ok ".pre-commit-config.yaml selects ≥1 pre-commit-stage hook (required check is real)" ;;
+        1) c_no ".pre-commit-config.yaml selects ZERO pre-commit-stage hooks → the required 'call / Lint / format / security hooks' check would inspect NOTHING (F3/FT-31). Add commit-stage hooks (canon fragment: check-yaml/end-of-file-fixer/trailing-whitespace)." ;;
+        *) c_wn "could not verify .pre-commit-config.yaml hooks (FT-31 detector rc=$pcrc — PyYAML missing or unparseable config)" ;;
+      esac
+      rm -f "$pctmp"
+    fi
+  fi
   echo; echo "→ Next: 'plan $repo' then 'scaffold $repo <dir>'. See docs/AI_CI_DEPLOYMENT.md."
 }
 

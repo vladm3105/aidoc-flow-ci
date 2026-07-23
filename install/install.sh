@@ -829,6 +829,35 @@ PYEOF
 fi
 rm -f "$PRECOMMIT_TMP"
 
+# PLAN-018 FT-31 — the zero-hook detector. Verify the .pre-commit-config.yaml we
+# just produced actually selects a hook at the stage the `pre-commit` reusable
+# runs; a config with only pre-push hooks yields a green REQUIRED check that
+# inspects nothing (F3). Advisory, not fatal: the config is installed and the
+# rest of the bootstrap is unaffected, so a vacuous result is surfaced as a
+# prominent warning rather than aborting — the operator needs to see it, but it
+# does not undo a working install.
+#
+# The detector is FETCHED (like a template), not assumed local: under the
+# documented `bash <(curl …)` one-liner install.sh has no sibling file on disk.
+# Fetching keeps ONE source of the check that the wizard + release checklist also
+# run. A fetch failure just skips the advisory — it must never fail a working
+# install over a belt-and-suspenders check.
+if [ -f ".pre-commit-config.yaml" ]; then
+  _DETECTOR_TMP=$(mktemp)
+  if curl -fsSL "${TEMPLATE_BASE%/templates}/check-precommit-hooks.sh" -o "$_DETECTOR_TMP" 2>/dev/null; then
+    # Capture rc — warn ONLY on 1 (genuinely zero hooks). rc 2 means the check
+    # could not determine (no PyYAML / unparseable), which is not the same as
+    # "zero" and must not raise a false vacuous-config alarm.
+    bash "$_DETECTOR_TMP" ".pre-commit-config.yaml" >/dev/null 2>&1 && _drc=0 || _drc=$?
+    if [ "${_drc:-0}" -eq 1 ]; then
+      echo "  ⚠️  WARN  .pre-commit-config.yaml selects ZERO hooks at the pre-commit stage —" >&2
+      echo "           the required 'call / Lint / format / security hooks' check would inspect" >&2
+      echo "           nothing. Run: install/check-precommit-hooks.sh .pre-commit-config.yaml" >&2
+    fi
+  fi
+  rm -f "$_DETECTOR_TMP"
+fi
+
 # Canonical labels — idempotent + fail-loud. Prefetch existing labels so
 # we don't conflate "already exists" with real failures (auth / permission
 # / network / invalid repo).

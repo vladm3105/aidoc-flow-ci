@@ -5,6 +5,36 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — zero-hook detector (PLAN-018 FT-31, Workstream C)
+
+- `install/check-precommit-hooks.sh` — the general form of F3. It parses a
+  `.pre-commit-config.yaml`, counts hooks that run at the stage the `pre-commit`
+  reusable actually selects (the `pre-commit` default, when `run-stage` is empty),
+  and **exits 1 when that count is zero** — the case where the required
+  `call / Lint / format / security hooks` check passes while inspecting nothing.
+  Exit 0 = real check; exit 2 = cannot determine (missing file / no PyYAML), never
+  a false clean. Stage resolution follows pre-commit's own rules (per-hook
+  `stages`, else top-level `default_stages`, else every stage), so both the
+  explicit `stages: [pre-push]` and the `default_stages: [pre-push]` + stageless
+  vacuous shapes are caught (the latter verified against pre-commit itself).
+- **Operator-side only, by design.** It runs in `install.sh` (post-merge, as a
+  prominent advisory that never aborts a working install), in
+  `deploy-ci-wizard.sh preflight` (🔴 on a vacuous config), and as a
+  `docs/RELEASE_CHECKLIST.md` pre-tag step. It is deliberately NOT on the
+  `pre-commit` reusable's gating path: a detector there would flip any consumer
+  running `run-stage: manual` with no `manual` hooks from pass to fail on re-pin,
+  which CI-0013 does not authorize (§14.1a). Config-parsing, not the
+  output-emptiness heuristic F3 rejected.
+- `install.sh` **fetches** the detector (like a template) rather than assuming a
+  local sibling, so it works under the `bash <(curl …)` one-liner too; a fetch
+  failure silently skips the advisory rather than failing the install. One source,
+  three call sites.
+- `tests/test_precommit_stage.sh` drives it: exit 0/1/2 across the canon fragment,
+  a pre-push-only (vacuous) config, an unstaged hook, the legacy `commit` stage,
+  and missing/unparseable/non-mapping inputs; plus the reusable's default-stage
+  behaviour extracted from the workflow so the detector's premise can't drift.
+
+
 ### Added — exerciser inventory + completeness guard (PLAN-018 Workstream C, contract 7)
 
 - `docs/EXERCISER_INVENTORY.md` maps every consumer-facing surface canon ships —

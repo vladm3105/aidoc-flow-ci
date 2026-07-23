@@ -6,6 +6,15 @@ context compaction.
 
 ## Current state (2026-07-22)
 
+- **PLAN-018 Workstream C / PR C2 (zero-hook detector, FT-31) OPEN.**
+  `install/check-precommit-hooks.sh` — general form of F3; exits 1 when a
+  `.pre-commit-config.yaml` selects zero hooks at the stage the reusable runs.
+  Wired operator-side into install.sh (fetched, advisory), the wizard preflight
+  (🔴), and the release checklist — NEVER the gating path (would flip a
+  consumer's green check red). `test_precommit_stage.sh` drives it (9 assertions);
+  inventory row added + FT-31 gap closed. Remaining C: C3 (FT-18, rebases on C2 —
+  both touch the wizard), C4 (FT-36/FT-34 self-callers), C5 (FT-21 release.sh).
+
 - **PLAN-018 Workstream C STARTED — PR C1 (exerciser inventory) OPEN.** Post-`ci/v2.11.0`,
   Workstream C is the verification surface that makes the fixes stay fixed.
   Founder descope (2026-07-22): `aidoc-flow-ci` is a **library**, so the
