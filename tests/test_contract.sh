@@ -268,4 +268,23 @@ assert_ok "grep -q 'dep-scan:' '$WZ' && grep -q 'trivy-scan:' '$WZ' && grep -q '
 assert_ok "grep -q 'scaffold .* dep-scan trivy-scan sast-scan' '$WZ'" "wizard plan() documents opt-in scanner scaffolding"
 assert_absent "$(grep 'wfs=' "$WZ" | grep -v ALL_WF)" "dep-scan" "scanners are NOT in scaffold()'s default list (deliberate per-repo adoption, not a force-sweep)"
 
+echo "== FT-27 least-privilege: AI-flow callers pass explicit secrets, not blanket inherit =="
+TW=install/templates/workflows
+# composition reads only the automatic GITHUB_TOKEN → NO secrets: block at all.
+for f in composition-private composition-public; do
+  assert_ok "! grep -qE '^[[:space:]]*secrets:' '$TW/$f.yml'" "$f: no secrets: block (reads only GITHUB_TOKEN)"
+done
+# these declare their secrets → explicit map, never inherit.
+for f in doc-maintainer docs-sync auto-merge-ai-prs-public auto-merge-ai-prs-private; do
+  assert_ok "! grep -qE '^[[:space:]]*secrets: inherit' '$TW/$f.yml'" "$f: no blanket secrets: inherit"
+  assert_ok "grep -qE '^[[:space:]]*secrets:' '$TW/$f.yml'" "$f: has an explicit secrets: map"
+done
+assert_ok "grep -q 'AIDOC_FLOW_BOT_ID: \${{ secrets.AIDOC_FLOW_BOT_ID }}' '$TW/doc-maintainer.yml'" "doc-maintainer: explicit bot-id secret"
+assert_ok "grep -q 'APP_REVIEWER_1_ID: \${{ secrets.APP_REVIEWER_1_ID }}' '$TW/auto-merge-ai-prs-private.yml'" "auto-merge: explicit reviewer secret"
+# ai-review is the DELIBERATE exception (its reusable declares no secrets, so it
+# needs inherit); documenting that keeps the exception explicit, not accidental.
+assert_ok "grep -qE '^[[:space:]]*secrets: inherit' '$TW/ai-review.yml'" "ai-review: keeps inherit (reusable declares no secrets — documented FT-27 exception)"
+# FT-27b: auto-PR-approval defaults OFF.
+assert_ok "python3 -c \"import json,sys; sys.exit(0 if json.load(open('install/templates/actions-permissions.json'))['workflow']['can_approve_pull_request_reviews'] is False else 1)\"" "actions-permissions: can_approve_pull_request_reviews defaults false"
+
 suite_summary "contract"

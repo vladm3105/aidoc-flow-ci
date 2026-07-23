@@ -63,4 +63,7 @@ jobs:
       # Defaults to vladm3105/aidoc-flow-operations@main.
       # trust_config_repo: your-org/your-ops-repo
       # trust_config_ref: main
-    secrets: inherit  # pragma: allowlist secret
+    # Explicit map (FT-27 least-privilege) — exactly the secrets the reusable declares.
+    secrets:
+      APP_REVIEWER_1_ID: ${{ secrets.APP_REVIEWER_1_ID }}
+      APP_REVIEWER_1_KEY: ${{ secrets.APP_REVIEWER_1_KEY }}

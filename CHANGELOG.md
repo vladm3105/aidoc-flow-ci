@@ -5,6 +5,23 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — least-privilege on the AI-flow callers (PLAN-018 FT-27, Workstream B)
+
+- The privileged callers handed a tag-referenced reusable **every** repo secret
+  via `secrets: inherit`. Now each passes exactly what its reusable declares:
+  `composition-{private,public}` drop the block entirely (composition reads only
+  the automatic `GITHUB_TOKEN`); `doc-maintainer` / `docs-sync` /
+  `auto-merge-ai-prs-{public,private}` pass explicit `secrets:` maps.
+  `test_contract.sh` guards each, and documents the one deliberate exception —
+  `ai-review`, whose reusable declares no `secrets:` block, so it still needs
+  `inherit` (its explicit-map conversion is a tracked follow-up needing reusable
+  changes + its own security review).
+- `actions-permissions.json` defaults `can_approve_pull_request_reviews` to
+  **false**. GitHub bundles create+approve into that one toggle; it is needed only
+  by the opt-in bot-PR flows and is a standing bypass if
+  `required_approving_review_count` is ever raised. Flip it in the bot-PR adoption
+  runbook, not by default.
+
 ### Fixed — `codeql.yml` autobuild pinned the tag object, not the peeled commit (PLAN-018 FT-26, Workstream B)
 
 - `autobuild` pinned the annotated **tag object** `21eb7f78…` (v4.36.1) while

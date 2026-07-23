@@ -76,4 +76,9 @@ jobs:
       # Private HTTP proxies require explicit opt-in:
       # litellm_allow_insecure_http: true
       merge_sha: ${{ inputs.head_sha || '' }}
-    secrets: inherit  # pragma: allowlist secret
+    # Explicit map (FT-27 least-privilege) — exactly the secrets the reusable declares.
+    secrets:
+      AIDOC_FLOW_BOT_ID: ${{ secrets.AIDOC_FLOW_BOT_ID }}
+      AIDOC_FLOW_BOT_KEY: ${{ secrets.AIDOC_FLOW_BOT_KEY }}
+      LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
+      LITELLM_DOC_API_KEY: ${{ secrets.LITELLM_DOC_API_KEY }}
