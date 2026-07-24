@@ -4,13 +4,34 @@ Live cross-session resume point for the workspace CI + governance-workflow
 canon library. Read at session start; refresh at milestones and before
 context compaction.
 
-## Current state (2026-07-23)
+## Current state (2026-07-24)
 
-> **TL;DR (session wrap 2026-07-23).** **`ci/v2.12.0` is SHIPPED** — tag cut on
-> `0c743f5` (prep PR #287 merged), GitHub Release marked Latest. PLAN-019's
-> AI-executable work rode the tag: FT-39…45, 47, 48, 49, 50, 51 (code/test/docs)
-> plus the §4 content-currency. The **cold-start dry-run passed GREEN** at the
-> prep-merge SHA (all Part-A criteria: env-pinned `CI_TAG`, no 404/FAIL, 18 canon
+> **TL;DR (2026-07-24).** **`ci/v2.13.0` is SHIPPED** — tag on `dc0e40a`,
+> Release marked Latest, suite fully green. It carries three things:
+> **(1) CI-0011 / FT-46 RESOLVED** — the verified marketplace is dropped
+> (`verified_allowed: false`) and `patterns_allowed` narrowed to the owner's own
+> account `vladm3105/*`; these are **template values until applied per-repo**, so
+> nothing changed on any live repo when it merged.
+> **(2) FT-52 EXECUTED** — canon self-governance is live (details below).
+> **(3) The FT-30 cold-start gate is now CONDITIONAL** — `release.sh tag` demands
+> `--dry-run-verified` only when the release changes the installer bootstrap write
+> path (42 paths, manifest-derived incl. `visibility_variants`), and auto-waives
+> otherwise. Two defects were found by *executing* the release rather than reading
+> it: the surface missed 9 `visibility_variants`-only templates (blind to private
+> adopters), and the gate fired on the prep's own self-pin bump — which would have
+> made it fire on every release, i.e. ceremonial again. Both fixed + mutation-tested
+> (`test_release` 27→65).
+>
+> **⚠️ Release-flow change every future cut must know:** since FT-52 protected
+> `main`, a prep PR shows **BLOCKED, not merely red** — 4 of the 5 required contexts
+> come from self-pinned callers that `startup_failure` and are therefore **never
+> reported**. `enforce_admins: false` exists precisely so
+> `gh pr merge <N> --squash --delete-branch --admin` still works. See
+> RELEASE_CHECKLIST "Tag + release".
+>
+> **`ci/v2.12.0` (2026-07-23)** carried PLAN-019's AI-executable work — FT-39…45,
+> 47, 48, 49, 50, 51 plus the §4 content-currency — and its cold-start dry-run
+> passed GREEN at the prep-merge SHA (env-pinned `CI_TAG`, no 404/FAIL, 18 canon
 > labels, marker-v2 pre-commit fragment).
 > **FT-52 is EXECUTED (2026-07-24) — canon now governs itself.** Part A: immutable
 > `ci/v*` tag ruleset `19687369` (active, no bypass actors — create allowed;
@@ -37,10 +58,14 @@ context compaction.
 > now the tag resolves.
 >
 > **Remaining 🔴 founder items** (none block the shipped tag): **(1)** apply
-> `actions-permissions.json` to canon + each consumer (the CI-0011 settings write —
-> scan each target's `uses:` first; `web-site` + `knowledge-rag` must be EXCLUDED,
-> see RELEASE_CHECKLIST); **(2)** arm `feedback-desk`'s gates (PLAN-019 Part B
-> / PLAN-009 Phase 0 — secrets + runner pool). Non-🔴 leftover: cosmetic 4-doc
+> `actions-permissions.json` to canon + each consumer — the CI-0011 settings write.
+> **Scan each target's `uses:` FIRST**; `web-site` (`Azure/static-web-apps-deploy`)
+> and `knowledge-rag` (`codecov/codecov-action`) are admitted TODAY only by
+> `verified_allowed: true` and would break — both are EXCLUDED, see
+> RELEASE_CHECKLIST. **(2)** arm `feedback-desk`'s gates (PLAN-019 Part B /
+> PLAN-009 Phase 0 — secrets + runner pool). Open framework item: **FT-53**
+> (`standards-drift` never compares `patterns_allowed`, now the whole non-GitHub
+> boundary). Non-🔴 leftover: cosmetic 4-doc
 > markdown-`+` prose (markdownlint-clean, low priority). Pre-existing dependabot PRs
 > #221–228 are separate (FT-24), untouched. Detailed per-FT history + review findings
 > follow below.
