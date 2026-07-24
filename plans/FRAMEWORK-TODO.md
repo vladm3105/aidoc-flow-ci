@@ -21,9 +21,13 @@ run with nothing stopping it.
 — (A) immutable `ci/v*` tag ruleset (deletion + non-fast-forward blocked, creation
 allowed); (B) branch protection with **canon's own check set** (NOT product-tier —
 requiring `ai-review`/`composition` canon doesn't self-run would hang every PR, F2).
-**RESOLVED as far as the AI can take it (runbook prepared; execution 🔴 founder)
-(Unreleased -> `ci/v2.12.0`, PLAN-019 Workstream E / G4):** see CHANGELOG
-`## Unreleased`.
+**RESOLVED — EXECUTED 2026-07-24 at the founder's in-session direction. Both parts
+are LIVE:** Part A tag ruleset `19687369` (active, no bypass actors; create allowed,
+delete + force-move rejected — verified by execution) and Part B branch protection on
+`main` with canon's own 5-check set (0 required reviews, `enforce_admins: false`,
+`required_signatures: false`, so AI auto-merge and the FT-21 `--admin` prep path both
+still work). See CHANGELOG `## Unreleased` +
+`plans/ROLLOUT_ft52-canon-self-governance.md` (header records the applied state).
 
 ### FT-51 — `runners.md` leads with org-level registration, impossible on a personal account
 
