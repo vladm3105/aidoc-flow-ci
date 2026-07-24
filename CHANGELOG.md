@@ -5,6 +5,26 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Docs — warn that re-pinning to `ci/v2.14.0`+ produces expected CI-0011 drift
+
+- `ci/v2.13.0` narrowed the canon `actions-permissions.json` (`verified_allowed:
+  false`, `patterns_allowed` → `vladm3105/*`), but those are **template values
+  applied per-repo**. A consumer that re-pins without applying them now sees two
+  `standards-drift` warnings — `actions.selected.verified_allowed` and
+  `actions.selected.patterns_allowed: MISSING`. Undocumented, that reads as a
+  regression introduced by the re-pin.
+- Documented in the two places an operator actually hits it:
+  `docs/UPDATE_GUIDE.md` (the re-pin path) and `docs/AI_CI_DEPLOYMENT.md` §5
+  gotchas, with the exact drift text quoted from a live run.
+- Both state the part that prevents a false alarm: **nothing is broken.** The
+  repo's live pattern is *narrower* than canon's, so every canon reusable it calls
+  is still admitted; the "BLOCKED at run-init" wording applies only to a
+  hypothetical action under another `vladm3105/` repo. `strict` defaults to
+  `false`, so it warns and exits 0 (verified) — only a gate passing `strict: true`
+  would newly fail.
+- Both carry the fix (apply the settings alongside the re-pin), the mandatory
+  `uses:` pre-scan, and the `web-site` / `knowledge-rag` do-not-apply exclusions.
+
 ## ci/v2.14.0 — 2026-07-24
 
 ### Fixed — canon was missing 8 of its own 18 canonical labels

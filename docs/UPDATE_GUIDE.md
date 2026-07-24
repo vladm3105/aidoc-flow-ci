@@ -138,6 +138,52 @@ Do it before committing:
 
 If a repo needs only the version, stop reading here and use `--repin`.
 
+## ⚠️ Expected drift after re-pinning to `ci/v2.14.0` or later (CI-0011)
+
+**Re-pinning alone will make `standards-drift` report two new warnings.** This is
+expected and is not a regression — it means the repo's Actions settings have not yet
+been brought to the CI-0011 boundary.
+
+`ci/v2.13.0` narrowed the canon `actions-permissions.json`: the GitHub-verified
+marketplace was dropped (`verified_allowed: false`) and `patterns_allowed` became the
+owner's account (`vladm3105/*`). Those are **template values — they take effect only
+when applied per-repo**, so a consumer that re-pins but has not applied them sees:
+
+```text
+actions.selected.verified_allowed: canon=false actual=true
+actions.selected.patterns_allowed: MISSING (canon has, repo does not, and no live
+  pattern covers it): vladm3105/* — an action matching these is BLOCKED at run-init
+  (silent startup_failure, no logs)
+```
+
+**Nothing is actually broken.** Read the second message carefully: the repo's live
+pattern (`vladm3105/aidoc-flow-ci/*`) is *narrower* than canon's, so every canon
+reusable it calls is still admitted. The "BLOCKED" consequence applies only to a
+hypothetical action under some *other* `vladm3105/` repo — which no consumer calls
+today. The drift is real and worth closing; it is not an outage.
+
+**Severity:** `strict` defaults to `false`, so this **warns and exits 0** (verified).
+Only a caller that passes `strict: true` — a release or adoption gate — would newly
+**fail** on it.
+
+**Fix — apply the settings alongside the re-pin, and it is a non-event:**
+
+```bash
+# scan the target's uses: FIRST — a narrowed allowlist silently startup_failures
+# anything outside actions/*, github/*, vladm3105/*
+grep -rnoE 'uses:[[:space:]]*[^[:space:]]+' <repo>/.github/workflows/*.y*ml | sort -u
+
+jq -c '.selected_actions | walk(if type=="object" then with_entries(select(.key|startswith("_")|not)) else . end)' \
+  install/templates/actions-permissions.json |
+  gh api -X PUT repos/<owner>/<repo>/actions/permissions/selected-actions --input -
+```
+
+**Do NOT blanket-apply.** `web-site` (`Azure/static-web-apps-deploy`) and
+`knowledge-rag` (`codecov/codecov-action`) call verified-creator actions that are
+admitted **today only** by `verified_allowed: true`; applying CI-0011 to them would
+break those jobs. See `docs/RELEASE_CHECKLIST.md` for the full exclusion note, and
+`DECISIONS.md` CI-0011 for the decision itself.
+
 ## Reading the drift report as the rollout worklist
 
 Two different tools report drift, and knowing which one owns a surface is the
