@@ -498,11 +498,61 @@ Recorded retroactively per PLAN-015 M2.
 
 ---
 
-## CI-0011: `verified_allowed` supply-chain boundary — OPEN (founder decision)
+## CI-0011: `verified_allowed` supply-chain boundary — DECIDED (2026-07-24)
 
-**Status: OPEN — awaiting founder decision. Do not treat as decided.**
+**Status: DECIDED (founder, 2026-07-24) — drop the verified marketplace; admit
+only the founder's own account.**
 
-**Context**
+**Decision**
+
+- `verified_allowed: true → false`. The verified marketplace is no longer a trust
+  boundary for this workspace.
+- `patterns_allowed` broadened from `vladm3105/aidoc-flow-ci/*` to **`vladm3105/*`**
+  — the founder's own account becomes the **sole** non-GitHub-owned allowance,
+  replacing "any verified creator". `github_owned_allowed` stays `true`, and
+  `actions/*` + `github/*` remain listed explicitly.
+- Net effect: an action is admitted at run-init **iff** it is GitHub-owned or lives
+  under `vladm3105/*`. Everything else `startup_failure`s — verified creator or not.
+
+**Why this way:** "any verified creator" is an unbounded third-party set the
+workspace does not control; the owner's own account is a bounded one it does.
+Narrowing loses nothing, because canon already installs tools as binaries (the
+rule that forced `gacts/gitleaks` → binary) rather than calling marketplace
+wrappers.
+
+**Blast radius verified before landing:** every `uses:` across
+`.github/workflows/` and `install/templates/` resolves to `actions/*`, `github/*`,
+or `vladm3105/*` — so canon is unaffected. (Independently re-verified: canon has
+no composite actions and no `uses: ./` at all.) A consumer that
+still calls a verified-creator action (e.g. `aquasecurity/trivy-action`) will
+`startup_failure` once it applies the template; that is the intended boundary.
+
+**Guardrails:** `tests/test_contract.sh` asserts both halves — `verified_allowed`
+is `false`, `patterns_allowed` carries `vladm3105/*`, and no owner beyond
+`vladm3105`/`actions`/`github` appears. Both mutations were confirmed to go red.
+Re-admitting the marketplace or adding another owner is a new decision to record
+here, not a config tweak.
+
+**Note on the canon authoring rule (unchanged):** REPO_STANDARDS §4.3 still
+restricts canon's own `uses:` to `actions/*`, `github/*`,
+`vladm3105/aidoc-flow-ci/*` — deliberately **stricter** than this deployed
+boundary. Do not relax it to match.
+
+**🔴 Follow-up (not done by this decision):** canon's own live settings still
+carry `verified_allowed: true`; applying `actions-permissions.json` to canon and
+to each consumer is a founder-executed settings write, tracked as a
+RELEASE_CHECKLIST post-release item. These are template values until applied
+per-repo.
+
+**Confirmed as part of this resolution** (was flagged in the original filing):
+`workflow.can_approve_pull_request_reviews` is defanged — the `composition` gate
+counts ONLY the reviewer App's numeric bot-id + `type==Bot`, never
+`github-actions[bot]` — so an Actions-minted approval cannot satisfy the merge
+gate. The template ships it `false` regardless (FT-27).
+
+---
+
+**Original filing (context, for the record)**
 
 `install/templates/actions-permissions.json` sets `verified_allowed: true` (and
 `github_owned_allowed: true`) alongside the three-pattern `patterns_allowed`
@@ -514,26 +564,27 @@ verified marketplace as "a decision to take deliberately" — but that decision
 was never recorded, so code and policy have drifted apart by default, not by
 choice.
 
-**The decision (founder):**
+**The options as filed** (the founder chose the second, and additionally
+narrowed `patterns_allowed` to the account — see the Decision above):
 
 - **Keep `verified_allowed: true`** — accept that any verified-creator action can
   run on consumer runners (incl. the private self-hosted pool) as an intentional
   convenience; OR
-- **Drop it** — narrow the deployed boundary to the three patterns. Expect
-  verified actions currently relied upon (e.g. `aquasecurity/trivy-action` if any
-  consumer still calls it) to then `startup_failure`; canon reusables already
-  install tools as binaries, so canon itself is unaffected.
+- ✅ **Drop it** — narrow the deployed boundary. Expect verified actions currently
+  relied upon (e.g. `aquasecurity/trivy-action` if any consumer still calls it) to
+  then `startup_failure`; canon reusables already install tools as binaries, so
+  canon itself is unaffected.
 
 **Related note (not itself a decision):** `actions-permissions.json` also sets
 `workflow.can_approve_pull_request_reviews: true`. This is defanged here — the
 `composition` gate counts ONLY the reviewer App's numeric bot-id + `type==Bot`,
 never `github-actions[bot]` — so an Actions-minted approval does not satisfy the
-merge gate. Fold confirmation of this into whichever way CI-0011 resolves.
+merge gate. Confirmed as part of this resolution (see Decision above).
 
 **Origin**
 
 PLAN-015 M1 (pre-prod review security lens #2). Filed as an open decision;
-resolve before treating the supply-chain boundary as settled.
+resolved 2026-07-24.
 
 ---
 

@@ -7,9 +7,9 @@
 #     and `vladm3105/aidoc-flow-ci/*` (REPO_STANDARDS §4.3).
 #     `DavidAnson/markdownlint-cli2-action` is published by a NON-verified
 #     creator, so it is also BLOCKED at run-init → `startup_failure` (this is
-#     why markdown-lint never deployed on any consumer). This does not
-#     generalize — the deployed allowlist sets `verified_allowed: true`, so a
-#     VERIFIED creator's action is admitted and runs; see §4.3. Installing the
+#     why markdown-lint never deployed on any consumer). Since CI-0011 the
+#     deployed allowlist sets `verified_allowed: false`, so a VERIFIED creator's
+#     action is blocked too unless it matches `patterns_allowed`; see §4.3. Installing the
 #     npm package in a `run:` step needs no action allowlist;
 #     `actions/setup-node` IS allowlisted (`actions/*`) and guarantees Node on
 #     self-hosted runners.

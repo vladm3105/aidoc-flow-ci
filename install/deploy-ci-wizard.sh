@@ -119,9 +119,9 @@ preflight() {
       # reference is reachable (shared owner), but it BLOCKS GitHub-authored actions
       # (actions/checkout, actions/* , github/*) that the canon reusables use
       # internally, so their jobs startup_failure. NOT a green state.
-      c_no "allowed_actions=local_only BLOCKS GitHub-authored actions (actions/checkout, actions/*, github/*) that canon reusables use internally → they startup_failure. Set allowed_actions=all, or =selected WITH github-owned enabled + aidoc-flow-ci/* allowlisted." ;;
+      c_no "allowed_actions=local_only BLOCKS GitHub-authored actions (actions/checkout, actions/*, github/*) that canon reusables use internally → they startup_failure. Set allowed_actions=all, or =selected WITH github-owned enabled + 'vladm3105/*' allowlisted." ;;
     selected)
-      # Need BOTH: aidoc-flow-ci/* allowlisted AND github_owned_allowed — the
+      # Need BOTH: canon reusables allowlisted AND github_owned_allowed — the
       # reusables depend on actions/* + github/*, so an allowlist without
       # github-owned still startup_failures.
       local sa; sa="$($GH api "repos/$repo/actions/permissions/selected-actions" 2>/dev/null || echo '{}')"
@@ -130,11 +130,21 @@ preflight() {
       goa="$(printf '%s' "$sa" | jq -r '.github_owned_allowed' 2>/dev/null || echo '')"
       echo "  allowed_actions=selected; github_owned_allowed=${goa:-?}; patterns_allowed: ${pol:-<none>}"
       local _sok=1
-      echo "$pol" | grep -q 'aidoc-flow-ci' || { c_no "aidoc-flow-ci/* NOT in patterns_allowed → reusables startup_failure. Add 'vladm3105/aidoc-flow-ci/*'."; _sok=0; }
+      # CI-0011: the canonical pattern is the account-wide `vladm3105/*`; the older
+      # repo-scoped `vladm3105/aidoc-flow-ci/*` also admits the reusables, so accept
+      # either. Match each array element ANCHORED — a substring match on the joined
+      # string reports green for a look-alike owner (`evilcorp-vladm3105/*`) whose
+      # reusables would in fact startup_failure. GitHub allowlist wildcards span
+      # `/`, so `vladm3105/aidoc-flow-ci*` is also a valid working spelling.
+      local _canon_ok=0 _pat
+      while IFS= read -r _pat; do
+        if printf '%s' "$_pat" | grep -qE '^vladm3105/(\*|aidoc-flow-ci[/*])'; then _canon_ok=1; break; fi
+      done < <(printf '%s' "$sa" | jq -r '(.patterns_allowed // [])[]' 2>/dev/null || true)
+      [ "$_canon_ok" = 1 ] || { c_no "canon reusables NOT admitted by patterns_allowed → startup_failure. Add 'vladm3105/*' (CI-0011 canonical) or 'vladm3105/aidoc-flow-ci/*'."; _sok=0; }
       [ "$goa" = "true" ] || { c_no "github_owned_allowed=${goa:-?} → actions/checkout + github/* (used inside canon reusables) are BLOCKED → startup_failure. Enable GitHub-owned actions."; _sok=0; }
-      [ "$_sok" = 1 ] && c_ok "aidoc-flow-ci/* allowlisted AND GitHub-owned actions enabled" ;;
+      [ "$_sok" = 1 ] && c_ok "canon reusables allowlisted AND GitHub-owned actions enabled" ;;
     *)
-      c_wn "could not read actions/permissions (auth/scope?) — confirm allowed_actions=all, or =selected WITH github-owned enabled + aidoc-flow-ci/* allowlisted (local_only will startup_failure)" ;;
+      c_wn "could not read actions/permissions (auth/scope?) — confirm allowed_actions=all, or =selected WITH github-owned enabled + 'vladm3105/*' allowlisted (local_only will startup_failure)" ;;
   esac
 
   hdr "5. Already-deployed workflows"

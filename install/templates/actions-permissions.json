@@ -1,6 +1,6 @@
 {
   "_comment": "MULTI-ENDPOINT SPEC — NOT a single API payload. Consumed by `install/apply-standards.sh --apply` (PR-C2), which MUST iterate the top-level sections (`general`, `selected_actions`, `workflow`, `access`, `_fork_pr_settings`) and dispatch each to its own `_endpoint` URL. A naive `gh api PUT ... --input @actions-permissions.json` will 422 — the top-level section keys are NOT GitHub API fields.",
-  "_apply_note": "Before POST/PUT of any inner section, PR-C2 MUST strip ALL `_`-prefix keys (this file has many). Use `jq 'del(.._comment, .._apply_note, .._docs, .._endpoint, .._purpose, .._conditional, .._note)'` or equivalent. GitHub REST endpoints strictly validate unknown fields.",
+  "_apply_note": "Before POST/PUT of any inner section, PR-C2 MUST strip ALL `_`-prefix keys (this file has many, and more get added — do NOT maintain a hand-written key list). Use the generic recursive form `install/apply-standards.sh` actually uses: `jq '.<section> | walk(if type == \"object\" then with_entries(select(.key | startswith(\"_\") | not)) else . end)'`. GitHub REST endpoints strictly validate unknown fields, so a missed key is a 422.",
   "_docs": "https://docs.github.com/en/rest/actions/permissions",
 
   "general": {
@@ -13,10 +13,12 @@
   "selected_actions": {
     "_endpoint": "PUT /repos/{owner}/{repo}/actions/permissions/selected-actions",
     "_purpose": "which third-party actions the repo may run",
+    "_verified_note": "CI-0011 (founder, 2026-07-24) / FT-27/FT-46: FALSE (least-privilege). `verified_allowed: true` admitted EVERY GitHub-verified creator's action (aquasecurity, docker, hashicorp, …) — wider than REPO_STANDARDS §4.3, which restricts to github-owned + the patterns and forced gacts/gitleaks → binary. With this false, only `github_owned_allowed` + `patterns_allowed` admit an action; a verified-creator action outside the patterns is blocked at run-init. NB the deployed boundary (`vladm3105/*`) stays deliberately WIDER than canon's authoring rule (`vladm3105/aidoc-flow-ci/*`) — see REPO_STANDARDS §4.3.",
+    "_patterns_note": "CI-0011: the founder's own account `vladm3105/*` replaces the verified marketplace as the SOLE non-GitHub-owned allowance (broadened from `vladm3105/aidoc-flow-ci/*`, so every canon reusable stays admitted). `actions/*` + `github/*` are GitHub-owned and listed explicitly alongside `github_owned_allowed: true`. Adding any other owner here re-widens the supply-chain boundary — do it deliberately, and record it as a decision.",
     "github_owned_allowed": true,
-    "verified_allowed": true,
+    "verified_allowed": false,
     "patterns_allowed": [
-      "vladm3105/aidoc-flow-ci/*",
+      "vladm3105/*",
       "actions/*",
       "github/*"
     ]

@@ -354,37 +354,66 @@ released tags only.
 is deliberately **stricter than the boundary the fleet actually enforces** —
 do not "relax" it to match the deployed allowlist.
 
-**The deployed boundary is wider.** `install/templates/actions-permissions.json`
-sets three _additive_ fields, not one list:
+**The deployed boundary is the workspace owner's own account + GitHub's
+(CI-0011).** `install/templates/actions-permissions.json` sets three _additive_
+fields, not one list:
 
 | Field | Value | Admits |
 | --- | --- | --- |
 | `github_owned_allowed` | `true` | every `actions/*` + `github/*` action |
-| `verified_allowed` | `true` | **every action by a GitHub-verified creator** (`aquasecurity`, `docker`, `hashicorp`, …) |
-| `patterns_allowed` | 3 patterns | `vladm3105/aidoc-flow-ci/*`, `actions/*`, `github/*` |
+| `verified_allowed` | `false` | nothing extra — verified-creator actions are **not** auto-admitted (FT-46: was `true`, wider than this rule) |
+| `patterns_allowed` | 3 patterns | `vladm3105/*`, `actions/*`, `github/*` |
 
-So a third-party action's fate at run-init depends on **who publishes it**:
+So a third-party action's fate at run-init no longer depends on who publishes it —
+**any action outside `github/*`, `actions/*`, and `vladm3105/*` is BLOCKED at
+run-init → `startup_failure`**, verified creator or not:
 
 - **Non-verified creator** (`gacts/gitleaks`, `lycheeverse/lychee-action`,
-  `DavidAnson/markdownlint-cli2-action`) → **BLOCKED at run-init →
-  `startup_failure`** — no logs, no API error (the message is web-UI-only;
-  `actionlint` does NOT catch it). This silently bricked `secret-scan` (fixed
-  v1.9.2), `links`, and `markdown-lint` (both fixed v1.9.4).
-- **Verified creator** → **admitted, and runs.** It does not `startup_failure`.
-  Any later failure (a bad tag, a runtime error) surfaces normally, with logs.
+  `DavidAnson/markdownlint-cli2-action`) → **BLOCKED** — no logs, no API error (the
+  message is web-UI-only; `actionlint` does NOT catch it). This silently bricked
+  `secret-scan` (fixed v1.9.2), `links`, and `markdown-lint` (both fixed v1.9.4).
+- **Verified creator** (`aquasecurity`, `docker`, `hashicorp`, …) → **also BLOCKED**
+  now that `verified_allowed: false`. Before FT-46 (`verified_allowed: true`) it was
+  admitted; the wider grant was the discrepancy FT-46 closed.
 
-**Do not reason from "third-party ⇒ `startup_failure`" — that generalization is
-false, and it misdiagnoses failures.** A verified-creator action that fails at
-tag resolution produces `##[error]Unable to resolve action …`, which looks
-nothing like the allowlist block and is not one. Read the repo's actual
-`actions/permissions/selected-actions` before attributing any failure to the
-allowlist.
+**A `startup_failure` with no logs is the allowlist block; `##[error]Unable to
+resolve action …` (with logs) is a tag-resolution failure, not the allowlist.**
+Read the repo's actual `actions/permissions/selected-actions` before attributing a
+failure to the allowlist — and note this is only in force once the repo has
+**applied** `actions-permissions.json` (a template value until applied per-repo).
 
 The canon authoring rule stands on its own merits — it keeps canon's supply
 chain to sources this workspace controls or GitHub itself owns, without relying
-on GitHub's verification programme as a trust boundary. Widening canon to the
-verified marketplace is a **decision to take deliberately**, not a conclusion to
-reach from the fact that the deployed allowlist already permits it.
+on GitHub's verification programme as a trust boundary.
+
+**The authoring rule remains STRICTER than the deployed boundary, deliberately.**
+Deployed admits any repo under `vladm3105/*`; canon authoring admits only
+`vladm3105/aidoc-flow-ci/*`. The gap is defence-in-depth, not drift: a consumer
+may legitimately call another of the owner's repos, while canon itself stays
+pinned to the one repo it ships from. Do not "relax" the authoring rule to match
+the deployed allowlist.
+
+**CI-0011 (founder, 2026-07-24) settled the outer edge:** the verified
+marketplace was dropped (`verified_allowed: true → false`) and the owner's own
+account (`vladm3105/*`) became the sole non-GitHub-owned allowance. Re-admitting
+the verified marketplace — or adding any other owner to `patterns_allowed` — is a
+**decision to take deliberately** and to record in `DECISIONS.md`, not a
+conclusion to reach from convenience.
+
+Two consequences of making the account the boundary:
+
+- **Do not fork a third-party action into `vladm3105/`.** `patterns_allowed`
+  carries no per-repo or per-ref constraint, so any repo under the account — a
+  fork of a marketplace action included — is admitted at any ref. Forking one in
+  re-widens the boundary CI-0011 just narrowed, without any config change to
+  review.
+- **The guarantee is template-scoped, not fleet-scoped.**
+  `tests/test_contract.sh` asserts both halves of the shipped
+  `actions-permissions.json`, so a silent re-widening of the **template** goes
+  red. It does **not** observe deployed repos, and `sync/check-standards-drift.sh`
+  compares only `github_owned_allowed` + `verified_allowed` — **not**
+  `patterns_allowed`. A consumer whose `patterns_allowed` is edited in the
+  Settings UI is currently undetected (tracked in `plans/FRAMEWORK-TODO.md`).
 
 **Pattern:** install the tool directly in a `run:` step —
 

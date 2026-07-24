@@ -336,7 +336,7 @@ cat > "$TMP/drift-contract/bin/gh" <<'SH'
 case "$*" in
   "auth status") exit 0 ;;
   *"branches/main/protection"*) cat "$DRIFT_FIXTURES/bp-actual.json" ;;
-  *"actions/permissions/selected-actions"*) echo '{"github_owned_allowed":true,"verified_allowed":true}' ;;
+  *"actions/permissions/selected-actions"*) echo '{"github_owned_allowed":true,"verified_allowed":false}' ;;
   *"actions/permissions/workflow"*) echo '{"default_workflow_permissions":"read"}' ;;
   *"actions/permissions/access"*) echo '{"access_level":"none"}' ;;
   *"actions/permissions"*) echo '{"allowed_actions":"selected"}' ;;

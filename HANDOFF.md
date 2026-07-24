@@ -15,9 +15,12 @@ context compaction.
 > **FT-52** stays a prepared 🔴 founder runbook
 > (`plans/ROLLOUT_ft52-canon-self-governance.md`) — the immutable `ci/v*` tag
 > ruleset + `main` branch protection are NOT yet applied.
-> **FT-46 stays DEFERRED** — its `verified_allowed` flip *is* the OPEN founder
-> decision **CI-0011** (held in `git stash` `ft46-HELD-…`); rides a **later** tag,
-> not this one. CI-0011 remains OPEN in DECISIONS.md/ROADMAP.
+> **FT-46 / CI-0011 are now RESOLVED (2026-07-24)** — founder decided: **drop the
+> verified marketplace, admit only the owner's own account**. `verified_allowed:
+> false` + `patterns_allowed` broadened to `vladm3105/*`; docs, wizard preflight,
+> and contract assertions synced. Rides the **next** tag after `ci/v2.12.0` (it is
+> under a fresh `## Unreleased`). 🔴 leftover: applying `actions-permissions.json`
+> to canon + each consumer is a founder settings write (RELEASE_CHECKLIST item).
 >
 > **Post-release (done this session):** the pre-tag push left `main`'s `self-*`
 > callers `startup_failure` (0s) + `tests` red on the FT-21 latest-tag assertion
@@ -25,8 +28,9 @@ context compaction.
 > mid-release-cut red and NOT retryable; this HANDOFF push re-triggers them green
 > now the tag resolves.
 >
-> **Remaining 🔴 founder items** (none block the shipped tag): **(1)** decide
-> **CI-0011** → FT-46 lands on a later tag; **(2)** FT-52 Part A tag ruleset + Part B
+> **Remaining 🔴 founder items** (none block the shipped tag): **(1)** apply
+> `actions-permissions.json` to canon + each consumer (the CI-0011 settings write);
+> **(2)** FT-52 Part A tag ruleset + Part B
 > branch protection (any time); **(3)** arm `feedback-desk`'s gates (PLAN-019 Part B
 > / PLAN-009 Phase 0 — secrets + runner pool). Non-🔴 leftover: cosmetic 4-doc
 > markdown-`+` prose (markdownlint-clean, low priority). Pre-existing dependabot PRs
@@ -46,7 +50,8 @@ context compaction.
   test, `contract` 272→275; security-auditor verdict READY — additive-safety
   confirmed against GitHub reusable-workflow docs — PR #272, squash `d70782e`).
 - **➡️ NEXT (AI-executable): G3 + G4 — the remaining flow-ci tasks (FT-43…52,
-  EXCEPT FT-46 which is DEFERRED on the OPEN founder decision CI-0011 — see its
+  EXCEPT FT-46 which was DEFERRED on founder decision CI-0011 [DECIDED 2026-07-24;
+  FT-46 landed] — see its
   entry below; it rides a LATER tag, not `ci/v2.12.0`).**
   The rest all ride the same `ci/v2.12.0` tag (additive surfaces), and several touch
   `install.sh` + the templates the cold-start dry-run exercises (FT-47, FT-50,
@@ -65,7 +70,9 @@ context compaction.
   spec never referenced CI-0011, so it was NOT shipped. Founder chose "defer"
   2026-07-23. Implementation is complete + reviewed, held in `git stash`
   (`ft46-HELD-pending-CI-0011...`) on `fix/ci-ft46-verified-allowed`; rides a later
-  tag once CI-0011 is decided. **CI-0011 stays OPEN in DECISIONS.md/ROADMAP.**),
+  tag once CI-0011 is decided. **[SUPERSEDED 2026-07-24: CI-0011 is now DECIDED —
+  verified marketplace dropped, `patterns_allowed` = `vladm3105/*`; FT-46 landed.
+  See the TL;DR + DECISIONS.md CI-0011.]**),
   ✅ **FT-47** (CI now exercises the ruamel.yaml merge backend, not only PyYAML —
   the gap that let FT-44's ruamel `__ne__` bug pass CI; `contract` 283→284 — PR
   #279 MERGED `33e4bf9`), ✅ **FT-48** (`release.sh prep` gains the on-main + fetch +
@@ -91,7 +98,8 @@ context compaction.
   uses canon's own check set — PR #285 MERGED `5029ad6`).
 - **➡️ PLAN-019 AI-EXECUTABLE WORK IS COMPLETE.** All FTs are landed or handed off:
   FT-39…45, 47, 48, 49, 50, 51 merged; FT-52 runbook prepared (🔴 founder);
-  **FT-46 DEFERRED** on the open founder decision **CI-0011** (held in stash). The
+  **FT-46 was DEFERRED** on founder decision **CI-0011** (held in stash) —
+  [DECIDED 2026-07-24, FT-46 landed; see TL;DR]. The
   only remaining §4 item is the cosmetic 4-doc markdown-`+` prose (low priority).
   **REMAINING TO SHIP `ci/v2.12.0` — all 🔴 founder / gated:** (1) decide CI-0011
   (then FT-46 rides a later tag or lands); (2) run the **G2 cold-start dry-run**
@@ -576,8 +584,8 @@ rollout not"; PLAN-015 closed both blockers + the M/L follow-ups, cut as
 
 **Remaining PLAN-015 work is entirely 🔴 founder-gated + prepared:**
 `plans/ROLLOUT_plan015-arming.md` (per-repo re-pin to `ci/v2.8.0` + install
-`standards-drift` + arm branch protection + verify) and the CI-0011
-`verified_allowed` decision. **FT-15** (audit ai-review/doc-maintainer/docs-sync
+`standards-drift` + arm branch protection + verify). The CI-0011
+`verified_allowed` decision is RESOLVED (2026-07-24). **FT-15** (audit ai-review/doc-maintainer/docs-sync
 for the same latent `workflow_ref`-is-the-caller asset-fetch issue PLAN-015 B2
 found + fixed in `standards-drift`) is OPEN in `plans/FRAMEWORK-TODO.md` — now
 **elevated to a trust-blocker**: it must be confirmed before trusting the pin
@@ -1076,9 +1084,10 @@ enforcement, PR-U1/U2/U3/U4, 2026-07-08).
 
 See `DECISIONS.md` for the full CI-NNNN record. Latest:
 
-- **CI-0011** (OPEN — founder) — `verified_allowed` supply-chain boundary:
-  keep (verified marketplace admitted fleet-wide) vs drop (three-pattern only).
-  Filed by PLAN-015 M1; resolve before treating the boundary as settled.
+- **CI-0011** (DECIDED 2026-07-24 — founder) — `verified_allowed` supply-chain
+  boundary: **dropped** the verified marketplace; `patterns_allowed` narrowed to the
+  owner's own account `vladm3105/*` (+ GitHub-owned). Filed by PLAN-015 M1.
+  🔴 leftover: applying the template to canon + consumers is a settings write.
 - **CI-0010** (2026-07-18) — own security-scanner suite (osv/trivy/semgrep):
   binaries not marketplace actions, report-only-first, opt-in (`ci/v2.4.0`–`v2.7.0`).
 - **CI-0009** (2026-07-17) — ai-review autofix: dedicated write-App, default-off,

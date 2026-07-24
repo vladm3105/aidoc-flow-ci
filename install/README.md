@@ -195,7 +195,7 @@ discovered during framework Phase A):
 
 | Setting | Why | Doc |
 |---|---|---|
-| **Actions allowlist** | If the consumer is in `selected actions` mode, `vladm3105/aidoc-flow-ci/*` must be in `patterns_allowed` or the reusable returns `startup_failure` | [`../docs/troubleshooting.md` §13](../docs/troubleshooting.md) |
+| **Actions allowlist** | If the consumer is in `selected actions` mode, `patterns_allowed` must admit canon — `vladm3105/*` (canonical) or the older `vladm3105/aidoc-flow-ci/*` — or the reusable returns `startup_failure` | [`../docs/troubleshooting.md` §13](../docs/troubleshooting.md) |
 | **Caller `permissions:` block** | If the consumer's repo-default `workflow_permissions: read`, the reusable's `contents: write` is rejected — add an explicit `permissions:` block to the caller | [`../docs/troubleshooting.md` §14](../docs/troubleshooting.md) |
 | **LiteLLM secrets** (ci/v2.0.0) | `LITELLM_BASE_URL` + `LITELLM_REVIEW_API_KEY` are required for the ai-review gate to connect to the LiteLLM proxy. `LITELLM_DOC_API_KEY` is required for doc-maintainer (optional). Set per-repo or at org level. | [`../docs/REVIEWER_APP_ONBOARDING.md`](../docs/REVIEWER_APP_ONBOARDING.md), [`../docs/MIGRATION_v2.0.0.md`](../docs/MIGRATION_v2.0.0.md) |
 

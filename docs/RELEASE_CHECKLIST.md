@@ -88,5 +88,37 @@ for you.
   ai-review gate fires on the next PR.
 - [ ] **`check-pin-currency.sh --fleet` green:** no stale pins across the
   fleet (or flag known laggards as intentional).
+- [ ] **🔴 Apply `actions-permissions.json` to canon itself (FT-46):** canon's
+  live settings are wider than the template ships — `selected-actions.verified_allowed`
+  is `true` (should be `false`, FT-46) and `workflow.can_approve_pull_request_reviews`
+  is `true` (should be `false`, FT-27; note these are two *different* endpoints).
+  Run `install/apply-standards.sh --apply --repo vladm3105/aidoc-flow-ci --tier product`
+  (or the equivalent per-section `gh api` PUTs) to bring canon's own settings to the
+  FT-27/FT-46 values. Writes to canon settings → founder-executed via an
+  `ops/inbox` runbook, not in-session.
+- [ ] **🔴 Apply to each CONSUMER — but scan its `uses:` FIRST (CI-0011):**
+  `apply-standards.sh --apply` PUTs the whole `selected_actions` object, so it
+  **replaces `patterns_allowed` wholesale and flips `verified_allowed` to false**
+  with no target-side check. Any action the target repo calls that is not
+  GitHub-owned and not under `vladm3105/*` will then `startup_failure` with **zero
+  logs**. Before applying to a repo, run:
+  `grep -rnoE 'uses:[[:space:]]*[^[:space:]]+' <repo>/.github/workflows/*.y*ml | sort -u`
+  and confirm every hit is `actions/*`, `github/*`, or `vladm3105/*`. (Match
+  `uses:` unanchored — an anchored `^\s*uses:` silently misses the dominant
+  list form `- uses: …`; and use `[[:space:]]`, not `\s`, which is a GNU-grep
+  extension that matches a literal `s` on BSD/macOS and returns a false all-clear.)
+  **Known non-admitted callers as of 2026-07-24 — do NOT blanket-apply to these:**
+  `web-site` (`Azure/static-web-apps-deploy` — verified creator, admitted TODAY only
+  by `verified_allowed: true`; applying would brick its only deploy job) and
+  `knowledge-rag` (`codecov/codecov-action`, verified; plus `gitleaks/gitleaks-action`,
+  already blocked). Both repos are paused/independent and outside the fleet rollout —
+  named here so a later "fleet uniformity" pass does not silently break them.
+  (`iplanic`'s `lycheeverse/lychee-action` is non-verified and already blocked today —
+  applying changes nothing for it.)
+- [ ] **Consumer drift note (CI-0011):** once a consumer re-pins to the tag carrying
+  this change, `standards-drift` emits `verified_allowed: canon=false actual=true`
+  every run until the settings write above happens. Default is warning-only, so
+  nothing goes red unless an arming runbook passes `strict: true` — but don't let it
+  accrete as permanent yellow.
 - [ ] **CHANGELOG promotion:** the `## Unreleased` header is cleared and a
   new empty `## Unreleased` section is ready for the next release cycle.

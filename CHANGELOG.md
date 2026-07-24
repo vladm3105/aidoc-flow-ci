@@ -5,6 +5,40 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — supply-chain allowlist narrowed to GitHub-owned + own account (CI-0011 / PLAN-019 FT-46)
+
+- **CI-0011 RESOLVED (founder, 2026-07-24): drop the verified marketplace; admit
+  only the founder's own account.** `install/templates/actions-permissions.json`
+  shipped `verified_allowed: true`, admitting **every** GitHub-verified creator's
+  action (`aquasecurity`, `docker`, `hashicorp`, …) on every consumer — wider than
+  REPO_STANDARDS §4.3, the authoring rule that forced `gacts/gitleaks` → binary.
+  Now `false`: only `github_owned_allowed` + `patterns_allowed` admit an action.
+- `patterns_allowed` broadened from `vladm3105/aidoc-flow-ci/*` to **`vladm3105/*`**
+  — the founder's account replaces the verified marketplace as the sole non-GitHub
+  allowance. Strictly wider than the previous canon-repo-only pattern, so nothing
+  that pinned canon reusables breaks.
+- **Verified no canon breakage:** every `uses:` across `.github/workflows/` and
+  `install/templates/` resolves to `actions/*`, `github/*`, or `vladm3105/*`
+  (canon has no composite actions and no `uses: ./`). A consumer calling a
+  verified-creator action outside these patterns now `startup_failure`s at
+  run-init — the intended boundary per CI-0011.
+- `docs/REPO_STANDARDS.md` §4.3 updated: the "verified creator → admitted"
+  bullet is corrected, and the deployed boundary is now the owner's account —
+  deliberately still **wider** than the canon authoring rule
+  (`vladm3105/aidoc-flow-ci/*`), which is unchanged. §4.3 also documents that the
+  contract assertion is template-scoped, not fleet-scoped. The same correction is propagated to the
+  operator-facing docs that asserted the old `true` semantics: `docs/troubleshooting.md`
+  (its Fix runbook set `verified_allowed=true` and warned *against* `false` — now
+  reversed), `docs/AI_CI_DEPLOYMENT.md`, and `docs/security.md`.
+- `test_contract.sh` asserts `verified_allowed` is `false` and that
+  `patterns_allowed` carries the account-wide `vladm3105/*`; the drift-contract stub
+  updated to match.
+- **🔴 follow-up (RELEASE_CHECKLIST post-release item):** canon's own live settings
+  still carry `verified_allowed: true` and `can_approve_pull_request_reviews: true`;
+  applying `actions-permissions.json` to canon and to each consumer is a
+  founder-executed settings write. FT-27/FT-46 are template values until applied
+  per-repo.
+
 ## ci/v2.12.0 — 2026-07-23
 
 ### Docs — FT-52 canon self-governance runbook (PLAN-019, 🔴 founder-executed)
