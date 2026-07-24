@@ -283,6 +283,95 @@ WORK_DIR="${WORK_DIR:-$PWD/aidoc-flow-ci-bootstrap-$$}"
 gh repo clone "$TARGET_REPO" "$WORK_DIR/consumer" -- --depth 1
 cd "$WORK_DIR/consumer"
 
+# >>> MANDATORY-BACKUP >>>  (extracted verbatim by tests/test_install.sh — keep
+# these markers; the test drives THIS code rather than a copy of it.)
+# FT-57: snapshot every pre-existing governance/CI surface BEFORE the first
+# write. Three separate code paths mutate files in this clone — fetch_template's
+# `curl -o`, the --update replace's `cp`+`mv`, and --repin's `sed -i` — so a
+# per-writer hook would have to be remembered by whoever adds the fourth. One
+# snapshot here cannot be bypassed by a later write path.
+#
+# UNCONDITIONAL by design: not gated on mode, --non-interactive, a TTY, or
+# whether the run intends to replace anything. A consumer may carry an
+# established, customized flow, and "we only meant to add files" is exactly the
+# assumption under which the FT-9 --update clobber happened.
+#
+# Scope: all of .github/ (so the consumer's OWN workflows are captured too —
+# this script never writes them, but a backup that only covers what we intend to
+# touch is worthless when the bug is touching something we did not intend), plus
+# the root-level configs the manifest can target. Deliberately NOT derived from
+# manifest.json: a backup that drifts with the manifest would silently stop
+# covering a surface the manifest dropped.
+#
+# Sited in WORK_DIR rather than beside the script: install.sh is documented as
+# runnable piped (`bash <(curl …) --update`), where $0 is not a real path.
+# WORK_DIR is deliberately never auto-cleaned, so the backup outlives the run.
+BACKUP_DIR="$WORK_DIR/backup"
+backup_existing_surfaces() {
+  local n=0 p d list rc=0
+  local -a files=()
+  mkdir -p "$BACKUP_DIR" || return 1
+
+  # NUL-delimited enumeration. A word-split `for p in $(find …)` list is wrong
+  # twice over, and both were live defects here before this was fixed:
+  #   "bug report.md"  -> split into two nonexistent paths; cp fails; the whole
+  #                       installer becomes unusable on that repo, in every mode.
+  #   "notes[1].md"    -> glob-expanded onto a SIBLING file; the bracket file is
+  #                       never backed up, the sibling is copied twice, the count
+  #                       reports success. Fail-OPEN, which is the one outcome a
+  #                       mandatory backup must never produce.
+  # Do not reintroduce an unquoted command substitution here.
+  #
+  # `find -L` so a symlinked .github (or a symlinked caller inside it) is
+  # followed rather than silently yielding nothing — that was a clean bypass of a
+  # MANDATORY backup. `! -type d` is the right predicate under -L: it keeps
+  # regular files, symlinks-to-files (followed) and broken symlinks, while
+  # excluding directories AND the symlinked-directory root itself (which `cp -p`
+  # cannot copy). Symlinks are captured by CONTENT, which is what a restore wants.
+  list="$(mktemp)" || return 1
+  if [ -d .github ]; then
+    # find's own status is checked: a partial traversal (unreadable subdir) still
+    # prints what it could read and exits non-zero. Swallowing that would report
+    # a successful backup that is quietly missing files.
+    if ! find -L .github ! -type d -print0 > "$list" 2>/dev/null; then
+      rm -f "$list"
+      echo "  FAIL  could not enumerate .github (unreadable subdirectory?) — refusing to write" >&2
+      return 1
+    fi
+    while IFS= read -r -d '' p; do files+=("$p"); done < "$list"
+  fi
+  rm -f "$list"
+
+  # Non-.github surfaces install.sh can write. Kept as an explicit list rather
+  # than derived from manifest.json: a manifest-derived scope would silently
+  # stop covering a surface the manifest drops. tests/test_install.sh
+  # cross-checks this list AGAINST the manifest, so a manifest ADDITION outside
+  # .github/ fails the suite instead of going unbacked.
+  local r
+  for r in .markdownlint.json .lychee.toml .yamllint.yaml .yamllint.yml \
+           .pre-commit-config.yaml .gitignore .gitattributes CLAUDE.md \
+           scripts/pre_push_check.sh; do
+    [ -e "$r" ] && files+=("$r")
+  done
+
+  for p in ${files[0]+"${files[@]}"}; do
+    d="$(dirname "$p")"
+    mkdir -p "$BACKUP_DIR/$d" || rc=1
+    cp -p "$p" "$BACKUP_DIR/$p" || rc=1
+    [ "$rc" -eq 0 ] || { echo "  FAIL  could not back up $p — refusing to write" >&2; return 1; }
+    n=$((n + 1))
+  done
+
+  if [ "$n" -eq 0 ]; then
+    echo "==> backup: no pre-existing CI/governance surfaces (fresh repo)"
+  else
+    echo "==> backed up $n pre-existing file(s) -> $BACKUP_DIR"
+  fi
+}
+# Fail CLOSED: if the snapshot cannot be taken, do not write.
+backup_existing_surfaces || { echo "install: refusing to modify $TARGET_REPO without a backup" >&2; exit 1; }
+# <<< MANDATORY-BACKUP <<<
+
 # Bootstrap creates the canon dirs; --update only touches files the consumer
 # already has, so it must NOT litter empty dirs into the clone.
 [ "$MODE_UPDATE" = 1 ] || [ "$MODE_REPIN" = 1 ] || mkdir -p .github/workflows .github/ai-review
@@ -1078,6 +1167,9 @@ fi
 echo ""
 echo "==> done. Next steps (founder) — SECRETS BEFORE THE PR, or the first PR's ai-review gate fails:"
 echo "    1. Inspect bootstrapped files: cd $WORK_DIR/consumer && git diff"
+echo "       Pre-write backup of everything that already existed (FT-57):"
+echo "         $BACKUP_DIR"
+echo "       Restore one file:  cp \"$BACKUP_DIR/<path>\" $WORK_DIR/consumer/<path>"
 # PLAN-018 F4 — runner-pool probe, visibility-INDEPENDENT. The ai-review
 # template is visibility-uniform (PLAN-013) and pins the self-hosted pool for
 # PUBLIC repos too, so a public adopter with no pool gets permanently-queued

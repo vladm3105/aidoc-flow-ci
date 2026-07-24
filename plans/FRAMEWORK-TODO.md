@@ -101,6 +101,47 @@ step is present (removing it goes red).
 **RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream B / G3):** see CHANGELOG
 `## Unreleased`.
 
+### FT-57 — `install.sh` had no mandatory backup of a consumer's existing surfaces
+
+**Found:** 2026-07-24, founder question — "consumers may have their own customized
+established flow; the deployment script may override only flow-ci flows but MUST
+back up all existing flows as a mandatory part of deployment."
+**Surface:** `install/install.sh`. Three code paths mutate files in the consumer
+clone — `fetch_template`'s `curl -o`, the `--update` replace's `cp`+`mv`, and
+`--repin`'s `sed -i` — and none took a backup. The only `.bak` in the file was the
+transient FT-50 portability artifact, created and `rm -f`'d immediately.
+**What already held (verified, so this was narrower than it looked):** writes are
+manifest-scoped, so a consumer's own workflow is never written; there is no
+wildcard write or delete over `.github/workflows/`; `--repin`'s sed only rewrites
+`uses: vladm3105/aidoc-flow-ci/…` lines; bootstrap preserves existing files;
+12 sensitive paths are `safe_to_replace: false`; and install.sh **never commits or
+pushes** (0 call sites) — it writes to a clone the operator reviews. Git was the
+de-facto backup.
+**Effect:** the guarantee was *inferred*, not inspectable, and asymmetric —
+`apply-standards.sh` backs up settings to `install/backups/` before any mutation
+while the file path had no equivalent. The sharp edge is
+`--update --non-interactive`, which auto-replaces every `safe_to_replace: true`
+file, including 16 workflow callers; a consumer that customized `runner_labels`,
+`permissions` or triggers loses it silently (the FT-9 clobber).
+**Fix (this release):** an unconditional pre-write snapshot immediately after the
+clone, before any writer — one hook that a future fourth write path cannot bypass.
+Review caught two BLOCKERs in the first implementation, both proven on fixtures: an
+unquoted `for p in $(find …)` word-split a space-named path (installer unusable) and
+glob-expanded a bracket-named path onto a sibling (silent fail-OPEN with a lying
+count); and `scripts/pre_push_check.sh` — a manifest path `--update` can replace —
+was outside the scope.
+Scope is all of `.github/` (so the consumer's OWN flows are captured too — a backup
+covering only what we *intend* to touch is worthless when the bug is touching what
+we did not) plus root-level configs. Deliberately not manifest-derived, so it
+cannot drift with the manifest. Sited in `WORK_DIR` (piped-safe; `$0` is not a real
+path under `bash <(curl …)`), which is never auto-cleaned. **Fails closed** — no
+backup, no writes. `tests/test_install.sh` drives the extracted block.
+**Still open (deliberately not done here):** make
+`--update --non-interactive` *refuse* on a file whose local content differs from
+both canon and the previous canon body — i.e. treat customization as a stop, not
+something to overwrite. That is a behaviour change needing a founder call.
+**Status:** fix landed; the `--update` refusal is OPEN.
+
 ### FT-55 — the immutable `ci/v*` tag ruleset is an act, not a standard
 
 **Found:** 2026-07-24, while checking whether FT-52's ruleset was templated.

@@ -413,4 +413,136 @@ assert_ok "grep -q 'validate_fetched \"\$PRECOMMIT_TMP\"' '$INSTALL'" \
 assert_ok "grep -q 'no TTY and no --non-interactive — keeping local' '$INSTALL'" \
   "update: no-TTY-without-flag defaults to keep, not replace (FT-39)"
 
+echo ""
+echo "== FT-57: mandatory pre-write backup of the consumer's existing surfaces =="
+# Drives the MANDATORY-BACKUP block extracted from install.sh itself, not a copy.
+bstart="$(grep -c '^# >>> MANDATORY-BACKUP >>>' "$INSTALL")"
+bend="$(grep -c '^# <<< MANDATORY-BACKUP <<<' "$INSTALL")"
+assert_eq "$bstart" "1" "exactly one MANDATORY-BACKUP start marker"
+assert_eq "$bend" "1" "exactly one MANDATORY-BACKUP end marker"
+BS="$(grep -n '^# >>> MANDATORY-BACKUP >>>' "$INSTALL" | cut -d: -f1)"
+BE="$(grep -n '^# <<< MANDATORY-BACKUP <<<' "$INSTALL" | cut -d: -f1)"
+assert_ok "[ '${BS:-0}' -lt '${BE:-0}' ]" "MANDATORY-BACKUP start marker precedes end marker"
+
+# The hook must precede EVERY consumer writer, not just fetch_template: the three
+# real writers are `curl -o`, `cp`/`mv`, and `sed -i`. Anchor on the earliest of
+# any of them, so a future write added above the hook fails here.
+FIRST_WRITE="$(grep -nE "curl -fsSL .*-o \"\\\$\{?dst|^[[:space:]]*(cp|mv) \"|sed -i" "$INSTALL" \
+  | awk -F: -v b="$BE" '$1 > b {print $1; exit}')"
+assert_ok "[ -n '${FIRST_WRITE:-}' ]" "found a consumer write path after the backup hook (anchor is meaningful)"
+assert_ok "[ '${BE:-0}' -lt '${FIRST_WRITE:-999999}' ]" "backup hook precedes the first consumer write"
+
+BLK="$TMP/ft57-block.sh"
+sed -n "${BS},${BE}p" "$INSTALL" | grep -v 'backup_existing_surfaces || ' > "$BLK"
+
+# helper: run the extracted block against a fixture dir, echo rc
+_ft57_run() { # $1 = fixture root containing consumer/
+  ( set -euo pipefail
+    WORK_DIR="$1"; TARGET_REPO="owner/repo"
+    cd "$1/consumer"
+    # shellcheck disable=SC1090
+    source "$BLK"
+    # match production semantics: the call site invokes it in a `||` condition,
+    # which disables set -e inside the function body.
+    if backup_existing_surfaces; then :; else exit 1; fi ) > "$1/out.txt" 2>&1
+  echo $?
+}
+
+# --- the requirement: a consumer's OWN established flow is captured -----------
+BK="$TMP/ft57"; rm -rf "$BK"; mkdir -p "$BK/consumer/.github/workflows" "$BK/consumer/.github/ai-review" "$BK/consumer/scripts"
+printf 'name: My Custom Deploy\n' > "$BK/consumer/.github/workflows/my-custom-deploy.yml"
+printf 'name: pre-commit\n'       > "$BK/consumer/.github/workflows/pre-commit.yml"
+printf '{"customized":true}\n'    > "$BK/consumer/.github/ai-review/config.json"
+printf 'CUSTOMIZED\n'             > "$BK/consumer/scripts/pre_push_check.sh"
+printf 'untouched\n'              > "$BK/consumer/README.md"
+# every root-list entry, so dropping any one of them goes red
+for r in .markdownlint.json .lychee.toml .yamllint.yaml .yamllint.yml .pre-commit-config.yaml .gitignore .gitattributes CLAUDE.md; do
+  printf 'local\n' > "$BK/consumer/$r"
+done
+rc="$(_ft57_run "$BK")"
+assert_eq "$rc" "0" "backup succeeds on a populated consumer"
+assert_ok "[ -f '$BK/backup/.github/workflows/my-custom-deploy.yml' ]" "captures the consumer's OWN workflow (not just canon-owned)"
+assert_ok "[ -f '$BK/backup/.github/workflows/pre-commit.yml' ]" "captures a canon-owned workflow"
+assert_ok "[ -f '$BK/backup/.github/ai-review/config.json' ]" "captures nested .github config"
+assert_ok "[ -f '$BK/backup/scripts/pre_push_check.sh' ]" "captures scripts/pre_push_check.sh (a manifest path outside .github/)"
+assert_fail "[ -f '$BK/backup/README.md' ]" "scoped — does not sweep unrelated repo files"
+assert_ok "diff -q '$BK/consumer/.github/workflows/my-custom-deploy.yml' '$BK/backup/.github/workflows/my-custom-deploy.yml'" "backed-up content is byte-identical"
+_ft57_missing=""
+for r in .markdownlint.json .lychee.toml .yamllint.yaml .yamllint.yml .pre-commit-config.yaml .gitignore .gitattributes CLAUDE.md; do
+  [ -f "$BK/backup/$r" ] || _ft57_missing="$_ft57_missing $r"
+done
+assert_eq "$_ft57_missing" "" "every root-list entry is actually backed up"
+
+# --- BLOCKER regressions: paths a word-split list mangled --------------------
+SP="$TMP/ft57-space"; rm -rf "$SP"; mkdir -p "$SP/consumer/.github/ISSUE_TEMPLATE"
+printf 'x\n' > "$SP/consumer/.github/ISSUE_TEMPLATE/bug report.md"
+rc="$(_ft57_run "$SP")"
+assert_eq "$rc" "0" "a filename with a SPACE does not break the backup"
+assert_ok "[ -f '$SP/backup/.github/ISSUE_TEMPLATE/bug report.md' ]" "space-named file is backed up"
+
+GL="$TMP/ft57-glob"; rm -rf "$GL"; mkdir -p "$GL/consumer/.github"
+printf 'BRACKET\n' > "$GL/consumer/.github/notes[1].md"; printf 'PLAIN\n' > "$GL/consumer/.github/notes1.md"
+rc="$(_ft57_run "$GL")"
+assert_eq "$rc" "0" "a filename with a GLOB metachar does not break the backup"
+assert_ok "[ -f '$GL/backup/.github/notes[1].md' ]" "glob-metachar file is backed up (not silently globbed onto a sibling)"
+assert_eq "$(find "$GL/backup" -type f | wc -l | tr -d ' ')" "2" "count matches files actually written (no fail-open over-count)"
+
+SY="$TMP/ft57-symlink"; rm -rf "$SY"; mkdir -p "$SY/consumer/real/workflows"
+printf 'w\n' > "$SY/consumer/real/workflows/ci.yml"; ( cd "$SY/consumer" && ln -s real .github )
+rc="$(_ft57_run "$SY")"
+assert_eq "$rc" "0" "a SYMLINKED .github does not break the backup"
+assert_ok "[ -f '$SY/backup/.github/workflows/ci.yml' ]" "symlinked .github is followed, not silently bypassed"
+
+# --- fail-closed paths -------------------------------------------------------
+FR="$TMP/ft57-fresh"; rm -rf "$FR"; mkdir -p "$FR/consumer"
+rc="$(_ft57_run "$FR")"
+assert_eq "$rc" "0" "fresh repo: nothing to back up is not an error"
+assert_contains "$(cat "$FR/out.txt")" "no pre-existing CI/governance surfaces" "fresh repo says so explicitly"
+
+if [ "$(id -u)" != "0" ]; then
+  UN="$TMP/ft57-unreadable"; rm -rf "$UN"; mkdir -p "$UN/consumer/.github/secretdir"
+  printf 'HIDDEN\n' > "$UN/consumer/.github/secretdir/x.yml"; printf 'v\n' > "$UN/consumer/.github/CODEOWNERS"
+  chmod 000 "$UN/consumer/.github/secretdir"
+  rc="$(_ft57_run "$UN")"
+  chmod 755 "$UN/consumer/.github/secretdir" 2>/dev/null || true
+  assert_eq "$rc" "1" "an unenumerable .github FAILS CLOSED (no silent partial backup)"
+
+  # Isolate the COPY failure: the enclosing dirs must be enumerable and mkdir-able
+  # so that only `cp` can fail. An unwritable backup dir would trip mkdir first
+  # and pass for the wrong reason. An unreadable SOURCE file does exactly this.
+  NW="$TMP/ft57-nowrite"; rm -rf "$NW"; mkdir -p "$NW/consumer/.github"
+  printf 'v\n' > "$NW/consumer/.github/CODEOWNERS"
+  printf 'secret\n' > "$NW/consumer/.github/unreadable.yml"; chmod 000 "$NW/consumer/.github/unreadable.yml"
+  rc="$(_ft57_run "$NW")"
+  chmod 644 "$NW/consumer/.github/unreadable.yml" 2>/dev/null || true
+  assert_eq "$rc" "1" "a failed copy FAILS CLOSED (cp error is not swallowed)"
+  assert_contains "$(cat "$NW/out.txt")" "refusing to write" "the copy failure names the refusal"
+fi
+
+# --- the call site itself must abort the run (execute it, do not grep it) ----
+CS="$TMP/ft57-callsite.sh"
+{ echo 'set -euo pipefail'; echo 'TARGET_REPO="owner/repo"'
+  echo 'backup_existing_surfaces() { return 1; }'
+  grep 'backup_existing_surfaces || ' "$INSTALL"
+  echo 'echo REACHED_WRITE'; } > "$CS"
+cs_out="$(bash "$CS" 2>&1)"; cs_rc=$?
+assert_eq "$cs_rc" "1" "call site EXITS when the backup fails (guard executed, not grepped)"
+assert_absent "$cs_out" "REACHED_WRITE" "call site does not fall through to the writes"
+
+# --- scope must not drift from the manifest ---------------------------------
+# A manifest path outside .github/ that is not in the backup's root list would be
+# writable-but-unbacked. Fails here rather than in an adopter's repo.
+_ft57_scope="$(python3 - "$ROOT/install/templates/manifest.json" "$INSTALL" <<'PYEOF'
+import sys, json, re
+manifest, install = sys.argv[1], sys.argv[2]
+src = open(install, encoding="utf-8").read()
+m = re.search(r"for r in (.*?); do\n\s*\[ -e", src, re.S)
+roots = set(re.findall(r"[^\s\\]+", m.group(1))) if m else set()
+bad = [f["path"] for f in json.load(open(manifest, encoding="utf-8"))["files"]
+       if not f["path"].startswith(".github/") and f["path"] not in roots]
+print(",".join(sorted(bad)))
+PYEOF
+)"
+assert_eq "$_ft57_scope" "" "every manifest path is inside the backup scope (.github/ or the root list)"
+
 suite_summary "test_install"
