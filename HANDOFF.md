@@ -54,10 +54,14 @@ context compaction.
   `gacts/gitleaks`/`*-action`, actually binaries; header count-neutral; README
   EXERCISER row added — PR open). Only the cosmetic 4-doc markdown-autofix
   wrapped-`+` prose remains in §4 (markdownlint-clean, low priority). **G3 is now
-  substantively complete** (FT-46 deferred). **G4:** ✅ FT-50 (macOS/bash4 portability — portable `sed -i.bak` ×3 +
-  `BASH_VERSINFO` guard + README fix; `scripts` 27→29 — PR open). **NEXT:**
-  FT-51 (runner docs), FT-52 (🔴 canon branch-protection + tag ruleset —
-  founder-executed ops/inbox runbook). One FT per PR, OPS-0065 pre-push dispatch.
+  substantively complete** (FT-46 deferred). **G4:** ✅ FT-50 (macOS/bash4
+  portability — portable `sed -i.bak` ×3 + `BASH_VERSINFO` guard + README fix;
+  `scripts` 27→29 — PR #283 MERGED `0dbf01a`), ✅ FT-51 (runner docs: per-repo
+  registration is primary, org-level scoped to a real GitHub org — PR open).
+  **NEXT (the last PLAN-019 item): FT-52** (🔴 canon branch-protection + `ci/v*`
+  tag ruleset — founder-executed; **prepare as an ops/inbox runbook, do NOT run**).
+  Then G2 (🔴 founder dry-run pinned to the final pre-tag SHA) → tag `ci/v2.12.0`.
+  One FT per PR, OPS-0065 pre-push dispatch.
   **PROCESS NOTE (FT-45 incident):** review sub-agents run `git stash`/`git add` on
   the shared tree, which can unstage code between `git add` and `git commit`. ALWAYS
   `git add -A` + diff-vs-reviewed AFTER agents finish, before committing.
