@@ -253,8 +253,12 @@ scaffold() {
     else c_wn "$wf: no template — skipped"; continue; fi
     local dst="$dir/.github/workflows/$wf.yml"
     cp "$src" "$dst"
-    # normalize pin to current tag
-    sed -i "s#@ci/v[0-9.]*#@$CI_TAG#g" "$dst"
+    # normalize pin to current tag (FT-50: `-i.bak` is portable — bare GNU `sed -i`
+    # errors on BSD/macOS sed, which requires a backup suffix). `rm` is a separate
+    # statement so a sed failure still aborts under `set -e` and the backup is
+    # cleaned unconditionally.
+    sed -i.bak "s#@ci/v[0-9.]*#@$CI_TAG#g" "$dst"
+    rm -f "$dst.bak"
     # single-template repos: for PRIVATE inject runner_labels into EVERY job's
     # with: (handles multi-job links). Variant templates already bake in their
     # labels, and the injector re-checks that per job, so they are inert here.

@@ -48,6 +48,15 @@
 
 set -euo pipefail
 
+# FT-50: install.sh itself uses `mapfile` (bash 4+), so bash >= 4 is UNCONDITIONAL
+# to run it — not just for the pre-push hook. macOS ships bash 3.2. Guard up front
+# with an actionable message (mirrors install/apply-standards.sh's guard) instead
+# of a cryptic `mapfile: command not found` deep in --update.
+if (( BASH_VERSINFO[0] < 4 )); then
+  echo "install.sh requires bash >= 4 (uses mapfile); this is bash ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}. macOS ships bash 3.2 — 'brew install bash', then run with that bash (e.g. /opt/homebrew/bin/bash install.sh ...)." >&2
+  exit 1
+fi
+
 TARGET_REPO="${1:?usage: $0 <owner/repo> [--visibility public|private]}"
 shift
 VISIBILITY="private"
@@ -494,13 +503,19 @@ repin_mode() {
     # rewrite only the pin on aidoc-flow-ci uses: lines; leave @main and
     # comments untouched. Report old→new per file.
     local before; before="$(grep -E '^\s*uses:.*aidoc-flow-ci/.*@(ci/v[0-9.]+|[0-9a-f]{40})' "$f" | grep -oE '@ci/v[0-9.]+|@[0-9a-f]{7}' | sort -u | tr '\n' ' ')"
-    # (1) tag-pinned callers: @ci/vX.Y.Z -> @$target
-    sed -i -E "s#(^[[:space:]]*uses:[[:space:]]*vladm3105/aidoc-flow-ci/[^@]+)@ci/v[0-9.]+#\1@${target}#" "$f"
+    # FT-50: `-i.bak … && rm` is portable in-place (adopter machines run this) —
+    # bare GNU `sed -i` errors on BSD/macOS sed, which requires a backup suffix.
+    # (1) tag-pinned callers: @ci/vX.Y.Z -> @$target. `rm` is a SEPARATE statement,
+    #     not `&& rm` — so a sed failure still aborts under `set -e` (loud), and the
+    #     backup is cleaned unconditionally.
+    sed -i.bak -E "s#(^[[:space:]]*uses:[[:space:]]*vladm3105/aidoc-flow-ci/[^@]+)@ci/v[0-9.]+#\1@${target}#" "$f"
+    rm -f "$f.bak"
     # (2) SHA-pinned callers: @<40hex> (optionally trailed by "# ci/vX") -> @$target.
     #     '|' delimiter because the pattern contains '#'. Converts a SHA pin to a
     #     tag pin so --repin covers the whole fleet (audit-trail was historically
     #     SHA-pinned; without this it was silently skipped).
-    sed -i -E "s|(^[[:space:]]*uses:[[:space:]]*vladm3105/aidoc-flow-ci/[^@]+)@[0-9a-f]{40}([[:space:]]*# ci/v[0-9.]+.*)?$|\1@${target}|" "$f"
+    sed -i.bak -E "s|(^[[:space:]]*uses:[[:space:]]*vladm3105/aidoc-flow-ci/[^@]+)@[0-9a-f]{40}([[:space:]]*# ci/v[0-9.]+.*)?$|\1@${target}|" "$f"
+    rm -f "$f.bak"
     if ! git diff --quiet -- "$f" 2>/dev/null; then
       echo "  repinned  $f  (${before:-?} -> @${target})"
       changed=$((changed+1))

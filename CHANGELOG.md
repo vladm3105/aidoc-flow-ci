@@ -5,6 +5,22 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — adopter-macOS portability of `install.sh` + wizard (PLAN-019 FT-50)
+
+- Bare GNU `sed -i` (two `--repin` sites in `install.sh`, one pin-normalize in
+  `deploy-ci-wizard.sh`) **errors on BSD/macOS sed**, which requires a backup
+  suffix — and adopters run these on their own machines. Converted to the portable
+  `sed -i.bak` form, cleaning the backup in a separate unconditional `rm -f` (so a
+  sed failure still aborts loudly under `set -e`).
+- `install.sh` uses `mapfile` (bash 4+) but ran it **unguarded** (unlike its
+  siblings), so a macOS bash-3.2 user hit a cryptic `mapfile: command not found`
+  deep in `--update`. It now checks `BASH_VERSINFO` up front and exits with an
+  actionable `brew install bash` message.
+- `install/README.md` corrected: the bash ≥ 4 requirement is **unconditional** for
+  `install.sh` (it uses `mapfile` itself), not avoidable by skipping the pre-push hook.
+- `test_scripts.sh` (27 → 29): asserts no bare `sed -i` remains and the bash guard
+  is present; reverting a sed to the bare form goes red.
+
 ### Docs — content currency: architecture.md tool descriptions + README index (PLAN-019 §4)
 
 - `docs/architecture.md` §2 described `secret-scan` / `markdown-lint` / `links` as

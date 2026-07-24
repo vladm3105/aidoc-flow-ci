@@ -54,8 +54,8 @@ context compaction.
   `gacts/gitleaks`/`*-action`, actually binaries; header count-neutral; README
   EXERCISER row added — PR open). Only the cosmetic 4-doc markdown-autofix
   wrapped-`+` prose remains in §4 (markdownlint-clean, low priority). **G3 is now
-  substantively complete** (FT-46 deferred). **NEXT: G4** — FT-50 (macOS/bash4
-  portability),
+  substantively complete** (FT-46 deferred). **G4:** ✅ FT-50 (macOS/bash4 portability — portable `sed -i.bak` ×3 +
+  `BASH_VERSINFO` guard + README fix; `scripts` 27→29 — PR open). **NEXT:**
   FT-51 (runner docs), FT-52 (🔴 canon branch-protection + tag ruleset —
   founder-executed ops/inbox runbook). One FT per PR, OPS-0065 pre-push dispatch.
   **PROCESS NOTE (FT-45 incident):** review sub-agents run `git stash`/`git add` on
