@@ -5,6 +5,8 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+## ci/v2.14.0 — 2026-07-24
+
 ### Fixed — canon was missing 8 of its own 18 canonical labels
 
 - Surfaced by the FT-53 drift work. One is **load-bearing and had just become so**:

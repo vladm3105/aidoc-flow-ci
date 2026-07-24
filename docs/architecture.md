@@ -182,7 +182,7 @@ decoupled from any consumer repo's spec/release semver. See
 Consumers pin to a specific tag in their caller `uses:` line:
 
 ```yaml
-uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.13.0
+uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.14.0
 ```
 
 Pinning to `@main` is **not recommended** — every push to
