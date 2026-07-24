@@ -5,6 +5,64 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — `install.sh` takes a mandatory backup before touching a consumer (FT-57)
+
+- A consumer may carry its own customized, established flows. `install.sh` mutates
+  files in the consumer clone from **three** separate paths — `fetch_template`'s
+  `curl -o`, the `--update` replace's `cp`+`mv`, and `--repin`'s `sed -i` — and
+  none of them took a backup. The only `.bak` in the file was the transient FT-50
+  portability artifact, created and deleted in the same breath.
+- Now: an **unconditional** snapshot immediately after the clone and before any
+  writer. One hook rather than three, because a per-writer hook has to be
+  remembered by whoever adds the fourth. Not gated on mode, `--non-interactive`, or
+  a TTY — "we only meant to add files" is precisely the assumption under which the
+  FT-9 `--update` clobber happened.
+- Scope is all of `.github/` — **including the consumer's own workflows, which this
+  script never writes.** A backup that covers only what we intend to touch is
+  worthless when the bug is touching something we did not. Plus the root-level
+  configs. Deliberately **not** derived from `manifest.json`, so it cannot silently
+  stop covering a surface the manifest drops.
+- Sited in `WORK_DIR`, not beside the script: install.sh is documented as runnable
+  piped (`bash <(curl …) --update`), where `$0` is not a real path. `WORK_DIR` is
+  never auto-cleaned, so the backup outlives the run. **Fails closed** — if the
+  snapshot cannot be taken, nothing is written.
+- The next-steps output now names the backup directory and the one-line restore
+  command.
+- Enumeration is **NUL-delimited**. The first implementation used an unquoted
+  `for p in $(find …)`, which review proved wrong twice over on real fixtures: a
+  filename containing a space split into two nonexistent paths and made the
+  installer refuse to run **in every mode** on that repo; and a filename containing
+  a glob metacharacter (`notes[1].md`) was expanded onto a *sibling*, so the
+  bracket file was never backed up, the sibling was copied twice, and the run
+  reported success — fail-**open**, the one outcome a mandatory backup must never
+  produce.
+- `find`'s own exit status is checked. A partial traversal (an unreadable
+  subdirectory) still prints what it could read and exits non-zero; swallowing that
+  reported a successful backup quietly missing files.
+- `find -L … ! -type d` so a **symlinked** `.github`, or a symlinked caller inside
+  it, is followed rather than yielding nothing — that was a clean bypass of a
+  supposedly mandatory backup.
+- Scope corrected: `scripts/pre_push_check.sh` is a manifest path outside
+  `.github/` that `--update` can replace interactively, and it was **not** covered.
+  A test now cross-checks the backup scope against `manifest.json`, so a future
+  manifest path outside the scope fails the suite instead of an adopter's repo.
+- `tests/test_install.sh` 75→101, driving the block extracted from `install.sh`
+  itself (not a copy): the consumer's own workflow is captured, unrelated files are
+  not, every root-list entry is covered, space/glob/symlink fixtures, a fresh repo
+  reports cleanly, an unenumerable `.github` and a failed copy each fail closed, and
+  the **call site is executed** rather than grepped for its error message — the
+  earlier version passed even when the backup never ran at all.
+  Removing the fail-closed call site goes red.
+
+**What already held**, and is why this was narrower than it first looked: writes
+are manifest-scoped so a consumer's own workflow is never written; no wildcard
+write or delete over `.github/workflows/`; `--repin`'s sed only rewrites
+`uses: vladm3105/aidoc-flow-ci/…` lines; bootstrap preserves existing files; 12
+sensitive paths are `safe_to_replace: false`; and install.sh **never commits or
+pushes**. Git was already the de-facto backup — this makes the guarantee
+inspectable instead of inferred, and symmetric with `apply-standards.sh`, which
+has always backed up settings before mutating them.
+
 ### Docs — warn that re-pinning to `ci/v2.14.0`+ produces expected CI-0011 drift
 
 - `ci/v2.13.0` narrowed the canon `actions-permissions.json` (`verified_allowed:
