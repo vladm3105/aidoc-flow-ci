@@ -140,6 +140,31 @@ PY
   printf '%s\n' "$mf"
 }
 
+# Which surface files changed MATERIALLY between <prev> and HEAD.
+#
+# Every release's own prep commit rewrites the `@ci/vX.Y.Z` self-pin inside every
+# shipped template (sync-version-refs.sh). That is the release mechanic itself —
+# byte-identical in shape every time, and it cannot break a cold start. But it
+# touches nearly the whole surface, so a naive name-only diff fires the gate on
+# EVERY release and the flag becomes the rubber stamp this change removed.
+#
+# So compare with version strings normalised away. A file whose ONLY difference is
+# the pin bump is not material. Everything else — including a template DELETED
+# between the two revisions, which is exactly what F1 was (`git show` yields empty
+# on one side, so the two sides differ) — still counts.
+coldstart_material_changes() {
+  local prev="$1" surface="$2" f a b
+  local -a changed=()
+  # shellcheck disable=SC2086  # deliberate word-split: many pathspecs
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    a="$(git show "$prev:$f" 2>/dev/null | sed -E 's#ci/v[0-9]+\.[0-9]+\.[0-9]+#ci/vX.Y.Z#g')"
+    b="$(git show "HEAD:$f" 2>/dev/null | sed -E 's#ci/v[0-9]+\.[0-9]+\.[0-9]+#ci/vX.Y.Z#g')"
+    [ "$a" = "$b" ] || changed+=("$f")
+  done < <(git diff --name-only "$prev..HEAD" -- $surface 2>/dev/null)
+  [ "${#changed[@]}" -eq 0 ] || printf '%s\n' "${changed[@]}"
+}
+
 # --- prep ------------------------------------------------------------------
 prep() {
   local version="${1:-}"
@@ -266,8 +291,7 @@ tag() {
     if ! surface="$(coldstart_surface)"; then
       die "refusing to tag without --dry-run-verified: could not compute the cold-start surface — install/templates/manifest.json is unreadable, or its shape yields no templates. See docs/RELEASE_CHECKLIST.md"
     fi
-    # shellcheck disable=SC2086  # deliberate word-split: many pathspecs
-    changed="$(git diff --name-only "$prev..HEAD" -- $surface 2>/dev/null)"
+    changed="$(coldstart_material_changes "$prev" "$surface")"
     if [ -n "$changed" ]; then
       echo "release: this release CHANGES the installer cold-start path since $prev:" >&2
       printf '%s\n' "$changed" | sed 's/^/    /' >&2
@@ -279,6 +303,8 @@ tag() {
     echo "  Scope: install.sh, check-precommit-hooks.sh, the manifest, labels.json,"
     echo "  the pre-commit fragment, and every template the manifest ships"
     echo "  (including visibility_variants) — $(printf '%s\n' "$surface" | wc -l) paths."
+    echo "  A file whose only difference is this release's own @ci/vX.Y.Z pin bump"
+    echo "  does not count — that is the release mechanic, not an installer change."
     echo "  The advisory standards-verify assets are OUT of scope by design."
     echo "  Pass --dry-run-verified to run the dry-run anyway."
   fi
