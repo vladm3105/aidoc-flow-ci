@@ -57,8 +57,17 @@ context compaction.
 > mid-release-cut red and NOT retryable; this HANDOFF push re-triggers them green
 > now the tag resolves.
 >
+> **CI-0011 settings are APPLIED TO CANON (2026-07-24).** Canon's live
+> `verified_allowed` is now `false`, `patterns_allowed` is
+> `["vladm3105/*","actions/*","github/*"]`, and `can_approve_pull_request_reviews`
+> is `false`. The `access` section is skipped on canon (PUBLIC → 422). **Never run
+> `apply-standards.sh --apply --tier product` on canon** — it also PUTs
+> `branch-protection-product.json`, which requires `ai-review`/`composition` canon
+> does not self-run, hanging every PR and clobbering FT-52. Use the per-section
+> `gh api` PUTs, or `--skip-branch-protection`.
+>
 > **Remaining 🔴 founder items** (none block the shipped tag): **(1)** apply
-> `actions-permissions.json` to canon + each consumer — the CI-0011 settings write.
+> `actions-permissions.json` to **each CONSUMER** (canon is done).
 > **Scan each target's `uses:` FIRST**; `web-site` (`Azure/static-web-apps-deploy`)
 > and `knowledge-rag` (`codecov/codecov-action`) are admitted TODAY only by
 > `verified_allowed: true` and would break — both are EXCLUDED, see
