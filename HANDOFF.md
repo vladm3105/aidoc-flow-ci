@@ -75,6 +75,16 @@ context compaction.
 > two permanent warnings forever. Options + a recommendation are in
 > `plans/FRAMEWORK-TODO.md`.
 >
+> **DEFERRED to the next release cycle (founder, 2026-07-24): FT-54, FT-55, FT-56
+> and PLAN-020.** All three are **detection** gaps, not active faults — canon's
+> `ci/v*` ruleset is live and correct, and every FT-56 instance that prompted them
+> is already remediated (CI-0011 applied to canon, all 18 labels created). PLAN-020
+> is plan-only: no `--rulesets` code exists, so nothing is half-built. It is marked
+> DRAFT/not-ready with one open scheduling decision, and the citation gate will
+> correctly refuse to call it ready until that is answered — **do not begin
+> implementing it while it reads not-ready.** Recommendations for both open
+> questions are recorded in the FT-54 entry and PLAN-020's Pass 4.
+>
 > **Remaining 🔴 founder items** (none block the shipped tag): **(1)** apply
 > `actions-permissions.json` to **each CONSUMER** (canon is done).
 > **Scan each target's `uses:` FIRST**; `web-site` (`Azure/static-web-apps-deploy`)
