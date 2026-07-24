@@ -5,6 +5,17 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+## ci/v2.13.0 — 2026-07-24
+
+### Fixed — `release.sh prep` next-steps text matched neither new reality
+
+- It still told the operator "main is unprotected; use --admin" (FT-52 protected it
+  on 2026-07-24) and presented the FT-30 dry-run + `--dry-run-verified` as
+  unconditional (they are not, as of this same release). It now explains why the
+  prep PR shows **BLOCKED** rather than merely red — 4 of the 5 required contexts
+  come from self-pinned callers that `startup_failure` and are never reported — and
+  points at `tag` without the flag, letting the conditional gate decide.
+
 ### Changed — the FT-30 cold-start gate is now CONDITIONAL, not ceremonial
 
 - `release.sh tag` demanded `--dry-run-verified` on **every** cut, including
