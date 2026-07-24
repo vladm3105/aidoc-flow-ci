@@ -5,6 +5,8 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+## ci/v2.12.0 — 2026-07-23
+
 ### Docs — FT-52 canon self-governance runbook (PLAN-019, 🔴 founder-executed)
 
 - Canon `main` has no branch protection (404) and no tag ruleset (`[]`), while its

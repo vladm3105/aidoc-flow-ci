@@ -39,7 +39,7 @@ permissions:
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v2.11.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v2.12.0
     with:
       runner_labels: '["self-hosted", "ci-runner", "single-use"]'
     # Explicit map (FT-27 least-privilege) — exactly the secrets the reusable declares.
