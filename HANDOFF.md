@@ -66,6 +66,15 @@ context compaction.
 > does not self-run, hanging every PR and clobbering FT-52. Use the per-section
 > `gh api` PUTs, or `--skip-branch-protection`.
 >
+> **Canon labels completed (2026-07-24):** all 18 canonical labels now exist on
+> canon. `skip-audit-trail` was the load-bearing one — it is the documented escape
+> hatch for `call / verify`, which FT-52 had just made a REQUIRED check, so the
+> override was unusable. Canon label drift is now 0. **FT-54 filed (OPEN, needs a
+> founder call):** canon's weekly `standards-drift-self` runs `--tier product`, but
+> FT-52 deliberately gave canon its own branch-protection profile — so it reports
+> two permanent warnings forever. Options + a recommendation are in
+> `plans/FRAMEWORK-TODO.md`.
+>
 > **Remaining 🔴 founder items** (none block the shipped tag): **(1)** apply
 > `actions-permissions.json` to **each CONSUMER** (canon is done).
 > **Scan each target's `uses:` FIRST**; `web-site` (`Azure/static-web-apps-deploy`)
