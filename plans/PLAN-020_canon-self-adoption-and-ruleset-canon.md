@@ -1,6 +1,17 @@
 # PLAN-020 — Canon self-adoption + ruleset canon (FT-55, FT-56)
 
-**Status:** DRAFT — one open decision (see Pass 4); not ready
+**Status:** DEFERRED to the next release cycle (founder, 2026-07-24). DRAFT, not
+ready — one open decision remains (see Pass 4).
+
+**Safe to defer — nothing is broken or half-built.** No `--rulesets` code exists;
+this plan is documentation only. The gaps it closes are *detection* gaps, not
+active faults: canon's ruleset is live and correct, and the FT-56 instances that
+prompted it are all already remediated (CI-0011 applied, labels created). Deferring
+adds no exposure beyond what has existed since FT-52.
+
+**Do not begin implementation while this reads DEFERRED/not-ready** — the open
+decision changes Phase 1's wiring, and the citation gate will correctly refuse to
+call it ready until it is answered.
 **Owner:** aidoc-flow-ci
 **Opened:** 2026-07-24
 **Closes:** FT-55, FT-56 (both filed by Phase 1 of this plan).

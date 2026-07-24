@@ -118,7 +118,9 @@ scoped `rulesets-canon.json` template plus an opt-in `--rulesets <template>`
 comparison in the drift script (ABSENT / WEAKENED / EXTRA-as-notice), keyed on
 `target` + `conditions.ref_name.include` rather than the mutable `name`, and a
 REPO_STANDARDS §2 tag-immutability rule.
-**Status:** OPEN — PLAN-020 drafted, blocked on one founder decision (see FT-56).
+**Status:** OPEN — **DEFERRED to the next release cycle** (founder, 2026-07-24).
+PLAN-020 drafted but not ready. Detection gap only; canon's ruleset is live and
+correct, so deferring adds no exposure.
 
 ### FT-56 — canon's self-drift output is produced but never consumed
 
@@ -149,7 +151,10 @@ open/refresh an issue; the latter needs `issues: write`, currently not granted) 
 close the coverage holes. Ordering is Phase 0 (resolve blindness) → FT-54 (model
 canon's deliberate branch-protection deviation) → consumption, else consumption
 converts a permanent yellow into a permanent red.
-**Status:** OPEN — PLAN-020 drafted; one scheduling decision open for the founder.
+**Status:** OPEN — **DEFERRED to the next release cycle** (founder, 2026-07-24).
+PLAN-020 drafted but not ready; one scheduling decision open. All three instances
+that prompted this are already remediated, so the recurrence risk — not an active
+fault — is what remains.
 
 ### FT-54 — canon's weekly self-drift reports 2 permanent warnings (needs a decision)
 
@@ -195,9 +200,20 @@ tier repos, which FT-52 showed is wrong for branch protection specifically.
 3. **Accept and annotate.** Leave it, and document the two expected lines so a reader
    knows they are by design. Cheapest; the noise remains.
 
-Recommendation: (1) — it is the only option that keeps the check honest. Whichever
-is chosen, correct `branch-protection-product.json`'s tier-repo list.
-**Status:** OPEN.
+**Recommendation (revised 2026-07-24, after the correction above): option 1's
+intent, but implemented as a TEMPLATE OVERRIDE rather than a new tier.** PLAN-020's
+opt-in `--rulesets <template>` pattern generalises: add
+`--branch-protection <template>`, passed only by canon's self-caller, pointing at a
+`branch-protection-canon.json`. Canon stays product-tier for every other surface —
+no 6th tier, no consumer impact, and the check stays honest. Option 2 blinds canon
+to branch-protection drift entirely (worse now that FT-52's protection is
+load-bearing); option 3 trains people to ignore output, which is the disease that
+caused FT-56b. Whichever is chosen, correct
+`branch-protection-product.json`'s tier-repo list.
+
+**Not urgent**, per the correction above: the weekly run cannot emit these lines
+today. Decide once an admin-class token exists (PLAN-020 Phase 0).
+**Status:** OPEN — **DEFERRED to the next release cycle** (founder, 2026-07-24).
 
 ### FT-53 — `standards-drift` never compares `patterns_allowed`, now the whole boundary
 
