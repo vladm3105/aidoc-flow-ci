@@ -7,6 +7,21 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## ci/v2.13.0 — 2026-07-24
 
+### Fixed — the cold-start gate must ignore the release's own pin bump
+
+- Caught by running the real cut: `release.sh tag ci/v2.13.0` **refused**, listing
+  27 templates. Every one of them differed only by the `@ci/v2.12.0` → `@ci/v2.13.0`
+  self-pin that `prep` had just written. Since every release's prep rewrites that
+  pin in every shipped template, the gate would have fired on **every** release —
+  restoring the exact rubber stamp this release removes.
+- The comparison now normalises `ci/vX.Y.Z` strings away before deciding: a file
+  whose only difference is the pin bump is not material. It is a `git show`-based
+  content compare, not a name-only diff, so a template **deleted** between the two
+  revisions still counts — that is F1 itself, and it is now covered by a test.
+- `tests/test_release.sh` 58→65: pin-bump-only (waive), pin bump **plus** a real
+  edit (fire), and a deleted shipped template (fire). Mutating the normalisation in
+  either direction goes red — too aggressive kills 19 assertions, absent kills 2.
+
 ### Fixed — `release.sh prep` next-steps text matched neither new reality
 
 - It still told the operator "main is unprotected; use --admin" (FT-52 protected it

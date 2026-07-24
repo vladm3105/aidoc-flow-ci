@@ -201,6 +201,41 @@ git -C "$GFIX" add -A; _gc commit -q -m spacepath; _gpush
 pout2="$(_gtag)"; prc2=$?
 assert_eq "$prc2" "1" "gate: whitespace in a template path -> refused"
 assert_contains "$pout2" "could not compute the cold-start surface" "gate: fails closed on an unsplittable template path"
+
+# --- pin-bump normalisation -------------------------------------------------
+# Every prep commit rewrites the @ci/vX.Y.Z self-pin inside every shipped
+# template. Without normalisation the gate fires on EVERY release and the flag is
+# a rubber stamp again — the exact defect this whole change removes.
+_seal
+printf '{"files":[{"path":".github/workflows/x.yml","template":"workflows/x.yml"}]}\n' > "$GFIX/install/templates/manifest.json"
+printf 'uses: vladm3105/aidoc-flow-ci/.github/workflows/x.yml@ci/v1.0.0\nbody: original\n' > "$GFIX/install/templates/workflows/x.yml"
+git -C "$GFIX" add -A; _gc commit -q -m base; _gpush
+_seal                                    # prev := this commit
+
+# (i) ONLY the pin changed => not material => waive.
+printf 'uses: vladm3105/aidoc-flow-ci/.github/workflows/x.yml@ci/v7.7.7\nbody: original\n' > "$GFIX/install/templates/workflows/x.yml"
+git -C "$GFIX" add -A; _gc commit -q -m pinbump; _gpush
+pb="$(_gtag)"
+assert_contains "$pb" "AUTO-WAIVED" "gate: a pure @ci/vX.Y.Z pin bump is NOT a material change"
+assert_absent "$pb" "CHANGES the installer cold-start path" "gate: pin bump alone does not fire the gate"
+
+# (j) pin bump PLUS a real content change => material => fire.
+_seal
+printf 'uses: vladm3105/aidoc-flow-ci/.github/workflows/x.yml@ci/v8.8.8\nbody: EDITED\n' > "$GFIX/install/templates/workflows/x.yml"
+git -C "$GFIX" add -A; _gc commit -q -m realchange; _gpush
+rc2="$(_gtag)"
+assert_contains "$rc2" "CHANGES the installer cold-start path" "gate: a real edit alongside a pin bump still fires"
+assert_contains "$rc2" "install/templates/workflows/x.yml" "gate: names the materially-changed template"
+
+# (k) F1 ITSELF: a shipped template DELETED. Must fire — this is the failure the
+#     whole gate exists to catch (one shipped broken for nine releases).
+_seal
+git -C "$GFIX" rm -q "install/templates/workflows/x.yml"
+_gc commit -q -m "delete a shipped template"; _gpush
+del="$(_gtag)"
+assert_contains "$del" "CHANGES the installer cold-start path" "gate: a DELETED shipped template fires (the F1 case)"
+assert_contains "$del" "install/templates/workflows/x.yml" "gate: names the deleted template"
+assert_absent "$del" "AUTO-WAIVED" "gate: deletion is never waived"
 rm -rf "$GFIX"
 
 echo ""
