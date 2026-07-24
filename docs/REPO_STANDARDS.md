@@ -1365,9 +1365,9 @@ consumers ship a thin caller from one of the canonical templates:
 - **Private consumer** (self-hosted `ci-runner` / `single-use` runners):
   `install/templates/workflows/auto-merge-ai-prs-private.yml`
 
-Both templates pin at `@ci/v2.0.0` (bump per this repo's release
-cadence). Consumer copies the template verbatim into its
-`.github/workflows/auto-merge-ai-prs.yml`.
+Both templates pin at the current `@ci/vX.Y.Z` release tag (see `../VERSION`;
+`sync-version-refs.sh` keeps the template pins in step at release). Consumer copies
+the template verbatim into its `.github/workflows/auto-merge-ai-prs.yml`.
 
 ### 17.3 Prerequisites
 
