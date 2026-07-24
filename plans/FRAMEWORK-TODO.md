@@ -119,8 +119,18 @@ never a deployed repo.
 order-insensitive; report added/removed owners). Mind that the comparison is
 against the template fetched at the consumer's own pinned tag, so a consumer on an
 older pin must not be reported as drifted for a pattern that tag never shipped.
-**Status:** OPEN. `docs/REPO_STANDARDS.md` §4.3 documents the gap honestly in the
-meantime (the assertion is template-scoped, not fleet-scoped).
+**RESOLVED (2026-07-24, Unreleased → next tag):** `check-standards-drift.sh` now
+compares `patterns_allowed` as a set, reporting MISSING (availability — a blocked
+action `startup_failure`s silently) and EXTRA (supply chain — boundary wider than
+CI-0011 decided) as distinct conditions. Order-insensitive, since the API returns
+arbitrary order. MISSING accounts for glob subsumption (`vladm3105/*` covers
+`vladm3105/aidoc-flow-ci/*`), without which the in-flight CI-0011 rollout would
+have produced a false "blocked at run-init" and hard-failed `--strict` on every
+consumer widened ahead of its pin. `tests/test_scripts.sh` 29→50; five mutations
+confirmed red (comparison removed; order-sensitive compare; MISSING/EXTRA
+collapsed; drift increments removed; subsumption removed).
+REPO_STANDARDS §4.3 updated — the gap paragraph is replaced by what the two layers
+actually cover. Verified live against canon: 0 actions-related drift.
 
 ### FT-46 — canon has not applied its own FT-27 values; allowlist is wider than the rule
 

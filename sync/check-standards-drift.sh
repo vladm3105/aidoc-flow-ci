@@ -245,6 +245,73 @@ else
         DRIFT=$((DRIFT + 1))
       fi
     done
+    # patterns_allowed (FT-53). Since CI-0011 set verified_allowed=false, this list
+    # is the ONLY non-GitHub-owned admission — the half that actually decides
+    # whether an action runs — and it was the one field drift never compared.
+    #
+    # Reported as two DISTINCT conditions because they fail in opposite directions:
+    #   MISSING (canon has, repo lacks) -> availability. A canon reusable matching
+    #     that pattern is blocked at run-init: startup_failure, no logs, web-UI-only
+    #     message, actionlint blind to it.
+    #   EXTRA   (repo has, canon lacks) -> supply chain. The deployed boundary is
+    #     wider than the one canon documents and CI-0011 decided.
+    # Compared as SETS: the API returns patterns in arbitrary order, so a plain
+    # string compare would report drift on ordering alone.
+    if ! jq -e 'type == "object" and ((.patterns_allowed | type) as $t | $t == "array" or $t == "null")' "$ap_selected" >/dev/null 2>&1; then
+      # Do not guess from an unparseable body: "3 patterns are missing" and "I could
+      # not read the API response" are different operator actions.
+      warn_uncheckable "actions.selected.patterns_allowed" "unreadable selected-actions response"
+    else
+    pa_local=$(mktemp); pa_canon=$(mktemp)
+    jq -r '(.patterns_allowed // [])[]' "$ap_selected" 2>/dev/null | sort -u > "$pa_local"
+    jq -r '(.selected_actions.patterns_allowed // [])[]' "$ap_canon_raw" 2>/dev/null | sort -u > "$pa_canon"
+    # Glob SUBSUMPTION, not literal set-difference. Entries are globs and GitHub
+    # wildcards span `/`, so `vladm3105/*` fully covers `vladm3105/aidoc-flow-ci/*`.
+    # A pattern that was BROADENED is absent as a string yet loses no coverage; a
+    # literal diff would report it MISSING and assert a `startup_failure` that
+    # cannot occur — a false alarm on a symptom that is web-UI-only and expensive
+    # to disprove. Report MISSING only where NO live pattern covers the canon one.
+    # (The widening itself is still reported, correctly, as EXTRA.)
+    # Subsumption is symmetric. `covered_by <pattern> <file>`: true when some glob
+    # in <file> fully covers <pattern>. Used BOTH ways, because a literal
+    # set-difference is wrong in both directions:
+    #   MISSING — a canon pattern the repo BROADENED (`vladm3105/*` covers
+    #     `vladm3105/aidoc-flow-ci/*`) loses no coverage; calling it blocked asserts
+    #     a `startup_failure` that cannot happen.
+    #   EXTRA   — a live pattern already INSIDE a canon pattern widens nothing;
+    #     calling it "wider than canon" is simply false.
+    # Only genuinely-uncovered entries are reported, on either side.
+    covered_by() {
+      local pat="$1" listfile="$2" g
+      while IFS= read -r g; do
+        [ -n "$g" ] || continue
+        [ "$g" = "*" ] && return 0
+        case "$g" in
+          *'*') [ "${pat#"${g%\*}"}" != "$pat" ] && return 0 ;;
+        esac
+      done < "$listfile"
+      return 1
+    }
+    pa_missing=""
+    while IFS= read -r c; do
+      [ -n "$c" ] || continue
+      covered_by "$c" "$pa_local" || pa_missing="${pa_missing:+${pa_missing},}${c}"
+    done < <(comm -13 "$pa_local" "$pa_canon")
+    pa_extra=""
+    while IFS= read -r l; do
+      [ -n "$l" ] || continue
+      covered_by "$l" "$pa_canon" || pa_extra="${pa_extra:+${pa_extra},}${l}"
+    done < <(comm -23 "$pa_local" "$pa_canon")
+    if [ -n "$pa_missing" ]; then
+      echo "::warning::actions.selected.patterns_allowed: MISSING (canon has, repo does not, and no live pattern covers it): ${pa_missing} — an action matching these is BLOCKED at run-init (silent startup_failure, no logs)"
+      DRIFT=$((DRIFT + 1))
+    fi
+    if [ -n "$pa_extra" ]; then
+      echo "::warning::actions.selected.patterns_allowed: EXTRA (repo admits what canon does not): ${pa_extra} — the supply-chain boundary is wider than canon; re-widening is a decision to record in DECISIONS.md (CI-0011), not a config tweak"
+      DRIFT=$((DRIFT + 1))
+    fi
+    rm -f "$pa_local" "$pa_canon"
+    fi
   fi
   rm -f "$ap_selected"
   # access.access_level — only meaningful on private/internal repos

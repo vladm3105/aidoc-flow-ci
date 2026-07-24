@@ -5,6 +5,49 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — `standards-drift` now compares `patterns_allowed` (FT-53)
+
+- Since CI-0011 set `verified_allowed: false`, `patterns_allowed` is the **only**
+  non-GitHub-owned admission — the field that actually decides whether an action
+  runs — and it was the one field the drift checker never compared. An operator
+  editing a consumer's allowlist in the Settings UI produced **zero** drift, in
+  strict mode included.
+- `sync/check-standards-drift.sh` now compares it as a **set** (the API returns
+  arbitrary order, so a string compare would report drift on ordering alone) and
+  reports the two failure directions separately, because they mean opposite things:
+  **MISSING** (canon has, repo lacks) is an availability fault — a matching action
+  is blocked at run-init with a silent `startup_failure`, no logs; **EXTRA** (repo
+  has, canon lacks) is a supply-chain fault — the deployed boundary is wider than
+  the one CI-0011 decided.
+- It compares against the canon template at the **consumer's own pinned tag**, so a
+  repo on an older pin is not flagged for a pattern that tag never shipped.
+- MISSING accounts for **glob subsumption**, which a literal set-difference gets
+  wrong: entries are globs and GitHub wildcards span `/`, so `vladm3105/*` fully
+  covers `vladm3105/aidoc-flow-ci/*`. Without this, the in-flight CI-0011 rollout —
+  a consumer whose settings are widened while it is still pinned at ≤`ci/v2.12.0` —
+  would report a **false** MISSING asserting a `startup_failure` that cannot occur,
+  and would hard-fail `--strict`. Subsumption is applied **symmetrically**: a live
+  pattern already inside a canon pattern widens nothing, so calling it EXTRA
+  ("wider than canon") is equally false. Caught by running the checker against a
+  real consumer: `engramory` reported `vladm3105/aidoc-flow-ci/*` as a
+  supply-chain widening when it is strictly narrower than canon's `vladm3105/*`.
+  A repo genuinely **narrower** than canon still reports MISSING, and a genuinely
+  foreign owner still reports EXTRA.
+- An unreadable `selected-actions` body (or a non-array `patterns_allowed`) routes
+  to `warn_uncheckable` instead of inventing a full missing-pattern list — "I could
+  not read the response" and "3 patterns are missing" are different operator actions.
+- `tests/test_scripts.sh` 29→50, including a reordered-but-identical set (with a
+  positive control, so the assertion cannot pass merely by the feature not
+  existing), both subsumption directions, the strict gate, and the drift tally.
+  Fixtures are derived from the template rather than frozen as literals, so adding
+  a 4th canon pattern does not fail a test about ordering. Mutations confirmed red:
+  comparison removed, order-sensitive compare, MISSING/EXTRA collapsed, **the drift
+  increments removed** (previously green — the strict gate was unpinned), and
+  **subsumption removed**.
+- Verified live against canon: **0 actions-related drift** after the CI-0011 apply.
+- `docs/REPO_STANDARDS.md` §4.3: the "guarantee is template-scoped" gap paragraph
+  is replaced by what the two layers now actually cover.
+
 ### Changed — CI-0011 settings APPLIED to canon; the suggested apply command was a landmine
 
 - Canon's own live Actions settings now match `actions-permissions.json`:

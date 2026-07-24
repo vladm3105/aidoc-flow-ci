@@ -407,13 +407,28 @@ Two consequences of making the account the boundary:
   fork of a marketplace action included — is admitted at any ref. Forking one in
   re-widens the boundary CI-0011 just narrowed, without any config change to
   review.
-- **The guarantee is template-scoped, not fleet-scoped.**
+- **Two layers guard it, and they cover different things.**
   `tests/test_contract.sh` asserts both halves of the shipped
-  `actions-permissions.json`, so a silent re-widening of the **template** goes
-  red. It does **not** observe deployed repos, and `sync/check-standards-drift.sh`
-  compares only `github_owned_allowed` + `verified_allowed` — **not**
-  `patterns_allowed`. A consumer whose `patterns_allowed` is edited in the
-  Settings UI is currently undetected (tracked in `plans/FRAMEWORK-TODO.md`).
+  `actions-permissions.json`, so a silent re-widening of the **template** goes red
+  — but it reads the local canon file and never observes a deployed repo.
+  `sync/check-standards-drift.sh` covers the deployed side: since FT-53 it compares
+  `patterns_allowed` order-insensitively (the API returns arbitrary order) and
+  reports the two failure directions separately —
+  **MISSING** (canon has it and **no live pattern covers it** → an action is blocked
+  at run-init, a silent `startup_failure`) and **EXTRA** (repo has, canon lacks →
+  the deployed supply-chain boundary is wider than the one CI-0011 decided).
+  MISSING accounts for **glob subsumption**: entries are globs and GitHub wildcards
+  span `/`, so `vladm3105/*` fully covers `vladm3105/aidoc-flow-ci/*`. A _broadened_
+  pattern therefore loses no coverage and is reported only as EXTRA — a literal
+  set-difference would call it MISSING and assert a `startup_failure` that cannot
+  happen. The inverse (a repo **narrower** than canon) is a real loss of coverage
+  and still fires.
+  On the reusable path (`standards-drift.yml`) the comparison uses the canon
+  template **at the consumer's own `standards-drift` pin**, so an older-pinned repo
+  is not reported MISSING for a pattern that tag never shipped — though it may
+  legitimately be reported EXTRA if its settings were widened ahead of its pin. Run
+  directly from a CLI with no `--ci-tag`, the script instead resolves the
+  highest `@ci/v*` pin across the repo's workflows and falls back to `main`.
 
 **Pattern:** install the tool directly in a `run:` step —
 
