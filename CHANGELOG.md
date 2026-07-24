@@ -5,6 +5,21 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Docs — FT-52 canon self-governance runbook (PLAN-019, 🔴 founder-executed)
+
+- Canon `main` has no branch protection (404) and no tag ruleset (`[]`), while its
+  own `branch-protection-product.json` names it product-tier — the pre-prod S1
+  self-governance gap. Added `plans/ROLLOUT_ft52-canon-self-governance.md`: a 🔴
+  founder runbook to (A) add an **immutable `ci/v*` tag ruleset** (the actual
+  mitigation for the mutable-tag trust the whole fleet pins against — blocks
+  deletion + force-move, allows creation) and (B) protect `main` with **canon's own
+  produced check set**.
+- ⚠️ The runbook explicitly does NOT apply `branch-protection-product.json` verbatim:
+  product-tier requires `call / ai-review` + `call / composition`, which canon does
+  not self-run (FT-23), so requiring them would hang every canon PR (F2). It requires
+  only the checks canon actually produces (`suite`, `call / verify`, markdownlint,
+  pre-commit, gitleaks). The runbook is the deliverable; execution is 🔴 founder.
+
 ### Docs — runner registration: per-repo is primary, not org-level (PLAN-019 FT-51)
 
 - `docs/runners.md` §3 led with "Org-level registration (recommended)" and demoted

@@ -57,11 +57,21 @@ context compaction.
   substantively complete** (FT-46 deferred). **G4:** ✅ FT-50 (macOS/bash4
   portability — portable `sed -i.bak` ×3 + `BASH_VERSINFO` guard + README fix;
   `scripts` 27→29 — PR #283 MERGED `0dbf01a`), ✅ FT-51 (runner docs: per-repo
-  registration is primary, org-level scoped to a real GitHub org — PR open).
-  **NEXT (the last PLAN-019 item): FT-52** (🔴 canon branch-protection + `ci/v*`
-  tag ruleset — founder-executed; **prepare as an ops/inbox runbook, do NOT run**).
-  Then G2 (🔴 founder dry-run pinned to the final pre-tag SHA) → tag `ci/v2.12.0`.
-  One FT per PR, OPS-0065 pre-push dispatch.
+  registration is primary, org-level scoped to a real GitHub org — PR #284 MERGED
+  `268a54d`), ✅ FT-52 runbook prepared (🔴 canon branch-protection + immutable
+  `ci/v*` tag ruleset — `plans/ROLLOUT_ft52-canon-self-governance.md`; execution is
+  founder-only; the runbook flags that product-tier protection would HANG canon and
+  uses canon's own check set — PR open).
+- **➡️ PLAN-019 AI-EXECUTABLE WORK IS COMPLETE.** All FTs are landed or handed off:
+  FT-39…45, 47, 48, 49, 50, 51 merged; FT-52 runbook prepared (🔴 founder);
+  **FT-46 DEFERRED** on the open founder decision **CI-0011** (held in stash). The
+  only remaining §4 item is the cosmetic 4-doc markdown-`+` prose (low priority).
+  **REMAINING TO SHIP `ci/v2.12.0` — all 🔴 founder / gated:** (1) decide CI-0011
+  (then FT-46 rides a later tag or lands); (2) run the **G2 cold-start dry-run**
+  pinned to the FINAL pre-tag `main` SHA (`git rev-parse origin/main`, NOT the G1
+  checkpoint) per `plans/ROLLOUT_plan019-feedback-desk-coldstart.md`; (3) `release.sh
+  prep ci/v2.12.0` → merge → tag. FT-52 (Part A tag ruleset especially) can run any
+  time.
   **PROCESS NOTE (FT-45 incident):** review sub-agents run `git stash`/`git add` on
   the shared tree, which can unstage code between `git add` and `git commit`. ALWAYS
   `git add -A` + diff-vs-reviewed AFTER agents finish, before committing.
