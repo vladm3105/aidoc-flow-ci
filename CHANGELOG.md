@@ -5,6 +5,26 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — CI-0011 settings APPLIED to canon; the suggested apply command was a landmine
+
+- Canon's own live Actions settings now match `actions-permissions.json`:
+  `verified_allowed: true→false`, `patterns_allowed →
+  ["vladm3105/*","actions/*","github/*"]`, `can_approve_pull_request_reviews:
+  true→false`. `default_workflow_permissions` was already `read`. The `access`
+  section is **skipped on canon** — it is PUBLIC and GitHub 422s that endpoint,
+  exactly as the template's `_conditional` note says.
+- Verified safe before applying, not after: no canon workflow references a
+  verified-creator action; the `docs-sync` reusable only `gh pr comment`s (it never
+  creates a PR); and canon has **no** `self-doc-maintainer` caller — so nothing
+  depended on create-and-approve.
+- **RELEASE_CHECKLIST corrected.** It told the operator to run
+  `apply-standards.sh --apply --tier product` on canon. That also PUTs
+  `branch-protection-product.json`, which requires `call / ai-review` +
+  `call / composition` — reusables canon does not self-run — so it would hang every
+  canon PR (the F2 hang the FT-52 runbook exists to prevent) *and* clobber the
+  FT-52 protection applied hours earlier. The item now gives the per-section `gh
+  api` form and points at `--skip-branch-protection`.
+
 ## ci/v2.13.0 — 2026-07-24
 
 ### Fixed — the cold-start gate must ignore the release's own pin bump

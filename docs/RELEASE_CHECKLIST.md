@@ -133,10 +133,20 @@ the 🔴 dry-run for you.
   live settings are wider than the template ships — `selected-actions.verified_allowed`
   is `true` (should be `false`, FT-46) and `workflow.can_approve_pull_request_reviews`
   is `true` (should be `false`, FT-27; note these are two *different* endpoints).
-  Run `install/apply-standards.sh --apply --repo vladm3105/aidoc-flow-ci --tier product`
-  (or the equivalent per-section `gh api` PUTs) to bring canon's own settings to the
-  FT-27/FT-46 values. Writes to canon settings → founder-executed via an
-  `ops/inbox` runbook, not in-session.
+  **✅ DONE for canon 2026-07-24** — `verified_allowed: true→false`,
+  `patterns_allowed → ["vladm3105/*","actions/*","github/*"]`,
+  `can_approve_pull_request_reviews: true→false`. (`default_workflow_permissions`
+  was already `read`; the `access` section is **skipped on canon — it is PUBLIC**
+  and that endpoint 422s.) Verified safe first: no canon workflow uses a
+  verified-creator action, `docs-sync` only `gh pr comment`s, and canon has **no**
+  `self-doc-maintainer` caller, so nothing needed create-and-approve.
+  **⚠️ Do NOT run `apply-standards.sh --apply --tier product` on canon.** It also
+  PUTs `branch-protection-product.json`, which requires `call / ai-review` +
+  `call / composition` — reusables canon does **not** self-run — so every canon PR
+  would hang forever (the F2 hang), and it would clobber the FT-52 protection.
+  Apply the actions sections directly instead:
+  `jq -c '.<section> | walk(if type=="object" then with_entries(select(.key|startswith("_")|not)) else . end)' install/templates/actions-permissions.json | gh api -X PUT repos/<owner>/<repo>/actions/permissions/<endpoint> --input -`
+  — or use `apply-standards.sh --skip-branch-protection`.
 - [ ] **🔴 Apply to each CONSUMER — but scan its `uses:` FIRST (CI-0011):**
   `apply-standards.sh --apply` PUTs the whole `selected_actions` object, so it
   **replaces `patterns_allowed` wholesale and flips `verified_allowed` to false**
