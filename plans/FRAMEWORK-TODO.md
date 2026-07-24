@@ -101,6 +101,56 @@ step is present (removing it goes red).
 **RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream B / G3):** see CHANGELOG
 `## Unreleased`.
 
+### FT-55 — the immutable `ci/v*` tag ruleset is an act, not a standard
+
+**Found:** 2026-07-24, while checking whether FT-52's ruleset was templated.
+**Surface:** the ruleset exists only as a `gh api` snippet at
+`plans/ROLLOUT_ft52-canon-self-governance.md:78`. No canon machinery knows rulesets
+exist — not `install/templates/`, not `install/apply-standards.sh`, not
+`sync/check-standards-drift.sh`, not `docs/REPO_STANDARDS.md`.
+**Effect:** the ruleset is the mitigation for the whole fleet pinning canon by a
+**mutable** tag — a force-moved `ci/vX.Y.Z` reaches every consumer on its next run.
+If it were set to `enforcement: disabled` or deleted, **nothing would detect it**.
+Branch protection is drift-checked; the ruleset protecting the tags the fleet pins
+is not. Its own protection is unprotected.
+**Fix:** `plans/PLAN-020_canon-self-adoption-and-ruleset-canon.md` Phase 1 — a
+scoped `rulesets-canon.json` template plus an opt-in `--rulesets <template>`
+comparison in the drift script (ABSENT / WEAKENED / EXTRA-as-notice), keyed on
+`target` + `conditions.ref_name.include` rather than the mutable `name`, and a
+REPO_STANDARDS §2 tag-immutability rule.
+**Status:** OPEN — PLAN-020 drafted, blocked on one founder decision (see FT-56).
+
+### FT-56 — canon's self-drift output is produced but never consumed
+
+**Found:** 2026-07-24, generalising three instances of canon drifting from its own
+canon (FT-46/FT-27 template values; CI-0011 actions settings; 8 of 18 canonical
+labels absent, including `skip-audit-trail` — the documented escape hatch for the
+by-then **required** `call / verify` check).
+**Surface:** `.github/workflows/standards-drift-self.yml:55` already runs
+`check-standards-drift.sh` weekly against canon.
+**Effect — two distinct defects, and the first framing of this was wrong.** The
+premise "canon has no self-check" is false; it has one. What actually happens:
+
+- **56a blindness** — the highest-value comparisons (branch-protection,
+  actions-permissions) cannot execute in CI at all. The job grants only
+  `contents: read` and `administration` is not a grantable `GITHUB_TOKEN` scope
+  (FT-5), so those reads 403 into `warn_uncheckable` and verify nothing. This is
+  why instances 1 and 2 went unnoticed.
+- **56b unconsumed signal** — where the check *can* see, it emits `::warning::`
+  into a scheduled run nobody reads. Instance 3 (labels) is the proof: the check
+  fired weekly, correctly, and was never acted on. A warning-only gate does not
+  change behaviour.
+
+Plus **coverage holes** even with a good token: `can_approve_pull_request_reviews`
+is shipped in the template but never compared, and label colour/description are
+written by `apply_labels()` but never compared.
+**Fix:** PLAN-020 Phase 2 — make the output *consumed* (fail the job, or
+open/refresh an issue; the latter needs `issues: write`, currently not granted) and
+close the coverage holes. Ordering is Phase 0 (resolve blindness) → FT-54 (model
+canon's deliberate branch-protection deviation) → consumption, else consumption
+converts a permanent yellow into a permanent red.
+**Status:** OPEN — PLAN-020 drafted; one scheduling decision open for the founder.
+
 ### FT-54 — canon's weekly self-drift reports 2 permanent warnings (needs a decision)
 
 **Found:** 2026-07-24, after applying CI-0011 + the FT-53 drift work.
@@ -116,6 +166,17 @@ PR, F2). It also sets `enforce_admins: false` so the FT-21 expected-red prep can
 branch-protection.enforce_admins: canon=true actual=false
 branch-protection.contexts: canon=[…ai-review,…composition…] actual=[…markdownlint,suite…]
 ```
+
+**CORRECTION (2026-07-24, found by PLAN-020 Pass 4):** the two lines above are what
+a **local/admin-token** run reports — they were observed that way and wrongly
+generalised to CI. The **weekly** run cannot emit them: the job grants only
+`contents: read` (`.github/workflows/standards-drift-self.yml:45-46`), so the
+branch-protection read 403s into `warn_uncheckable`
+(`sync/check-standards-drift.sh:133-134`). Today's weekly noise is therefore a
+permanent `warn_uncheckable`/`FETCH_ERRORS`, not these drift lines; they materialise
+only once an admin-class token exists (FT-5 / PLAN-020 Phase 0). **This matters for
+the decision below:** option 3 is "accept and annotate the two expected lines", which
+would be chosen on a false premise if read as-filed.
 
 Two permanent warnings is how a real drift signal gets trained away. Note
 `branch-protection-product.json`'s `_comment` still lists `aidoc-flow-ci` among its
