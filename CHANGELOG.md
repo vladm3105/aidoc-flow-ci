@@ -5,6 +5,19 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Testing — CI now exercises the ruamel.yaml merge backend, not only PyYAML (PLAN-019 FT-47)
+
+- `tests.yml` installed `python3-yaml` (PyYAML) only, so `install.sh`'s **preferred**
+  ruamel.yaml merge path — the one any dev machine or adopter with ruamel actually
+  runs, and the only one that preserves consumer comments — was **never exercised in
+  CI**. That is exactly how FT-44's ruamel-specific `__ne__` false-positive slipped
+  past the suite (green under PyYAML, would have been red under ruamel).
+- The suite now runs under PyYAML as before, then a second step installs
+  `python3-ruamel.yaml` and re-runs the backend-sensitive merge/refresh tests
+  (`test_precommit_merge.sh`, `test_precommit_refresh.sh`) under ruamel — both
+  backends covered. `test_contract.sh` asserts the ruamel step is present (removing
+  it goes red).
+
 ### Fixed — `required-context-map.py` validates the job-key half of a context (PLAN-019 FT-45)
 
 - A required status-check context is `<caller-job-key> / <reusable-job-name>`, but
