@@ -5,6 +5,18 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Docs — content currency: architecture.md tool descriptions + README index (PLAN-019 §4)
+
+- `docs/architecture.md` §2 described `secret-scan` / `markdown-lint` / `links` as
+  running "via `gacts/gitleaks`" / "`markdownlint-cli2-action`" / "`lychee-action`"
+  — all **wrong**: those are marketplace actions blocked by §4.3, and the reusables
+  install the **binaries** (checksum-verified) instead. Corrected all three rows.
+  The "## 2. The 11 shared workflows" header (16 reusables ship) is now
+  count-neutral ("16 reusables ship; the table summarizes the most-used").
+- `docs/README.md` doc index gained the missing `EXERCISER_INVENTORY.md` row.
+- Remaining §4 item (the 4-doc markdown-autofix wrapped-`+` prose, markdownlint-clean
+  but slightly awkward) is a tracked low-priority follow-up.
+
 ### Docs — stale version-pin currency (PLAN-019 FT-49 + §4)
 
 - `docs/FLEET_BRANCH_PROTECTION_ARMING.md` (FT-49) imperatively instructed

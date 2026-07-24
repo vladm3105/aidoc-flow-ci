@@ -66,10 +66,11 @@ docs](https://docs.github.com/en/actions/sharing-automations/reusing-workflows):
 - Pinning is by **tag** (semver `ci/vX.Y.Z`) or SHA; the consumer's
   `.github/workflows/<name>.yml` file is what GitHub actually runs.
 
-## 2. The 11 shared workflows
+## 2. The shared workflows
 
-Table below summarizes each. For the canonical enumeration + per-repo
-applicability matrix + adoption sequencing, see [`WORKFLOWS.md`](WORKFLOWS.md).
+16 reusable workflows ship; the table below summarizes the most-used ones. For
+the canonical enumeration + per-repo applicability matrix + adoption sequencing,
+see [`WORKFLOWS.md`](WORKFLOWS.md).
 
 | Workflow | File | What it does | Triggers (typical caller) |
 |---|---|---|---|
@@ -81,9 +82,9 @@ applicability matrix + adoption sequencing, see [`WORKFLOWS.md`](WORKFLOWS.md).
 | `doc-maintainer` | [`.github/workflows/doc-maintainer.yml`](../.github/workflows/doc-maintainer.yml) | **AI-driven** post-merge doc-of-record maintainer (CHANGELOG / HANDOFF / ROADMAP / IPLAN status / DECISIONS narrative-grade edits). Per IPLAN-0025. Reads merge diff + conventions doc + decides scope via LLM; opens follow-up bot PR for low-risk edits (auto-merges through ai-review chain) AND/OR GitHub issue for high-risk edits (human applies). Available v1.4.0+; supersedes mechanical `docs-sync` at end of Phase 3. | `push: branches: [main]`, `schedule [cron '7,37 * * * *']` (backup reconciler) |
 | `labeler` | [`.github/workflows/labeler.yml`](../.github/workflows/labeler.yml) | Path-based PR area labeling via `actions/labeler@v6` | `pull_request` |
 | `codeql` | [`.github/workflows/codeql.yml`](../.github/workflows/codeql.yml) | CodeQL security analysis (matrix-driven explicit languages) | `push`, `pull_request`, weekly `schedule`, `workflow_dispatch` |
-| `markdown-lint` | [`.github/workflows/markdown-lint.yml`](../.github/workflows/markdown-lint.yml) | Markdown linting via `markdownlint-cli2-action` (inline PR annotations) | `pull_request`, `push` |
-| `links` | [`.github/workflows/links.yml`](../.github/workflows/links.yml) | Link checking via `lychee-action` — `internal` mode is PR-blocking; `external` mode is cron + non-blocking | `pull_request`, weekly `schedule` |
-| `secret-scan` | [`.github/workflows/secret-scan.yml`](../.github/workflows/secret-scan.yml) | Secret detection via `gacts/gitleaks` (MIT — NOT proprietary `gitleaks/gitleaks-action`) | `pull_request`, `push` |
+| `markdown-lint` | [`.github/workflows/markdown-lint.yml`](../.github/workflows/markdown-lint.yml) | Markdown linting via the `markdownlint-cli2` npm CLI (installed via `actions/setup-node`, not a marketplace action — §4.3) | `pull_request`, `push` |
+| `links` | [`.github/workflows/links.yml`](../.github/workflows/links.yml) | Link checking via the `lychee` binary (checksum-verified install, not `lychee-action`) — `internal` mode is PR-blocking; `external` mode is cron + non-blocking | `pull_request`, weekly `schedule` |
+| `secret-scan` | [`.github/workflows/secret-scan.yml`](../.github/workflows/secret-scan.yml) | Secret detection via the `gitleaks` binary (checksum-verified install; the `gacts/gitleaks` marketplace action is blocked by §4.3) | `pull_request`, `push` |
 
 Each workflow is independently callable. Consumers pick the subset
 they want and call them from their own `.github/workflows/`.

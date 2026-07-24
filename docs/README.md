@@ -10,6 +10,7 @@ docs cover consumer-facing intro, install, and release notes:
 | [`../CHANGELOG.md`](../CHANGELOG.md) | Release notes per `ci/vX.Y.Z` tag |
 | [`MIGRATION_v2.0.0.md`](MIGRATION_v2.0.0.md) | Migration guide from `ci/v1.x` to `ci/v2.0.0` (LiteLLM unification — breaking change) |
 | [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) | Pre-tag checklist for cutting a `ci/vX.Y.Z` release |
+| [`EXERCISER_INVENTORY.md`](EXERCISER_INVENTORY.md) | Which manifest surface / reusable / script each test exercises; unexercised rows must name an FT (the coverage gate) |
 
 This `docs/` tree covers reference + design topics.
 

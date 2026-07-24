@@ -49,9 +49,13 @@ context compaction.
   `REPO_STANDARDS.md:1368` stale `@ci/v2.0.0` pin; the 4-doc markdown-autofix
   wrapped-`+` corruption; `README.md` EXERCISER row). ✅ **FT-49** done
   (`FLEET_BRANCH_PROTECTION_ARMING.md` stale `ci/v2.1.0` + `REPO_STANDARDS.md:1368`
-  stale `@ci/v2.0.0` → version-neutral — PR open). **NEXT:** the remaining §4
-  content-currency (architecture.md rows/header + 4-doc markdown corruption +
-  README EXERCISER — one doc PR), then G4: FT-50 (macOS/bash4 portability),
+  stale `@ci/v2.0.0` → version-neutral — PR #281 MERGED `6652357`). ✅ **§4
+  content-currency** (architecture.md 3 tool-description rows corrected — they said
+  `gacts/gitleaks`/`*-action`, actually binaries; header count-neutral; README
+  EXERCISER row added — PR open). Only the cosmetic 4-doc markdown-autofix
+  wrapped-`+` prose remains in §4 (markdownlint-clean, low priority). **G3 is now
+  substantively complete** (FT-46 deferred). **NEXT: G4** — FT-50 (macOS/bash4
+  portability),
   FT-51 (runner docs), FT-52 (🔴 canon branch-protection + tag ruleset —
   founder-executed ops/inbox runbook). One FT per PR, OPS-0065 pre-push dispatch.
   **PROCESS NOTE (FT-45 incident):** review sub-agents run `git stash`/`git add` on
