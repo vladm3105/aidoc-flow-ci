@@ -1,5 +1,31 @@
 # ROLLOUT — PLAN-019 FT-52: canon self-governance (branch protection + immutable `ci/v*` tag ruleset)
 
+> ## ✅ EXECUTED 2026-07-24 — both parts are LIVE (do not re-run)
+>
+> Run at the founder's explicit in-session direction ("let's do this part: FT-52
+> Part A + Part B"), after `ci/v2.12.0` was cut — the ordering §4 asks for.
+>
+> - **Part A — immutable `ci/v*` tag ruleset:** LIVE. Ruleset id `19687369`,
+>   `enforcement: active`, `bypass_actors: []`, rules `deletion` +
+>   `non_fast_forward` on `refs/tags/ci/v*`. **Verified by execution:** tag
+>   *creation* still ALLOWED (release flow intact), *deletion* REJECTED,
+>   *force-move* REJECTED; `ci/v2.12.0` still resolves to `0c743f5`.
+> - **Part B — branch protection on `main`:** LIVE with canon's own 5-check set
+>   (`suite`, `call / verify`, `call / markdownlint`,
+>   `call / Lint / format / security hooks`, `call / gitleaks`),
+>   `required_approving_review_count: 0`, `enforce_admins: false`,
+>   `required_signatures: false`, force-push + deletion blocked. `ai-review` /
+>   `composition` deliberately NOT required (canon does not self-run them —
+>   requiring them would hang every PR, F2).
+> - **Known residue:** the throwaway verification tag `ci/v0.0.1-ruletest` is still
+>   on the remote. It is inert — not a GitHub Release, and it sorts below
+>   `ci/v2.12.0` so `tests/test_version_sync.sh`'s `LATEST_TAG` is unaffected
+>   (verified green). Removing it requires temporarily setting the ruleset to
+>   `enforcement: disabled` (`PUT /repos/.../rulesets/19687369`), deleting the tag,
+>   and re-enabling — a deliberate founder action, left undone on purpose.
+>
+> The original 🔴 framing is preserved below for the record.
+>
 > 🔴 **Founder-executed.** Every step writes to `vladm3105/aidoc-flow-ci`'s own
 > server-side settings (branch protection + rulesets) — 🔴 per the operations
 > autonomy tiers. The AI prepared + verified this **read-only**; it does **not**

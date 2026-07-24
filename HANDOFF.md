@@ -12,9 +12,17 @@ context compaction.
 > plus the §4 content-currency. The **cold-start dry-run passed GREEN** at the
 > prep-merge SHA (all Part-A criteria: env-pinned `CI_TAG`, no 404/FAIL, 18 canon
 > labels, marker-v2 pre-commit fragment).
-> **FT-52** stays a prepared 🔴 founder runbook
-> (`plans/ROLLOUT_ft52-canon-self-governance.md`) — the immutable `ci/v*` tag
-> ruleset + `main` branch protection are NOT yet applied.
+> **FT-52 is EXECUTED (2026-07-24) — canon now governs itself.** Part A: immutable
+> `ci/v*` tag ruleset `19687369` (active, no bypass actors — create allowed;
+> delete and force-move both rejected, verified by execution). Part B: `main`
+> protected with
+> canon's own 5-check set (`suite`, `call / verify`, `call / markdownlint`,
+> `call / Lint / format / security hooks`, `call / gitleaks`), 0 required reviews,
+> `enforce_admins: false`, `required_signatures: false` — AI auto-merge and the
+> FT-21 `--admin` prep path both still work. `ai-review`/`composition` deliberately
+> NOT required (canon doesn't self-run them; requiring them would hang every PR).
+> Residue: the inert throwaway tag `ci/v0.0.1-ruletest` is still on the remote
+> (removing it needs a deliberate ruleset disable→delete→re-enable).
 > **FT-46 / CI-0011 are now RESOLVED (2026-07-24)** — founder decided: **drop the
 > verified marketplace, admit only the owner's own account**. `verified_allowed:
 > false` + `patterns_allowed` broadened to `vladm3105/*`; docs, wizard preflight,
@@ -29,9 +37,9 @@ context compaction.
 > now the tag resolves.
 >
 > **Remaining 🔴 founder items** (none block the shipped tag): **(1)** apply
-> `actions-permissions.json` to canon + each consumer (the CI-0011 settings write);
-> **(2)** FT-52 Part A tag ruleset + Part B
-> branch protection (any time); **(3)** arm `feedback-desk`'s gates (PLAN-019 Part B
+> `actions-permissions.json` to canon + each consumer (the CI-0011 settings write —
+> scan each target's `uses:` first; `web-site` + `knowledge-rag` must be EXCLUDED,
+> see RELEASE_CHECKLIST); **(2)** arm `feedback-desk`'s gates (PLAN-019 Part B
 > / PLAN-009 Phase 0 — secrets + runner pool). Non-🔴 leftover: cosmetic 4-doc
 > markdown-`+` prose (markdownlint-clean, low priority). Pre-existing dependabot PRs
 > #221–228 are separate (FT-24), untouched. Detailed per-FT history + review findings
@@ -95,9 +103,11 @@ context compaction.
   `268a54d`), ✅ FT-52 runbook prepared (🔴 canon branch-protection + immutable
   `ci/v*` tag ruleset — `plans/ROLLOUT_ft52-canon-self-governance.md`; execution is
   founder-only; the runbook flags that product-tier protection would HANG canon and
-  uses canon's own check set — PR #285 MERGED `5029ad6`).
+  uses canon's own check set — PR #285 MERGED `5029ad6`)
+  **[SUPERSEDED 2026-07-24: FT-52 is now EXECUTED — both parts LIVE; see TL;DR.]**.
 - **➡️ PLAN-019 AI-EXECUTABLE WORK IS COMPLETE.** All FTs are landed or handed off:
-  FT-39…45, 47, 48, 49, 50, 51 merged; FT-52 runbook prepared (🔴 founder);
+  FT-39…45, 47, 48, 49, 50, 51 merged; FT-52 runbook prepared (🔴 founder)
+  **[SUPERSEDED 2026-07-24: EXECUTED — ruleset + branch protection live]**;
   **FT-46 was DEFERRED** on founder decision **CI-0011** (held in stash) —
   [DECIDED 2026-07-24, FT-46 landed; see TL;DR]. The
   only remaining §4 item is the cosmetic 4-doc markdown-`+` prose (low priority).
@@ -106,7 +116,8 @@ context compaction.
   pinned to the FINAL pre-tag `main` SHA (`git rev-parse origin/main`, NOT the G1
   checkpoint) per `plans/ROLLOUT_plan019-feedback-desk-coldstart.md`; (3) `release.sh
   prep ci/v2.12.0` → merge → tag. FT-52 (Part A tag ruleset especially) can run any
-  time.
+  time. **[ALL SUPERSEDED 2026-07-24: `ci/v2.12.0` SHIPPED, CI-0011 DECIDED, FT-52
+  EXECUTED — see TL;DR.]**
   **PROCESS NOTE (FT-45 incident):** review sub-agents run `git stash`/`git add` on
   the shared tree, which can unstage code between `git add` and `git commit`. ALWAYS
   `git add -A` + diff-vs-reviewed AFTER agents finish, before committing.

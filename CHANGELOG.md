@@ -5,6 +5,29 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Security — canon now governs itself: immutable `ci/v*` tags + protected `main` (PLAN-019 FT-52)
+
+- **Immutable `ci/v*` tag ruleset APPLIED** (ruleset `19687369`, `enforcement:
+  active`, `bypass_actors: []`). The whole fleet pins canon by **mutable tag**, so
+  a deleted or force-moved `ci/vX.Y.Z` would reach every consumer on its next run
+  with nothing to stop it. `deletion` + `non_fast_forward` are now blocked on
+  `refs/tags/ci/v*`; tag **creation** stays allowed so the release flow is intact.
+  Verified by execution: create ALLOWED, delete REJECTED, force-move REJECTED.
+- **Branch protection APPLIED to `main`** using canon's own produced check set —
+  `suite`, `call / verify`, `call / markdownlint`,
+  `call / Lint / format / security hooks`, `call / gitleaks`. `ai-review` and
+  `composition` are deliberately NOT required: canon does not self-run them (FT-23),
+  so requiring them would hang every canon PR.
+- Compatibility preserved by design: `required_approving_review_count: 0` (the AI
+  auto-merge flow keeps working), `enforce_admins: false` (the FT-21 release-prep
+  PR is expected-red on its self-pins until the tag exists, and still needs an
+  `--admin` merge), `required_signatures: false` (canon commits are AI-authored and
+  unsigned — requiring signatures would break every merge, the umbrella's problem).
+  Force-push and branch deletion are blocked.
+- Side effect, intended: `call / verify` becoming **required** hard-enforces the
+  OPS-0069 audit-trail phrase on every canon PR (previously advisory here), and
+  `call / markdownlint` becomes merge-blocking (canon is green on it today).
+
 ### Changed — supply-chain allowlist narrowed to GitHub-owned + own account (CI-0011 / PLAN-019 FT-46)
 
 - **CI-0011 RESOLVED (founder, 2026-07-24): drop the verified marketplace; admit
