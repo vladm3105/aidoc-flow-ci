@@ -229,14 +229,19 @@ PY
 
 $(note "Next (yours):")
   1. Review the diff:            git -C $ROOT diff main
-  2. Commit (OPS-0069 phrase), push, open the prep PR. Its \`suite\` +
-     self-caller checks will be RED — that is the FT-21 chicken-and-egg (self-pins
-     reference $version, which does not exist yet). Merge anyway (main is
-     unprotected; use --admin).
-  3. 🔴 Founder runs the FT-30 cold-start dry-run (docs/RELEASE_CHECKLIST.md),
-     exporting CI_TAG=<the prep-merge SHA>.
-  4. After it passes and the prep is on main:
-       bash scripts/release.sh tag $version --dry-run-verified
+  2. Commit (OPS-0069 phrase), push, open the prep PR. Its \`suite\` + self-caller
+     checks will be RED — the FT-21 chicken-and-egg (self-pins reference $version,
+     which does not exist yet). Since FT-52 protected main, 4 of the 5 REQUIRED
+     contexts come from those self-pinned callers, so they startup_failure and are
+     never REPORTED: the PR shows BLOCKED, not just red. That is expected.
+     enforce_admins is false precisely so this still merges:
+       gh pr merge <N> --squash --delete-branch --admin
+  3. Cut the tag. The FT-30 cold-start gate is CONDITIONAL — \`tag\` decides:
+       bash scripts/release.sh tag $version
+     If this release changed the installer bootstrap write path, it refuses and
+     lists the files; run the 🔴 dry-run (docs/RELEASE_CHECKLIST.md, exporting
+     CI_TAG=<the prep-merge SHA>) and re-run with --dry-run-verified. If it
+     auto-waives, no dry-run is owed.
 EOF
 }
 

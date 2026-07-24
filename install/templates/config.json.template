@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.12.0/schemas/ai-review-config-v2.schema.json",
+  "$schema": "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.13.0/schemas/ai-review-config-v2.schema.json",
   "version": 2,
   "_note": "ENFORCED (resolved from the TRUST-CONFIG repo, operations@main by default, NOT the PR branch): trust.ai_review, trust.auto_fix, litellm.model, auto_merge.repos, autofix.enabled, autofix.max_fix_rounds. A PR cannot self-enable autofix. See DECISIONS.md CI-0005 + PLAN-012.",
   "litellm": {

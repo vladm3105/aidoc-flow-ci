@@ -52,7 +52,7 @@ permissions:
   issues: write          # gh api label create/apply paths
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.12.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.13.0
     with:
       # Model selection is CONFIG-DRIVEN: the reusable reads `litellm.model`
       # from the trusted .github/ai-review/config.json. Uncomment to override:
