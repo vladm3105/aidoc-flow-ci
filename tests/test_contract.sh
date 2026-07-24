@@ -331,6 +331,15 @@ PYEOF
 assert_eq "$ai_review_secret_gaps" "" "ai-review: every body secret is declared in workflow_call.secrets AND forwarded by the caller (FT-42 completeness)"
 # FT-27b: auto-PR-approval defaults OFF.
 assert_ok "python3 -c \"import json,sys; sys.exit(0 if json.load(open('install/templates/actions-permissions.json'))['workflow']['can_approve_pull_request_reviews'] is False else 1)\"" "actions-permissions: can_approve_pull_request_reviews defaults false"
+# FT-46: verified_allowed must be false — `true` admitted every verified-creator
+# action, wider than REPO_STANDARDS §4.3 (github-owned + the 3 patterns only).
+assert_ok "python3 -c \"import json,sys; sys.exit(0 if json.load(open('install/templates/actions-permissions.json'))['selected_actions']['verified_allowed'] is False else 1)\"" "actions-permissions: verified_allowed is false (FT-46/CI-0011 — verified marketplace not admitted)"
+# CI-0011: with verified_allowed false, patterns_allowed is the ONLY non-GitHub-owned
+# admission. It must carry the account-wide `vladm3105/*` or every canon reusable
+# startup_failures on consumers; and it must NOT admit any other owner (re-widening
+# the supply-chain boundary is a decision, not a drift).
+assert_ok "python3 -c \"import json,sys; p=json.load(open('install/templates/actions-permissions.json'))['selected_actions']['patterns_allowed']; sys.exit(0 if 'vladm3105/*' in p else 1)\"" "actions-permissions: patterns_allowed admits the account-wide vladm3105/* (CI-0011)"
+assert_ok "python3 -c \"import json,sys; p=json.load(open('install/templates/actions-permissions.json'))['selected_actions']['patterns_allowed']; bad=[x for x in p if x.split('/')[0] not in ('vladm3105','actions','github')]; sys.exit(0 if not bad else 1)\"" "actions-permissions: patterns_allowed admits no owner beyond vladm3105/actions/github (CI-0011 boundary)"
 
 echo "== FT-29: skip-ai-review fails closed while composition is INERT =="
 AR=.github/workflows/ai-review.yml

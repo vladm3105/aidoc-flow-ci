@@ -82,7 +82,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v
 
 | Prerequisite | Why | Fix |
 |---|---|---|
-| **Actions allowlist** must include `vladm3105/aidoc-flow-ci/*` | If consumer is in `selected actions` mode, the reusable workflow is blocked → `startup_failure` | [`docs/troubleshooting.md` §13](docs/troubleshooting.md) |
+| **Actions allowlist** must admit canon — `vladm3105/*` (canonical) or the older `vladm3105/aidoc-flow-ci/*` | If consumer is in `selected actions` mode, the reusable workflow is blocked → `startup_failure` | [`docs/troubleshooting.md` §13](docs/troubleshooting.md) |
 | **Caller `permissions:` block** if repo-default `workflow_permissions: read` | Reusable can't elevate above caller's grant → `startup_failure` | [`docs/troubleshooting.md` §14](docs/troubleshooting.md) |
 | **Reviewer App + LiteLLM secrets** `APP_REVIEWER_1_ID/KEY`, `LITELLM_BASE_URL`, `LITELLM_REVIEW_API_KEY`, `LITELLM_DOC_API_KEY` | AI jobs need scoped keys and a reachable LiteLLM proxy | See [`docs/REVIEWER_APP_ONBOARDING.md`](docs/REVIEWER_APP_ONBOARDING.md) |
 | **Private runner pool** `[self-hosted, ci-runner, single-use]` | Private callers intentionally never fall back to GitHub-hosted runners | See [`docs/runners.md`](docs/runners.md) |

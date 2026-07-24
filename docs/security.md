@@ -371,8 +371,11 @@ same `gitleaks` binary directly (MIT-licensed, no key, no signup),
 with SHA-256 verification at install time. The binary is not wrapped
 in a third-party action, satisfying canon's authoring allowlist
 (`actions/*`, `github/*`, `vladm3105/aidoc-flow-ci/*`). Per REPO_STANDARDS
-§4.3 that authoring rule is deliberately stricter than the boundary the fleet
-deploys, which also admits GitHub-verified creators.
+§4.3, since FT-46 / CI-0011 (`verified_allowed: false`, `patterns_allowed`
+= `vladm3105/*` + the GitHub-owned patterns) the deployed boundary no longer
+admits verified-creator actions at all; it stays deliberately a little wider
+than the authoring rule above — the owner's whole account, versus canon's single
+repo.
 
 ## 8. Reporting security issues
 

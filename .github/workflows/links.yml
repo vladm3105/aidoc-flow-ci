@@ -8,9 +8,9 @@
 #     `lycheeverse/lychee-action` is published by a NON-verified creator, so it
 #     is also BLOCKED at run-init → `startup_failure` (proven live: links ran
 #     startup_failure on operations + business). The message is web-UI-only;
-#     `actionlint` does NOT catch it. Note this does not generalize: the
-#     deployed allowlist sets `verified_allowed: true`, so a VERIFIED creator's
-#     action is admitted and runs. Running the binary needs no action allowlist.
+#     `actionlint` does NOT catch it. Since CI-0011 the deployed allowlist sets
+#     `verified_allowed: false`, so a VERIFIED creator's action is blocked too
+#     unless it matches `patterns_allowed`. Running the binary needs no allowlist.
 #
 # Design decisions (ci/v1.9.4):
 #   - Curl the pinned lychee release. Use the **musl** static build

@@ -97,6 +97,52 @@ step is present (removing it goes red).
 **RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream B / G3):** see CHANGELOG
 `## Unreleased`.
 
+### FT-53 — `standards-drift` never compares `patterns_allowed`, now the whole boundary
+
+**Found:** 2026-07-24, CI-0011 pre-push review (security-auditor + code-reviewer,
+both independently).
+**Surface:** `sync/check-standards-drift.sh:240` — `for k in github_owned_allowed
+verified_allowed; do`. `patterns_allowed` is never compared against canon.
+**Effect:** tolerable while `verified_allowed: true` was a wide standing grant. Now
+that CI-0011 set it `false`, `patterns_allowed` is the **entire** non-GitHub-owned
+admission — and it is the one field drift ignores. An operator who edits a
+consumer's `patterns_allowed` in the Settings UI (adding `aquasecurity/*`, or
+dropping `vladm3105/*` and bricking every canon reusable with a silent
+`startup_failure`) gets **zero drift**, including in strict mode.
+`tests/test_contract.sh` does not cover this — it reads the local canon template,
+never a deployed repo.
+**Fix:** extend the drift comparison to `patterns_allowed` (set-compare the array,
+order-insensitive; report added/removed owners). Mind that the comparison is
+against the template fetched at the consumer's own pinned tag, so a consumer on an
+older pin must not be reported as drifted for a pattern that tag never shipped.
+**Status:** OPEN. `docs/REPO_STANDARDS.md` §4.3 documents the gap honestly in the
+meantime (the assertion is template-scoped, not fleet-scoped).
+
+### FT-46 — canon has not applied its own FT-27 values; allowlist is wider than the rule
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G3 ship-with-tag).
+**Surface:** `install/templates/actions-permissions.json` — `verified_allowed: true`
+(wider than REPO_STANDARDS §4.3); canon's LIVE `can_approve_pull_request_reviews`
+is `true` while the template ships `false`.
+**Effect:** `verified_allowed: true` admits every verified-creator action,
+undermining the allowlist that §4.3 enforces (and that forced `gacts/gitleaks` →
+binary). Separately, canon's own live settings drifted from the template it ships.
+**Blocked on:** decision **CI-0011** — PLAN-019's FT-46 spec never referenced it,
+so the flip was NOT shipped with `ci/v2.12.0`; held in `git stash` pending the
+founder's call.
+**Fix:** set `verified_allowed: false` (only github-owned + `patterns_allowed`
+admit an action); `patterns_allowed` broadened to the account-wide `vladm3105/*`;
+REPO_STANDARDS §4.3 + security/troubleshooting/AI_CI_DEPLOYMENT synced;
+`deploy-ci-wizard.sh` preflight grep widened so `vladm3105/*` is not a false
+negative; `test_contract.sh` asserts both halves (mutations confirmed red).
+**G4 / 🔴:** applying `actions-permissions.json` to canon itself (and to each
+consumer) is a founder-executed settings write, tracked as a RELEASE_CHECKLIST
+post-release item. FT-27/FT-46 are template values until applied per-repo.
+**RESOLVED — CI-0011 DECIDED 2026-07-24 (drop the verified marketplace; admit only
+the owner's account). Template + docs landed; canon-apply remains G4/🔴
+(Unreleased → next tag after `ci/v2.12.0`, PLAN-019 Workstream B / G3):** see
+CHANGELOG `## Unreleased` + `DECISIONS.md` CI-0011.
+
 ### FT-45 — `required-context-map.py` discards the job-id half of the context
 
 **Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G3 ship-with-tag).
