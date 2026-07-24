@@ -5,6 +5,62 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — the FT-30 cold-start gate is now CONDITIONAL, not ceremonial
+
+- `release.sh tag` demanded `--dry-run-verified` on **every** cut, including
+  releases that touch nothing the installer executes. A dry-run of unchanged
+  installer code proves nothing, so the flag had become a rubber stamp — and a
+  rubber-stamped gate is one people learn to pass reflexively.
+- The gate is now decided from the diff, scoped to the installer **bootstrap write
+  path** — the path whose breakage *aborts* a cold start, which is what F1 was.
+  `tag` derives it from `install/templates/manifest.json` (both `template` **and
+  every `visibility_variants` value**) plus `install.sh`, `check-precommit-hooks.sh`,
+  `labels.json` and the pre-commit fragment — 42 paths today, and a newly-shipped
+  template is covered with no edit here. Nothing changed since the previous tag →
+  `FT-30 cold-start gate AUTO-WAIVED` (with an audit line naming what it compared).
+  Anything changed → refuses, **lists the files**, and demands the flag.
+  `--dry-run-verified` is always accepted, so running the dry-run anyway is never
+  wrong. The advisory standards-verify assets (`check-standards-drift.sh` and what
+  it fetches) are deliberately out of scope — `install.sh` captures that step's rc
+  instead of exiting, so a fault there degrades the report, not the install.
+- **Fails closed** by construction: no previous `ci/v*` tag, or an unreadable
+  manifest, and the flag is required. The manifest read deliberately does not
+  degrade — swallowing that error would silently shrink the surface and auto-waive
+  a release that *did* change a shipped template, which is the exact class of miss
+  FT-30 exists to catch.
+- `previous_tag()` now filters to exact `ci/vX.Y.Z`: `sort -V` ranks
+  `ci/v2.13.0-rc.1` **above** `ci/v2.13.0`, so an unfiltered glob could let a
+  pre-release (or a stray tag) become `prev` and mis-scope the diff.
+- A template path containing whitespace or a glob character is now refused: the
+  pathspecs are word-split, so such a path would be silently dropped from the diff
+  and under-report the surface.
+- `release.sh tag` with no version now prints usage instead of dying on `set -u`
+  (`local version="${1:-}"`), and every usage string shows `[--dry-run-verified]`
+  as optional — the dispatcher's string, the only one a user actually sees, still
+  claimed it was mandatory.
+- `tests/test_release.sh` 27→58: a dedicated fixture gives each case its own diff
+  window and drives waive, require, flag-override, no-previous-tag, unreadable
+  manifest, manifest-schema-drift, pre-release-tag scoping, and an unsplittable
+  template path — plus **each surface half independently**. Seven mutations
+  confirmed red, including four that earlier iterations of this change did NOT
+  catch: dropping `install.sh` from the surface, deleting the whole explicit half,
+  ignoring `visibility_variants` (which silently excluded 9 templates, 2 of them
+  cold-start fetches — the gate was blind to private adopters, i.e. most of the
+  fleet), and reverting the `previous_tag` filter.
+- `docs/RELEASE_CHECKLIST.md`: the 🔴 item documents the conditional behaviour and
+  which files are deliberately off-surface; the stale
+  `docs/router-config.schema.json` reference is corrected to the real schema paths.
+
+### Docs — prep PRs are BLOCKED under the new branch protection (FT-52 follow-on)
+
+- Since FT-52 protected `main`, **4 of the 5 required contexts come from
+  self-pinned callers**. A prep PR bumps those pins to a tag that does not exist
+  yet, so those workflows `startup_failure` and their contexts are **never
+  reported** — the PR is `BLOCKED` ("waiting for status to be reported"), not
+  merely red, and `suite` is additionally red on the FT-21 latest-tag assertion.
+  `enforce_admins: false` exists precisely so `--admin` still merges it.
+  RELEASE_CHECKLIST now says so at the point of use.
+
 ### Security — canon now governs itself: immutable `ci/v*` tags + protected `main` (PLAN-019 FT-52)
 
 - **Immutable `ci/v*` tag ruleset APPLIED** (ruleset `19687369`, `enforcement:
