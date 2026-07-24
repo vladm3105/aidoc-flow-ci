@@ -101,6 +101,43 @@ step is present (removing it goes red).
 **RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream B / G3):** see CHANGELOG
 `## Unreleased`.
 
+### FT-54 — canon's weekly self-drift reports 2 permanent warnings (needs a decision)
+
+**Found:** 2026-07-24, after applying CI-0011 + the FT-53 drift work.
+**Surface:** `.github/workflows/standards-drift-self.yml:55` runs
+`check-standards-drift.sh --tier product` on a weekly cron.
+**Effect:** canon's branch protection is deliberately **not** product-tier — FT-52
+gave it canon's own 5-check set because product-tier requires `call / ai-review` +
+`call / composition`, reusables canon does not self-run (requiring them hangs every
+PR, F2). It also sets `enforce_admins: false` so the FT-21 expected-red prep can be
+`--admin` merged. So the weekly run reports, forever:
+
+```text
+branch-protection.enforce_admins: canon=true actual=false
+branch-protection.contexts: canon=[…ai-review,…composition…] actual=[…markdownlint,suite…]
+```
+
+Two permanent warnings is how a real drift signal gets trained away. Note
+`branch-protection-product.json`'s `_comment` still lists `aidoc-flow-ci` among its
+tier repos, which FT-52 showed is wrong for branch protection specifically.
+
+**Fix — needs a founder call between:**
+
+1. **A canon branch-protection profile.** Add `branch-protection-canon.json` encoding
+   canon's real check set and point self-drift at it. Drift becomes meaningful again
+   (it would catch protection actually being removed). Cost: a 6th entry in the
+   REPO_STANDARDS §2 tier taxonomy — a governance change.
+2. **Scope the self-check.** Add `--skip-branch-protection` to
+   `check-standards-drift.sh` (mirroring the flag `apply-standards.sh` already has)
+   and pass it from `standards-drift-self.yml` with an FT-52 rationale. Cheaper, but
+   canon then has **no** automated branch-protection drift detection at all.
+3. **Accept and annotate.** Leave it, and document the two expected lines so a reader
+   knows they are by design. Cheapest; the noise remains.
+
+Recommendation: (1) — it is the only option that keeps the check honest. Whichever
+is chosen, correct `branch-protection-product.json`'s tier-repo list.
+**Status:** OPEN.
+
 ### FT-53 — `standards-drift` never compares `patterns_allowed`, now the whole boundary
 
 **Found:** 2026-07-24, CI-0011 pre-push review (security-auditor + code-reviewer,

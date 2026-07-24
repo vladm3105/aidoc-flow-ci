@@ -5,6 +5,24 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — canon was missing 8 of its own 18 canonical labels
+
+- Surfaced by the FT-53 drift work. One is **load-bearing and had just become so**:
+  `skip-audit-trail` is the documented escape hatch for `call / verify`, which FT-52
+  made a **required** check hours earlier — and `audit-trail-check.yml` literally
+  instructs the operator to *"Apply the 'skip-audit-trail' label to this PR"*. The
+  label did not exist, so on a required check the documented override was
+  unusable and `--admin` was the only way past.
+- The other seven are inert on canon (`agents`/`config`/`governance`/`plans` are
+  labeler categories — canon has no labeler caller and no `.github/labeler.yml`; the
+  three `ai:*` belong to `ai-review`, which canon does not self-run per FT-23). All
+  eight were created anyway from `labels.json`, with canonical colour and
+  description: canon dogfoods its own canon, unused labels are inert, and a
+  drift-clean baseline means future label drift is signal rather than noise.
+- Canon label drift is now **0**; the only remaining drift is the two deliberate
+  FT-52 branch-protection lines, filed as **FT-54** because a weekly cron reporting
+  two permanent warnings is how a real signal gets trained away.
+
 ### Added — `standards-drift` now compares `patterns_allowed` (FT-53)
 
 - Since CI-0011 set `verified_allowed: false`, `patterns_allowed` is the **only**
