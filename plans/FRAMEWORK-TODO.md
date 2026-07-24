@@ -8,6 +8,23 @@ when resolved.
 
 ## Open
 
+### FT-52 — canon does not govern itself to the standard it ships (🔴 founder)
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G4 self-governance, S1).
+**Surface:** canon `main` — `branches/main/protection` → 404, `rulesets` → `[]`
+(verified live), while `install/templates/branch-protection-product.json` names
+`aidoc-flow-ci` product-tier.
+**Effect:** canon `main` is unprotected AND `ci/v*` release tags are mutable — the
+fleet pins canon by mutable tag, so a force-moved tag reaches every consumer next
+run with nothing stopping it.
+**Fix (🔴 founder-executed runbook, NOT AI-run):** `plans/ROLLOUT_ft52-canon-self-governance.md`
+— (A) immutable `ci/v*` tag ruleset (deletion + non-fast-forward blocked, creation
+allowed); (B) branch protection with **canon's own check set** (NOT product-tier —
+requiring `ai-review`/`composition` canon doesn't self-run would hang every PR, F2).
+**RESOLVED as far as the AI can take it (runbook prepared; execution 🔴 founder)
+(Unreleased -> `ci/v2.12.0`, PLAN-019 Workstream E / G4):** see CHANGELOG
+`## Unreleased`.
+
 ### FT-51 — `runners.md` leads with org-level registration, impossible on a personal account
 
 **Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G4 docs, §5).
