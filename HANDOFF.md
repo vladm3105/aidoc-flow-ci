@@ -9,7 +9,7 @@ context compaction.
 > **TL;DR (session wrap 2026-07-23).** **`ci/v2.12.0` is SHIPPED** — tag cut on
 > `0c743f5` (prep PR #287 merged), GitHub Release marked Latest. PLAN-019's
 > AI-executable work rode the tag: FT-39…45, 47, 48, 49, 50, 51 (code/test/docs)
-> + the §4 content-currency. The **cold-start dry-run passed GREEN** at the
+> plus the §4 content-currency. The **cold-start dry-run passed GREEN** at the
 > prep-merge SHA (all Part-A criteria: env-pinned `CI_TAG`, no 404/FAIL, 18 canon
 > labels, marker-v2 pre-commit fragment).
 > **FT-52** stays a prepared 🔴 founder runbook
