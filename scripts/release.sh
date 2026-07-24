@@ -14,8 +14,16 @@
 #       them); the next push after the tag exists re-triggers them green.
 #
 # The 🔴 FT-30 cold-start dry-run sits BETWEEN prep-merge and tag and is
-# founder-executed (it writes to a throwaway repo). `tag` therefore requires an
-# explicit --dry-run-verified flag so the tag cannot be cut without that gate.
+# founder-executed (it writes to a throwaway repo). `tag` gates on it
+# CONDITIONALLY: it demands --dry-run-verified only when the release actually
+# changes the installer BOOTSTRAP WRITE PATH — install.sh, check-precommit-hooks.sh,
+# the manifest, labels.json, the pre-commit fragment, and every template the
+# manifest ships INCLUDING its visibility_variants (see `coldstart_surface` for the
+# exact scope and what is deliberately excluded). When that path is byte-identical
+# to the last released one the gate auto-waives with an audit line, because a
+# dry-run of unchanged code proves nothing. It fails CLOSED: no previous tag, an
+# unreadable manifest, or a manifest whose shape yields no templates, and the flag
+# is required exactly as before.
 #
 # SUBCOMMANDS
 #   release.sh prep <ci/vX.Y.Z>
@@ -24,10 +32,11 @@
 #       FT-36), run sync-version-refs.sh, promote the CHANGELOG. You review, open
 #       the PR, and merge it (expected-red per (2)).
 #
-#   release.sh tag <ci/vX.Y.Z> --dry-run-verified
-#       After the prep is MERGED to main AND the founder ran the FT-30 cold-start
-#       dry-run: verify VERSION==version on main, cut the annotated tag on HEAD,
-#       push it, and `gh release create --latest` from the CHANGELOG section.
+#   release.sh tag <ci/vX.Y.Z> [--dry-run-verified]
+#       After the prep is MERGED to main: verify VERSION==version on main, cut the
+#       annotated tag on HEAD, push it, and `gh release create --latest` from the
+#       CHANGELOG section. --dry-run-verified is REQUIRED when the cold-start path
+#       changed (the script says so and lists the files), and always accepted.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -46,9 +55,94 @@ require_version_arg() {
 
 current_version() { tr -d '[:space:]' < VERSION; }
 
+# Only exact ci/vX.Y.Z releases. `sort -V` ranks `ci/v2.13.0-rc.1` ABOVE
+# `ci/v2.13.0`, so an unfiltered glob would let a pre-release (or a stray tag like
+# ci/v0.0.1-ruletest) become `prev` and mis-scope the diff.
+# `grep` exits 1 when nothing matches; under `set -e` that would abort the caller's
+# `prev="$(previous_tag)"` assignment instead of yielding the empty string the
+# no-previous-tag branch is written to handle. Hence the `|| true`.
+previous_tag() { git tag --list 'ci/v[0-9]*' | { grep -E "$VER_RE" || true; } | sort -V | tail -1; }
+
+# --- FT-30 cold-start surface ----------------------------------------------
+# The dry-run gate exists to catch a broken INSTALLER cold start (a bootstrap
+# template deleted at ci/v2.2.0 shipped broken for nine releases). It is only
+# meaningful when the release actually changes that path, so the gate is
+# CONDITIONAL rather than ceremonial — see `coldstart_gate` below.
+#
+# SCOPE: the installer's BOOTSTRAP WRITE PATH — install.sh plus every template it
+# fetches and writes into the consumer. That is the path whose breakage ABORTS a
+# cold start (`fetch_template ... || exit 1`) and the failure F1 actually was.
+# The surface is DERIVED from the manifest (both `template` and every
+# `visibility_variants` value), so a newly-shipped template is covered with no edit
+# here.
+#
+# Deliberately OUT of scope, and why:
+#   - install/README.md — docs.
+#   - deploy-ci-wizard.sh, apply-standards.sh — separate entry points a cold start
+#     never executes.
+#   - the standards-VERIFY assets reached transitively via `verify_standards`
+#     (sync/check-standards-drift.sh and what it fetches: branch-protection-*.json,
+#     repo-settings.json, actions-permissions.json, check-pin-currency.sh).
+#     install.sh captures that step's rc instead of exiting, so it is ADVISORY —
+#     a fault there degrades the report, it does not abort the install. If a
+#     release changes those, pass --dry-run-verified deliberately; the gate will
+#     not force you.
+coldstart_surface() {
+  # The manifest half must FAIL LOUD, not degrade. Swallowing a manifest read
+  # error — or accepting a manifest whose shape changed so it yields nothing —
+  # would silently shrink the surface to the explicit list, so a release that
+  # changed a shipped template would auto-waive the gate: the exact class of miss
+  # FT-30 exists to prevent. An EMPTY result is therefore an error, not a waive.
+  #
+  # NB `local mf rc=0` is declared on its own line and the assignment made on the
+  # NEXT line deliberately. `local mf="$(...)" || rc=$?` would mask the command
+  # substitution's exit status behind `local`'s own (always 0) and silently
+  # fail OPEN. Do not collapse these two lines.
+  local mf rc=0
+  mf="$(python3 - <<'PY' 2>/dev/null
+import json, re, sys
+m = json.load(open("install/templates/manifest.json"))      # raises -> rc!=0
+files = m.get("files")
+if not isinstance(files, list) or not files:
+    sys.exit(1)                                             # schema drift -> fail closed
+out = set()
+for f in files:
+    t = f.get("template")
+    if t:
+        out.add(t)
+    # install.sh cold-start fetches the -private/-public variants directly
+    # (e.g. workflows/composition-private.yml); they live ONLY here, so a
+    # template-only walk is blind to them — and private repos are most of the fleet.
+    for v in (f.get("visibility_variants") or {}).values():
+        if v:
+            out.add(v)
+if not out:
+    sys.exit(1)
+for t in sorted(out):
+    # pathspecs are word-split by the caller, so whitespace/glob would silently
+    # drop a path from the diff. Refuse rather than under-report.
+    if re.search(r"[\s*?\[\]]", t):
+        sys.exit(1)
+    print("install/templates/" + t)
+PY
+)" || rc=$?
+  [ "$rc" -eq 0 ] && [ -n "$mf" ] || return 1
+  # Explicit half: what install.sh fetches/executes that the manifest does not
+  # name. NB `install/templates/pre_push_check.sh` is manifest-covered; canon's
+  # own `scripts/pre_push_check.sh` is a separate local copy the installer never
+  # fetches, so it is deliberately NOT here.
+  printf '%s\n' \
+    install/install.sh \
+    install/check-precommit-hooks.sh \
+    install/templates/manifest.json \
+    install/templates/labels.json \
+    install/templates/pre-commit-hook-block.yaml
+  printf '%s\n' "$mf"
+}
+
 # --- prep ------------------------------------------------------------------
 prep() {
-  local version="$1"
+  local version="${1:-}"
   require_version_arg "$version" prep
   git rev-parse --verify -q "refs/tags/$version" >/dev/null && die "tag $version already exists — nothing to prep"
   [ "$version" = "$(current_version)" ] && die "VERSION already reads $version — prep already done?"
@@ -148,11 +242,41 @@ EOF
 
 # --- tag -------------------------------------------------------------------
 tag() {
-  local version="$1"; shift || true
-  require_version_arg "$version" tag "--dry-run-verified"
+  local version="${1:-}"; shift || true
+  require_version_arg "$version" tag "[--dry-run-verified]"
   local verified=0
   for a in "$@"; do [ "$a" = "--dry-run-verified" ] && verified=1; done
-  [ "$verified" -eq 1 ] || die "refusing to tag without --dry-run-verified (the 🔴 FT-30 cold-start dry-run gates the cut — see docs/RELEASE_CHECKLIST.md)"
+
+  # --- FT-30 gate, CONDITIONAL (see coldstart_surface) ---------------------
+  # Required only when this release changes the installer cold-start path.
+  # Fails CLOSED: if the previous tag or the surface cannot be determined, the
+  # flag is required exactly as before.
+  local prev; prev="$(previous_tag)"
+  if [ "$verified" -eq 1 ]; then
+    echo "  FT-30 cold-start gate: --dry-run-verified supplied — accepted."
+  elif [ -z "$prev" ]; then
+    die "refusing to tag without --dry-run-verified: no previous ci/v* tag found, so the cold-start surface cannot be diffed (first release, or unfetched tags — run 'git fetch --tags'). See docs/RELEASE_CHECKLIST.md"
+  else
+    local surface changed
+    if ! surface="$(coldstart_surface)"; then
+      die "refusing to tag without --dry-run-verified: could not compute the cold-start surface — install/templates/manifest.json is unreadable, or its shape yields no templates. See docs/RELEASE_CHECKLIST.md"
+    fi
+    # shellcheck disable=SC2086  # deliberate word-split: many pathspecs
+    changed="$(git diff --name-only "$prev..HEAD" -- $surface 2>/dev/null)"
+    if [ -n "$changed" ]; then
+      echo "release: this release CHANGES the installer cold-start path since $prev:" >&2
+      printf '%s\n' "$changed" | sed 's/^/    /' >&2
+      die "refusing to tag without --dry-run-verified — run the 🔴 FT-30 cold-start dry-run (docs/RELEASE_CHECKLIST.md), then re-run with --dry-run-verified"
+    fi
+    note "==> FT-30 cold-start gate AUTO-WAIVED"
+    echo "  No file on the installer bootstrap write path changed in $prev..HEAD,"
+    echo "  so the cold start is byte-identical to the one verified for $prev."
+    echo "  Scope: install.sh, check-precommit-hooks.sh, the manifest, labels.json,"
+    echo "  the pre-commit fragment, and every template the manifest ships"
+    echo "  (including visibility_variants) — $(printf '%s\n' "$surface" | wc -l) paths."
+    echo "  The advisory standards-verify assets are OUT of scope by design."
+    echo "  Pass --dry-run-verified to run the dry-run anyway."
+  fi
 
   local branch; branch="$(git rev-parse --abbrev-ref HEAD)"
   [ "$branch" = "main" ] || die "must be on main to tag (on '$branch') — the prep PR must be MERGED first"
@@ -194,5 +318,5 @@ EOF
 case "${1:-}" in
   prep) shift; prep "${1:-}" ;;
   tag)  shift; tag "$@" ;;
-  *) die "usage: release.sh {prep <ci/vX.Y.Z> | tag <ci/vX.Y.Z> --dry-run-verified}" ;;
+  *) die "usage: release.sh {prep <ci/vX.Y.Z> | tag <ci/vX.Y.Z> [--dry-run-verified]}" ;;
 esac

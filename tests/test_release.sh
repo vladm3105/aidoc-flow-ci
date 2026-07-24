@@ -25,6 +25,14 @@ assert_contains "$OUT" "usage" "no subcommand -> usage"
 run prep v2.12;              assert_eq "$RC" "1" "prep: bad version format rejected"
 assert_contains "$OUT" "ci/vX.Y.Z" "prep: names the required format"
 run tag not-a-version --dry-run-verified; assert_eq "$RC" "1" "tag: bad version format rejected"
+# The dry-run flag is OPTIONAL since the gate became conditional; every usage
+# string must say so. `tag` with no args must reach usage, not die on `set -u`.
+run
+assert_contains "$OUT" "[--dry-run-verified]" "usage: dispatcher shows the flag as optional"
+run tag
+assert_eq "$RC" "1" "tag: no version -> usage (not an unbound-variable crash)"
+assert_contains "$OUT" "usage" "tag: no version -> reaches the usage message"
+assert_absent "$OUT" "unbound variable" "tag: no version -> no set -u crash"
 
 echo ""
 echo "== prep refuses the version the tree already carries =="
@@ -52,13 +60,148 @@ _branches_after="$(git -C "$ROOT" branch --format='%(refname)' | sort)"
 assert_eq "$_branches_before" "$_branches_after" "prep: rejection changed no branches (no side effect)"
 
 echo ""
-echo "== tag refuses without the FT-30 dry-run gate =="
-# A plausible next version (not yet tagged). tag must refuse for lack of the
-# --dry-run-verified flag BEFORE touching git.
+echo "== FT-30 dry-run gate is CONDITIONAL on the cold-start surface =="
+# The gate demands --dry-run-verified only when the release actually changes the
+# installer cold-start path. On THIS repo the surface is usually unchanged, so the
+# gate waives and the run proceeds to the later guards. Asserting only
+# "output mentions dry-run-verified" would false-pass on the waive message, so
+# assert the DECISION, and that it got past the gate to a different guard.
 run tag ci/v99.0.0
-assert_eq "$RC" "1" "tag: refused without --dry-run-verified"
-assert_contains "$OUT" "dry-run-verified" "tag: names the missing gate"
+assert_eq "$RC" "1" "tag: still rejected (a later guard), gate is not the blocker here"
 assert_absent "$OUT" "tagging" "tag: did not proceed to tagging"
+# Which LATER guard fires depends on the environment — CI checks out a PR ref, so
+# the on-main guard trips before the VERSION one; locally on main it is the
+# reverse. Assert only that the gate reached a decision and did not itself abort
+# the run. The gate fixture below pins the decision logic deterministically.
+_gate_waived=0
+printf '%s' "$OUT" | grep -q 'AUTO-WAIVED' && _gate_waived=1
+if [ "$_gate_waived" = 1 ]; then
+  assert_absent "$OUT" "refusing to tag without --dry-run-verified" "tag: gate waived (surface unchanged) -> did not die at the gate"
+else
+  assert_contains "$OUT" "CHANGES the installer cold-start path" "tag: gate fired (surface changed) -> named the reason"
+fi
+
+echo ""
+echo "== gate fixture: waive / require / fail-closed all drive for real =="
+# A dedicated throwaway repo so BOTH gate branches are exercised deterministically,
+# independent of what this repo's working tree happens to contain.
+GFIX="$(mktemp -d)"
+git init -q -b main "$GFIX" 2>/dev/null
+git init -q --bare "$GFIX/origin.git" 2>/dev/null
+mkdir -p "$GFIX/scripts" "$GFIX/install/templates"
+cp "$REL" "$GFIX/scripts/release.sh"
+printf 'ci/v1.0.0\n' > "$GFIX/VERSION"
+printf 'CI_TAG_FALLBACK="ci/v1.0.0"\n' > "$GFIX/install/install.sh"
+printf '{"files":[{"path":".github/workflows/x.yml","template":"workflows/x.yml"},{"path":".github/workflows/y.yml","template":"workflows/y-public.yml","visibility_variants":{"private":"workflows/y-private.yml","public":"workflows/y-public.yml"}}]}\n' > "$GFIX/install/templates/manifest.json"
+mkdir -p "$GFIX/install/templates/workflows"
+printf 'x\n' > "$GFIX/install/templates/workflows/x.yml"
+printf 'yp\n' > "$GFIX/install/templates/workflows/y-public.yml"
+printf 'yq\n' > "$GFIX/install/templates/workflows/y-private.yml"
+printf 'frag\n' > "$GFIX/install/templates/pre-commit-hook-block.yaml"
+printf '## Unreleased\n\n## ci/v2.0.0 — 2026-01-01\n\n- x\n' > "$GFIX/CHANGELOG.md"
+# tag() runs `git fetch origin main` + an up-to-date check before the VERSION
+# guard, so the gate tests that must reach the LATER guards need a real origin.
+printf 'origin.git/\n' > "$GFIX/.gitignore"
+_gc() { git -C "$GFIX" -c user.email=t@t -c user.name=t -c commit.gpgsign=false "$@"; }
+git -C "$GFIX" add -A; _gc commit -q -m init
+git -C "$GFIX" remote add origin "$GFIX/origin.git"
+git -C "$GFIX" push -q origin main 2>/dev/null
+_gc tag ci/v1.0.0
+# keep origin/main level with local main after each fixture commit below
+_gpush() { git -C "$GFIX" push -q origin main 2>/dev/null; }
+
+# Each case needs its OWN diff window, otherwise an earlier case's change stays
+# "changed" forever and every later case fires for the wrong reason. So: tag the
+# current HEAD, make one change, and let `prev` be that fresh tag.
+_next=1
+_seal() { _next=$((_next+1)); _gc tag "ci/v1.$_next.0"; }        # prev := HEAD
+_gtag() { (cd "$GFIX" && bash scripts/release.sh tag ci/v9.0.0 "$@" 2>&1); }
+
+# (a) NO ci/v* tag reachable => fails CLOSED even though nothing changed.
+_gc tag -d ci/v1.0.0 >/dev/null
+nout="$(_gtag)"; nrc=$?
+assert_eq "$nrc" "1" "gate: no previous tag -> refused"
+assert_contains "$nout" "no previous ci/v* tag" "gate: fails closed with no previous tag"
+_gc tag ci/v1.0.0
+
+# (b) Surface UNCHANGED => auto-waive, and the run reaches the VERSION guard
+#     (proving it got PAST the gate rather than dying in it).
+printf 'docs only\n' > "$GFIX/install/README.md"; git -C "$GFIX" add -A; _gc commit -q -m docs; _gpush
+wout="$(_gtag)"; wrc=$?
+assert_contains "$wout" "AUTO-WAIVED" "gate: unchanged cold-start surface -> auto-waived"
+assert_contains "$wout" "VERSION on main reads" "gate: waive proceeds to the next guard"
+assert_eq "$wrc" "1" "gate: waive still ends in the later rejection"
+
+# Drive each surface HALF independently. Without these, deleting the whole
+# explicit list — or dropping install.sh from it — leaves the suite green.
+_case() { # $1=path  $2=label
+  _seal
+  printf 'changed-%s\n' "$_next" > "$GFIX/$1"; git -C "$GFIX" add -A
+  _gc commit -q -m "chg $1"; _gpush
+  local o; o="$(_gtag)"
+  assert_contains "$o" "CHANGES the installer cold-start path" "gate: fires on $2"
+  assert_contains "$o" "$1" "gate: names $2 as the changed file"
+  assert_absent "$o" "AUTO-WAIVED" "gate: did NOT waive on $2"
+}
+# (c) manifest-derived template
+_case "install/templates/workflows/x.yml" "a manifest template"
+# (c2) EXPLICIT half — install.sh itself, the single most important file
+_case "install/install.sh" "install.sh (explicit half)"
+# (c3) EXPLICIT half — a file the manifest never names
+_case "install/templates/pre-commit-hook-block.yaml" "the pre-commit fragment (explicit half)"
+# (c4) visibility_variants-only template — install.sh cold-start fetches these
+#      directly and they appear ONLY under visibility_variants (the B1 blind spot)
+_case "install/templates/workflows/y-private.yml" "a visibility_variants-only template"
+
+# (d) the flag overrides a changed surface.
+fout2="$(_gtag --dry-run-verified)"
+assert_contains "$fout2" "dry-run-verified supplied" "gate: --dry-run-verified is acknowledged"
+assert_contains "$fout2" "VERSION on main reads" "gate: --dry-run-verified overrides a changed surface"
+
+# (e) unreadable manifest => fails CLOSED (must NOT silently shrink the surface).
+_seal
+printf 'NOT JSON\n' > "$GFIX/install/templates/manifest.json"; git -C "$GFIX" add -A; _gc commit -q -m break; _gpush
+bout="$(_gtag)"; brc=$?
+assert_eq "$brc" "1" "gate: unreadable manifest -> refused"
+assert_contains "$bout" "could not compute the cold-start surface" "gate: fails closed on a broken manifest"
+
+# (f) VALID json whose shape yields no templates => also fails CLOSED. A plain
+#     `.get("files", [])` walk would return empty, rc=0, and silently waive.
+_seal
+printf '{"entries":[{"template":"workflows/x.yml"}]}\n' > "$GFIX/install/templates/manifest.json"
+git -C "$GFIX" add -A; _gc commit -q -m schema; _gpush
+sout="$(_gtag)"; src=$?
+assert_eq "$src" "1" "gate: manifest schema drift -> refused"
+assert_contains "$sout" "could not compute the cold-start surface" "gate: fails closed when the manifest yields no templates"
+
+# (g) previous_tag must ignore non-release tags. `sort -V` ranks ci/vX.Y.Z-rc.N
+#     ABOVE ci/vX.Y.Z, so an unfiltered glob would pick a pre-release as `prev`
+#     and mis-scope the diff window.
+_seal
+printf '{"files":[{"path":".github/workflows/x.yml","template":"workflows/x.yml"}]}\n' > "$GFIX/install/templates/manifest.json"
+git -C "$GFIX" add -A; _gc commit -q -m restore; _gpush
+_seal                                   # prev := this commit (the real release)
+printf 'changed\n' > "$GFIX/install/templates/workflows/x.yml"; git -C "$GFIX" add -A
+_gc commit -q -m "chg after rc tag"; _gpush
+# The pre-release tag must land AFTER the change, so that picking it as `prev`
+# would collapse the window to empty. Tagging it alongside the seal would make
+# both the filtered and unfiltered forms agree, and the test would not discriminate.
+_gc tag "ci/v8.8.8-rc.1"                # a pre-release ABOVE every real tag, at HEAD
+rout="$(_gtag)"
+# If the rc tag were chosen as prev it would sit AFTER this change, the diff
+# window would be empty, and the gate would waive. It must still fire.
+assert_contains "$rout" "CHANGES the installer cold-start path" "previous_tag: a -rc.N tag is not treated as the previous release"
+assert_absent "$rout" "AUTO-WAIVED" "previous_tag: pre-release tag did not collapse the diff window"
+
+# (h) a template path with whitespace would be silently dropped by the caller's
+#     word-splitting, under-reporting the surface. Refuse instead.
+_seal
+printf '{"files":[{"path":".github/workflows/z.yml","template":"workflows/has space.yml"}]}\n' > "$GFIX/install/templates/manifest.json"
+git -C "$GFIX" add -A; _gc commit -q -m spacepath; _gpush
+pout2="$(_gtag)"; prc2=$?
+assert_eq "$prc2" "1" "gate: whitespace in a template path -> refused"
+assert_contains "$pout2" "could not compute the cold-start surface" "gate: fails closed on an unsplittable template path"
+rm -rf "$GFIX"
 
 echo ""
 echo "== runtime teeth: the on-main + VERSION-match guards actually fire (fixture) =="
