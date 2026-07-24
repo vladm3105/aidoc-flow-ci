@@ -54,5 +54,23 @@ jobs:
           echo "$BIN_DIR" >> "$GITHUB_PATH"
           "$BIN_DIR/actionlint" -version
 
-      - name: Run test suite
+      - name: Run test suite (PyYAML backend)
         run: bash tests/run.sh
+
+      # FT-47: install.sh PREFERS ruamel.yaml (its round-trip preserves consumer
+      # comments; the PyYAML fallback STRIPS them). CI installed python3-yaml only,
+      # so the ruamel path — the DEFAULT on any dev machine or adopter that has it —
+      # was NEVER exercised here. That is exactly how FT-44's ruamel-only `__ne__`
+      # false-positive slipped past CI. Install ruamel and re-run the backend-
+      # sensitive merge/refresh tests so both code paths are covered.
+      - name: Run merge/refresh tests under the ruamel.yaml backend
+        # NOTE: no `actions/setup-python` runs above, so `python3` is the apt/system
+        # interpreter and imports the apt-installed `ruamel.yaml` from dist-packages.
+        # If a setup-python step is ever added earlier, install ruamel into THAT
+        # interpreter (pip) instead, or this `import` fails.
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y -qq python3-ruamel.yaml
+          python3 -c 'import ruamel.yaml; print("ruamel.yaml", ruamel.yaml.__version__)'
+          bash tests/test_precommit_merge.sh
+          bash tests/test_precommit_refresh.sh

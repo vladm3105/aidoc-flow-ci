@@ -18,8 +18,10 @@ context compaction.
   caller passes an explicit map instead of `inherit`; additive, two-way completeness
   test, `contract` 272→275; security-auditor verdict READY — additive-safety
   confirmed against GitHub reusable-workflow docs — PR #272, squash `d70782e`).
-- **➡️ NEXT (AI-executable): G3 + G4 — the remaining flow-ci tasks (FT-43…52).**
-  These all ride the same `ci/v2.12.0` tag (additive surfaces), and several touch
+- **➡️ NEXT (AI-executable): G3 + G4 — the remaining flow-ci tasks (FT-43…52,
+  EXCEPT FT-46 which is DEFERRED on the OPEN founder decision CI-0011 — see its
+  entry below; it rides a LATER tag, not `ci/v2.12.0`).**
+  The rest all ride the same `ci/v2.12.0` tag (additive surfaces), and several touch
   `install.sh` + the templates the cold-start dry-run exercises (FT-47, FT-50,
   FT-43) — so they land on `main` FIRST. G3 (ship-with-tag): ✅ **FT-43** (label/draft
   can supersede a RED ai-review — fail-closed-when-unarmed via a driven guard +
@@ -28,10 +30,22 @@ context compaction.
   full truth table), ✅ **FT-44** (pre-commit refresh reports a kept-but-changed
   canon hook via a `SKIPPED_HOOKS` NOTE + fixed a latent `pipefail` abort;
   `precommit-refresh` 18→24 — PR #276 MERGED `cfa3e56`), ✅ **FT-45**
-  (`required-context-map.py` validates the job-key half; `required-contexts` 21→23,
-  wrong-jobid mutation red — PR open), then FT-46, FT-47, FT-48.
-  G4 (before rollout): FT-49, FT-50, FT-51, FT-52 (FT-52 is 🔴 canon
-  self-governance). One FT per PR, OPS-0065 pre-push dispatch.
+  (`required-context-map.py` validates the job-key half; `required-contexts` 21→23
+  — docs PR #277 `1d46658` + code-recovery PR #278 `c802833`; #277 dropped the code
+  to a staging race with the review sub-agents, #278 landed it), ⏸️ **FT-46
+  DEFERRED** (its `verified_allowed: true→false` flip IS the OPEN founder decision
+  **CI-0011** — keep vs. drop the verified-marketplace allowlist; PLAN-019's FT-46
+  spec never referenced CI-0011, so it was NOT shipped. Founder chose "defer"
+  2026-07-23. Implementation is complete + reviewed, held in `git stash`
+  (`ft46-HELD-pending-CI-0011...`) on `fix/ci-ft46-verified-allowed`; rides a later
+  tag once CI-0011 is decided. **CI-0011 stays OPEN in DECISIONS.md/ROADMAP.**),
+  ✅ **FT-47** (CI now exercises the ruamel.yaml merge backend, not only PyYAML —
+  the gap that let FT-44's ruamel `__ne__` bug pass CI; `contract` 283→284 — PR
+  open), then FT-48. G4 (before rollout): FT-49, FT-50, FT-51, FT-52 (FT-52 is 🔴
+  canon self-governance). One FT per PR, OPS-0065 pre-push dispatch.
+  **PROCESS NOTE (FT-45 incident):** review sub-agents run `git stash`/`git add` on
+  the shared tree, which can unstage code between `git add` and `git commit`. ALWAYS
+  `git add -A` + diff-vs-reviewed AFTER agents finish, before committing.
 - **G2 — the 🔴 founder cold-start dry-run — is the LAST flow-ci step, not the
   next one.** It must validate the exact tree that becomes the tag, so it runs only
   after G1 **+ G3 + G4** are all merged, pinned to the **final pre-tag `main` SHA**
@@ -83,8 +97,9 @@ context compaction.
   each clears, not execution order): **G1** tag-cut blockers (FT-39/40/41/42),
   **G2** the 🔴 dry-run (gates the `git tag`), **G3** ship-with-tag (FT-43…48),
   **G4** before-rollout (FT-49…52: portability, canon self-governance,
-  governance-currency). **Execution order** (all G3/G4 ride the same tag, and some
-  change the installer/templates the dry-run exercises): G1 → G3 → G4 → **G2 dry-run
+  governance-currency). **Execution order** (all G3/G4 EXCEPT the deferred FT-46
+  ride the same tag, and some change the installer/templates the dry-run
+  exercises): G1 → G3 → G4 → **G2 dry-run
   LAST** → tag → rollout (see the NEXT lines at the top of this section). Semver
   **MINOR → `ci/v2.12.0`**.
 - **`plans/ROLLOUT_plan019-feedback-desk-coldstart.md` — ⏳ NOT YET (🔴

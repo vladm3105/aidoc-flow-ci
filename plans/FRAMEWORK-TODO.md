@@ -8,6 +8,21 @@ when resolved.
 
 ## Open
 
+### FT-47 — CI only ever exercises the fallback YAML backend
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G3 ship-with-tag).
+**Surface:** `.github/workflows/tests.yml` installed `python3-yaml` (PyYAML) only;
+`install.sh` prefers ruamel.yaml, so the ruamel merge path never ran in CI.
+**Effect:** the ruamel round-trip (comment-preservation, and its distinct object
+semantics) was uncovered — FT-44's ruamel-only `__ne__` false-positive was green
+under PyYAML and only a human reviewer caught it.
+**Fix:** run the suite under PyYAML, then a second step installs
+`python3-ruamel.yaml` and re-runs `test_precommit_merge.sh` +
+`test_precommit_refresh.sh` under ruamel. `test_contract.sh` asserts the ruamel
+step is present (removing it goes red).
+**RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream B / G3):** see CHANGELOG
+`## Unreleased`.
+
 ### FT-45 — `required-context-map.py` discards the job-id half of the context
 
 **Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G3 ship-with-tag).

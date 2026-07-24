@@ -121,6 +121,11 @@ for workflow in .github/workflows/tests.yml .github/workflows/links.yml .github/
   assert_ok "grep -q 'BIN_DIR=\"\$RUNNER_TEMP/bin\"' '$workflow' && grep -q 'mkdir -p \"\$BIN_DIR\"' '$workflow'" "$(basename "$workflow"): downloaded binary uses the canonical job-scoped bin directory"
 done
 assert_absent "$(cat .github/workflows/tests.yml)" '$HOME/.local/bin/actionlint' "actionlint install does not assume a user-local directory exists"
+# FT-47: CI must exercise the ruamel.yaml merge backend, not only PyYAML — the
+# ruamel path is install.sh's PREFERRED one and PyYAML-only CI let FT-44's
+# ruamel-specific __ne__ bug slip past. Assert tests.yml installs ruamel AND
+# re-runs a merge test under it.
+assert_ok "grep -q 'python3-ruamel.yaml' .github/workflows/tests.yml && grep -q 'test_precommit_refresh.sh' .github/workflows/tests.yml && grep -q 'test_precommit_merge.sh' .github/workflows/tests.yml" "tests.yml exercises the ruamel.yaml merge backend (both merge + refresh), not only PyYAML (FT-47)"
 assert_absent "$(cat install/templates/workflows/markdown-lint.yml)" $'    # with:\n    #   runner_labels:' "markdown-lint template does not suggest a duplicate with block"
 # FT-41: markdown-lint's fail-on-findings input defaults to TRUE (blocking gate).
 # The three report-only scanners (dep-scan/trivy/sast) assert their CALLERS ship
