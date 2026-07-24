@@ -8,6 +8,20 @@ when resolved.
 
 ## Open
 
+### FT-49 — `FLEET_BRANCH_PROTECTION_ARMING.md` imperatively repins to a 10-release-old tag
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G3 doc-currency, §4).
+**Surface:** `docs/FLEET_BRANCH_PROTECTION_ARMING.md:64-67` said `CI_TAG=ci/v2.1.0`
+in a founder-executed re-pin runbook; `docs/REPO_STANDARDS.md:1368` said the
+auto-merge templates pin `@ci/v2.0.0` (actual `@ci/v2.11.0`).
+**Effect:** an operator following the runbook would re-pin the fleet ~10 releases
+backwards.
+**Fix:** both rewritten version-neutral — "the current release tag (`../VERSION`)".
+**RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream C / G3):** see CHANGELOG
+`## Unreleased`. Remaining §4 content-currency (architecture.md rows/header,
+4-doc markdown-autofix corruption, README EXERCISER row) tracked as a follow-up
+doc-currency PR.
+
 ### FT-48 — `release.sh prep` has no on-main / up-to-date guard
 
 **Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G3 ship-with-tag).

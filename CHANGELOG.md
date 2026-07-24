@@ -5,6 +5,15 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Docs — stale version-pin currency (PLAN-019 FT-49 + §4)
+
+- `docs/FLEET_BRANCH_PROTECTION_ARMING.md` (FT-49) imperatively instructed
+  `CI_TAG=ci/v2.1.0` — ~10 releases back — in a founder-executed re-pin runbook.
+  Replaced both hardcoded pins with "the current release tag (`../VERSION`)".
+- `docs/REPO_STANDARDS.md` §17 (auto-merge) said the auto-merge templates pin `@ci/v2.0.0`
+  (actual `@ci/v2.11.0`); reworded version-neutral (points at `../VERSION` +
+  `sync-version-refs.sh`) so it can't drift again.
+
 ### Fixed — `release.sh prep` now guards on-main + up-to-date, like `tag` (PLAN-019 FT-48)
 
 - `prep()` checked tag-absent / VERSION-differs / tree-clean / branch-absent, but

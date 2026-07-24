@@ -47,9 +47,11 @@ context compaction.
   open in G3: the **Workstream-C doc-currency items** (PLAN-019 §4, un-numbered —
   `architecture.md` secret-scan rows + "11 shared workflows" header;
   `REPO_STANDARDS.md:1368` stale `@ci/v2.0.0` pin; the 4-doc markdown-autofix
-  wrapped-`+` corruption; `README.md` EXERCISER row) + **FT-49**
-  (`FLEET_BRANCH_PROTECTION_ARMING.md` stale `ci/v2.1.0` pin). **NEXT:** those G3
-  doc-currency fixes (one bundled doc PR), then G4: FT-50 (macOS/bash4 portability),
+  wrapped-`+` corruption; `README.md` EXERCISER row). ✅ **FT-49** done
+  (`FLEET_BRANCH_PROTECTION_ARMING.md` stale `ci/v2.1.0` + `REPO_STANDARDS.md:1368`
+  stale `@ci/v2.0.0` → version-neutral — PR open). **NEXT:** the remaining §4
+  content-currency (architecture.md rows/header + 4-doc markdown corruption +
+  README EXERCISER — one doc PR), then G4: FT-50 (macOS/bash4 portability),
   FT-51 (runner docs), FT-52 (🔴 canon branch-protection + tag ruleset —
   founder-executed ops/inbox runbook). One FT per PR, OPS-0065 pre-push dispatch.
   **PROCESS NOTE (FT-45 incident):** review sub-agents run `git stash`/`git add` on
