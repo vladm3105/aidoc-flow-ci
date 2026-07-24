@@ -8,6 +8,21 @@ when resolved.
 
 ## Open
 
+### FT-50 — GNU-only `sed -i` + unguarded `mapfile` break on adopter macOS
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G4 portability, §5).
+**Surface:** `install/install.sh` two `--repin` `sed -i -E` + an unguarded
+`mapfile`; `install/deploy-ci-wizard.sh` one `sed -i`; `install/README.md:38`
+implied bash4 was avoidable by skipping the pre-push hook.
+**Effect:** bare GNU `sed -i` errors on BSD/macOS sed (adopters run these); a
+macOS bash-3.2 user hits a cryptic `mapfile: command not found`.
+**Fix:** portable `sed -i.bak … && rm` (3 sites); a `BASH_VERSINFO` guard up front
+in `install.sh` with an actionable message; corrected `install/README.md` (bash≥4
+is unconditional for install.sh). `test_scripts.sh` 27→29; a bare-`sed -i` revert
+goes red.
+**RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream D / G4):** see CHANGELOG
+`## Unreleased`.
+
 ### FT-49 — `FLEET_BRANCH_PROTECTION_ARMING.md` imperatively repins to a 10-release-old tag
 
 **Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G3 doc-currency, §4).

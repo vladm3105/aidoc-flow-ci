@@ -35,7 +35,7 @@ runners):
 
 | Tool | Why |
 |---|---|
-| **`bash` ≥ 4.0** | The canon `scripts/pre_push_check.sh` this installs uses `mapfile` (bash 4+). macOS ships bash 3.2 — `brew install bash`, or skip installing the pre-push hook. |
+| **`bash` ≥ 4.0** | `install.sh` **itself** uses `mapfile` (bash 4+), so bash ≥ 4 is required to run it — not avoidable by skipping the pre-push hook. macOS ships bash 3.2: `brew install bash` and run install.sh with that bash (e.g. `/opt/homebrew/bin/bash install.sh …`). install.sh guards this up front with an actionable error (FT-50). |
 | **`gh`** (authenticated, write on the target repo) | clones the consumer + creates labels |
 | **`git`** + **`curl`** | clone + template fetch |
 | **`python3`** | **always** — used for canonical-label creation (stdlib only) and, when present, the `.pre-commit-config.yaml` merge |

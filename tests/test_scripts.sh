@@ -52,6 +52,15 @@ assert_ok "grep -qE 's#.*aidoc-flow-ci.*@ci/v' '$ROOT/install/install.sh'" "inst
 assert_ok "grep -qE '@\[0-9a-f\]\{40\}' '$ROOT/install/install.sh'"          "install.sh has the SHA-pin sed"
 assert_ok "grep -q 'CI_TAG_FALLBACK=\"'$current_tag'\"' '$ROOT/install/install.sh'" "standalone installer fallback matches VERSION"
 
+echo "== FT-50: portability (adopter macOS runs install.sh + wizard) =="
+# No bare GNU `sed -i ` — BSD/macOS sed requires a backup suffix, so bare `-i`
+# errors there. The portable `-i.bak … && rm` form has `-i.`, never `-i<space>`.
+assert_ok "! grep -nE 'sed -i[[:space:]]' '$ROOT/install/install.sh' '$ROOT/install/deploy-ci-wizard.sh'" \
+  "no bare GNU 'sed -i ' in install.sh / deploy-ci-wizard.sh (portable -i.bak only)"
+# install.sh uses `mapfile` (bash 4+) and must guard it up front, not fail cryptically.
+assert_ok "grep -q 'BASH_VERSINFO' '$ROOT/install/install.sh'" \
+  "install.sh guards bash>=4 (mapfile) with an actionable message up front"
+
 echo "== deploy wizard LiteLLM scaffold contract =="
 cat > "$TMP/wizard-gh" <<'SH'
 #!/usr/bin/env bash
