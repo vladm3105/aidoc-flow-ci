@@ -55,6 +55,15 @@ prep() {
   [ -z "$(git status --porcelain)" ] || die "working tree not clean — commit or stash first"
   local branch="release/${version//\//-}-prep"
   git rev-parse --verify -q "$branch" >/dev/null && die "branch $branch already exists"
+  # FT-48: prep must start from an up-to-date main — the SAME guard `tag` carries.
+  # A prep from a stale or off-main tree promotes an INCOMPLETE `## Unreleased`
+  # CHANGELOG into the release, and `tag`'s VERSION-match guard cannot catch that
+  # (VERSION would still match). Placed AFTER the tag/VERSION checks so a prep of
+  # the current version is still rejected with its specific reason.
+  local cur_branch; cur_branch="$(git rev-parse --abbrev-ref HEAD)"
+  [ "$cur_branch" = "main" ] || die "must be on main to prep (on '$cur_branch') — prep starts from an up-to-date main"
+  git fetch -q origin main
+  [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || die "local main is not up to date with origin/main — pull first"
 
   note "==> prep $version"
   git checkout -q -b "$branch"

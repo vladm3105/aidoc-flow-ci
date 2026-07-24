@@ -8,6 +8,21 @@ when resolved.
 
 ## Open
 
+### FT-48 — `release.sh prep` has no on-main / up-to-date guard
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G3 ship-with-tag).
+**Surface:** `scripts/release.sh` `prep()` checked tag/VERSION/tree/branch but not
+`HEAD == origin/main` (which `tag()` does).
+**Effect:** a prep from a stale/off-main tree promotes an incomplete
+`## Unreleased` CHANGELOG into the release; `tag`'s VERSION-match guard can't catch
+it (VERSION still matches).
+**Fix:** `prep()` gains the same on-main + `origin/main`-up-to-date guards `tag`
+carries, after the tag/VERSION checks (so a current-version prep still rejects with
+its specific reason). `test_release.sh` 21→27: fixture tests reject off-main and
+local-ahead prep, mutate nothing; removing either guard goes red.
+**RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream B / G3):** see CHANGELOG
+`## Unreleased`.
+
 ### FT-47 — CI only ever exercises the fallback YAML backend
 
 **Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G3 ship-with-tag).

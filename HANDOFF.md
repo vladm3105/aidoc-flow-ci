@@ -41,8 +41,17 @@ context compaction.
   tag once CI-0011 is decided. **CI-0011 stays OPEN in DECISIONS.md/ROADMAP.**),
   ✅ **FT-47** (CI now exercises the ruamel.yaml merge backend, not only PyYAML —
   the gap that let FT-44's ruamel `__ne__` bug pass CI; `contract` 283→284 — PR
-  open), then FT-48. G4 (before rollout): FT-49, FT-50, FT-51, FT-52 (FT-52 is 🔴
-  canon self-governance). One FT per PR, OPS-0065 pre-push dispatch.
+  #279 MERGED `33e4bf9`), ✅ **FT-48** (`release.sh prep` gains the on-main + fetch +
+  up-to-date guards `tag` has; `release` 21→27, both-guard mutations red — PR open).
+  **G3 CODE/TEST items (FT-43/44/45/47/48) done; FT-46 DEFERRED (CI-0011).** Still
+  open in G3: the **Workstream-C doc-currency items** (PLAN-019 §4, un-numbered —
+  `architecture.md` secret-scan rows + "11 shared workflows" header;
+  `REPO_STANDARDS.md:1368` stale `@ci/v2.0.0` pin; the 4-doc markdown-autofix
+  wrapped-`+` corruption; `README.md` EXERCISER row) + **FT-49**
+  (`FLEET_BRANCH_PROTECTION_ARMING.md` stale `ci/v2.1.0` pin). **NEXT:** those G3
+  doc-currency fixes (one bundled doc PR), then G4: FT-50 (macOS/bash4 portability),
+  FT-51 (runner docs), FT-52 (🔴 canon branch-protection + tag ruleset —
+  founder-executed ops/inbox runbook). One FT per PR, OPS-0065 pre-push dispatch.
   **PROCESS NOTE (FT-45 incident):** review sub-agents run `git stash`/`git add` on
   the shared tree, which can unstage code between `git add` and `git commit`. ALWAYS
   `git add -A` + diff-vs-reviewed AFTER agents finish, before committing.

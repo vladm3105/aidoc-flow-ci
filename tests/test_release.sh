@@ -75,6 +75,10 @@ cp "$REL" "$FIX/scripts/release.sh"
 printf 'ci/v1.0.0\n' > "$FIX/VERSION"
 printf 'CI_TAG_FALLBACK="ci/v1.0.0"\n' > "$FIX/install/install.sh"
 printf '## Unreleased\n\n## ci/v2.0.0 — 2026-01-01\n\n- x\n' > "$FIX/CHANGELOG.md"
+# The bare origin repo lives inside the work tree; ignore it so prep's tree-clean
+# guard (FT-48) sees a clean tree (tag() doesn't check tree-clean, so the tag
+# fixture tests never needed this).
+printf 'origin.git/\n' > "$FIX/.gitignore"
 git -C "$FIX" add -A
 git -C "$FIX" -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -q -m init
 git -C "$FIX" remote add origin "$FIX/origin.git"
@@ -94,6 +98,22 @@ git -C "$FIX" checkout -q -b feature
 fout="$(cd "$FIX" && bash scripts/release.sh tag ci/v2.0.0 --dry-run-verified 2>&1)"; frc=$?
 assert_eq "$frc" "1" "fixture: tag off-main rejected"
 assert_contains "$fout" "must be on main" "fixture: on-main guard fired at runtime"
+
+# FT-48: prep gains the SAME on-main + up-to-date guards tag has. Fixture is on
+# `feature` here — prep of a NEW version (tag absent, VERSION differs, tree clean,
+# branch absent) must reach and fire the on-main guard, mutating nothing.
+pout="$(cd "$FIX" && bash scripts/release.sh prep ci/v3.0.0 2>&1)"; prc=$?
+assert_eq "$prc" "1" "fixture: prep off-main rejected (FT-48)"
+assert_contains "$pout" "must be on main" "fixture: prep on-main guard fired at runtime"
+assert_fail "git -C '$FIX' rev-parse --verify -q refs/heads/release/ci-v3.0.0-prep" "fixture: prep off-main created no branch (no mutation)"
+
+# On main but local ahead of origin/main => the up-to-date guard must fire.
+git -C "$FIX" checkout -q main
+git -C "$FIX" -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -q --allow-empty -m local-ahead
+uout="$(cd "$FIX" && bash scripts/release.sh prep ci/v3.0.0 2>&1)"; urc=$?
+assert_eq "$urc" "1" "fixture: prep with local main ahead of origin rejected (FT-48)"
+assert_contains "$uout" "not up to date" "fixture: prep up-to-date guard fired at runtime"
+assert_fail "git -C '$FIX' rev-parse --verify -q refs/heads/release/ci-v3.0.0-prep" "fixture: prep not-up-to-date created no branch (no mutation)"
 rm -rf "$FIX"
 
 echo ""
