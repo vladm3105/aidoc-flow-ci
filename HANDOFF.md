@@ -13,8 +13,9 @@ context compaction.
 > prep-merge SHA (all Part-A criteria: env-pinned `CI_TAG`, no 404/FAIL, 18 canon
 > labels, marker-v2 pre-commit fragment).
 > **FT-52 is EXECUTED (2026-07-24) — canon now governs itself.** Part A: immutable
-> `ci/v*` tag ruleset `19687369` (active, no bypass actors — create allowed, delete
-> + force-move rejected, verified by execution). Part B: `main` protected with
+> `ci/v*` tag ruleset `19687369` (active, no bypass actors — create allowed;
+> delete and force-move both rejected, verified by execution). Part B: `main`
+> protected with
 > canon's own 5-check set (`suite`, `call / verify`, `call / markdownlint`,
 > `call / Lint / format / security hooks`, `call / gitleaks`), 0 required reviews,
 > `enforce_admins: false`, `required_signatures: false` — AI auto-merge and the

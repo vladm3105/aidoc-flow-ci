@@ -1,6 +1,6 @@
 # ROLLOUT — PLAN-019 FT-52: canon self-governance (branch protection + immutable `ci/v*` tag ruleset)
 
-> ## ✅ EXECUTED 2026-07-24 — both parts are LIVE. Do not re-run.
+> ## ✅ EXECUTED 2026-07-24 — both parts are LIVE (do not re-run)
 >
 > Run at the founder's explicit in-session direction ("let's do this part: FT-52
 > Part A + Part B"), after `ci/v2.12.0` was cut — the ordering §4 asks for.
@@ -25,7 +25,7 @@
 >   and re-enabling — a deliberate founder action, left undone on purpose.
 >
 > The original 🔴 framing is preserved below for the record.
-
+>
 > 🔴 **Founder-executed.** Every step writes to `vladm3105/aidoc-flow-ci`'s own
 > server-side settings (branch protection + rulesets) — 🔴 per the operations
 > autonomy tiers. The AI prepared + verified this **read-only**; it does **not**
