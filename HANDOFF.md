@@ -6,6 +6,24 @@ context compaction.
 
 ## Current state (2026-07-23)
 
+> **TL;DR (session wrap 2026-07-23).** PLAN-019's **AI-executable work is COMPLETE**
+> — 17 PRs merged (#269–#285), `main` @ `5029ad6`, suite green. All FTs landed:
+> FT-39…45, 47, 48, 49, 50, 51 (code/test/docs) + the §4 content-currency; **FT-52**
+> is a prepared 🔴 founder runbook (`plans/ROLLOUT_ft52-canon-self-governance.md`).
+> **FT-46 is DEFERRED** — its `verified_allowed` flip *is* the OPEN founder decision
+> **CI-0011** (held in `git stash` `ft46-HELD-…`). Everything is under CHANGELOG
+> `## Unreleased`, ready to ride **`ci/v2.12.0`**.
+>
+> **To ship `ci/v2.12.0` — ALL 🔴 founder-gated** (nothing more for the AI on the
+> release path): **(1)** decide **CI-0011** (then FT-46 lands or rides a later tag);
+> **(2)** run the **G2 cold-start dry-run** pinned to the **final pre-tag `main` SHA**
+> (`git rev-parse origin/main`, NOT the G1 checkpoint) —
+> `plans/ROLLOUT_plan019-feedback-desk-coldstart.md`; **(3)** `release.sh prep
+> ci/v2.12.0` → merge → tag. FT-52 (esp. Part A tag ruleset) can run any time. Only
+> non-🔴 leftover: the cosmetic 4-doc markdown-`+` prose (markdownlint-clean, low
+> priority). Pre-existing dependabot PRs #221–228 are separate (FT-24), untouched.
+> Detailed per-FT history + review findings follow below.
+
 - **G1 (PLAN-019 Workstream A) COMPLETE (2026-07-23) — all 4 tag-cut blockers
   merged, each its own PR with OPS-0065 pre-push dispatch.** **FT-39** (install.sh
   fetch validation + `--update` no-TTY consent — PR #269, squash `1066d2b`;
@@ -42,7 +60,7 @@ context compaction.
   ✅ **FT-47** (CI now exercises the ruamel.yaml merge backend, not only PyYAML —
   the gap that let FT-44's ruamel `__ne__` bug pass CI; `contract` 283→284 — PR
   #279 MERGED `33e4bf9`), ✅ **FT-48** (`release.sh prep` gains the on-main + fetch +
-  up-to-date guards `tag` has; `release` 21→27, both-guard mutations red — PR open).
+  up-to-date guards `tag` has; `release` 21→27, both-guard mutations red — PR #280 MERGED `c8eee7d`).
   **G3 CODE/TEST items (FT-43/44/45/47/48) done; FT-46 DEFERRED (CI-0011).** Still
   open in G3: the **Workstream-C doc-currency items** (PLAN-019 §4, un-numbered —
   `architecture.md` secret-scan rows + "11 shared workflows" header;
@@ -52,7 +70,7 @@ context compaction.
   stale `@ci/v2.0.0` → version-neutral — PR #281 MERGED `6652357`). ✅ **§4
   content-currency** (architecture.md 3 tool-description rows corrected — they said
   `gacts/gitleaks`/`*-action`, actually binaries; header count-neutral; README
-  EXERCISER row added — PR open). Only the cosmetic 4-doc markdown-autofix
+  EXERCISER row added — PR #282 MERGED `60dc097`). Only the cosmetic 4-doc markdown-autofix
   wrapped-`+` prose remains in §4 (markdownlint-clean, low priority). **G3 is now
   substantively complete** (FT-46 deferred). **G4:** ✅ FT-50 (macOS/bash4
   portability — portable `sed -i.bak` ×3 + `BASH_VERSINFO` guard + README fix;
@@ -61,7 +79,7 @@ context compaction.
   `268a54d`), ✅ FT-52 runbook prepared (🔴 canon branch-protection + immutable
   `ci/v*` tag ruleset — `plans/ROLLOUT_ft52-canon-self-governance.md`; execution is
   founder-only; the runbook flags that product-tier protection would HANG canon and
-  uses canon's own check set — PR open).
+  uses canon's own check set — PR #285 MERGED `5029ad6`).
 - **➡️ PLAN-019 AI-EXECUTABLE WORK IS COMPLETE.** All FTs are landed or handed off:
   FT-39…45, 47, 48, 49, 50, 51 merged; FT-52 runbook prepared (🔴 founder);
   **FT-46 DEFERRED** on the open founder decision **CI-0011** (held in stash). The
