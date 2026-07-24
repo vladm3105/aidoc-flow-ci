@@ -336,7 +336,7 @@ cat > "$TMP/drift-contract/bin/gh" <<'SH'
 case "$*" in
   "auth status") exit 0 ;;
   *"branches/main/protection"*) cat "$DRIFT_FIXTURES/bp-actual.json" ;;
-  *"actions/permissions/selected-actions"*) echo '{"github_owned_allowed":true,"verified_allowed":false}' ;;
+  *"actions/permissions/selected-actions"*) echo '{"github_owned_allowed":true,"verified_allowed":false,"patterns_allowed":["vladm3105/*","actions/*","github/*"]}' ;;
   *"actions/permissions/workflow"*) echo '{"default_workflow_permissions":"read"}' ;;
   *"actions/permissions/access"*) echo '{"access_level":"none"}' ;;
   *"actions/permissions"*) echo '{"allowed_actions":"selected"}' ;;
@@ -365,5 +365,118 @@ if DRIFT_FIXTURES="$TMP/drift-contract/fixtures" PATH="$TMP/drift-contract/bin:$
 else
   assert_ok "grep -q 'branch-protection.required_pull_request_reviews' '$drift_out' && grep -q 'repo-settings.allow_update_branch' '$drift_out' && grep -q 'repo-settings.squash_merge_commit_title' '$drift_out' && grep -q 'repo-settings.squash_merge_commit_message' '$drift_out'" "strict drift mode detects PR-only, update-branch, and squash metadata drift"
 fi
+
+echo ""
+echo "== standards-drift compares patterns_allowed (FT-53) =="
+# Since CI-0011 set verified_allowed=false this list is the ONLY non-GitHub-owned
+# admission, and it was the one field drift never compared. Vary ONLY it.
+mkdir -p "$TMP/drift-pa/bin" "$TMP/drift-pa/fixtures"
+cp "$ROOT/install/templates/actions-permissions.json" "$TMP/drift-pa/fixtures/actions.json"
+cp "$ROOT/install/templates/branch-protection-product.json" "$TMP/drift-pa/fixtures/bp.json"
+cp "$ROOT/install/templates/repo-settings.json" "$TMP/drift-pa/fixtures/repo.json"
+cp "$ROOT/install/templates/labels.json" "$TMP/drift-pa/fixtures/labels.json"
+jq '. + {default_branch:"main", visibility:"public"}' "$TMP/drift-pa/fixtures/repo.json" > "$TMP/drift-pa/fixtures/repo-actual.json"
+cat > "$TMP/drift-pa/bin/gh" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  "auth status") exit 0 ;;
+  *"branches/main/protection"*) cat "$DRIFT_FIXTURES/bp.json" ;;
+  *"actions/permissions/selected-actions"*) echo "{\"github_owned_allowed\":true,\"verified_allowed\":false,\"patterns_allowed\":${PA_LOCAL}}" ;;
+  *"actions/permissions/workflow"*) echo '{"default_workflow_permissions":"read"}' ;;
+  *"actions/permissions/access"*) echo '{"access_level":"none"}' ;;
+  *"actions/permissions"*) echo '{"allowed_actions":"selected"}' ;;
+  *"labels?per_page=100"*) cat "$DRIFT_FIXTURES/labels.json" ;;
+  *"repos/owner/repo --jq .default_branch"*) echo main ;;
+  *"repos/owner/repo --jq .visibility"*) echo public ;;
+  *"repos/owner/repo"*) cat "$DRIFT_FIXTURES/repo-actual.json" ;;
+  *) echo "unexpected gh call: $*" >&2; exit 1 ;;
+esac
+SH
+cat > "$TMP/drift-pa/bin/curl" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  *"branch-protection-product.json"*) cat "$DRIFT_FIXTURES/bp.json" ;;
+  *"repo-settings.json"*) cat "$DRIFT_FIXTURES/repo.json" ;;
+  *"actions-permissions.json"*) cat "$DRIFT_FIXTURES/actions.json" ;;
+  *"labels.json"*) cat "$DRIFT_FIXTURES/labels.json" ;;
+  *) echo "unexpected curl call: $*" >&2; exit 1 ;;
+esac
+SH
+chmod +x "$TMP/drift-pa/bin/gh" "$TMP/drift-pa/bin/curl"
+_pa_run() { # $1 = JSON array literal for the repo's live patterns_allowed; $2.. = extra flags
+  local pa="$1"; shift
+  PA_LOCAL="$pa" DRIFT_FIXTURES="$TMP/drift-pa/fixtures" PATH="$TMP/drift-pa/bin:$PATH" \
+    bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 "$@" 2>&1 || true
+}
+_pa_rc() { # same, but yields the EXIT CODE (the strict gate is the point of the feature)
+  local pa="$1"; shift
+  PA_LOCAL="$pa" DRIFT_FIXTURES="$TMP/drift-pa/fixtures" PATH="$TMP/drift-pa/bin:$PATH" \
+    bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 "$@" >/dev/null 2>&1
+  echo $?
+}
+# Derive the fixtures FROM the template rather than freezing literals — adding a
+# 4th canon pattern must not fail tests whose names are about ordering.
+_pa_canon="$(jq -c '.selected_actions.patterns_allowed' "$TMP/drift-pa/fixtures/actions.json")"
+_pa_reordered="$(jq -c '.selected_actions.patterns_allowed | reverse' "$TMP/drift-pa/fixtures/actions.json")"
+_pa_dropone="$(jq -c '.selected_actions.patterns_allowed[1:]' "$TMP/drift-pa/fixtures/actions.json")"
+_pa_dropped="$(jq -r '.selected_actions.patterns_allowed[0]' "$TMP/drift-pa/fixtures/actions.json")"
+_pa_plus="$(jq -c '.selected_actions.patterns_allowed + ["aquasecurity/*"]' "$TMP/drift-pa/fixtures/actions.json")"
+
+# (1) same SET, different ORDER => no drift. Paired with a POSITIVE control, so the
+#     assertion cannot be satisfied merely by the feature not existing.
+pa_ord="$(_pa_run "$_pa_reordered")"
+assert_absent "$pa_ord" "patterns_allowed" "drift: identical patterns in a different ORDER is not drift"
+assert_contains "$pa_ord" "0 drift" "drift: reordered set really produced ZERO drift (positive control)"
+assert_eq "$(_pa_rc "$_pa_reordered" --strict)" "0" "drift: reordered set passes the strict gate"
+
+# (2) a canon pattern MISSING and uncovered => availability drift, named, and it
+#     must COUNT and FAIL the strict gate — warning text alone is not the feature.
+pa_miss="$(_pa_run "$_pa_dropone")"
+assert_contains "$pa_miss" "patterns_allowed: MISSING" "drift: a missing canon pattern is reported"
+assert_contains "$pa_miss" "$_pa_dropped" "drift: names the missing pattern"
+assert_contains "$pa_miss" "startup_failure" "drift: explains the missing-pattern consequence"
+assert_contains "$pa_miss" "1 drift" "drift: a missing pattern INCREMENTS the drift count"
+assert_eq "$(_pa_rc "$_pa_dropone" --strict)" "1" "drift: a missing pattern FAILS the strict gate"
+
+# (3) an EXTRA owner => supply-chain drift, reported separately, counted, strict-fatal.
+pa_extra="$(_pa_run "$_pa_plus")"
+assert_contains "$pa_extra" "patterns_allowed: EXTRA" "drift: an extra owner is reported"
+assert_contains "$pa_extra" "aquasecurity/*" "drift: names the extra owner"
+assert_absent "$pa_extra" "patterns_allowed: MISSING" "drift: an extra owner is NOT reported as missing"
+assert_contains "$pa_extra" "1 drift" "drift: an extra owner INCREMENTS the drift count"
+assert_eq "$(_pa_rc "$_pa_plus" --strict)" "1" "drift: an extra owner FAILS the strict gate (supply-chain widening)"
+
+# (4) both at once => both reported, and BOTH counted (2, not 1).
+pa_both="$(_pa_run '["actions/*","aquasecurity/*"]')"
+assert_contains "$pa_both" "patterns_allowed: MISSING" "drift: reports MISSING when both conditions hold"
+assert_contains "$pa_both" "patterns_allowed: EXTRA" "drift: reports EXTRA when both conditions hold"
+assert_contains "$pa_both" "2 drift" "drift: MISSING and EXTRA each count once"
+
+# (5) GLOB SUBSUMPTION. `vladm3105/*` covers `vladm3105/aidoc-flow-ci/*`, so a
+#     BROADENED pattern loses no coverage and must NOT be reported as blocked.
+#     This is the live CI-0011 rollout shape: consumers pinned at an older tag whose
+#     settings were already widened. A literal set-diff called it MISSING and
+#     asserted a startup_failure that cannot happen — and failed the strict gate.
+mkdir -p "$TMP/drift-pa/fixtures-old"
+cp "$TMP/drift-pa/fixtures/"*.json "$TMP/drift-pa/fixtures-old/"
+jq '.selected_actions.patterns_allowed = ["vladm3105/aidoc-flow-ci/*","actions/*","github/*"]' \
+  "$TMP/drift-pa/fixtures/actions.json" > "$TMP/drift-pa/fixtures-old/actions.json"
+pa_broad="$(PA_LOCAL='["vladm3105/*","actions/*","github/*"]' DRIFT_FIXTURES="$TMP/drift-pa/fixtures-old" \
+  PATH="$TMP/drift-pa/bin:$PATH" bash "$ROOT/sync/check-standards-drift.sh" \
+  --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_absent "$pa_broad" "patterns_allowed: MISSING" "drift: a BROADENED pattern is not a false MISSING (glob subsumption)"
+assert_contains "$pa_broad" "patterns_allowed: EXTRA" "drift: the broadening is still reported as EXTRA"
+
+# (6) the INVERSE — repo narrower than canon — IS a real loss of coverage and must fire.
+pa_narrow="$(_pa_run '["vladm3105/aidoc-flow-ci/*","actions/*","github/*"]')"   # canon is account-wide
+assert_contains "$pa_narrow" "patterns_allowed: MISSING" "drift: a NARROWED repo pattern is real drift (coverage lost)"
+# ...and symmetrically: that narrower live pattern sits INSIDE canon's `vladm3105/*`,
+# so it widens nothing. Reporting it EXTRA ("wider than canon") would be false.
+assert_absent "$pa_narrow" "patterns_allowed: EXTRA" "drift: a live pattern subsumed BY canon is not a false EXTRA"
+
+# (7) an unreadable API body must say so, not invent a missing-pattern list.
+pa_bad="$(_pa_run '"not-an-object"')"
+assert_contains "$pa_bad" "patterns_allowed" "drift: unreadable response is surfaced"
+assert_absent "$pa_bad" "patterns_allowed: MISSING" "drift: unreadable response is NOT reported as missing patterns"
 
 suite_summary "scripts"
