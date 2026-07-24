@@ -5,6 +5,21 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — `release.sh prep` now guards on-main + up-to-date, like `tag` (PLAN-019 FT-48)
+
+- `prep()` checked tag-absent / VERSION-differs / tree-clean / branch-absent, but
+  **not** that it runs on an up-to-date `main` — while `tag()` has both guards. A
+  prep from a stale or off-main tree promotes an **incomplete `## Unreleased`
+  CHANGELOG** into the release, and `tag`'s VERSION-match guard cannot catch it
+  (VERSION still matches).
+- `prep()` gains the same guards `tag` carries — must be on `main`, `git fetch -q
+  origin main`, then `HEAD == origin/main` (the fetch matters: without it the guard
+  trusts a possibly-stale local `origin/main` ref) — placed after the tag/VERSION
+  checks so a prep of the current version is still rejected with its specific reason.
+- `test_release.sh` (21 → 27): fixture tests that off-main prep and
+  local-ahead-of-origin prep are each rejected at runtime and mutate nothing;
+  removing either guard goes red.
+
 ### Testing — CI now exercises the ruamel.yaml merge backend, not only PyYAML (PLAN-019 FT-47)
 
 - `tests.yml` installed `python3-yaml` (PyYAML) only, so `install.sh`'s **preferred**
