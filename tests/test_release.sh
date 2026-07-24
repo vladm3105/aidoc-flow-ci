@@ -69,10 +69,14 @@ echo "== FT-30 dry-run gate is CONDITIONAL on the cold-start surface =="
 run tag ci/v99.0.0
 assert_eq "$RC" "1" "tag: still rejected (a later guard), gate is not the blocker here"
 assert_absent "$OUT" "tagging" "tag: did not proceed to tagging"
+# Which LATER guard fires depends on the environment — CI checks out a PR ref, so
+# the on-main guard trips before the VERSION one; locally on main it is the
+# reverse. Assert only that the gate reached a decision and did not itself abort
+# the run. The gate fixture below pins the decision logic deterministically.
 _gate_waived=0
 printf '%s' "$OUT" | grep -q 'AUTO-WAIVED' && _gate_waived=1
 if [ "$_gate_waived" = 1 ]; then
-  assert_contains "$OUT" "VERSION on main reads" "tag: gate waived (surface unchanged) -> reached the VERSION guard"
+  assert_absent "$OUT" "refusing to tag without --dry-run-verified" "tag: gate waived (surface unchanged) -> did not die at the gate"
 else
   assert_contains "$OUT" "CHANGES the installer cold-start path" "tag: gate fired (surface changed) -> named the reason"
 fi
