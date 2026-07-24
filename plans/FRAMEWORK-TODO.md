@@ -8,6 +8,19 @@ when resolved.
 
 ## Open
 
+### FT-51 — `runners.md` leads with org-level registration, impossible on a personal account
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G4 docs, §5).
+**Surface:** `docs/runners.md:150` "### 3.1 Org-level registration (recommended)",
+with §3.2 per-repo as "fallback".
+**Effect:** `vladm3105` is a personal account; org-level runner registration is
+impossible (PLAN-009 §Phase-0), so the doc sends an operator down an unavailable
+path first.
+**Fix:** flip the primacy — §3.1 per-repo (primary, with the personal-account
+note), §3.2 org-level scoped to a true GitHub org only.
+**RESOLVED (Unreleased -> `ci/v2.12.0`, PLAN-019 Workstream D / G4):** see CHANGELOG
+`## Unreleased`.
+
 ### FT-50 — GNU-only `sed -i` + unguarded `mapfile` break on adopter macOS
 
 **Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G4 portability, §5).

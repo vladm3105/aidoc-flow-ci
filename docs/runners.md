@@ -147,23 +147,29 @@ ephemeral container).
 
 ## 3. Registering a self-hosted runner with the right labels
 
-### 3.1 Org-level registration (recommended)
+### 3.1 Repo-level registration (primary — aidoc-flow's model)
 
-Register self-hosted runners at the **organization level** so all
-repos in the org can use them. This is the cleanest path for a
-multi-repo workspace like aidoc-flow.
+`vladm3105` is a **personal account, not a GitHub organization**, so **org-level
+runner registration is not available** — every repo is registered individually
+(PLAN-009 records this: there is no org to inherit runners from). Register a runner
+**per repo**:
 
-1. Settings → Actions → Runners → New runner (org level)
+1. Settings → Actions → Runners → New self-hosted runner (on the consumer repo)
 2. Follow GitHub's install instructions on the runner host
 3. **Add both `ci-runner` and `single-use`** during JIT registration.
 4. The GitHub-provided `self-hosted` label remains; the complete selector is
    `[self-hosted, ci-runner, single-use]`.
 
-### 3.2 Repo-level registration (fallback)
+Each private consumer repo needs its own runner instance — the supervisor spins a
+fresh single-use container per job, so multiple repo instances coexist on one host.
 
-If org-level isn't available, register per-repo. Same label rules
-apply. Less convenient (each new consumer repo needs its own runner
-registration) but acceptable for small workspaces.
+### 3.2 Org-level registration (only under a GitHub org — not the current setup)
+
+If the workspace is ever moved under a GitHub **organization**, register runners at
+the org level so all repos share them — the cleanest path for a true multi-repo org.
+The steps mirror §3.1 (New runner at org level; same `[self-hosted, ci-runner,
+single-use]` labels). **Not available on the current personal-account setup**, so
+§3.1 is the path today.
 
 ### 3.3 Verifying the label
 

@@ -5,6 +5,15 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Docs — runner registration: per-repo is primary, not org-level (PLAN-019 FT-51)
+
+- `docs/runners.md` §3 led with "Org-level registration (recommended)" and demoted
+  per-repo to a "fallback". But `vladm3105` is a **personal account** — org-level
+  registration is **not available** (PLAN-009 already records this), so an operator
+  following the doc would try an impossible path first. Flipped: §3.1 is now
+  per-repo (the actual model, with the personal-account note), §3.2 is org-level
+  scoped to "only under a GitHub org — not the current setup".
+
 ### Fixed — adopter-macOS portability of `install.sh` + wizard (PLAN-019 FT-50)
 
 - Bare GNU `sed -i` (two `--repin` sites in `install.sh`, one pin-normalize in
