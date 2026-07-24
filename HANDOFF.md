@@ -6,7 +6,25 @@ context compaction.
 
 ## Current state (2026-07-24)
 
-> **TL;DR (2026-07-24).** **`ci/v2.13.0` is SHIPPED** — tag on `dc0e40a`,
+> **TL;DR (2026-07-24).** **`ci/v2.14.0` is SHIPPED** — tag on `f15b88d`, Release
+> marked Latest, suite fully green. It carries: the **8 missing canonical labels**
+> created on canon (incl. `skip-audit-trail`, the escape hatch for the now-required
+> `call / verify`); **FT-53** — `standards-drift` compares `patterns_allowed` with
+> symmetric glob subsumption; and **CI-0011 applied to canon**, plus the
+> `apply-standards.sh --apply --tier product` landmine disarmed (it would have hung
+> every canon PR and clobbered FT-52).
+>
+> **⚠️ Consumer impact to sequence:** CI-0011 narrowed the canon template and **no
+> consumer has applied it yet**, so once a consumer re-pins to `ci/v2.14.0`,
+> `standards-drift` reports `patterns_allowed` MISSING until its settings are
+> applied. `strict` defaults to `false`, so this is a warning, not a failure — but
+> any adoption gate passing `strict: true` would newly fail. Apply the settings
+> alongside the re-pin and it is a non-event.
+>
+> **DEFERRED to the next release cycle:** FT-54, FT-55, FT-56 and PLAN-020 (see
+> below) — detection gaps, not active faults; nothing half-built.
+>
+> **Previously — `ci/v2.13.0` was SHIPPED** — tag on `dc0e40a`,
 > Release marked Latest, suite fully green. It carries three things:
 > **(1) CI-0011 / FT-46 RESOLVED** — the verified marketplace is dropped
 > (`verified_allowed: false`) and `patterns_allowed` narrowed to the owner's own
