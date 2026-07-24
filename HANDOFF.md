@@ -6,23 +6,32 @@ context compaction.
 
 ## Current state (2026-07-23)
 
-> **TL;DR (session wrap 2026-07-23).** PLAN-019's **AI-executable work is COMPLETE**
-> — 17 PRs merged (#269–#285), `main` @ `5029ad6`, suite green. All FTs landed:
-> FT-39…45, 47, 48, 49, 50, 51 (code/test/docs) + the §4 content-currency; **FT-52**
-> is a prepared 🔴 founder runbook (`plans/ROLLOUT_ft52-canon-self-governance.md`).
-> **FT-46 is DEFERRED** — its `verified_allowed` flip *is* the OPEN founder decision
-> **CI-0011** (held in `git stash` `ft46-HELD-…`). Everything is under CHANGELOG
-> `## Unreleased`, ready to ride **`ci/v2.12.0`**.
+> **TL;DR (session wrap 2026-07-23).** **`ci/v2.12.0` is SHIPPED** — tag cut on
+> `0c743f5` (prep PR #287 merged), GitHub Release marked Latest. PLAN-019's
+> AI-executable work rode the tag: FT-39…45, 47, 48, 49, 50, 51 (code/test/docs)
+> plus the §4 content-currency. The **cold-start dry-run passed GREEN** at the
+> prep-merge SHA (all Part-A criteria: env-pinned `CI_TAG`, no 404/FAIL, 18 canon
+> labels, marker-v2 pre-commit fragment).
+> **FT-52** stays a prepared 🔴 founder runbook
+> (`plans/ROLLOUT_ft52-canon-self-governance.md`) — the immutable `ci/v*` tag
+> ruleset + `main` branch protection are NOT yet applied.
+> **FT-46 stays DEFERRED** — its `verified_allowed` flip *is* the OPEN founder
+> decision **CI-0011** (held in `git stash` `ft46-HELD-…`); rides a **later** tag,
+> not this one. CI-0011 remains OPEN in DECISIONS.md/ROADMAP.
 >
-> **To ship `ci/v2.12.0` — ALL 🔴 founder-gated** (nothing more for the AI on the
-> release path): **(1)** decide **CI-0011** (then FT-46 lands or rides a later tag);
-> **(2)** run the **G2 cold-start dry-run** pinned to the **final pre-tag `main` SHA**
-> (`git rev-parse origin/main`, NOT the G1 checkpoint) —
-> `plans/ROLLOUT_plan019-feedback-desk-coldstart.md`; **(3)** `release.sh prep
-> ci/v2.12.0` → merge → tag. FT-52 (esp. Part A tag ruleset) can run any time. Only
-> non-🔴 leftover: the cosmetic 4-doc markdown-`+` prose (markdownlint-clean, low
-> priority). Pre-existing dependabot PRs #221–228 are separate (FT-24), untouched.
-> Detailed per-FT history + review findings follow below.
+> **Post-release (done this session):** the pre-tag push left `main`'s `self-*`
+> callers `startup_failure` (0s) + `tests` red on the FT-21 latest-tag assertion
+> (`VERSION ci/v2.12.0 != latest published tag ci/v2.11.0`) — both are the designed
+> mid-release-cut red and NOT retryable; this HANDOFF push re-triggers them green
+> now the tag resolves.
+>
+> **Remaining 🔴 founder items** (none block the shipped tag): **(1)** decide
+> **CI-0011** → FT-46 lands on a later tag; **(2)** FT-52 Part A tag ruleset + Part B
+> branch protection (any time); **(3)** arm `feedback-desk`'s gates (PLAN-019 Part B
+> / PLAN-009 Phase 0 — secrets + runner pool). Non-🔴 leftover: cosmetic 4-doc
+> markdown-`+` prose (markdownlint-clean, low priority). Pre-existing dependabot PRs
+> #221–228 are separate (FT-24), untouched. Detailed per-FT history + review findings
+> follow below.
 
 - **G1 (PLAN-019 Workstream A) COMPLETE (2026-07-23) — all 4 tag-cut blockers
   merged, each its own PR with OPS-0065 pre-push dispatch.** **FT-39** (install.sh
