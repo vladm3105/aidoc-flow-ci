@@ -57,8 +57,64 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# --- coverage accounting (CI-0018) ---------------------------------------
+# A green run says almost nothing on its own: under the default GITHUB_TOKEN
+# branch-protection and actions.* are unreadable and repo-settings comes back
+# without its admin-only fields, so only `labels` is genuinely verified — yet
+# the job concluded success. Track which control families were actually
+# compared and state it in the summary, so a reader cannot mistake "nothing
+# was checkable" for "nothing has drifted".
+#
+# Defined ABOVE stop_uncheckable so the earliest bail-outs (missing gh/jq, bad
+# --tier) still emit a coverage line. Those are the runs that check the LEAST
+# while exiting 0 in non-strict mode, so they are exactly the runs that must
+# not look like a clean pass.
+ALL_FAMILIES="branch-protection repo-settings actions labels"
+VERIFIED_FAMILIES=""
+SKIPPED_FAMILIES=""
+
+_family_of() { printf '%s' "${1%%.*}"; }
+
+mark_verified() {
+  case " $VERIFIED_FAMILIES " in *" $1 "*) ;; *) VERIFIED_FAMILIES="$VERIFIED_FAMILIES $1" ;; esac
+}
+
+mark_skipped() {
+  case " $SKIPPED_FAMILIES " in *" $1 "*) ;; *) SKIPPED_FAMILIES="$SKIPPED_FAMILIES $1" ;; esac
+}
+
+# ALWAYS the last line, stated in terms of what was VERIFIED rather than what
+# was found. The clean branch is gated on the SKIP SET being empty — never on a
+# count, which a family marked verified under a name outside ALL_FAMILIES could
+# satisfy while that family sat in the unverified list.
+emit_coverage() {
+  _total=0; _verified=0; _skipped=""; _verified_out=""
+  for _fam in $ALL_FAMILIES; do
+    _total=$((_total + 1))
+    case " $VERIFIED_FAMILIES " in
+      *" $_fam "*) _verified=$((_verified + 1)); _verified_out="${_verified_out}${_verified_out:+, }${_fam}" ;;
+      *) _skipped="${_skipped}${_skipped:+, }${_fam}" ;;
+    esac
+  done
+  if [ -z "$_skipped" ]; then
+    echo "check-standards-drift: coverage — verified ${_verified}/${_total} control families (${_verified_out})."
+    return
+  fi
+  # A family can be unverified for two different reasons, and conflating them
+  # tells a reader that a REAL finding "could not be read". Separate them.
+  _unreadable=""; _other=""
+  for _fam in $(printf '%s' "$_skipped" | tr ',' ' '); do
+    case " $SKIPPED_FAMILIES " in
+      *" $_fam "*) _unreadable="${_unreadable}${_unreadable:+, }${_fam}" ;;
+      *) _other="${_other}${_other:+, }${_fam}" ;;
+    esac
+  done
+  echo "::warning::check-standards-drift: coverage — verified ${_verified}/${_total} control families (${_verified_out:-none}); NOT verified: ${_skipped}.${_unreadable:+ Could not be read (cause is named per-family in the warnings above — commonly insufficient token scope, in which case re-run with an admin PAT or grant 'administration: read'): ${_unreadable}.}${_other:+ Incomplete for another reason (see the warnings above — a reported finding is a real result, not an unread one): ${_other}.} A green result does NOT mean the unverified families match canon."
+}
+
 stop_uncheckable() {
   echo "::warning::check-standards-drift: $1"
+  emit_coverage
   [ "$STRICT" -eq 0 ] && exit 0
   exit 2
 }
@@ -102,7 +158,19 @@ fi
 TEMPLATE_BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/templates"
 
 # Discover the target's actual default branch (M4-sec: not hardcoded main).
-DEFAULT_BRANCH=$(gh api "repos/${REPO}" --jq '.default_branch' 2>/dev/null || echo "main")
+# CI-0018: `gh` writes the API error body to STDOUT and exits non-zero, so the
+# old `$(gh … || echo main)` form CONCATENATED the 404 JSON with `main` and fed
+# the result into `repos/…/branches/${DEFAULT_BRANCH}/protection` — every
+# downstream branch-protection query then hit a garbage path. Assign on success
+# only, and validate the shape before using it as a path segment.
+if ! DEFAULT_BRANCH=$(gh api "repos/${REPO}" --jq '.default_branch' 2>/dev/null); then
+  DEFAULT_BRANCH=""
+fi
+case "$DEFAULT_BRANCH" in
+  ''|*[!A-Za-z0-9._/-]*|null)
+    echo "::warning::check-standards-drift: could not resolve the default branch of ${REPO} (token scope or API failure) — falling back to 'main'"
+    DEFAULT_BRANCH="main" ;;
+esac
 
 MODE="warning-only"; [ "$STRICT" -eq 1 ] && MODE="strict"
 echo "check-standards-drift: repo=$REPO tier=$TIER canon=$CI_TAG branch=$DEFAULT_BRANCH ($MODE)"
@@ -115,24 +183,23 @@ strip_meta() {
   jq 'walk(if type == "object" then with_entries(select(.key | startswith("_") | not)) else . end)' "$1"
 }
 
-# --- coverage accounting (CI-0018) ---------------------------------------
-# A green run says almost nothing on its own: under the default GITHUB_TOKEN
-# branch-protection and actions.* are unreadable and repo-settings comes back
-# without its admin-only fields, so only `labels` is genuinely verified — yet
-# the job concluded success. Track which control families were actually
-# compared and state it in the summary, so a reader cannot mistake "nothing
-# was checkable" for "nothing has drifted".
-VERIFIED_FAMILIES=""
-SKIPPED_FAMILIES=""
-
-_family_of() { printf '%s' "${1%%.*}"; }
-
-mark_verified() {
-  case " $VERIFIED_FAMILIES " in *" $1 "*) ;; *) VERIFIED_FAMILIES="$VERIFIED_FAMILIES $1" ;; esac
-}
-
-mark_skipped() {
-  case " $SKIPPED_FAMILIES " in *" $1 "*) ;; *) SKIPPED_FAMILIES="$SKIPPED_FAMILIES $1" ;; esac
+# --- helper: is this API response actually usable? (CI-0018) ---------------
+# `gh api` can exit 0 having written NOTHING (204/304, a truncated write, a
+# proxy returning an empty 200) or an error page. Comparing canon against such
+# a body prints `canon=X actual=` for every key — unread state reported as
+# drift, the defect CI-0018 exists to kill.
+#
+# The `[ -s ]` test is LOAD-BEARING and must come first: on EMPTY input jq
+# emits no output, so `-e` never sees a false/null result and exits 0 for ANY
+# filter — an empty file would otherwise pass every shape check.
+#   $1 = file, $2 = optional jq type name to require (e.g. "object")
+json_readable() {
+  [ -s "$1" ] || return 1
+  if [ -n "${2:-}" ]; then
+    jq -e "type == \"$2\"" "$1" >/dev/null 2>&1
+  else
+    jq -e . "$1" >/dev/null 2>&1
+  fi
 }
 
 # --- helper: emit a cannot-check warning (security H4 — no silent green) ---
@@ -160,6 +227,10 @@ if ! gh api "repos/${REPO}/branches/${DEFAULT_BRANCH}/protection" > "$bp_local" 
   rm -f "$bp_err"
 elif { rm -f "$bp_err"; ! curl -fsSL "${TEMPLATE_BASE}/branch-protection-${TIER}.json" > "$bp_canon_raw" 2>/dev/null; }; then
   warn_uncheckable "branch-protection" "canon fetch failed"
+elif ! json_readable "$bp_local" object; then
+  # Same class as the repo-settings guard: a 0-exit-but-empty protection body
+  # would otherwise compare as `canon=true actual=` on every key.
+  warn_uncheckable "branch-protection" "the protection response for ${DEFAULT_BRANCH} is empty or is not a JSON object — an API/transport failure, NOT missing protection and NOT a token-scope problem. Re-run"
 else
   strip_meta "$bp_canon_raw" > "$bp_canon"
   for k in enforce_admins required_signatures allow_force_pushes allow_deletions; do
@@ -210,6 +281,18 @@ if ! gh api "repos/${REPO}" > "$rs_local" 2>/dev/null; then
   warn_uncheckable "repo-settings" "gh api repos/ failed"
 elif ! curl -fsSL "${TEMPLATE_BASE}/repo-settings.json" > "$rs_canon_raw" 2>/dev/null; then
   warn_uncheckable "repo-settings" "canon fetch failed"
+elif ! json_readable "$rs_local" object; then
+  # CI-0018: `gh api` can exit 0 having written nothing (204/304, a truncated
+  # write, a proxy returning an empty 200) or an error page. Validate the SHAPE
+  # before probing keys.
+  #
+  # The `[ -s ]` test is LOAD-BEARING and must stay first: on EMPTY input jq
+  # produces no output, so `-e` never sees a false/null result and exits 0 —
+  # for ANY filter, including this one. Without the file test, an empty body
+  # passes the shape guard, `has($k)` then reports every key PRESENT, and each
+  # comparison prints `actual=` (blank) as drift while the family is marked
+  # verified. Diagnose the transport rather than blaming the token or settings.
+  warn_uncheckable "repo-settings" "the 'gh api repos/${REPO}' response is empty or is not a JSON object — an API/transport failure, NOT a settings drift and NOT a token-scope problem. Re-run; if it persists, check API availability from the runner"
 else
   strip_meta "$rs_canon_raw" > "$rs_canon"
   # CI-0018: an admin-only field ABSENT from the `gh api repos/` response means
@@ -235,14 +318,24 @@ else
   if [ -n "$rs_unreadable" ]; then
     warn_uncheckable "repo-settings" "these admin-only fields are absent from the 'gh api repos/${REPO}' response, so the token can read the repo but not its merge settings — grant 'administration: read' or run with an admin PAT: ${rs_unreadable}"
   fi
-  if [ "$rs_checked" -gt 0 ]; then mark_verified "repo-settings"; fi
+  # ALL-OR-NOTHING (CI-0018). A family counts as verified only when EVERY field
+  # was readable. Marking it on partial progress let the same family be both
+  # "cannot check" and "verified", and the summary then printed the clean
+  # `4/4` line — reintroducing the very "unreadable read as verified" defect
+  # this coverage mechanism exists to prevent.
+  if [ "$rs_checked" -gt 0 ] && [ -z "$rs_unreadable" ]; then mark_verified "repo-settings"; fi
 fi
 rm -f "$rs_local" "$rs_canon_raw" "$rs_canon"
 
 # --- Actions permissions: check ALL 4 endpoints, not just workflow (L2-code) ---
+# CI-0018: `actions` counts as verified only when EVERY arm below was readable.
+# Rather than a per-arm counter that a future 5th arm could forget to increment,
+# snapshot FETCH_ERRORS and compare after — any `warn_uncheckable` in any arm
+# (including ones added later) then correctly withholds the verified mark.
+ap_err_before=$FETCH_ERRORS
 ap_canon_raw=$(mktemp)
 if ! curl -fsSL "${TEMPLATE_BASE}/actions-permissions.json" > "$ap_canon_raw" 2>/dev/null; then
-  warn_uncheckable "actions-permissions" "canon fetch failed"
+  warn_uncheckable "actions.canon" "canon fetch failed"
 else
   # general.allowed_actions
   ap_general=$(mktemp)
@@ -255,7 +348,6 @@ else
       echo "::warning::actions.general.allowed_actions: canon=$canon_v actual=$local_v"
       DRIFT=$((DRIFT + 1))
     fi
-    mark_verified "actions"
   fi
   rm -f "$ap_general"
   # workflow.default_workflow_permissions
@@ -370,6 +462,8 @@ else
     rm -f "$ap_access"
   fi
 fi
+# Verified only if NO arm above reported uncheckable (see ap_err_before).
+if [ "$FETCH_ERRORS" -eq "$ap_err_before" ]; then mark_verified "actions"; fi
 rm -f "$ap_canon_raw"
 
 # --- Labels: only warn if a canon-required label is MISSING (never on extras) ---
@@ -379,6 +473,12 @@ if ! gh api --paginate "repos/${REPO}/labels?per_page=100" > "$lb_local" 2>/dev/
   warn_uncheckable "labels" "gh api labels failed"
 elif ! curl -fsSL "${TEMPLATE_BASE}/labels.json" > "$lb_canon" 2>/dev/null; then
   warn_uncheckable "labels" "canon fetch failed"
+elif ! json_readable "$lb_local"; then
+  # No type filter: `--paginate` emits one array PER PAGE, so the body is a JSON
+  # stream, not a single array. Guard only that it is non-empty and parses —
+  # otherwise the slurpfile below yields an empty $actual, every canon label
+  # reads as MISSING, and the family is marked verified off an unread response.
+  warn_uncheckable "labels" "the labels response is empty or is not parseable JSON — an API/transport failure, NOT missing labels. Re-run"
 else
   missing=$(jq -r --slurpfile local "$lb_local" '
     [.[].name] as $canon
@@ -417,27 +517,7 @@ fi
 
 echo "check-standards-drift: $DRIFT drift, $FETCH_ERRORS fetch/scope error(s), $PIN_ERRORS pin error(s) ($MODE)"
 
-# --- coverage summary (CI-0018) ------------------------------------------
-# ALWAYS the last line, and stated in terms of what was VERIFIED rather than
-# what was found. Under the default GITHUB_TOKEN this typically reads
-# "verified 1/4 (labels)" — without it, a green check reads as "canon is
-# satisfied" when it actually means "almost nothing was readable".
-ALL_FAMILIES="branch-protection repo-settings actions labels"
-TOTAL_FAMILIES=4
-verified_list=$(printf '%s' "$VERIFIED_FAMILIES" | tr ' ' '\n' | grep -c . || true)
-skipped_out=""
-for fam in $ALL_FAMILIES; do
-  case " $VERIFIED_FAMILIES " in
-    *" $fam "*) ;;
-    *) skipped_out="${skipped_out}${skipped_out:+, }${fam}" ;;
-  esac
-done
-verified_out=$(printf '%s' "${VERIFIED_FAMILIES# }" | tr ' ' ',' | sed 's/,/, /g')
-if [ "$verified_list" -eq "$TOTAL_FAMILIES" ]; then
-  echo "check-standards-drift: coverage — verified ${verified_list}/${TOTAL_FAMILIES} control families (${verified_out})."
-else
-  echo "::warning::check-standards-drift: coverage — verified ${verified_list}/${TOTAL_FAMILIES} control families (${verified_out:-none}); NOT verified: ${skipped_out}. A green result here does NOT mean those families match canon — it means they could not be read. Re-run with an admin PAT (or grant 'administration: read') to verify the rest."
-fi
+emit_coverage
 
 [ "$STRICT" -eq 0 ] || [ $((DRIFT + FETCH_ERRORS + PIN_ERRORS)) -eq 0 ] || exit 1
 exit 0

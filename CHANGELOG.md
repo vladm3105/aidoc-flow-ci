@@ -5,8 +5,9 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-> **Consumer action required in this release.** `docs-sync` callers must grant
-> `pull-requests: write` (see below) — a re-pin alone does not fix it.
+> **Consumer note.** For `docs-sync`, consumers installed from `ci/v2.11.0`
+> onward need only a re-pin; older or hand-edited callers must also grant
+> `pull-requests: write`. See CI-0015 below.
 
 ### Fixed — a v1 consumer silently mis-routed once the shared trust config went v2 (CI-0014)
 
@@ -47,30 +48,23 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   `proposed != 0` and had never fired; the check reported green until a merge
   finally produced a proposal.
 - **`docs-sync.yml` now declares `pull-requests: write`.**
-- ⚠️ **Consumers must ALSO raise their caller to `pull-requests: write`.** The
-  intersection cuts both ways, and `--repin` does not fix it (it rewrites `uses:`
-  lines only). Callers generated before this release grant `read`. The caller
-  template's comment previously stated the rule half-correctly ("a callee cannot
-  grant its own permissions — the caller must"), which led at least one consumer
-  to raise only its caller and wait for an upstream half that was not coming;
-  the comment now states the intersection in both directions.
+- **The missing half was always the callee.** The shipped caller template has
+  granted `pull-requests: write` since `ci/v2.11.0`, so a consumer installed
+  from `ci/v2.11.0` onward needs **only a re-pin** — no caller edit. ⚠️ Only a
+  caller installed before `ci/v2.11.0` and never re-installed, or hand-edited
+  down to `read`, must also be raised; `--repin` will not do it, since it
+  rewrites `uses:` lines only.
+- The caller template's comment previously stated the rule half-correctly ("a
+  callee cannot grant its own permissions — the caller must"), which led at
+  least one consumer to raise only its caller and wait for an upstream half that
+  was not coming; it now states the intersection in both directions.
+- New contract test asserts caller∩callee permission parity across **all**
+  caller templates, so the next instance of this class fails a test instead of
+  shipping. It immediately found one: the `doc-maintainer` caller granted
+  `contents: write` that the callee caps at `read` — every write in that flow
+  goes through the App `BOT_TOKEN`, so the grant was unusable by construction.
+  Trimmed to `contents: read` (least privilege; no behaviour change).
 - Codified as §4.2c.
-
-### Fixed — `standards-drift` passed green while verifying almost nothing (CI-0018)
-
-- `repo-settings` compared canon against fields **absent** from the `gh api
-  repos/` response, emitting `canon=false actual=null` — presenting *unreadable*
-  state as a drift finding, while the adjacent `actions.*` arm correctly said
-  "cannot check". Absent admin-only fields now route through `warn_uncheckable`
-  and name both the missing token scope and which fields were unreadable.
-- Under the default `GITHUB_TOKEN` only **1 of 4** control families (`labels`)
-  was genuinely verified, and the job still concluded `success`. Runs now end
-  with a **coverage summary** — `verified N/4 control families`, naming the
-  unverified ones and stating that green does not mean they match canon.
-- `--strict` already failed on uncheckable; unchanged, and now covered by tests.
-- 14 new assertions, including a positive control proving readable drift is still
-  detected and counted.
-- Codified as §4.2d.
 
 ### Fixed — `secret-scan` documented a different scan than it ran (CI-0016)
 
@@ -84,7 +78,7 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   was wrong. Corrected at the header, and `MIGRATION_v2.0.0.md` gains a §7
   directing local validation to `gitleaks git .` and explaining anchored
   allowlists for unreachable history.
-- Codified as §4.3a-scope.
+- Codified as §4.3d.
 
 ### Fixed — `litellm_allow_insecure_http` was scoped by repo visibility (CI-0017)
 
@@ -102,6 +96,38 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   connection fails from loopback inside a container, instead of surfacing a bare
   `proxy request failed after 3 attempts: URLError` — this URL works when tested
   from the host and fails only in CI, which is what made it expensive.
+
+### Fixed — `standards-drift` passed green while verifying almost nothing (CI-0018)
+
+- `repo-settings` compared canon against fields **absent** from the `gh api
+  repos/` response, emitting `canon=false actual=null` — presenting *unreadable*
+  state as a drift finding, while the adjacent `actions.*` arm correctly said
+  "cannot check". Absent admin-only fields now route through `warn_uncheckable`
+  and name both the missing token scope and which fields were unreadable.
+- Under the default `GITHUB_TOKEN` only **1 of 4** control families (`labels`)
+  was genuinely verified, and the job still concluded `success`. Runs now end
+  with a **coverage summary** — `verified N/4 control families`, naming the
+  unverified ones and stating that green does not mean they match canon.
+- `--strict` already failed on uncheckable; unchanged, and now covered by tests.
+- **"Verified" is all-or-nothing per family.** A first cut marked a family
+  verified on partial progress, so a run could print "cannot check repo-settings"
+  and "verified 4/4" together. `actions` now derives its mark from a
+  `FETCH_ERRORS` snapshot, so an arm added later cannot forget to withhold it.
+- **Response shape is validated before any key is probed.** `jq -e` exits 0 on
+  EMPTY input for any filter, so a 0-exit-but-empty `gh api` body previously read
+  as fully present and printed `canon=X actual=` for every key. The shared
+  `json_readable` helper tests `[ -s ]` first and is applied to the
+  branch-protection, repo-settings and labels arms alike.
+- Coverage is emitted on early bail-outs too (missing `gh`/`jq`, bad `--tier`) —
+  those were the runs that verified least while exiting 0.
+- The summary separates "could not be read" from "unverified for another reason",
+  so a real finding is never described as unread.
+- Fixed alongside: `DEFAULT_BRANCH=$(gh api … || echo main)` concatenated `gh`'s
+  error body (written to stdout) with `main`, sending every branch-protection
+  query to a garbage path.
+- 25 new assertions, including a positive control proving readable drift is still
+  detected and counted, plus reproductions of each defect above.
+- Codified as §4.2d.
 
 ### Changed — PLAN-009 targets `Latest`, and its Edit F body matches its banner (CI-0019)
 

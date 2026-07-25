@@ -225,27 +225,59 @@ jobs:
       # surfaced error ("no parseable verdict — fail-closed") that named neither the
       # cause, nor the trigger (a schema change in ANOTHER repository), nor the owner.
       # Fail loud and name the source; never infer a default from an unknown schema.
-      - name: Assert trust-config schema version
+      # FATAL=0 here — DELIBERATE, and the opposite of the review job's copy.
+      #
+      # `ai-review` is `needs: trust` with a non-`always()` `if:`, so FAILING this
+      # job SKIPS `ai-review` — and a skipped job reports green to branch
+      # protection, while `call / trust` is not a required context in any tier
+      # profile. Failing here would therefore turn the exact event this check
+      # exists to catch (a shared-config schema bump, which hits all consumers at
+      # once) into a GREEN required check with no review performed — a worse
+      # outcome than CI-0014's original defect, which at least went red. Same
+      # reasoning as FT-43 below: never let a skipped-job green stand in for a
+      # verdict. So: diagnose loudly here, enforce in the review job.
+      #
+      # An unreadable config still fails safe on its own: the trust gate below
+      # then finds no `trust.ai_review` entry, treats the author as untrusted, and
+      # routes to human-review-required rather than auto-approving.
+      - name: Assert trust-config schema version (diagnose only)
         env:
           TRUST_SRC: ${{ inputs.trust_config_repo }}@${{ inputs.trust_config_ref }}
+          FATAL: '0'
         run: |
           set -uo pipefail
           CFG=.github/ai-review/config.json
           SUPPORTED=2
-          VER=$(jq -r '.version // empty' "$CFG" 2>/dev/null || true)
-          if [ -z "$VER" ]; then
-            if jq -e 'has("reviewer")' "$CFG" >/dev/null 2>&1; then
-              echo "::error::trust config at ${TRUST_SRC} is schema v1 (has \`reviewer\`, no \`version\`), but this reusable is ci/v2.x and requires v${SUPPORTED} (\`litellm.model\`). Fix: point trust_config_repo/trust_config_ref at a v${SUPPORTED} config, or re-pin this caller to a ci/v1.x tag. Refusing to guess an engine."
-            else
-              echo "::error::trust config at ${TRUST_SRC} declares no \`version\` field, so its schema cannot be identified; this reusable requires v${SUPPORTED}. Fix: add '\"version\": ${SUPPORTED}' to .github/ai-review/config.json in that repo. Refusing to guess an engine."
+          # >>> CI0014-SCHEMA-ASSERT >>>
+          # DRIVEN by tests/test_contract.sh — the test extracts and runs THIS
+          # block, not a copy. Keep the markers, and keep both copies identical:
+          # only the FATAL env differs between the trust and ai-review jobs.
+          MSG=""
+          if ! command -v jq >/dev/null 2>&1; then
+            MSG="jq not found on the runner, so the trust config at ${TRUST_SRC} was never inspected. Rebuild the runner image. INFRASTRUCTURE error — not a trust-config problem and not a review verdict."
+          elif [ ! -s "$CFG" ]; then
+            MSG="no readable trust config at ${TRUST_SRC} (${CFG} is missing or empty), so its schema was never inspected. Check trust_config_repo/trust_config_ref and that the token can read that repo. INFRASTRUCTURE error — do NOT edit the config schema in response to this."
+          elif ! jq -e 'type == "object"' "$CFG" >/dev/null 2>&1; then
+            MSG="the trust config at ${TRUST_SRC} is not parseable JSON (a truncated fetch or an error page), so its schema was never inspected. Re-run. INFRASTRUCTURE error — do NOT edit the config schema in response to this."
+          else
+            VER=$(jq -r '.version // empty' "$CFG" 2>/dev/null || true)
+            if [ -z "$VER" ]; then
+              if jq -e 'has("reviewer")' "$CFG" >/dev/null 2>&1; then
+                MSG="trust config at ${TRUST_SRC} is schema v1 (has \`reviewer\`, no \`version\`), but this reusable is ci/v2.x and requires v${SUPPORTED} (\`litellm.model\`). Fix: point trust_config_repo/trust_config_ref at a v${SUPPORTED} config, or re-pin this caller to a ci/v1.x tag. Refusing to guess an engine."
+              else
+                MSG="trust config at ${TRUST_SRC} declares no \`version\` field, so its schema cannot be identified; this reusable requires v${SUPPORTED}. Fix: add '\"version\": ${SUPPORTED}' to .github/ai-review/config.json in that repo. Refusing to guess an engine."
+              fi
+            elif [ "$VER" != "$SUPPORTED" ]; then
+              MSG="trust config at ${TRUST_SRC} is schema v${VER}, but this reusable (ci/v2.x) understands only v${SUPPORTED}. The trust config is SHARED across consumers while each consumer pins its own ci/ tag, so a schema bump there breaks every caller that has not re-pinned. Fix: re-pin this caller to a ci/ tag that supports v${VER}. Refusing to guess an engine."
             fi
-            exit 1
           fi
-          if [ "$VER" != "$SUPPORTED" ]; then
-            echo "::error::trust config at ${TRUST_SRC} is schema v${VER}, but this reusable (ci/v2.x) understands only v${SUPPORTED}. The trust config is SHARED across consumers while each consumer pins its own ci/ tag, so a schema bump there breaks every caller that has not re-pinned. Fix: re-pin this caller to a ci/ tag that supports v${VER}. Refusing to guess an engine."
-            exit 1
+          if [ -n "$MSG" ]; then
+            if [ "${FATAL:-1}" = "1" ]; then echo "::error::${MSG}"; exit 1; fi
+            echo "::warning::${MSG}"
+            exit 0
           fi
-          echo "trust config ${TRUST_SRC}: schema v${VER} OK"
+          echo "trust config ${TRUST_SRC}: schema v${SUPPORTED} OK"
+          # <<< CI0014-SCHEMA-ASSERT <<<
 
       # "We trust only ourself." Config-driven role allowlists in config.json:
       #   trust.ai_review = logins whose PRs get the AI gate (+ auto-merge)
@@ -689,28 +721,49 @@ jobs:
 
       # CI-0014 — see the matching step in the `trust` job for the full rationale.
       # This job fetches the same shared config independently, so it asserts too.
+      #
+      # FATAL=1 here: `ai-review` IS the required status context, so failing this
+      # step turns the check RED. That is the enforcement half — the trust job's
+      # copy only diagnoses (failing it would skip this job to a false green).
       - name: Assert trust-config schema version
         if: ${{ env.SKIP_REVIEW != '1' }}
         env:
           TRUST_SRC: ${{ inputs.trust_config_repo }}@${{ inputs.trust_config_ref }}
+          FATAL: '1'
         run: |
           set -uo pipefail
           CFG=.github/ai-review/config.json
           SUPPORTED=2
-          VER=$(jq -r '.version // empty' "$CFG" 2>/dev/null || true)
-          if [ -z "$VER" ]; then
-            if jq -e 'has("reviewer")' "$CFG" >/dev/null 2>&1; then
-              echo "::error::trust config at ${TRUST_SRC} is schema v1 (has \`reviewer\`, no \`version\`), but this reusable is ci/v2.x and requires v${SUPPORTED} (\`litellm.model\`). Fix: point trust_config_repo/trust_config_ref at a v${SUPPORTED} config, or re-pin this caller to a ci/v1.x tag. Refusing to guess an engine."
-            else
-              echo "::error::trust config at ${TRUST_SRC} declares no \`version\` field, so its schema cannot be identified; this reusable requires v${SUPPORTED}. Fix: add '\"version\": ${SUPPORTED}' to .github/ai-review/config.json in that repo. Refusing to guess an engine."
+          # >>> CI0014-SCHEMA-ASSERT >>>
+          # DRIVEN by tests/test_contract.sh — the test extracts and runs THIS
+          # block, not a copy. Keep the markers, and keep both copies identical:
+          # only the FATAL env differs between the trust and ai-review jobs.
+          MSG=""
+          if ! command -v jq >/dev/null 2>&1; then
+            MSG="jq not found on the runner, so the trust config at ${TRUST_SRC} was never inspected. Rebuild the runner image. INFRASTRUCTURE error — not a trust-config problem and not a review verdict."
+          elif [ ! -s "$CFG" ]; then
+            MSG="no readable trust config at ${TRUST_SRC} (${CFG} is missing or empty), so its schema was never inspected. Check trust_config_repo/trust_config_ref and that the token can read that repo. INFRASTRUCTURE error — do NOT edit the config schema in response to this."
+          elif ! jq -e 'type == "object"' "$CFG" >/dev/null 2>&1; then
+            MSG="the trust config at ${TRUST_SRC} is not parseable JSON (a truncated fetch or an error page), so its schema was never inspected. Re-run. INFRASTRUCTURE error — do NOT edit the config schema in response to this."
+          else
+            VER=$(jq -r '.version // empty' "$CFG" 2>/dev/null || true)
+            if [ -z "$VER" ]; then
+              if jq -e 'has("reviewer")' "$CFG" >/dev/null 2>&1; then
+                MSG="trust config at ${TRUST_SRC} is schema v1 (has \`reviewer\`, no \`version\`), but this reusable is ci/v2.x and requires v${SUPPORTED} (\`litellm.model\`). Fix: point trust_config_repo/trust_config_ref at a v${SUPPORTED} config, or re-pin this caller to a ci/v1.x tag. Refusing to guess an engine."
+              else
+                MSG="trust config at ${TRUST_SRC} declares no \`version\` field, so its schema cannot be identified; this reusable requires v${SUPPORTED}. Fix: add '\"version\": ${SUPPORTED}' to .github/ai-review/config.json in that repo. Refusing to guess an engine."
+              fi
+            elif [ "$VER" != "$SUPPORTED" ]; then
+              MSG="trust config at ${TRUST_SRC} is schema v${VER}, but this reusable (ci/v2.x) understands only v${SUPPORTED}. The trust config is SHARED across consumers while each consumer pins its own ci/ tag, so a schema bump there breaks every caller that has not re-pinned. Fix: re-pin this caller to a ci/ tag that supports v${VER}. Refusing to guess an engine."
             fi
-            exit 1
           fi
-          if [ "$VER" != "$SUPPORTED" ]; then
-            echo "::error::trust config at ${TRUST_SRC} is schema v${VER}, but this reusable (ci/v2.x) understands only v${SUPPORTED}. The trust config is SHARED across consumers while each consumer pins its own ci/ tag, so a schema bump there breaks every caller that has not re-pinned. Fix: re-pin this caller to a ci/ tag that supports v${VER}. Refusing to guess an engine."
-            exit 1
+          if [ -n "$MSG" ]; then
+            if [ "${FATAL:-1}" = "1" ]; then echo "::error::${MSG}"; exit 1; fi
+            echo "::warning::${MSG}"
+            exit 0
           fi
-          echo "trust config ${TRUST_SRC}: schema v${VER} OK"
+          echo "trust config ${TRUST_SRC}: schema v${SUPPORTED} OK"
+          # <<< CI0014-SCHEMA-ASSERT <<<
 
       - name: Resolve LiteLLM model
         if: ${{ env.SKIP_REVIEW != '1' }}
@@ -928,6 +981,11 @@ jobs:
         run: |
           set -uo pipefail
           F=.ai-review/verdict.json
+          # The `// "unknown"` here is DISPLAY-ONLY and is not a §4.2b violation:
+          # this value is interpolated into the verdict comment footer, never
+          # used to select an engine. It is also downstream of both the schema
+          # assertion and the fail-loud model resolution, so reaching the
+          # fallback means the label is cosmetic on a run that already passed.
           MODEL="${LITELLM_MODEL:-$(jq -r '.litellm.model // "unknown"' .github/ai-review/config.json)}"
 
           # Set the review-state label via the REST API. (`gh pr edit --add-label`

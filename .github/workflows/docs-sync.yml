@@ -66,9 +66,12 @@ on:
 # executed and this workflow reported green from the day it shipped until a merge
 # finally produced a proposal.
 #
-# CONSUMER ACTION: raising it here is necessary but NOT sufficient — the caller
-# must also grant `pull-requests: write`, because the intersection cuts both ways.
-# Callers generated before ci/v2.15.0 grant `read`; see docs/UPDATE_GUIDE.md.
+# CONSUMER ACTION: the caller must ALSO grant `pull-requests: write`, because the
+# intersection cuts both ways. The shipped caller template has granted it since
+# ci/v2.11.0, so for most consumers the remedy is simply to re-pin to a release
+# containing this fix — the missing half was always THIS file. Only a caller
+# generated before ci/v2.11.0, or one hand-edited down to `read`, also needs a
+# caller-side change. See docs/UPDATE_GUIDE.md.
 permissions:
   contents: read
   pull-requests: write

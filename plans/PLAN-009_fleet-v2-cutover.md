@@ -10,20 +10,20 @@
 > notes for caller-body changes `--repin` cannot apply (it rewrites `uses:` lines
 > only — e.g. FT-43's trigger/concurrency edits).
 >
-> **Historical target (superseded, 2026-07-18, PLAN-015 B1):** `ci/v2.8.0` — the
-> tag PLAN-015 cut (consumer drift detector + honest install-verify + the
-> pre-push/doc fixes). The **v2.0.1** mechanics in the body below remain
-> valid as the **v1→v2 cutover reference** (per-repo steps, label contract,
-> pilot-then-propagate), but the fleet re-pins **straight to `ci/v2.8.0`**, not
-> v2.0.1. Unlike v2.0.1, **`ci/v2.8.0` is NOT a drop-in re-pin**: under the
+> **Historical record — superseded targets (do NOT execute against these).**
+> This plan named `ci/v2.0.1` first, then `ci/v2.8.0` (2026-07-18, PLAN-015 B1);
+> both went stale. Retained only to explain why the body still cites `@ci/v2.0.1`
+> and the SHA `819d148…`: those were the **v1→v2 cutover reference**, and the
+> per-repo mechanics around them (per-repo steps, label contract,
+> pilot-then-propagate) are still the correct *procedure*. **Substitute the
+> `Latest` tag and its commit SHA for every `@ci/v2.0.1` / `819d148…` value in the
+> body.**
+>
+> One carried prerequisite is still load-bearing and is NOT historical: under the
 > PLAN-013 uniform-protected AI-flow model (`ci/v2.2.0`) the **whole** ai-review
-> flow (not just the review job) runs on the self-hosted pool on **public** repos,
-> broadening the public review-runner prerequisite the v2.0.1 plan already carried
-> (Phase 2 **Edit F**) — so every public consumer needs a pool registered *before*
-> re-pin. **When executing the per-repo steps in the body post-cut, substitute the
-> cut `v2.8.0` tag and its commit SHA for every `@ci/v2.0.1` / `819d148…` value
-> below** — those are the v1→v2 reference, not the pin to apply. The fleet re-pin
-> stays 🔴 founder-gated and happens **after** `v2.8.0` is cut. Live state:
+> flow — not just the review job — runs on the self-hosted pool on **public**
+> repos (Phase 2 **Edit F**), so every public consumer needs a pool registered
+> *before* re-pin. The fleet re-pin remains 🔴 founder-gated. Live state:
 > `HANDOFF.md`; closure plan: `plans/PLAN-015_preprod-review-fixes.md`.
 >
 > Status: EXECUTING — **Phase 0 partially done**; `operations` advanced to
@@ -93,20 +93,28 @@ CANNOT do** (it only rewrites `uses:` lines, `install.sh:329-339`):
 | A. Bump `uses:` pins `@ci/v1.9.5`→`@ci/v2.0.1` | all 7 | ✅ yes |
 | B. Runner-label swap `aidoc,ci-ephemeral`→`ci-runner,single-use` (**two tokens**) | business, iplanic, interlog — **every** private caller (~9/14/9 files) | ❌ manual |
 | C. `standards-drift` curl-URL source → v2.0.1 **SHA** (it's a `run:` curl, not `uses:`) | framework, iplanic (SHA `e15ec7d4`); engramory, iplan-runner, iplan-standard (**mutable** `ci/v1.6.0`) | ❌ manual |
-| D. Add `litellm_allow_insecure_http: true` to private ai-review callers (HTTP Docker-bridge) | business, iplanic, interlog | ❌ manual |
+| D. Add `litellm_allow_insecure_http: true` to **every** ai-review caller whose `LITELLM_BASE_URL` is `http://` (the Docker-bridge address — see note) | **all 7** — private *and* public | ❌ manual |
 | E. Add missing `permissions:` block to **interlog** `composition.yml` | interlog | ❌ manual |
+
+> **Edit D scope corrected 2026-07-25 (CI-0019 / CI-0017).** D was previously
+> scoped to the private trio, implicitly assuming public consumers reach the proxy
+> over HTTPS. They do not: under PLAN-013 the public repos' ai-review flow runs on
+> the same self-hosted pool and reaches the same host-local proxy over the
+> plain-HTTP Docker bridge. **The flag is required by the URL SCHEME, not by repo
+> visibility** — every consumer whose `LITELLM_BASE_URL` begins `http://` needs
+> it. `aidoc-flow-framework` (public) hit exactly this during its migration.
 
 ## Current state
 
 | Repo | Active `uses:` pin | Runner | Vis | Repo-specific edits |
 |---|---|---|---|---|
 | operations | `@ci/v2.0.1` ✅ | `ci-runner,single-use` | priv | reference impl; **advanced + live-verified 2026-07-16** (PR #265) — see note below |
-| framework | `@ci/v1.9.5` | `ubuntu-latest` | pub | C (SHA); own md-lint tooling; server-side human-merge floor |
+| framework | `@ci/v1.9.5` | `ubuntu-latest` | pub | C (SHA), **D**, F; own md-lint tooling; server-side human-merge floor |
 | business | `@ci/v1.9.5` | `aidoc,ci-ephemeral` | priv | B, D; phantom branch-protection context |
 | iplanic | `@ci/v1.9.5` | `aidoc,ci-ephemeral` | priv | B, C (SHA), D; delete duplicate `standard-drift.yml`; phantom context |
-| iplan-runner | `@ci/v1.9.5` | `ubuntu-latest` | pub | C (mutable tag→SHA) |
-| iplan-standard | `@ci/v1.9.5` | `ubuntu-latest` | pub | C (mutable tag→SHA) |
-| engramory | `@ci/v1.9.5` | `ubuntu-latest` | pub | C (mutable tag→SHA) — **pilot** |
+| iplan-runner | `@ci/v1.9.5` | `ubuntu-latest` | pub | C (mutable tag→SHA), **D**, F |
+| iplan-standard | `@ci/v1.9.5` | `ubuntu-latest` | pub | C (mutable tag→SHA), **D**, F |
+| engramory | `@ci/v1.9.5` | `ubuntu-latest` | pub | C (mutable tag→SHA), **D**, F — **pilot** |
 | interlog | `@ci/v1.9.5` | `aidoc,ci-ephemeral` | priv | B, D, E; phantom context |
 
 All active `uses:` pins are uniformly `@ci/v1.9.5` (no stragglers; the
@@ -156,18 +164,25 @@ Nothing merges until these are confirmed live (`feedback_writes_to_other_repos_i
    `LITELLM_DOC_API_KEY` only when doc-maintainer is adopted (deferred).
    `AIDOC_FLOW_BOT_*` unchanged (docs-sync stays dry-run).
 2. **Public-reachability — RESOLVED (2026-07-15): keep LiteLLM private; run each
-   public repo's ai-review REVIEW job on the ephemeral self-hosted pool.** The
+   public repo's ai-review flow on the ephemeral self-hosted pool.** The
    proxy is host-local (`http://172.17.0.1:4001`, private per founder) — GitHub-
    hosted `ubuntu-latest` runners cannot reach it, but self-hosted runners on the
-   proxy host can. So instead of exposing a public endpoint, each public repo sets
-   **`runner_labels_review: '["self-hosted","ci-runner","single-use"]'`** and keeps
-   the fork-facing `trust` job + every other check on `ubuntu-latest`. This is
-   **safe** — forks are hard-set untrusted so the review job is skipped for them,
-   and the review job runs **no PR code** (it curls the diff → LiteLLM). Rationale
-   - wiring: `docs/runners.md` §5a + `CLAUDE.md` "Runner policy". **No public HTTPS
-   endpoint or tunnel needed.** Consequence: the **engramory pilot stays a public
-   repo** — it just needs a self-hosted *review* runner on the proxy host + its
-   LiteLLM secret; the private tier can proceed in parallel once its pools exist.
+   proxy host can. So instead of exposing a public endpoint, each public repo
+   moves the ai-review flow to the pool (**Edit F**, Phase 2).
+
+   > **Corrected 2026-07-25 (CI-0019).** This item previously said each public
+   > repo sets `runner_labels_review` only and keeps the fork-facing `trust` job
+   > on `ubuntu-latest`. That is the pre-PLAN-013 shape and contradicts Edit F as
+   > corrected below: since `ci/v2.2.0` **both** `runner_labels_routine` and
+   > `runner_labels_review` go to the pool. Sizing to the old text under-provisions
+   > by half. See Edit F for the fork-safety boundary.
+
+   Rationale + wiring: `docs/runners.md` §5a + `CLAUDE.md` "Runner policy". **No
+   public HTTPS endpoint or tunnel needed.** Consequence: the **engramory pilot
+   stays a public repo** — it needs a self-hosted pool on the proxy host + its
+   LiteLLM secret (**and Edit D**, per CI-0017 — the pool reaches the proxy over
+   plain HTTP regardless of repo visibility); the private tier can proceed in
+   parallel once its pools exist.
 3. **Verify pre-existing secrets/vars** didn't lapse: `APP_REVIEWER_1_ID`/`_KEY`,
    `APP_REVIEWER_1_BOT_ID` (var — also gates whether `composition` enforces),
    `AI_REVIEW_TOKEN`.

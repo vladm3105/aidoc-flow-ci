@@ -55,10 +55,13 @@ def in_container() -> bool:
     """
     if os.environ.get("LITELLM_ASSUME_CONTAINER", "").lower() == "true":
         return True
-    if Path("/.dockerenv").exists():
+    # Probe the filesystem markers BEFORE reading /proc: on a hardened or Podman
+    # runner /proc/self/cgroup can be masked, and an OSError there must not
+    # discard the /run/.containerenv signal via short-circuit evaluation.
+    if Path("/.dockerenv").exists() or Path("/run/.containerenv").exists():
         return True
     try:
-        return "docker" in Path("/proc/self/cgroup").read_text() or Path("/run/.containerenv").exists()
+        return "docker" in Path("/proc/self/cgroup").read_text()
     except OSError:
         return False
 

@@ -57,9 +57,9 @@ Set the resulting `key` value as the GitHub secret.
 > The host proxy is reachable at the bridge gateway — `http://172.17.0.1:4001/v1`
 > by default.
 >
-> This is the single most common v2 setup failure, and it is easy to get wrong
-> because `http://127.0.0.1:4001/v1` **works when you test it from the host** and
-> fails only in CI. Verified from inside a job container: the bridge address
+> The failure mode is asymmetric: `http://127.0.0.1:4001/v1` **succeeds when
+> tested from the host** and fails only in CI, so a value validated locally is
+> not evidence. Verified from inside a job container: the bridge address
 > returns `HTTP 401` on `GET /v1/models` (alive, key required — the correct
 > result), while `127.0.0.1` and `localhost` are unreachable.
 >
@@ -148,7 +148,7 @@ If the smoke passes, consumers can safely bump to `@ci/v2.0.0`.
 
 ### 7. Expect new `secret-scan` findings — v2 scans full history
 
-`secret-scan` changed scope in v2 and this was not documented until `ci/v2.15.0`:
+`secret-scan` changed scope in `ci/v2.0.0` and went undocumented until CI-0016:
 
 | | v1.x | v2.x |
 |---|---|---|
@@ -165,8 +165,9 @@ Findings in unreachable history cannot be fixed by editing files — allowlist
 them in `.gitleaks.toml` with an **anchored** `paths` regex (e.g.
 `'^tests/fixtures/'`). An unanchored allowlist that matches everything is
 detected and reported INCONCLUSIVE by the config canary, because it would also
-suppress real findings. The scope expansion itself is deliberate and is an
-improvement; only its documentation was missing. (CI-0016.)
+suppress real findings. The scope expansion itself is deliberate — a credential
+reachable in history is leaked whether or not it survives at `HEAD` — and only
+its documentation was missing. (CI-0016.)
 
 ## Rollback
 

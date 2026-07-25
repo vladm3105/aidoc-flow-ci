@@ -63,7 +63,13 @@ on:
 
 permissions:
   actions: write
-  contents: write
+  # `read`, not `write` (CI-0015): every write this flow performs — the branch
+  # push and the PR create — goes through the doc-maintainer App's BOT_TOKEN, not
+  # GITHUB_TOKEN, and both callee jobs declare `contents: read`. Because the
+  # effective token is the caller∩callee intersection, `contents: write` here was
+  # unusable by construction: a dead grant that read as a capability the flow had.
+  # Surfaced by the caller/callee parity contract test.
+  contents: read
   issues: write
   pull-requests: write
 

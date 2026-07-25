@@ -750,6 +750,32 @@ assertion enforces a contract the schema stated but no code checked).
   and *named*; it does not make it safe.
 - Verified before landing: the live operations config declares `"version": 2`,
   so the assertion passes for current v2 consumers rather than bricking them.
+- **The two copies are deliberately asymmetric, and the asymmetry is the point.**
+  `ai-review` is `needs: trust` with a non-`always()` `if:`, so failing the
+  `trust` job SKIPS `ai-review` — and a skipped job reports green to branch
+  protection, while `call / trust` is not a required context in any tier
+  profile. A fatal assertion in `trust` would therefore have converted the exact
+  event this check exists to catch into a GREEN required check with no review
+  performed: strictly worse than the original defect, which at least went red.
+  It would also have removed the `skip-ai-review` label escape hatch, since that
+  label cannot rescue a PR whose `trust` job hard-fails. So the trust copy
+  **diagnoses** (`FATAL=0`, warning) and the `ai-review` copy **enforces**
+  (`FATAL=1`, red required check). Same reasoning as FT-43: never let a
+  skipped-job green stand in for a verdict. A `trust` job that cannot read the
+  config still fails safe on its own — it finds no `trust.ai_review` entry,
+  treats the author as untrusted, and routes to human-review-required.
+- **Accepted break:** an external adopter pointing `trust_config_repo` at a
+  hand-rolled config with no `"version"` field now fails the `ai-review` job
+  where it previously ran on a guessed default. This enforces what the published
+  v2 schema always required, and canon's own template has always shipped
+  `"version": 2`; every in-workspace consumer is unaffected. Recorded here
+  because the semver classification depends on it.
+- Three distinguishable preconditions get three distinct errors — `jq` missing,
+  config missing/empty, config unparseable — each labelled INFRASTRUCTURE and
+  each saying *do not edit the config schema in response to this*. Collapsing
+  them into the "no `version` field" message would have reproduced CI-0014's own
+  pathology (an error naming the wrong cause and the wrong repository) inside
+  the fix for it.
 
 **Origin**
 
@@ -784,10 +810,16 @@ either half alone is inert. `docs-sync.yml` moves to `pull-requests: write`.
 
 **Consequences**
 
-- Consumers must ALSO grant `pull-requests: write` on their `docs-sync` caller.
-  Callers generated before `ci/v2.15.0` grant `read` and stay broken until both
-  halves are raised — `--repin` does not fix this, because it rewrites `uses:`
-  lines only.
+- **The missing half was always the callee.** The shipped caller template has
+  granted `pull-requests: write` since `001df6e`, first released in
+  `ci/v2.11.0`, so for a consumer installed from `ci/v2.11.0` onward the remedy
+  is simply to re-pin to a release containing this fix — no caller edit needed.
+  Only a caller installed before `ci/v2.11.0` and never re-installed, or one
+  hand-edited down to `read`, also needs a caller-side change. (Stated precisely
+  because the earlier draft of this entry claimed all callers grant `read`,
+  which contradicted its own Context section.)
+- `--repin` does not raise a caller that IS at `read`: it rewrites `uses:` lines
+  only.
 - A green reusable proves nothing about a step gated behind a condition that has
   never been true. Permission ceilings are exercised only on the path that uses
   them.
@@ -901,6 +933,25 @@ that a green result does not mean they match canon.
   settings already did not pass; that behaviour is unchanged and now tested.
 - Consistent with the failure class named in CI-0011 and CI-0013: a check that
   cannot see its subject must say so rather than report a comparison.
+- **"Verified" is ALL-OR-NOTHING per family.** The first implementation marked a
+  family verified on any partial progress, so a run could emit *"cannot check
+  repo-settings"* and *"verified 4/4"* in the same output — the defect this
+  mechanism exists to prevent, rebuilt inside it. `actions` derives its mark from
+  a `FETCH_ERRORS` snapshot rather than a per-arm counter, so an arm added later
+  cannot forget to withhold it. The summary's clean branch is gated on the skip
+  SET being empty, never on a count.
+- **`jq -e` exits 0 on EMPTY input for any filter**, because it emits no output
+  and `-e` never sees a false result. Every response shape guard therefore tests
+  `[ -s "$file" ]` FIRST (`json_readable`). Without it, a 0-exit-but-empty `gh
+  api` body read as fully present and printed `canon=X actual=` for every key —
+  unread state reported as drift, with the family then marked verified. The same
+  guard is applied to the branch-protection, repo-settings and labels arms.
+- The coverage line distinguishes *could not be read* from *unverified for
+  another reason*; telling a reader that a real, read, confirmed finding "could
+  not be read" is its own mis-attribution.
+- Fixed alongside: `DEFAULT_BRANCH` was resolved as `$(gh api … || echo main)`,
+  but `gh` writes its error body to STDOUT, so a 404 CONCATENATED with `main` and
+  every downstream branch-protection query hit a garbage path.
 
 **Origin**
 

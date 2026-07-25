@@ -245,6 +245,34 @@ cd <printed-work-dir> && git diff
 `--update` is idempotent: re-running with no canon change prints only
 `unchanged` lines and replaces nothing.
 
+## `docs-sync` needs `pull-requests: write` on BOTH halves (CI-0015)
+
+A reusable workflow's token is the **intersection** of the caller's grant and
+the callee's own `permissions:` block. Raising either half alone changes
+nothing.
+
+`docs-sync.yml` (the callee) capped `pull-requests: read` while its `sync` job
+runs `gh pr comment`, so the dry-run comment step was unreachable on **every**
+consumer. It never surfaced because the step is gated on `proposed != 0` and had
+not fired; the check was green until a merge finally produced a proposal, then
+failed with `GraphQL: Resource not accessible by integration (addComment)`.
+
+**What each consumer needs:**
+
+| Consumer installed from | Action |
+|---|---|
+| `ci/v2.11.0` or later | **Re-pin only.** The shipped caller template has granted `pull-requests: write` since `ci/v2.11.0` — the missing half was the callee. |
+| Before `ci/v2.11.0`, or a caller hand-edited to `read` | Re-pin **and** raise the caller to `pull-requests: write`. |
+
+`install.sh --repin` does **not** raise a caller's permissions — it rewrites
+`uses:` lines only. Check with:
+
+```bash
+grep -A6 '^permissions:' .github/workflows/docs-sync.yml
+```
+
+If it shows `pull-requests: read`, edit it to `write`.
+
 ## ci/v1.x → ci/v2.0.0 breaking-change migration
 
 The `ci/v2.0.0` release replaces vendor CLIs with a unified LiteLLM proxy.

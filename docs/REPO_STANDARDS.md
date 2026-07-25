@@ -220,7 +220,9 @@ bridge gateway (`http://172.17.0.1:4001/v1`) — plain HTTP on a private network
 so every consumer there needs the flag, and since PLAN-013 routes the whole AI
 flow to that pool, public repos are the common case rather than the exception.
 `LITELLM_BASE_URL` MUST NOT be loopback: jobs run inside a container, so
-`127.0.0.1`/`localhost` resolve to the container, not the proxy host. (CI-0017.) Use separate virtual keys for review and documentation maintenance,
+`127.0.0.1`/`localhost` resolve to the container, not the proxy host. (CI-0017.)
+
+Use separate virtual keys for review and documentation maintenance,
 restricted to their model aliases with spend/rate limits and rotation; never
 use the LiteLLM master key. Disable sensitive prompt/response logging and apply
 an appropriate retention policy: AI review sends a bounded, secret-pattern-
@@ -367,8 +369,8 @@ The trust config is a single shared source (`trust_config_repo`, default
 > not re-pinned yet.**
 
 `jq -r '.field // "default"'` is the wrong shape for reading such a config. A
-schema the reusable does not understand then produces a *default* instead of an
-*error*, and the resulting failure surfaces far from its cause. This is not
+schema the reusable does not understand then produces a _default_ instead of an
+_error_, and the resulting failure surfaces far from its cause. This is not
 hypothetical: the v1→v2 cutover (`reviewer` → `litellm.model`) left seven
 consumers silently selecting an engine none of them had credentials for, for
 nine days, behind an error that named neither the cause, the trigger, nor the
@@ -389,8 +391,8 @@ Requirements:
 
 **Schema bumps.** Either version the config path (`config.v1.json` /
 `config.v2.json`) so consumers resolve their own, or land the bump only after
-every consumer has re-pinned. The assertion makes a mismatch *detected*, not
-*safe*.
+every consumer has re-pinned. The assertion makes a mismatch _detected_, not
+_safe_.
 
 ### 4.2c A reusable's `permissions:` block is a ceiling, not a request
 
@@ -567,26 +569,6 @@ scope** — so under the default token that one control reports `warn_uncheckabl
 (non-blocking unless `--strict`), never a false green; run with an admin PAT to
 verify it.
 
-#### 4.3a-scope `secret-scan` scans FULL HISTORY, and its docs must say so
-
-Canon runs **`gitleaks git .`** — all reachable commit history — not
-`gitleaks dir .`, which scans only the working tree at `HEAD`. This changed in
-`ci/v2.0.0`; the header comment and migration guide said `dir` until
-`ci/v2.15.0`.
-
-The scope is deliberate: a credential reachable in history is leaked whether or
-not it survives at `HEAD`. The rule is about **documenting the scope actually
-run**. A consumer validating locally per a guide that names the wrong command
-sees clean and pushes into a red gate — one saw **0 findings under `dir` and 33
-under `git`**, and needed a second allowlisting round (CI-0016).
-
-**Rules.** Local validation MUST use `gitleaks git .`. First-run v2 adopters
-should expect findings in unreachable history; those cannot be fixed by editing
-files and MUST be allowlisted with an **anchored** `paths` regex (an unanchored
-one is reported INCONCLUSIVE by the canary in §4.3a, because it would suppress
-real findings too). **When a workflow's scope changes, the header comment, the
-migration guide, and the changelog are all part of the change.**
-
 #### 4.3a A consumer `.gitleaks.toml` MUST declare rules — canon proves the ruleset is non-empty
 
 A gitleaks config that declares an `[allowlist]` but neither `[extend]
@@ -688,6 +670,26 @@ membership — every label, author, and repo-name check — use
 `contains()` while `auto-merge-ai-prs.yml` used `index()`, so the two workflows
 classified the same PR differently and a label named `skip-ai-review-exempt`
 set the skip flag without anyone applying the real label.
+
+#### 4.3d `secret-scan` scans FULL HISTORY, and its docs must say so
+
+Canon runs **`gitleaks git .`** — all reachable commit history — not
+`gitleaks dir .`, which scans only the working tree at `HEAD`. This changed in
+`ci/v2.0.0`; the header comment and migration guide said `dir` until CI-0016
+corrected them.
+
+The scope is deliberate: a credential reachable in history is leaked whether or
+not it survives at `HEAD`. The rule is about **documenting the scope actually
+run**. A consumer validating locally per a guide that names the wrong command
+sees clean and pushes into a red gate — one saw **0 findings under `dir` and 33
+under `git`**, and needed a second allowlisting round (CI-0016).
+
+**Rules.** Local validation MUST use `gitleaks git .`. First-run v2 adopters
+should expect findings in unreachable history; those cannot be fixed by editing
+files and MUST be allowlisted with an **anchored** `paths` regex (an unanchored
+one is reported INCONCLUSIVE by the canary in §4.3a, because it would suppress
+real findings too). **When a workflow's scope changes, the header comment, the
+migration guide, and the changelog are all part of the change.**
 
 ### 4.4 `markdown-lint` config template (`install/templates/.markdownlint.json`)
 

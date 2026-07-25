@@ -10,7 +10,9 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; ROOT="$(cd "$HERE/.." && pwd)"
 # shellcheck source=tests/lib.sh
 . "$HERE/lib.sh"
-cd "$ROOT"
+# `|| exit` (SC2164): every assertion below uses repo-relative paths, so a failed
+# cd would silently run the whole suite against the wrong tree and pass.
+cd "$ROOT" || exit 1
 
 # allowlist: uses: owners permitted by the actions-permissions policy.
 allowed_use() { # $1 = the ref after 'uses:'
@@ -420,5 +422,75 @@ assert_ok "grep -q 'github_owned_allowed' '$WZ'" "preflight also requires github
 assert_ok "grep -q 'is not on the default branch yet' '$WZ'" "verify handles the pre-merge adoption PR (no 10-min empty poll)"
 # .2 doc no longer tells private adopters to use the single generic template.
 assert_ok "grep -q 'On a private repo use the' docs/AI_CI_DEPLOYMENT.md && grep -q 'FT-9 brick' docs/AI_CI_DEPLOYMENT.md" "AI_CI_DEPLOYMENT names the -private variants (FT-9 brick)"
+
+# ── CI-0014/CI-0015: enforce the contracts this canon now DEPENDS on ───────────
+# CI-0014's whole thesis is that an unenforced contract eventually breaks
+# silently. These assertions exist so this change does not ship three new ones.
+echo "== CI-0014/CI-0015: contracts the new rules depend on =="
+
+# .1 The schema-assert block is duplicated across the `trust` and `ai-review`
+#    jobs. Only the FATAL env may differ; a body that drifts means one job
+#    stops agreeing with the other about what a valid config is.
+_sa_blocks=$(awk '/# >>> CI0014-SCHEMA-ASSERT >>>/{f=1;n++;next} /# <<< CI0014-SCHEMA-ASSERT <<</{f=0} f{print n": "$0}' .github/workflows/ai-review.yml)
+assert_eq "$(grep -c '# >>> CI0014-SCHEMA-ASSERT >>>' .github/workflows/ai-review.yml)" "2" "CI-0014 schema-assert block appears exactly twice (trust + ai-review)"
+assert_eq "$(grep -c '# <<< CI0014-SCHEMA-ASSERT <<<' .github/workflows/ai-review.yml)" "2" "CI-0014 schema-assert block has both end markers"
+_sa_1=$(printf '%s\n' "$_sa_blocks" | sed -n 's/^1: //p' | sed 's/^[[:space:]]*//')
+_sa_2=$(printf '%s\n' "$_sa_blocks" | sed -n 's/^2: //p' | sed 's/^[[:space:]]*//')
+assert_eq "$_sa_1" "$_sa_2" "CI-0014 the two schema-assert copies are identical (only the FATAL env differs)"
+assert_ok "[ -n \"\$(printf '%s' \"\$_sa_1\")\" ]" "CI-0014 schema-assert extraction is non-empty (the assertion above is not vacuous)"
+
+# .2 The version the reusable enforces MUST equal the schema's declared const.
+#    A v3 bump that edits the schema but not the shell would silently reject
+#    every valid config — the mirror image of CI-0014.
+_sa_supported=$(grep -m1 -oE '^ *SUPPORTED=[0-9]+' .github/workflows/ai-review.yml | grep -oE '[0-9]+')
+assert_eq "$_sa_supported" "$(jq -r '.properties.version.const' schemas/ai-review-config-v2.schema.json)" "CI-0014 SUPPORTED tracks the schema's version const"
+
+# .3 The trust-job copy must stay NON-fatal and the review-job copy fatal.
+#    Inverting them re-creates the skip-to-green fail-open: `ai-review` is
+#    `needs: trust`, so failing `trust` SKIPS the required context to green.
+_sa_nonfatal=$(grep -c "FATAL: '0'" .github/workflows/ai-review.yml || true)
+_sa_fatal=$(grep -c "FATAL: '1'" .github/workflows/ai-review.yml || true)
+assert_eq "$_sa_nonfatal" "1" "CI-0014 exactly one schema-assert copy is non-fatal (the trust job)"
+assert_eq "$_sa_fatal" "1" "CI-0014 exactly one schema-assert copy is fatal (the required ai-review context)"
+
+# .4 CI-0015 caller-vs-callee permission parity. A reusable's token is the
+#    INTERSECTION, so a callee capped below what its own steps need is
+#    unreachable for every consumer no matter what the caller grants.
+assert_ok "python3 - <<'PY'
+import sys, yaml, pathlib, re
+LEVEL = {'none': 0, 'read': 1, 'write': 2}
+bad = []
+for caller in sorted(pathlib.Path('install/templates/workflows').glob('*.yml')):
+    ctext = caller.read_text()
+    cdoc = yaml.safe_load(ctext) or {}
+    cperm = cdoc.get('permissions') or {}
+    if not isinstance(cperm, dict):
+        continue
+    for m in re.finditer(r'uses:\s*vladm3105/aidoc-flow-ci/\.github/workflows/([A-Za-z0-9._-]+\.yml)@', ctext):
+        callee = pathlib.Path('.github/workflows') / m.group(1)
+        if not callee.exists():
+            continue
+        edoc = yaml.safe_load(callee.read_text()) or {}
+        # A reusable may declare permissions at workflow level, per job, or
+        # both; each job's token is intersect(caller grant, that job's block).
+        # The ceiling that matters is therefore the HIGHEST level the callee
+        # declares anywhere — if no job asks for it, the caller's grant is dead.
+        ceiling = {}
+        blocks = [edoc.get('permissions') or {}]
+        blocks += [j.get('permissions') or {} for j in (edoc.get('jobs') or {}).values() if isinstance(j, dict)]
+        for blk in blocks:
+            if not isinstance(blk, dict):
+                continue
+            for scope, lvl in blk.items():
+                if LEVEL.get(str(lvl), 0) > LEVEL.get(str(ceiling.get(scope, 'none')), 0):
+                    ceiling[scope] = lvl
+        for scope, want in cperm.items():
+            have = ceiling.get(scope, 'none')
+            if LEVEL.get(str(want), 0) > LEVEL.get(str(have), 0):
+                bad.append(f'{caller.name} grants {scope}:{want} but {callee.name} caps it at {have}')
+if bad:
+    print('\n'.join(bad), file=sys.stderr)
+    sys.exit(1)
+PY" "CI-0015 no caller template grants a permission its callee caps lower (intersection parity)"
 
 suite_summary "contract"
