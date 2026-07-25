@@ -115,9 +115,30 @@ strip_meta() {
   jq 'walk(if type == "object" then with_entries(select(.key | startswith("_") | not)) else . end)' "$1"
 }
 
+# --- coverage accounting (CI-0018) ---------------------------------------
+# A green run says almost nothing on its own: under the default GITHUB_TOKEN
+# branch-protection and actions.* are unreadable and repo-settings comes back
+# without its admin-only fields, so only `labels` is genuinely verified — yet
+# the job concluded success. Track which control families were actually
+# compared and state it in the summary, so a reader cannot mistake "nothing
+# was checkable" for "nothing has drifted".
+VERIFIED_FAMILIES=""
+SKIPPED_FAMILIES=""
+
+_family_of() { printf '%s' "${1%%.*}"; }
+
+mark_verified() {
+  case " $VERIFIED_FAMILIES " in *" $1 "*) ;; *) VERIFIED_FAMILIES="$VERIFIED_FAMILIES $1" ;; esac
+}
+
+mark_skipped() {
+  case " $SKIPPED_FAMILIES " in *" $1 "*) ;; *) SKIPPED_FAMILIES="$SKIPPED_FAMILIES $1" ;; esac
+}
+
 # --- helper: emit a cannot-check warning (security H4 — no silent green) ---
 warn_uncheckable() {
   echo "::warning::check-standards-drift: cannot check $1 ($2)"
+  mark_skipped "$(_family_of "$1")"
   FETCH_ERRORS=$((FETCH_ERRORS + 1))
 }
 
@@ -177,6 +198,7 @@ else
     echo "::warning::branch-protection.required_pull_request_reviews: canon=$canon_reviews actual=$local_reviews"
     DRIFT=$((DRIFT + 1))
   fi
+  mark_verified "branch-protection"
 fi
 rm -f "$bp_local" "$bp_canon_raw" "$bp_canon"
 
@@ -190,14 +212,30 @@ elif ! curl -fsSL "${TEMPLATE_BASE}/repo-settings.json" > "$rs_canon_raw" 2>/dev
   warn_uncheckable "repo-settings" "canon fetch failed"
 else
   strip_meta "$rs_canon_raw" > "$rs_canon"
+  # CI-0018: an admin-only field ABSENT from the `gh api repos/` response means
+  # the token could not read it, NOT that the setting drifted. Emitting
+  # `canon=false actual=null` presented unreadable state as a drift finding —
+  # inconsistent with the adjacent actions.* arm, which correctly says "cannot
+  # check". Never compare canon against a value we never obtained.
+  rs_checked=0
+  rs_unreadable=""
   for k in allow_merge_commit allow_squash_merge allow_rebase_merge delete_branch_on_merge allow_auto_merge allow_update_branch squash_merge_commit_title squash_merge_commit_message; do
-    local_v=$(jq -r --arg k "$k" 'if has($k) then .[$k] else "null" end' "$rs_local")
+    if ! jq -e --arg k "$k" 'has($k)' "$rs_local" >/dev/null 2>&1; then
+      rs_unreadable="${rs_unreadable}${rs_unreadable:+, }${k}"
+      continue
+    fi
+    local_v=$(jq -r --arg k "$k" '.[$k]' "$rs_local")
     canon_v=$(jq -r --arg k "$k" 'if has($k) then .[$k] else "null" end' "$rs_canon")
+    rs_checked=$((rs_checked + 1))
     if [ "$local_v" != "$canon_v" ]; then
       echo "::warning::repo-settings.${k}: canon=$canon_v actual=$local_v"
       DRIFT=$((DRIFT + 1))
     fi
   done
+  if [ -n "$rs_unreadable" ]; then
+    warn_uncheckable "repo-settings" "these admin-only fields are absent from the 'gh api repos/${REPO}' response, so the token can read the repo but not its merge settings — grant 'administration: read' or run with an admin PAT: ${rs_unreadable}"
+  fi
+  if [ "$rs_checked" -gt 0 ]; then mark_verified "repo-settings"; fi
 fi
 rm -f "$rs_local" "$rs_canon_raw" "$rs_canon"
 
@@ -217,6 +255,7 @@ else
       echo "::warning::actions.general.allowed_actions: canon=$canon_v actual=$local_v"
       DRIFT=$((DRIFT + 1))
     fi
+    mark_verified "actions"
   fi
   rm -f "$ap_general"
   # workflow.default_workflow_permissions
@@ -353,6 +392,7 @@ else
       DRIFT=$((DRIFT + 1))
     done <<< "$missing"
   fi
+  mark_verified "labels"
 fi
 rm -f "$lb_local" "$lb_canon"
 
@@ -376,5 +416,28 @@ else
 fi
 
 echo "check-standards-drift: $DRIFT drift, $FETCH_ERRORS fetch/scope error(s), $PIN_ERRORS pin error(s) ($MODE)"
+
+# --- coverage summary (CI-0018) ------------------------------------------
+# ALWAYS the last line, and stated in terms of what was VERIFIED rather than
+# what was found. Under the default GITHUB_TOKEN this typically reads
+# "verified 1/4 (labels)" — without it, a green check reads as "canon is
+# satisfied" when it actually means "almost nothing was readable".
+ALL_FAMILIES="branch-protection repo-settings actions labels"
+TOTAL_FAMILIES=4
+verified_list=$(printf '%s' "$VERIFIED_FAMILIES" | tr ' ' '\n' | grep -c . || true)
+skipped_out=""
+for fam in $ALL_FAMILIES; do
+  case " $VERIFIED_FAMILIES " in
+    *" $fam "*) ;;
+    *) skipped_out="${skipped_out}${skipped_out:+, }${fam}" ;;
+  esac
+done
+verified_out=$(printf '%s' "${VERIFIED_FAMILIES# }" | tr ' ' ',' | sed 's/,/, /g')
+if [ "$verified_list" -eq "$TOTAL_FAMILIES" ]; then
+  echo "check-standards-drift: coverage — verified ${verified_list}/${TOTAL_FAMILIES} control families (${verified_out})."
+else
+  echo "::warning::check-standards-drift: coverage — verified ${verified_list}/${TOTAL_FAMILIES} control families (${verified_out:-none}); NOT verified: ${skipped_out}. A green result here does NOT mean those families match canon — it means they could not be read. Re-run with an admin PAT (or grant 'administration: read') to verify the rest."
+fi
+
 [ "$STRICT" -eq 0 ] || [ $((DRIFT + FETCH_ERRORS + PIN_ERRORS)) -eq 0 ] || exit 1
 exit 0

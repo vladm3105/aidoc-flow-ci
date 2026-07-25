@@ -43,7 +43,7 @@ on:
         type: string
         default: ""
       litellm_allow_insecure_http:
-        description: "Explicitly allow an HTTP LiteLLM URL (private networks only)."
+        description: "Explicitly allow an http:// LiteLLM URL on a controlled private network. Required by the URL SCHEME, not by repo visibility — public repos on the shared self-hosted pool reach the proxy over the plain-HTTP Docker bridge and need this too (CI-0017)."
         type: boolean
         default: false
       tier:
@@ -212,6 +212,40 @@ jobs:
           repository: ${{ inputs.trust_config_repo }}
           ref: ${{ inputs.trust_config_ref }}
           token: ${{ steps.trust_app_ok.outputs.ok == '1' && steps.trust_app_token.outputs.token || secrets.AI_REVIEW_TOKEN || secrets.GITHUB_TOKEN }}
+
+      # CI-0014: assert the trust config's schema version BEFORE reading any field.
+      #
+      # The trust config is a SINGLE SHARED source (operations@main by default) while
+      # every consumer pins its OWN ci/vX.Y.Z reusable. A schema bump in the config
+      # repo is therefore a BREAKING change for every consumer that has not re-pinned
+      # yet, and nothing used to detect it: each read was a `jq '.field // "default"'`,
+      # so a config the reusable did not understand silently produced a default rather
+      # than an error. That is how the v1→v2 cutover left seven repos selecting a
+      # reviewer engine none of them held credentials for, for nine days, behind a
+      # surfaced error ("no parseable verdict — fail-closed") that named neither the
+      # cause, nor the trigger (a schema change in ANOTHER repository), nor the owner.
+      # Fail loud and name the source; never infer a default from an unknown schema.
+      - name: Assert trust-config schema version
+        env:
+          TRUST_SRC: ${{ inputs.trust_config_repo }}@${{ inputs.trust_config_ref }}
+        run: |
+          set -uo pipefail
+          CFG=.github/ai-review/config.json
+          SUPPORTED=2
+          VER=$(jq -r '.version // empty' "$CFG" 2>/dev/null || true)
+          if [ -z "$VER" ]; then
+            if jq -e 'has("reviewer")' "$CFG" >/dev/null 2>&1; then
+              echo "::error::trust config at ${TRUST_SRC} is schema v1 (has \`reviewer\`, no \`version\`), but this reusable is ci/v2.x and requires v${SUPPORTED} (\`litellm.model\`). Fix: point trust_config_repo/trust_config_ref at a v${SUPPORTED} config, or re-pin this caller to a ci/v1.x tag. Refusing to guess an engine."
+            else
+              echo "::error::trust config at ${TRUST_SRC} declares no \`version\` field, so its schema cannot be identified; this reusable requires v${SUPPORTED}. Fix: add '\"version\": ${SUPPORTED}' to .github/ai-review/config.json in that repo. Refusing to guess an engine."
+            fi
+            exit 1
+          fi
+          if [ "$VER" != "$SUPPORTED" ]; then
+            echo "::error::trust config at ${TRUST_SRC} is schema v${VER}, but this reusable (ci/v2.x) understands only v${SUPPORTED}. The trust config is SHARED across consumers while each consumer pins its own ci/ tag, so a schema bump there breaks every caller that has not re-pinned. Fix: re-pin this caller to a ci/ tag that supports v${VER}. Refusing to guess an engine."
+            exit 1
+          fi
+          echo "trust config ${TRUST_SRC}: schema v${VER} OK"
 
       # "We trust only ourself." Config-driven role allowlists in config.json:
       #   trust.ai_review = logins whose PRs get the AI gate (+ auto-merge)
@@ -653,12 +687,44 @@ jobs:
 
           echo "ai-review: assets fetched OK"
 
+      # CI-0014 — see the matching step in the `trust` job for the full rationale.
+      # This job fetches the same shared config independently, so it asserts too.
+      - name: Assert trust-config schema version
+        if: ${{ env.SKIP_REVIEW != '1' }}
+        env:
+          TRUST_SRC: ${{ inputs.trust_config_repo }}@${{ inputs.trust_config_ref }}
+        run: |
+          set -uo pipefail
+          CFG=.github/ai-review/config.json
+          SUPPORTED=2
+          VER=$(jq -r '.version // empty' "$CFG" 2>/dev/null || true)
+          if [ -z "$VER" ]; then
+            if jq -e 'has("reviewer")' "$CFG" >/dev/null 2>&1; then
+              echo "::error::trust config at ${TRUST_SRC} is schema v1 (has \`reviewer\`, no \`version\`), but this reusable is ci/v2.x and requires v${SUPPORTED} (\`litellm.model\`). Fix: point trust_config_repo/trust_config_ref at a v${SUPPORTED} config, or re-pin this caller to a ci/v1.x tag. Refusing to guess an engine."
+            else
+              echo "::error::trust config at ${TRUST_SRC} declares no \`version\` field, so its schema cannot be identified; this reusable requires v${SUPPORTED}. Fix: add '\"version\": ${SUPPORTED}' to .github/ai-review/config.json in that repo. Refusing to guess an engine."
+            fi
+            exit 1
+          fi
+          if [ "$VER" != "$SUPPORTED" ]; then
+            echo "::error::trust config at ${TRUST_SRC} is schema v${VER}, but this reusable (ci/v2.x) understands only v${SUPPORTED}. The trust config is SHARED across consumers while each consumer pins its own ci/ tag, so a schema bump there breaks every caller that has not re-pinned. Fix: re-pin this caller to a ci/ tag that supports v${VER}. Refusing to guess an engine."
+            exit 1
+          fi
+          echo "trust config ${TRUST_SRC}: schema v${VER} OK"
+
       - name: Resolve LiteLLM model
         if: ${{ env.SKIP_REVIEW != '1' }}
         env:
           MODEL_IN: ${{ inputs.model }}
         run: |
-          MODEL="${MODEL_IN:-$(jq -r '.litellm.model // "ai-reviewer"' .github/ai-review/config.json)}"
+          # No `// "ai-reviewer"` fallback: the v2 schema REQUIRES litellm.model, so a
+          # config missing it is malformed, not a case to paper over with a guess
+          # (CI-0014). The schema assertion above has already run.
+          MODEL="${MODEL_IN:-$(jq -r '.litellm.model // empty' .github/ai-review/config.json)}"
+          if [ -z "$MODEL" ]; then
+            echo "::error::trust config declares no \`litellm.model\`, which the v2 schema requires. Set it in the trust-config repo. Refusing to guess an engine."
+            exit 1
+          fi
           if [ "${#MODEL}" -gt 128 ] || ! [[ "$MODEL" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*$ ]]; then
             echo "::error::invalid LiteLLM model alias"
             exit 1

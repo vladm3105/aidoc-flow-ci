@@ -479,4 +479,47 @@ pa_bad="$(_pa_run '"not-an-object"')"
 assert_contains "$pa_bad" "patterns_allowed" "drift: unreadable response is surfaced"
 assert_absent "$pa_bad" "patterns_allowed: MISSING" "drift: unreadable response is NOT reported as missing patterns"
 
+# ── CI-0018: repo-settings must apply the SAME unreadable-vs-drifted rule ──────
+# Under the default GITHUB_TOKEN the admin-only merge settings are simply ABSENT
+# from the `gh api repos/` body. The old arm compared canon against the missing
+# value and printed `canon=false actual=null`, presenting unreadable state as a
+# drift finding — while the neighbouring actions.* arm (case 7 above) correctly
+# said "cannot check". These lock in the consistent behaviour.
+mkdir -p "$TMP/drift-ro/fixtures" "$TMP/drift-ro/bin"
+cp "$TMP/drift-pa/fixtures/"*.json "$TMP/drift-ro/fixtures/"
+cp "$TMP/drift-pa/bin/gh" "$TMP/drift-pa/bin/curl" "$TMP/drift-ro/bin/"
+# a read-only token's view: repo metadata present, admin-only merge fields absent
+jq '{name:"repo", default_branch:"main", visibility:"public", private:false}' \
+  "$TMP/drift-pa/fixtures/repo-actual.json" > "$TMP/drift-ro/fixtures/repo-actual.json"
+ro_out="$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-ro/fixtures" PATH="$TMP/drift-ro/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_absent   "$ro_out" "actual=null"                "drift: an UNREADABLE repo-setting is never printed as canon-vs-null drift"
+assert_absent   "$ro_out" "repo-settings.allow_merge_commit" "drift: no per-key drift line for fields the token could not read"
+assert_contains "$ro_out" "cannot check repo-settings" "drift: unreadable repo-settings is reported as cannot-check"
+assert_contains "$ro_out" "administration: read"       "drift: names the missing token scope (actionable)"
+assert_contains "$ro_out" "allow_merge_commit"         "drift: names WHICH fields were unreadable"
+assert_contains "$ro_out" "0 drift"                    "drift: unreadable repo-settings contributes ZERO drift"
+assert_eq "$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-ro/fixtures" PATH="$TMP/drift-ro/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 --strict >/dev/null 2>&1; echo $?)" \
+  "1" "drift: strict still FAILS on uncheckable repo-settings (a gate that cannot read must not pass)"
+
+# POSITIVE CONTROL — with the fields READABLE, genuine drift must still fire.
+# Without this, the assertions above would be satisfied by the check not existing.
+mkdir -p "$TMP/drift-rw/fixtures" "$TMP/drift-rw/bin"
+cp "$TMP/drift-pa/fixtures/"*.json "$TMP/drift-rw/fixtures/"
+cp "$TMP/drift-pa/bin/gh" "$TMP/drift-pa/bin/curl" "$TMP/drift-rw/bin/"
+jq '.allow_merge_commit = (.allow_merge_commit | not)' \
+  "$TMP/drift-pa/fixtures/repo-actual.json" > "$TMP/drift-rw/fixtures/repo-actual.json"
+rw_out="$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-rw/fixtures" PATH="$TMP/drift-rw/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_contains "$rw_out" "repo-settings.allow_merge_commit" "drift: a READABLE drifted repo-setting is still reported"
+assert_contains "$rw_out" "1 drift"                          "drift: a readable drifted repo-setting INCREMENTS the count"
+assert_absent   "$rw_out" "cannot check repo-settings"        "drift: readable settings are not mislabelled uncheckable"
+
+# ── CI-0018: the coverage summary bounds what a green result claims ────────────
+assert_contains "$ro_out" "coverage — verified"    "drift: emits a coverage summary"
+assert_contains "$ro_out" "NOT verified"           "drift: names the families it could NOT verify"
+assert_contains "$ro_out" "repo-settings"          "drift: the unverified list includes repo-settings"
+assert_contains "$rw_out" "coverage — verified 4/4" "drift: a fully-readable run reports full coverage"
+
 suite_summary "scripts"

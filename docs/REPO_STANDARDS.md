@@ -213,7 +213,14 @@ malformed responses fail closed and never become an approving verdict.
 
 The proxy URL MUST use HTTPS. Plain HTTP requires the explicit caller opt-in
 `litellm_allow_insecure_http: true` and is limited to a controlled private
-network. Use separate virtual keys for review and documentation maintenance,
+network. **The opt-in is required by the URL SCHEME, not by repo visibility**:
+any consumer whose `LITELLM_BASE_URL` begins `http://` must set it, public or
+private. On the shared self-hosted pool the proxy is reached over the Docker
+bridge gateway (`http://172.17.0.1:4001/v1`) — plain HTTP on a private network —
+so every consumer there needs the flag, and since PLAN-013 routes the whole AI
+flow to that pool, public repos are the common case rather than the exception.
+`LITELLM_BASE_URL` MUST NOT be loopback: jobs run inside a container, so
+`127.0.0.1`/`localhost` resolve to the container, not the proxy host. (CI-0017.) Use separate virtual keys for review and documentation maintenance,
 restricted to their model aliases with spend/rate limits and rotation; never
 use the LiteLLM master key. Disable sensitive prompt/response logging and apply
 an appropriate retention policy: AI review sends a bounded, secret-pattern-
@@ -347,6 +354,86 @@ hard-fails instead of silently fetching `main`. **Pre-release pins
 would prefix-match `ci/v2.10.0-rc.1` to the nonexistent `ci/v2.10.0`. Pin
 released tags only.
 
+### 4.2b Shared config is versioned, and a reusable asserts the schema it reads
+
+**A reusable MUST assert the schema version of any config it reads from a SHARED
+source BEFORE reading any field, and MUST fail loud rather than default.**
+
+The trust config is a single shared source (`trust_config_repo`, default
+`vladm3105/aidoc-flow-operations@main`) while every consumer pins its **own**
+`ci/vX.Y.Z` reusable. That combination has a property worth stating plainly:
+
+> **One repo's config upgrade is a breaking change for every consumer that has
+> not re-pinned yet.**
+
+`jq -r '.field // "default"'` is the wrong shape for reading such a config. A
+schema the reusable does not understand then produces a *default* instead of an
+*error*, and the resulting failure surfaces far from its cause. This is not
+hypothetical: the v1→v2 cutover (`reviewer` → `litellm.model`) left seven
+consumers silently selecting an engine none of them had credentials for, for
+nine days, behind an error that named neither the cause, the trigger, nor the
+owner — long enough for a consumer to record the wrong diagnosis in its HANDOFF
+and carry it across sessions (CI-0014).
+
+Requirements:
+
+- assert the version **first**, in every job that fetches the config;
+- the error MUST name the **config source** (`owner/repo@ref`), the version
+  **found**, the version **expected**, and the **remedy** — a mismatch is
+  cross-repo, so an error that does not name the other repository sends the
+  reader to audit the wrong one;
+- do NOT fall back to an engine, model, or credential. "Refusing to guess" is
+  the correct behaviour;
+- a field the schema marks `required` gets no `//` fallback — the fallback
+  silently contradicts the schema.
+
+**Schema bumps.** Either version the config path (`config.v1.json` /
+`config.v2.json`) so consumers resolve their own, or land the bump only after
+every consumer has re-pinned. The assertion makes a mismatch *detected*, not
+*safe*.
+
+### 4.2c A reusable's `permissions:` block is a ceiling, not a request
+
+**A reusable MUST declare the maximum permission any of its steps needs.**
+
+GitHub computes a reusable's token as the **intersection** of the caller's grant
+and the callee's declaration. A callee capped at `read` therefore cannot be
+raised by any caller, and the corresponding step is unreachable for every
+consumer. Both halves must be raised; either alone is inert.
+
+State this in template comments as an intersection in **both** directions.
+"A callee cannot grant its own permissions — the caller must" is only half the
+rule, and reading it as the whole rule led a consumer to raise its caller and
+wait for an upstream half that was never coming (CI-0015).
+
+**A green reusable proves nothing about a step gated behind a condition that has
+never been true.** `docs-sync`'s comment step is gated on `proposed != 0`; it
+reported green from the day it shipped until the first real proposal, which is
+when the permission ceiling was finally exercised. When adding a step that needs
+a permission, verify the ceiling on the path that uses it — not by observing a
+green check.
+
+### 4.2d A check states its coverage; unreadable is never reported as drifted
+
+**A verification job MUST distinguish "this differs from canon" from "I could
+not read this", and MUST state how much it actually verified.**
+
+Two failure modes, both live (CI-0018):
+
+1. **Unreadable reported as drift.** Comparing canon against a value never
+   obtained yields lines like `repo-settings.allow_merge_commit: canon=false
+   actual=null`, which read as findings but mean "the token could not read it".
+   Route absent/unreadable state through the `warn_uncheckable` path instead.
+2. **Green that verified almost nothing.** Under the default `GITHUB_TOKEN`,
+   branch-protection and `actions.*` are unreadable and `repo-settings` returns
+   without its admin-only fields — leaving `labels` as the only genuinely
+   verified family, while the job concludes `success`.
+
+Therefore: emit a **coverage summary as the final line** — `verified N/M control
+families`, naming the unverified ones and stating explicitly that a green result
+does not mean they match canon. Under `--strict`, uncheckable is fatal: a
+release gate that cannot read the settings it gates on must not pass.
+
 ### 4.3 Reusable workflows install tools as BINARIES, never third-party actions
 
 **Canon reusable workflows may `uses:` only `actions/*`, `github/*`, and
@@ -479,6 +566,26 @@ verifiable with an admin-scoped token — NOT a grantable `GITHUB_TOKEN` workflo
 scope** — so under the default token that one control reports `warn_uncheckable`
 (non-blocking unless `--strict`), never a false green; run with an admin PAT to
 verify it.
+
+#### 4.3a-scope `secret-scan` scans FULL HISTORY, and its docs must say so
+
+Canon runs **`gitleaks git .`** — all reachable commit history — not
+`gitleaks dir .`, which scans only the working tree at `HEAD`. This changed in
+`ci/v2.0.0`; the header comment and migration guide said `dir` until
+`ci/v2.15.0`.
+
+The scope is deliberate: a credential reachable in history is leaked whether or
+not it survives at `HEAD`. The rule is about **documenting the scope actually
+run**. A consumer validating locally per a guide that names the wrong command
+sees clean and pushes into a red gate — one saw **0 findings under `dir` and 33
+under `git`**, and needed a second allowlisting round (CI-0016).
+
+**Rules.** Local validation MUST use `gitleaks git .`. First-run v2 adopters
+should expect findings in unreachable history; those cannot be fixed by editing
+files and MUST be allowlisted with an **anchored** `paths` regex (an unanchored
+one is reported INCONCLUSIVE by the canary in §4.3a, because it would suppress
+real findings too). **When a workflow's scope changes, the header comment, the
+migration guide, and the changelog are all part of the change.**
 
 #### 4.3a A consumer `.gitleaks.toml` MUST declare rules — canon proves the ruleset is non-empty
 

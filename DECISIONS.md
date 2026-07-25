@@ -707,6 +707,242 @@ Two consequences follow directly, and are decided here rather than per-PR:
 
 ---
 
+## CI-0014: A reusable asserts the trust-config schema version it understands (2026-07-25)
+
+**Context**
+
+The trust config (`.github/ai-review/config.json`) is a **single shared source**
+— `trust_config_repo` defaults to `vladm3105/aidoc-flow-operations@main` — while
+each consumer pins its **own** `ci/vX.Y.Z` reusable. Every read of that config
+was a `jq -r '.field // "default"'`, so a schema the reusable did not understand
+silently produced a default instead of an error.
+
+`ci/v2.0.0` replaced the v1 `reviewer` field with `litellm.model`. When
+operations cut over on 2026-07-16, `reviewer` vanished for *every* consumer,
+including the seven still on `ci/v1.9.5`, whose `jq -r '.reviewer // "codex"'`
+then silently selected the codex engine. None of those repos holds
+`OPENAI_API_KEY`, so all seven had a fail-closed AI-review gate that could not
+pass for ~9 days; merges in that window went through `--admin`. The surfaced
+error — `no parseable verdict — fail-closed` — named neither the cause, nor the
+trigger (a schema change in *another repository*), nor the owner. One consumer's
+`HANDOFF.md` recorded the cause as a lapsed reviewer credential, and that
+misdiagnosis survived across sessions.
+
+**Decision**
+
+A reusable MUST assert the config schema version it understands **before**
+reading any field, and MUST fail loud — naming the config source, the version
+found, the version expected, and the remedy — rather than defaulting. The v2
+reusables assert `version == 2` in both jobs that fetch the config, and the
+`litellm.model` read no longer carries a `// "ai-reviewer"` fallback (the v2
+schema already declares `version: {const: 2}` and requires `litellm.model`; the
+assertion enforces a contract the schema stated but no code checked).
+
+**Consequences**
+
+- Forward-only by founder direction (2026-07-25): no `ci/v1.9.6` backport. A
+  v1 reusable has no LiteLLM client, so failing loud there would name the cause
+  but still not restore the gate; migrating those consumers to v2 is the remedy.
+- **Shared config + per-consumer pins means one repo's upgrade is a breaking
+  change for every un-upgraded consumer.** Any future schema bump MUST either
+  version the config path (`config.v1.json` / `config.v2.json`) or land after
+  every consumer has re-pinned. The assertion makes such a mismatch *detected*
+  and *named*; it does not make it safe.
+- Verified before landing: the live operations config declares `"version": 2`,
+  so the assertion passes for current v2 consumers rather than bricking them.
+
+**Origin**
+
+Finding 1 of the `aidoc-flow-framework` `ci/v2.14.0` migration report
+(`framework/tmp/CANON-FINDINGS_ci-canon-v2-migration.md`, 2026-07-25), filed
+upstream after reproduction against canon source.
+
+---
+
+## CI-0015: A reusable's `permissions:` block is a ceiling, not a request (2026-07-25)
+
+**Context**
+
+`docs-sync.yml` capped `pull-requests: read` at workflow level with no job
+override, while its `sync` job runs `gh pr comment`. GitHub computes a reusable
+workflow's token as the **intersection** of caller and callee permissions, so no
+caller could grant `write` — the comment step was unreachable for every consumer
+from the day it shipped. It went unnoticed because the step is gated on
+`proposed != 0` and had never fired; the workflow reported green throughout.
+
+The caller template *did* grant `write`, and its comment explained the rule only
+half-correctly ("a callee cannot grant its own permissions — the caller must").
+That framing led a consumer to raise its caller (framework PR #333) expecting the
+upstream half to arrive with a re-pin; it did not, and `docs-sync` stayed red
+after migrating.
+
+**Decision**
+
+A reusable MUST declare the maximum permission any of its steps needs, and canon
+comments MUST state the rule as an intersection in **both** directions: raising
+either half alone is inert. `docs-sync.yml` moves to `pull-requests: write`.
+
+**Consequences**
+
+- Consumers must ALSO grant `pull-requests: write` on their `docs-sync` caller.
+  Callers generated before `ci/v2.15.0` grant `read` and stay broken until both
+  halves are raised — `--repin` does not fix this, because it rewrites `uses:`
+  lines only.
+- A green reusable proves nothing about a step gated behind a condition that has
+  never been true. Permission ceilings are exercised only on the path that uses
+  them.
+
+**Origin**
+
+Finding 2 of the framework `ci/v2.14.0` migration report (2026-07-25).
+
+---
+
+## CI-0016: `secret-scan` scans full history; document the scope it actually runs (2026-07-25)
+
+**Context**
+
+`ci/v1.x` ran `gitleaks dir .` (working tree at `HEAD`); `ci/v2.x` runs
+`gitleaks git .` (all reachable commit history). The workflow's own header
+comment still said `dir`, and neither `MIGRATION_v2.0.0.md` nor the `v2.0.0`
+changelog mentioned the change. A consumer validating locally per the migration
+guide ran `dir`, saw **0 findings**, pushed, and CI found **33** — all in
+pre-migration history at paths absent from `HEAD` — forcing a second round of
+allowlisting.
+
+**Decision**
+
+The scope expansion stands: full-history scanning is the correct shape for a
+secret gate, since a credential reachable in history is leaked regardless of
+whether it survives at `HEAD`. Only the documentation was wrong, and it is
+corrected at the workflow header and in the migration guide, which now states
+the v1→v2 scope change and directs local validation to `gitleaks git .`.
+
+**Consequences**
+
+- First-run v2 adopters with historical placeholder credentials should expect
+  new findings, and must allowlist with an **anchored** `paths` regex — an
+  unanchored allowlist is reported INCONCLUSIVE by the config canary because it
+  would also suppress real findings.
+- Canon rule: when a workflow's scope changes, the header comment, the migration
+  guide, and the changelog are all part of the change.
+
+**Origin**
+
+Finding 3 of the framework `ci/v2.14.0` migration report (2026-07-25).
+
+---
+
+## CI-0017: `litellm_allow_insecure_http` is scoped by URL scheme, not repo visibility (2026-07-25)
+
+**Context**
+
+PLAN-009 Edit D assigned `litellm_allow_insecure_http: true` to the private trio
+only, implicitly assuming public consumers reach the proxy over HTTPS. That does
+not follow: `aidoc-flow-framework` is **public** and reaches the same host-local
+proxy over `http://`, so it needed the flag too. Separately, the bridge-vs-
+loopback base URL was documented only as a parenthetical, and its failure mode is
+opaque — `proxy request failed after 3 attempts: URLError`. Setting
+`http://127.0.0.1:4001/v1` works when tested **from the host** and fails only in
+CI, because the job executes inside a container.
+
+**Decision**
+
+State the rule by **URL scheme**: any consumer whose `LITELLM_BASE_URL` begins
+`http://` needs the flag, regardless of repo visibility. Since PLAN-013
+(CI-0008) routes the whole AI flow to the shared self-hosted pool — where the
+proxy is the plain-HTTP Docker bridge gateway — public repos are the common
+case, not the exception. `LITELLM_BASE_URL` MUST NOT be loopback, and
+`litellm_client.py` now names that specific cause when a connection fails from
+inside a container instead of surfacing a bare `URLError`.
+
+**Consequences**
+
+- Corrected wherever the rule was stated by visibility: `CLAUDE.md`,
+  `docs/REPO_STANDARDS.md`, both reusables' input descriptions, and both caller
+  templates.
+- Container detection sharpens an error message only; it never gates behaviour,
+  so a false negative merely restores the previous, vaguer diagnostics.
+
+**Origin**
+
+Findings 5 and 6 of the framework `ci/v2.14.0` migration report (2026-07-25).
+
+---
+
+## CI-0018: A drift check states its coverage; unreadable is not drifted (2026-07-25)
+
+**Context**
+
+Run `30174458428` on `aidoc-flow-framework` (`tier=governance`, default
+`GITHUB_TOKEN`) concluded **success** while verifying almost nothing. It emitted
+`repo-settings.allow_merge_commit: canon=false actual=null` for eight fields —
+presenting *unreadable* state as a drift finding, since `null` meant the token
+could not read it. The adjacent `actions.*` arm handled the same situation
+correctly with "cannot check". Of four control families, branch-protection and
+actions were skipped and repo-settings were unreadable; only **labels** was
+genuinely verified, and the job still passed.
+
+**Decision**
+
+Two rules. (1) **Never compare canon against a value never obtained** — an
+admin-only field absent from the API response routes through `warn_uncheckable`,
+matching the precedent already set by the `actions.selected.patterns_allowed`
+arm. (2) **A drift check states its own coverage**: the final line reports
+`verified N/4 control families`, names the unverified ones, and says explicitly
+that a green result does not mean they match canon.
+
+**Consequences**
+
+- Under the default `GITHUB_TOKEN` a typical run now reads `verified 1/4
+  (labels)` with a warning naming the rest — the honest reading of what a green
+  check meant all along.
+- `--strict` already failed on `FETCH_ERRORS`, so a gate that cannot read its
+  settings already did not pass; that behaviour is unchanged and now tested.
+- Consistent with the failure class named in CI-0011 and CI-0013: a check that
+  cannot see its subject must say so rather than report a comparison.
+
+**Origin**
+
+Finding 4 of the framework `ci/v2.14.0` migration report (2026-07-25).
+
+---
+
+## CI-0019: A plan names `Latest` as its rollout target, never a fixed tag (2026-07-25)
+
+**Context**
+
+PLAN-009 carried two contradictions. Its Phase 2 **Edit F** body still said to
+move only the heavy *review* job to the self-hosted pool and keep the trust job
+on `ubuntu-latest` — the pre-PLAN-013 shape, contradicting the plan's own
+superseded-target banner, and **under-sizing the pool by half** for anyone who
+followed the body. Its fleet target said `ci/v2.8.0`, six minors behind the
+current `Latest` (`ci/v2.14.0`), so a consumer following it literally would
+re-pin and immediately need a second re-pin. Both had already gone stale once
+before (`ci/v2.0.1` → `ci/v2.8.0`).
+
+**Decision**
+
+A multi-phase rollout plan states its target as **`Latest` resolved at execution
+time** (from `VERSION` or `gh release view`), not a fixed tag, and directs the
+executor to the release notes for caller-body changes `--repin` cannot apply.
+Where a plan body is superseded, the body is corrected — a banner alone is not
+sufficient, because executors follow bodies.
+
+**Consequences**
+
+- Edit F now sets **both** `runner_labels_routine` and `runner_labels_review` to
+  the pool, with the fork-safety boundary stated inline (a fork reaches only the
+  `trust` job, which checks out the trusted config repo and executes zero PR
+  code; fork-code-executing lint flows stay on `ubuntu-latest`).
+- Pool sizing for public consumers must budget for both jobs per repo.
+
+**Origin**
+
+Finding 7 of the framework `ci/v2.14.0` migration report (2026-07-25).
+
+---
+
 <!-- Append new entries above this line; append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
 and update the superseded entry's "Consequences" section to reference

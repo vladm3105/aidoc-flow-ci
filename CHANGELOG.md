@@ -5,6 +5,116 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+> **Consumer action required in this release.** `docs-sync` callers must grant
+> `pull-requests: write` (see below) — a re-pin alone does not fix it.
+
+### Fixed — a v1 consumer silently mis-routed once the shared trust config went v2 (CI-0014)
+
+- The trust config is a **single shared source** (`trust_config_repo`, default
+  `vladm3105/aidoc-flow-operations@main`) while each consumer pins its **own**
+  `ci/vX.Y.Z` reusable. Every read of it was `jq -r '.field // "default"'`, so a
+  schema the reusable did not understand produced a **default instead of an
+  error**.
+- `ci/v2.0.0` replaced `reviewer` with `litellm.model`. When operations cut over
+  on 2026-07-16, `reviewer` vanished for every consumer — including the seven
+  still on `ci/v1.9.5`, whose `'.reviewer // "codex"'` then silently selected the
+  codex engine. None holds `OPENAI_API_KEY`, so **all seven had a fail-closed AI
+  review gate that could not pass for ~9 days**; merges in that window went via
+  `--admin`. The surfaced error (`no parseable verdict — fail-closed`) named
+  neither the cause, the trigger (a schema change in *another repo*), nor the
+  owner — one consumer recorded a lapsed reviewer credential as the cause and
+  carried that misdiagnosis across sessions.
+- Now: both jobs that fetch the config **assert `version == 2` before reading any
+  field**, and fail with an error naming the config source, the version found,
+  the version expected, and the remedy. The `litellm.model` read drops its
+  `// "ai-reviewer"` fallback — the v2 schema already declares
+  `version: {const: 2}` and requires `litellm.model`, so the assertion enforces a
+  contract the schema stated but no code checked.
+- **Not backported to `ci/v1.x`** (founder direction, 2026-07-25). A v1 reusable
+  has no LiteLLM client, so failing loud there would name the cause without
+  restoring the gate; migrating those consumers to v2 is the remedy. The six
+  un-migrated repos remain latent until they re-pin.
+- Codified as `docs/REPO_STANDARDS.md` §4.2b.
+
+### Fixed — `docs-sync` could not post its dry-run comment on ANY consumer (CI-0015)
+
+- The callee capped `pull-requests: read` at workflow level with no job override,
+  while its `sync` job runs `gh pr comment`. A reusable's token is the
+  **intersection** of caller and callee permissions, so **no caller could grant
+  `write`** — the step died on `GraphQL: Resource not accessible by integration
+  (addComment)` under `set -euo pipefail`.
+- It went unnoticed for the workflow's entire life because the step is gated on
+  `proposed != 0` and had never fired; the check reported green until a merge
+  finally produced a proposal.
+- **`docs-sync.yml` now declares `pull-requests: write`.**
+- ⚠️ **Consumers must ALSO raise their caller to `pull-requests: write`.** The
+  intersection cuts both ways, and `--repin` does not fix it (it rewrites `uses:`
+  lines only). Callers generated before this release grant `read`. The caller
+  template's comment previously stated the rule half-correctly ("a callee cannot
+  grant its own permissions — the caller must"), which led at least one consumer
+  to raise only its caller and wait for an upstream half that was not coming;
+  the comment now states the intersection in both directions.
+- Codified as §4.2c.
+
+### Fixed — `standards-drift` passed green while verifying almost nothing (CI-0018)
+
+- `repo-settings` compared canon against fields **absent** from the `gh api
+  repos/` response, emitting `canon=false actual=null` — presenting *unreadable*
+  state as a drift finding, while the adjacent `actions.*` arm correctly said
+  "cannot check". Absent admin-only fields now route through `warn_uncheckable`
+  and name both the missing token scope and which fields were unreadable.
+- Under the default `GITHUB_TOKEN` only **1 of 4** control families (`labels`)
+  was genuinely verified, and the job still concluded `success`. Runs now end
+  with a **coverage summary** — `verified N/4 control families`, naming the
+  unverified ones and stating that green does not mean they match canon.
+- `--strict` already failed on uncheckable; unchanged, and now covered by tests.
+- 14 new assertions, including a positive control proving readable drift is still
+  detected and counted.
+- Codified as §4.2d.
+
+### Fixed — `secret-scan` documented a different scan than it ran (CI-0016)
+
+- Header comment said `gitleaks dir` (working tree); the code runs `gitleaks git`
+  (full commit history) since `ci/v2.0.0`. Neither `MIGRATION_v2.0.0.md` nor the
+  `v2.0.0` changelog mentioned the scope change.
+- A consumer validating locally per the guide ran `dir`, saw **0 findings**,
+  pushed, and CI found **33** — all in pre-migration history at paths absent from
+  `HEAD` — forcing a second allowlisting round.
+- The scope expansion is an **improvement and stands**; only the documentation
+  was wrong. Corrected at the header, and `MIGRATION_v2.0.0.md` gains a §7
+  directing local validation to `gitleaks git .` and explaining anchored
+  allowlists for unreachable history.
+- Codified as §4.3a-scope.
+
+### Fixed — `litellm_allow_insecure_http` was scoped by repo visibility (CI-0017)
+
+- PLAN-009 assigned the flag to the private trio only, assuming public consumers
+  reach the proxy over HTTPS. `aidoc-flow-framework` is **public** and reaches
+  the same host-local proxy over `http://`, so it needed the flag too.
+- The rule is now stated by **URL scheme**: any consumer whose `LITELLM_BASE_URL`
+  begins `http://` needs it, regardless of visibility. Since PLAN-013 routes the
+  whole AI flow to the shared self-hosted pool — where the proxy is the
+  plain-HTTP Docker bridge — public repos are the common case. Corrected in
+  `CLAUDE.md`, `REPO_STANDARDS.md` §4.0b, both reusables' input descriptions, and
+  both caller templates.
+- The `LITELLM_BASE_URL` bridge-vs-loopback gotcha is promoted from a
+  parenthetical to a callout. `litellm_client.py` now **names** the cause when a
+  connection fails from loopback inside a container, instead of surfacing a bare
+  `proxy request failed after 3 attempts: URLError` — this URL works when tested
+  from the host and fails only in CI, which is what made it expensive.
+
+### Changed — PLAN-009 targets `Latest`, and its Edit F body matches its banner (CI-0019)
+
+- Phase 2 **Edit F** said to move only the review job to the pool and keep the
+  trust job on `ubuntu-latest` — the pre-PLAN-013 shape, contradicting the plan's
+  own superseded-target banner and **under-sizing the pool by half**. It now sets
+  both `runner_labels_routine` and `runner_labels_review`, with the fork-safety
+  boundary stated inline.
+- The fleet target said `ci/v2.8.0`, six minors stale; following it literally
+  meant an immediate second re-pin. Targets are now resolved as **`Latest` at
+  execution time**, with a pointer to release notes for caller-body changes
+  `--repin` cannot apply.
+
 ### Added — `install.sh` takes a mandatory backup before touching a consumer (FT-57)
 
 - A consumer may carry its own customized, established flows. `install.sh` mutates

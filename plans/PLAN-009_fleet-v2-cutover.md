@@ -1,10 +1,18 @@
-# PLAN-009 — Sync the aidoc-flow fleet to CI canon (target superseded → `ci/v2.8.0`)
+# PLAN-009 — Sync the aidoc-flow fleet to CI canon (target: `Latest`)
 
-> **⚠️ FLEET TARGET SUPERSEDED (2026-07-18, PLAN-015 B1).** The single fleet
-> rollout target is now **`ci/v2.8.0`** — the tag PLAN-015 cuts (consumer drift
-> detector + honest install-verify + the pre-push/doc fixes). It is
-> **forthcoming**: the current latest is `ci/v2.7.0`, and `v2.8.0` is cut once
-> PLAN-015's code tasks land. The **v2.0.1** mechanics in the body below remain
+> **⚠️ FLEET TARGET IS `Latest` AT EXECUTION TIME (re-stated 2026-07-25,
+> CI-0019).** Do **not** re-pin to a tag named in this document. Every previously
+> named target here (`ci/v2.0.1`, then `ci/v2.8.0`) went stale while the plan sat
+> — `ci/v2.8.0` was already six minors behind by 2026-07-25, so a consumer
+> following it literally would re-pin and then immediately need a second re-pin.
+> **Resolve the target at execution time** from `VERSION` in this repo (or
+> `gh release view --repo vladm3105/aidoc-flow-ci`), and read that release's
+> notes for caller-body changes `--repin` cannot apply (it rewrites `uses:` lines
+> only — e.g. FT-43's trigger/concurrency edits).
+>
+> **Historical target (superseded, 2026-07-18, PLAN-015 B1):** `ci/v2.8.0` — the
+> tag PLAN-015 cut (consumer drift detector + honest install-verify + the
+> pre-push/doc fixes). The **v2.0.1** mechanics in the body below remain
 > valid as the **v1→v2 cutover reference** (per-repo steps, label contract,
 > pilot-then-propagate), but the fleet re-pins **straight to `ci/v2.8.0`**, not
 > v2.0.1. Unlike v2.0.1, **`ci/v2.8.0` is NOT a drop-in re-pin**: under the
@@ -242,12 +250,29 @@ On a feature branch:
 
 Repeat A + C (+ secret-scan audit) per repo, plus the new **Edit F** below.
 
-- **F — `runner_labels_review` → self-hosted** on the ai-review caller (Phase 0
-  #2 resolution): set `runner_labels_review: '["self-hosted","ci-runner","single-use"]'`
-  so the LiteLLM-facing review job reaches the private proxy; keep
-  `runner_labels_routine: '"ubuntu-latest"'` (fork-facing trust job) and every
-  other check on `ubuntu-latest`. Needs a self-hosted review runner registered on
-  the proxy host (shared with the private tier's pool). Safe per `runners.md` §5a.
+- **F — the WHOLE ai-review flow → self-hosted** on the ai-review caller: set
+  **both** `runner_labels_routine` **and** `runner_labels_review` to
+  `'["self-hosted","ci-runner","single-use"]'`.
+
+  > **Corrected 2026-07-25 (CI-0019).** This bullet previously said to move only
+  > the heavy *review* job and keep `runner_labels_routine: '"ubuntu-latest"'`
+  > for the trust job — the pre-PLAN-013 shape, and a direct contradiction of
+  > this plan's own superseded-target banner. Since `ci/v2.2.0` (PLAN-013) the
+  > AI flows ship as ONE protected caller template with both label inputs on the
+  > pool; there is no `-public`/`-private` split. **Following the old body
+  > under-sizes the pool by half**, because it provisions for the review job
+  > only while the trust job also lands there.
+  >
+  > This is safe and is not the untrusted-code-on-self-hosted anti-pattern: a
+  > fork triggers only the `trust` job, which checks out the *trusted config
+  > repo* — never the PR head — and reads PR metadata, so it executes zero PR
+  > code. The review job is `needs: trust`-gated and forks are never trusted.
+  > The fork-code-executing lint flows (`markdown-lint`, `links`, `pre-commit`)
+  > MUST stay on `ubuntu-latest`. Full boundary: `docs/security.md` §3 +
+  > `docs/runners.md` §5a.
+
+  Needs a self-hosted pool registered on the proxy host (shared with the private
+  tier's). Size it for **both** jobs per repo, not one.
 - framework: C is the SHA `e15ec7d4`→v2.0.1-SHA bump; F as above; human-merge is
   enforced server-side (`composition.yml:225` + omission from `auto_merge.repos`),
   so no `tier:` change needed.
