@@ -27,6 +27,75 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 >    deliberately, because failing *it* would SKIP `ai-review`, and a skipped
 >    required check reports green.
 
+### Fixed — `ai-review` cancelled itself, blocking every PR on three tiers (CI-0025)
+
+- The caller subscribes to `pull_request_review: [submitted]` and the reviewer
+  **submits reviews** — on the approval path, and again for the IPLAN-0029
+  non-counting comment-state review that fires composition's gov-lock branch. The
+  concurrency predicate exempted only `labeled`/`unlabeled`, and `submitted` is
+  neither, so the review-triggered run cancelled **the run that had just posted
+  that review**, on the same head SHA.
+- A cancelled required check is **not** success and the rollup stays `FAILURE`
+  (scope and the open platform question: `REPO_STANDARDS` §23.1 and #330). `call / ai-review` is required on the **ops, product and governance**
+  tiers, so those PRs could only merge with `--admin`.
+- **Nothing reported it.** `gh pr checks` showed the green run; `gh pr merge` said
+  only "the base branch policy prohibits the merge", naming no check; the
+  cancelled duplicate was visible only through the GraphQL `isRequired`
+  projection. The documented `skip-ai-review` label-cycle recovery made it worse,
+  starting further runs that cancelled one another.
+- **The fix is an allowlist**, not another exemption:
+  `github.event_name == 'pull_request_target' && contains(fromJSON('["opened","synchronize"]'), github.event.action)`.
+  The first draft was a denylist and **did not close the defect** — the caller
+  subscribes to eight `(event, action)` pairs, and exempting only the known
+  self-emitted ones still cancelled on `reopened`, `ready_for_review` and
+  `converted_to_draft`, which FT-43 added to the caller after the predicate was
+  written.
+- **Cost, stated accurately:** letting the review-triggered run finish is cheap
+  only on an **armed** repo. R3's unarmed guard runs before the review skip (it
+  closes the ci/v2.0.1 bypass), so an unarmed repo runs a **full** review on every
+  review event; and the `trust` job runs in full either way, taking one serial
+  runner slot.
+- **The lesson already existed in canon.** `composition.yml` states it at its own
+  `concurrency:` block and uses a flat `cancel-in-progress: false`. `ai-review`
+  cannot go that far — its runs are expensive, so a real push must still supersede
+  one. FT-43 fixed the label half and did not generalise.
+- ⚠️ **`ai-review` is the only workflow fixed here, not the only one exposed.** The
+  mechanism does not care who emits the event: any required context whose caller
+  subscribes to a non-code-changing action while `cancel-in-progress: true` is in
+  force has the same defect. **Note where that flag lives**, because it decides
+  the release boundary: `ai-review` is the only one that sets it in the
+  **reusable**, which is why this fix reaches consumers by a re-pin alone. For
+  `audit-trail` and the lint family the reusables carry no `concurrency:` block
+  at all — the flag is in the **caller templates**, so fixing them requires
+  consumers to re-install workflow files. Bundling them here would falsify this
+  entry's own "no consumer action beyond re-pinning". The other known instances are `audit-trail`
+  (`call / verify`) and the lint family (`call / Lint / format / security hooks`);
+  audit-trail's `labeled` trigger is deliberate, for the documented
+  `skip-audit-trail` escape hatch, so canon's own instructions fire it by a human
+  label write. Filed as #329 rather than expanded into this release.
+- **Narrowed decisively, not proven closed.** GitHub cancels a *pending* run when a
+  newer one queues in the same group, regardless of `cancel-in-progress` — so one
+  in-flight run plus two exempt events can still yield a cancelled context, and
+  the gate supplies one of those events itself. (What remains unverified is only
+  whether an evicted-while-pending run has already materialised its check-run.) The deterministic every-PR case is
+  gone; this residual applies to a flat `cancel-in-progress: false` too.
+- The FT-43 contract test asserted the predicate by **grepping its literal text**,
+  so it stayed green while this case was absent. It now **evaluates** the shipped
+  expression and **derives its cases from the caller template's own `types:`**, so
+  adding a trigger fails the suite until it is classified. Mutation-verified
+  against the original predicate, the failed first draft, and a fail-unsafe
+  variant — all three go red.
+- Codified as `docs/REPO_STANDARDS.md` §23 and `DECISIONS.md` CI-0025.
+- ⚠️ **One caveat for hand-edited callers:** the allowlist is keyed on
+  `pull_request_target`, which is what the shipped template uses. A caller
+  hand-edited to `pull_request` will now never cancel, so pushes stop superseding
+  an in-flight review — it fails safe, but wastes runs. Move such a caller back to
+  `pull_request_target`, which this gate needs for its base-repo secrets anyway.
+- **Consumer action: none beyond re-pinning.** No input, secret, permission or
+  required-context change. A PR whose head SHA already carries a cancelled context
+  needs one new push — or a re-run of that specific cancelled run, which
+  replaces its conclusion in place — to clear it.
+
 ### Fixed — the `sync-version-refs` pre-commit hook skipped 8 of its 14 targets locally (#323)
 
 - The hook was scoped by a `files:` regex listing 6 of the 14 static `TARGETS`

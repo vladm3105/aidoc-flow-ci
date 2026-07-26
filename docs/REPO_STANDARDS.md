@@ -2004,3 +2004,117 @@ negated address ranges must clobber the historical rollback command.
 
 **Origin:** found in the `ci/v2.15.0` pre-cut review — the release's own prep
 re-falsified the rollback instruction. Recorded as CI-0024.
+
+## 23. Only a code-changing event may cancel an in-flight run of a required gate
+
+**A required check that is cancelled at the live head SHA can block a PR
+permanently: a cancelled check is not success, and a later success of the same
+context from a _separate run_ does not replace it (§23.1 scopes that claim to
+what was observed). So only a genuinely code-changing event may cancel an
+in-flight run of a gate — and that is expressed as an allowlist, never as a
+denylist of the events the gate itself emits.**
+
+### 23.1 The failure mode
+
+**Observed** on the CI-0025 incident (`aidoc-flow-framework` #346): a `cancelled`
+and a `SUCCESS` check-run for the same context name, from two different workflow
+runs, both persisted on the same head SHA, both reported `isRequired`, and the
+rollup was `FAILURE`. A later success from a _different run_ did not displace the
+earlier cancellation. Branch protection then refuses the merge and the only escape
+is `--admin`.
+
+**Scope of that claim, stated honestly.** Re-running a check _in place_ (same run)
+does replace its conclusion.
+What does not replace is a _separate_ run's context. Note that
+`docs/troubleshooting.md` §15 recommends a label-cycle to clear a stuck check,
+whose mechanism reads as the opposite; that recovery has not been re-verified
+against this observation, and reconciling the two is tracked as #330. Treat
+§23.1 as describing the separate-run case, which is the one this section is about.
+
+A gate that writes to the PR can trigger itself. `ai-review` subscribes to
+`pull_request_review: [submitted]` and _submits reviews_ — on the approval path,
+and again for the IPLAN-0029 non-counting comment-state review. Its predicate
+exempted only `labeled`/`unlabeled`, so a `submitted` event evaluated true and
+the resulting run cancelled the run that had just posted that review, on the same
+SHA.
+
+**Nothing reports this.** `gh pr checks` shows the green run. `gh pr merge` says
+only "the base branch policy prohibits the merge", naming no check. The cancelled
+duplicate is visible only via the GraphQL `isRequired` projection. Worse, the
+documented `skip-ai-review` label-cycle recovery starts further runs, each able to
+cancel another, so the SHA accumulates cancelled contexts.
+
+### 23.2 The rule
+
+**Express `cancel-in-progress` as an allowlist of the code-changing events, never
+as a denylist of the self-emitted ones.**
+
+The rule's trigger is **required-context ∧ non-code-changing-event**, and note
+that it is NOT limited to events the gate emits. §23.1's mechanism does not care
+who wrote the label — a _human_ label write at the live head SHA cancels an
+in-flight required check just as effectively. Canon has at least two more
+instances beyond `ai-review`: `audit-trail` (`call / verify`) whose caller
+subscribes to `labeled`/`unlabeled` for the documented `skip-audit-trail` escape
+hatch, and the lint family (`call / Lint / format / security hooks`) via
+`reopened` (both tracked as #329). A workflow that is not a required context on
+any tier is exempt, because a cancelled non-required context does not block
+anything.
+
+**Where `cancel-in-progress` lives decides the release boundary.** `ai-review`
+sets it in the **reusable**, so its fix reaches consumers by a re-pin. For
+`audit-trail` and the lint family the reusables carry no `concurrency:` block at
+all — the flag is in the **caller templates**, so those fixes require consumers to
+re-install workflow files. Ship them separately; a bundled fix cannot honestly
+claim "no consumer action beyond re-pinning".
+
+A denylist fails twice over, and canon shipped both failures before arriving here:
+
+- **It is never complete.** You must enumerate every event the gate emits _and_
+  keep that list in step with the caller's triggers. The first CI-0025 fix was a
+  denylist; it added `pull_request_review` and still cancelled on `reopened`,
+  `ready_for_review` and `converted_to_draft` — the last two added to the caller
+  by FT-43 _after_ the predicate was written. Every event except a head-SHA change
+  fires at the live head, so every one of them reproduces the defect.
+- **It fails in the unsafe direction.** Where the `github` context can resolve
+  empty — `concurrency` on a _called_ workflow has that history — `!=` clauses all
+  evaluate true and the gate cancels everything, which is precisely the bug. `==`
+  yields false and cancels nothing. **A guard whose degraded mode is the failure it
+  exists to prevent is not a guard.**
+
+Prefer a flat `cancel-in-progress: false` when runs are cheap — that is
+composition's choice. Use an allowlist only when a run is expensive enough that a
+real push must supersede it, as with `ai-review`.
+
+**The test must evaluate the expression, and must derive its cases from the
+caller's own `types:` list** — so adding a trigger fails the suite until someone
+classifies it. A hand-written case table is how the first fix passed while still
+broken.
+
+### 23.3 Carry the lesson across every workflow that shares the shape
+
+`composition.yml` already stated this rule at its own `concurrency:` block —
+"cancelling it … would leave a satisfied PR permanently blocked" — and set
+`cancel-in-progress: false`. `ai-review.yml` had the same exposure and did not get
+the same treatment. FT-43 then fixed the label half of `ai-review` without
+generalising to the review half.
+
+**The recurring defect is a lesson learned in one file and not swept across the
+others that share its shape.** When a rule like this is established, grep for the
+shape — here, every reusable reachable from a caller that subscribes to an event
+the gate itself emits — and **record the negatives too**. For this sweep: there is
+no `issue_comment` trigger anywhere in canon, so verdict comments are inert; and
+`set_label` writes with `GITHUB_TOKEN`, whose events do not start workflow runs,
+so the gate self-emits one triggering event per run (except when `autofix` is
+armed). An unrecorded negative gets re-derived by the next reader, which is the
+recurrence this section exists to stop.
+
+**And a recorded negative must itself be checked.** A draft of this section
+claimed the gate's label writes re-trigger `labeler`; they do not — `labeler`
+subscribes to the default `pull_request_target` types (`opened`, `synchronize`,
+`reopened`) and not to `labeled`/`unlabeled` at all. That false negative also
+contradicted the `GITHUB_TOKEN` bullet beside it. A wrong recorded negative is
+worse than none: it is the thing the next reader trusts instead of checking.
+§21.2 makes the same demand for a guard's multiple arms.
+
+**Origin:** issue #322, reproduced on `aidoc-flow-framework` PR #346. Recorded as
+CI-0025.

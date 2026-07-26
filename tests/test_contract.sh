@@ -374,9 +374,97 @@ print(",".join(sorted(need - types)) or "OK")
 PYEOF
 )"
 assert_eq "$ft43_triggers" "OK" "template pull_request_target adds ready_for_review + converted_to_draft (FT-43)"
-# (2) a label/unlabel event must not cancel an in-flight genuine review.
-assert_ok "grep -qE \"cancel-in-progress: \\\\\$\\{\\{ github.event.action != 'labeled'\" '$AR'" \
-  "concurrency excludes label events from cancel-in-progress (FT-43)"
+# (2) CONCURRENCY: only a genuinely code-changing event may cancel an in-flight
+#     run. Every other subscribed event fires at the CURRENT head SHA, and a
+#     cancelled required check is NOT success and is NOT replaced by a later
+#     SUCCESS of the same context on that SHA — so such a cancel blocks the PR
+#     permanently (CI-0025).
+#
+#     The case list is DERIVED FROM THE CALLER TEMPLATE'S OWN `types:`, not
+#     hand-written: every subscribed (event, action) pair must be classified, so
+#     adding a trigger to the template fails here until someone decides whether it
+#     may cancel. A hand-written table is exactly how the first fix shipped still
+#     broken — it exempted the events known to be self-emitted and missed
+#     `reopened`, `ready_for_review` and `converted_to_draft`.
+#
+#     Asserted by EVALUATING the shipped expression, not by grepping its text: the
+#     original version matched a literal prefix, so it stayed green while the
+#     `pull_request_review` case was absent entirely.
+ft43_cancel="$(python3 - "$AR" "$ARTPL" <<'PYEOF'
+import yaml, sys, re, json
+
+wf   = yaml.safe_load(open(sys.argv[1]))
+tpl  = yaml.safe_load(open(sys.argv[2]))
+expr = wf["concurrency"]["cancel-in-progress"]
+if not isinstance(expr, str) or "${{" not in expr:
+    print("NOT-AN-EXPRESSION:%r" % (expr,)); raise SystemExit
+body = " ".join(expr.strip()[3:-2].split())
+
+# Tiny evaluator for the allowlist grammar actually shipped. Anything outside it
+# must fail LOUDLY — a checker that cannot understand its input goes red, never
+# green.
+TERM = r"""(?:[\w.]+\s*[!=]=\s*'[^']*'|contains\(fromJSON\('\[[^\]]*\]'\),\s*[\w.]+\))"""
+if not re.fullmatch(rf"{TERM}(?:\s*&&\s*{TERM})*", body):
+    print("UNSUPPORTED-GRAMMAR:%s" % body); raise SystemExit
+
+def ev(ctx):
+    for clause in re.split(r"\s*&&\s*", body):
+        m = re.fullmatch(r"contains\(fromJSON\('(\[[^\]]*\])'\),\s*([\w.]+)\)", clause)
+        if m:
+            ok = ctx.get(m.group(2)) in json.loads(m.group(1))
+        else:
+            lhs, op, rhs = re.fullmatch(r"([\w.]+)\s*([!=]=)\s*'([^']*)'", clause).groups()
+            ok = (ctx.get(lhs) == rhs) if op == "==" else (ctx.get(lhs) != rhs)
+        if not ok:
+            return False
+    return True
+
+on = tpl.get(True, tpl.get("on", {}))
+pairs = set((e, a) for e, cfg in on.items() for a in (cfg or {}).get("types", []))
+
+# EQUALITY, not a length floor. A floor only catches trigger REMOVAL: an ADDED
+# pair evaluates False under the allowlist and would agree with a default
+# want=False, so the suite would stay green and nobody would re-derive the
+# predicate — which is precisely the CI-0025 history (FT-43 added
+# ready_for_review + converted_to_draft and the predicate was never revisited).
+# Changing the caller's triggers must therefore land HERE, deliberately.
+CLASSIFIED = {
+    ("pull_request_target", "opened"),
+    ("pull_request_target", "synchronize"),
+    ("pull_request_target", "reopened"),
+    ("pull_request_target", "labeled"),
+    ("pull_request_target", "unlabeled"),
+    ("pull_request_target", "ready_for_review"),
+    ("pull_request_target", "converted_to_draft"),
+    ("pull_request_review", "submitted"),
+}
+if pairs != CLASSIFIED:
+    print("TEMPLATE-TRIGGERS-CHANGED:added=%s removed=%s" % (
+        sorted(pairs - CLASSIFIED), sorted(CLASSIFIED - pairs))); raise SystemExit
+
+# The ONLY actions that may cancel. `synchronize` moves the head SHA, so its
+# cancelled context lands on the superseded commit; `opened` can have nothing in
+# flight. Everything else fires at the live head.
+MAY_CANCEL = {("pull_request_target", "opened"), ("pull_request_target", "synchronize")}
+
+bad = []
+for e, a in pairs:
+    got  = ev({"github.event_name": e, "github.event.action": a})
+    want = (e, a) in MAY_CANCEL
+    if got is not want:
+        bad.append("%s/%s=%s(want %s)" % (e, a, got, want))
+
+# Fail-direction: an unavailable context (community #107552; reported as recently
+# as GHES 3.18.4) must
+# NOT degrade into "cancel everything" — that IS the CI-0025 bug.
+if ev({}) is not False:
+    bad.append("empty-context-cancels")
+
+print(",".join(bad) or "OK")
+PYEOF
+)"
+assert_eq "$ft43_cancel" "OK" \
+  "cancel-in-progress: ONLY opened/synchronize cancel; all 8 subscribed events classified; empty context fails safe (FT-43 + CI-0025)"
 # (3) both jobs' if: gain the unarmed clause — armed repos still clean-skip a
 # would-skip event (composition holds); unarmed repos RUN so the guard fails closed.
 unarmed_ifs=$(grep -Fc "vars.APP_REVIEWER_1_BOT_ID == ''" "$AR" || true)
