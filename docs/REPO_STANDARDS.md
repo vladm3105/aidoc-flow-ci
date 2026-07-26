@@ -1830,3 +1830,170 @@ it has no way to answer. The same discipline applies to any future prompt canon
 ships, including a per-consumer rubric override if one is ever built.
 
 **Origin:** issue #315 (and #81, its v1 symptom). Recorded as CI-0022.
+
+## 21. A fail-closed guard fails on faults — not on what a consumer happens to have
+
+**A mandatory safety mechanism must abort only when it genuinely cannot do its
+job. Aborting because of a benign, legal shape in the consumer's tree turns a
+safety mechanism into an availability defect.**
+
+### 21.1 The failure mode
+
+Fail-closed is the right default for a guard whose whole purpose is to protect
+something (FT-57's pre-write backup: if the snapshot cannot be taken, write
+nothing). The trap is that "cannot take the snapshot" quietly widens to include
+inputs that are merely _unusual_ rather than _broken_.
+
+`install.sh` enumerates the consumer's surfaces with `find -L … ! -type d`,
+which yields a **dangling symlink** — the stat fails, so `find` returns the link
+itself. The copy was a bare `cp -p`, which **dereferences**. A consumer that
+carried one broken symlink anywhere under `.github/` therefore could not run
+`install.sh` **in any mode**, including the documented `--repin` upgrade path.
+Nothing was wrong with that repo, and nothing about the backup was actually
+impossible — the link is perfectly copyable _as a link_.
+
+### 21.2 The rule
+
+For each input a guard enumerates, decide explicitly whether it is a **fault**
+(abort) or a **shape** (handle it). Write the branch, say in a comment which it
+is and why, and **do the sweep across every arm of the guard** — the same input
+shape usually reaches it by more than one path. Concretely, for the backup:
+
+| Input | Classification | Behaviour |
+| --- | --- | --- |
+| Resolvable symlink | shape | captured by **content** (what a restore wants) |
+| Dangling symlink | shape | copied as the **link** (`cp -Pp`) — no content exists |
+| Symlink **loop** | **fault** | aborts: `find -L` cannot traverse it, so completeness cannot be proven |
+| Unreadable file | **fault** | aborts |
+| Unenumerable directory | **fault** | aborts |
+
+The sweep is the part that gets skipped. This backup enumerates from **two**
+arms — a `find -L` over `.github/` and an explicit root-list loop — and the
+dangling-symlink case was wrong in _both_, in opposite directions: the copy
+aborted on it (fail-closed), while the root list's `[ -e "$r" ]` test
+dereferences and so **dropped it silently** (fail-open, the outcome this guard
+exists to prevent). Fixing only the arm that announced itself with an error
+would have left the quieter, worse half in place.
+
+**A fault must also name itself correctly.** A symlink loop and an unreadable
+directory both surface as a non-zero `find`, but the remedies are unrelated;
+reporting the loop as "unreadable subdirectory?" sends the operator to `chmod`
+for a cycle no `chmod` can fix.
+
+**Residual, stated rather than papered over — and scoped to the arm it applies
+to.** `[ ! -e ]` is false for `EACCES` as well as `ENOENT`, so a resolvable link
+whose target sits behind an unsearchable directory is misclassified as dangling
+and backed up as a link rather than by content. This is reachable **only on the
+root-list arm**. On the `.github/` arm it cannot happen: `find -L` stats the
+link, gets `EACCES`, and the run hard-aborts before the copy branch is reached —
+so that arm is _more_ conservative than this table's "shape" row suggests, not
+less. Reaching the residual at all requires running the installer as someone who
+cannot traverse the consumer's own tree.
+
+Do not "simplify" such a branch away. Collapsing this one to a blanket `cp -P`
+would silently stop capturing content for resolvable symlinks — a different
+defect in the same place — which is why the test suite asserts both directions.
+
+### 21.3 Enforcement
+
+`tests/test_install.sh` drives the `MANDATORY-BACKUP` block extracted from
+`install.sh` itself, and includes a **mutation** case: restoring the bare
+`cp -p` must make the dangling-link fixture abort. An assertion that cannot fail
+is not a guard.
+
+**Origin:** found in the `ci/v2.15.0` pre-cut review, a regression introduced by
+FT-57 in the same unreleased window. Recorded as CI-0023.
+
+## 22. A mechanical rewriter must not rewrite illustrative examples
+
+**A tool that propagates a current value across the docs must distinguish
+references that should TRACK that value from references that are historical or
+illustrative. Matching on shape alone is not that distinction.**
+
+### 22.1 The failure mode
+
+`scripts/sync-version-refs.sh` makes `VERSION` the single source for install
+references, rewriting four shapes: the raw-URL install command, `uses:…@tag`
+pins, and `CI_TAG=`. Shape says _"this is an install reference"_; it does not
+say _"this one is supposed to be current."_
+
+`docs/MIGRATION_v2.0.0.md` is a target and contains two `CI_TAG=` commands that
+must **not** track `VERSION`: the §5 "repin to `@ci/v2.0.0`" step, and — the
+damaging one — the **Rollback** section, whose command exists to pin a consumer
+_back_ to `ci/v1.x`. Every release cut rewrote both to the new tag, so the
+published rollback instruction re-pinned **forward**: an operator following it
+during an incident would do the exact opposite of what the heading promised.
+
+The script's header had _already identified this risk_ and prescribed the
+remedy — "if a historical install command is **ever added** to a target, mark
+that line to exclude it".
+
+**That caveat was accurate when written**, and the history matters more than the
+defect. At `a0fc68c` (2026-07-09) `TARGETS` held two READMEs and
+`MIGRATION_v2.0.0.md` did not exist; the warning was correct and prospective,
+and it named its own trigger condition — though it anticipated the inverse
+event: an example being added to a target, rather than a file that _already_
+contained two being added to `TARGETS`. That is what happened on 2026-07-17, when
+`1a027da` (#175) added that doc to `TARGETS`. The rollback command read
+`ci/v1.9.5` until that commit and has tracked the release tag at every cut
+since.
+
+So the failure is not a wrong comment. It is that **the prescribed remedy was
+described but never implemented**, leaving nothing for #175 to fail against —
+and the author of a commit eight days later has no reason to read this file.
+
+### 22.2 The rule
+
+Any span whose install references are illustrative or historical is wrapped:
+
+```text
+<!-- sync-version-refs:ignore-start -->
+… examples pinned to an old tag on purpose …
+<!-- sync-version-refs:ignore-end -->
+```
+
+Both `--check` and the rewrite honour the markers. **Unbalanced markers are a
+hard error** (`exit 2`), naming the file and line: an unterminated
+`ignore-start` would otherwise freeze the rest of a file silently, converting
+this guard into the drift it exists to prevent.
+
+**A caveat that names a future trigger condition must be enforced mechanically,
+in the same change that names it.** Prose cannot stop the commit that trips the
+trigger, because that commit is written months later by someone who never opens
+the file the prose lives in. If the enforcement genuinely cannot be built yet,
+the comment must say the gap is **unguarded** — an unguarded risk that reads as
+handled is worse than one stated plainly, because it survives review.
+
+**This section is held to its own rule.** The marker facility alone would be a
+second unenforced caveat, so `tests/test_version_sync.sh` **pins the explicit
+`TARGETS` array**: adding a file to it fails the suite with instructions to
+inspect the new target for illustrative install commands and wrap them. That is
+precisely the event #175 tripped. The two **glob** arms are deliberately not
+pinned — a caller template's pin _should_ track `VERSION` — so do not read the
+guard as covering them.
+
+**What remains, split honestly into the guarded and the unguarded half** — the
+first draft of this section called both unguarded, which was itself the error
+this section legislates against:
+
+- **Pinned to an OLD tag** (the #175 case): **guarded.** `--check` flags it as a
+  stale reference and fails pre-commit and CI. Its message names _both_ remedies,
+  because offering only "run the rewriter" pointed the operator at the one action
+  that falsifies the command — a guard that fires and then misdirects is barely
+  better than none.
+- **Pinned to the CURRENT tag when written:** **genuinely unguarded.** It is
+  textually identical to a live reference, so nothing can separate them, and it
+  drifts silently at the next cut. This half rests on the markers being used.
+
+§22.2's escape clause covers only the second. Do not use it for the first.
+
+### 22.3 Enforcement
+
+`tests/test_version_sync.sh` drives `sed_program` and `validate_ignore_markers`
+extracted from the shipped script, asserts both directions (outside a span is
+rewritten; inside is preserved; the span closes at `ignore-end`), covers all
+four malformed-marker cases, and includes a **mutation** case: stripping the
+negated address ranges must clobber the historical rollback command.
+
+**Origin:** found in the `ci/v2.15.0` pre-cut review — the release's own prep
+re-falsified the rollback instruction. Recorded as CI-0024.

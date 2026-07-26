@@ -493,6 +493,72 @@ rc="$(_ft57_run "$SY")"
 assert_eq "$rc" "0" "a SYMLINKED .github does not break the backup"
 assert_ok "[ -f '$SY/backup/.github/workflows/ci.yml' ]" "symlinked .github is followed, not silently bypassed"
 
+# --- CI-0023: a DANGLING symlink must not brick the installer ----------------
+# `find -L … ! -type d` enumerates a broken symlink (the stat fails, so find
+# yields the link itself), but `cp -p` DEREFERENCES and therefore fails on it.
+# Because the backup is fail-CLOSED, that aborted install.sh in EVERY mode —
+# including the documented `--repin` upgrade path — on any consumer that merely
+# happened to carry a dangling link under .github/. Shipped in FT-57; this is
+# the regression guard.
+DS="$TMP/ft57-dangling"; rm -rf "$DS"; mkdir -p "$DS/consumer/.github/workflows"
+printf 'w\n' > "$DS/consumer/.github/workflows/real.yml"
+ln -s ../../nowhere/gone.yml "$DS/consumer/.github/workflows/dangling.yml"
+printf 'target\n' > "$DS/consumer/.github/resolvable-target.yml"
+ln -s resolvable-target.yml "$DS/consumer/.github/good-link.yml"
+rc="$(_ft57_run "$DS")"
+assert_eq "$rc" "0" "a DANGLING symlink does not abort the mandatory backup (CI-0023)"
+assert_ok "[ -L '$DS/backup/.github/workflows/dangling.yml' ]" "the dangling symlink is preserved AS A LINK"
+assert_ok "[ -f '$DS/backup/.github/workflows/real.yml' ]" "a real file alongside a dangling link is still captured"
+# The resolvable link must still be captured BY CONTENT — this is what stops a
+# future 'simplify' from collapsing the branch to a blanket `cp -P`.
+assert_ok "[ -f '$DS/backup/.github/good-link.yml' ] && [ ! -L '$DS/backup/.github/good-link.yml' ]" \
+  "a RESOLVABLE symlink is still captured by content, not as a link"
+assert_contains "$(cat "$DS/backup/.github/good-link.yml" 2>/dev/null)" "target" "the resolvable link's content is the target's"
+
+# The ROOT list lost the same broken-symlink case one step EARLIER, at
+# enumeration: `[ -e "$r" ]` dereferences, so a dangling link at a root path
+# tested false and was skipped silently — rc=0, "success", that surface absent
+# from the snapshot while install.sh could still overwrite it. Fail-OPEN, which
+# is strictly worse than the fail-closed abort above.
+RD="$TMP/ft57-dangling-root"; rm -rf "$RD"; mkdir -p "$RD/consumer"
+printf 'real\n' > "$RD/consumer/.gitattributes"
+ln -s ../nowhere/gone "$RD/consumer/.gitignore"
+rc="$(_ft57_run "$RD")"
+assert_eq "$rc" "0" "a dangling ROOT-list symlink does not abort the backup"
+assert_ok "[ -L '$RD/backup/.gitignore' ]" "a dangling ROOT-list symlink IS backed up, as a link (CI-0023 fail-open)"
+assert_ok "[ -f '$RD/backup/.gitattributes' ]" "its real sibling is still captured"
+
+# A symlink LOOP is deliberately the other classification: a genuine fault that
+# still aborts, because `find -L` cannot traverse it and the snapshot therefore
+# cannot be proven complete. What must NOT happen is the old behaviour of
+# blaming permissions — no chmod fixes a cycle.
+LP="$TMP/ft57-loop"; rm -rf "$LP"; mkdir -p "$LP/consumer/.github"
+ln -s l2 "$LP/consumer/.github/l1"; ln -s l1 "$LP/consumer/.github/l2"
+rc="$(_ft57_run "$LP")"
+lp_out="$(cat "$LP/out.txt")"
+assert_eq "$rc" "1" "a symlink LOOP is a fault and still fails closed"
+assert_contains "$lp_out" "symlink LOOP" "the loop is named as the cause, not blamed on permissions"
+assert_absent "$lp_out" "check permissions" "the permissions remedy is NOT offered for a loop"
+
+# Mutation: restore the bare `cp -p` and the abort comes back. Without this the
+# assertions above could pass on a fixture that never exercised the branch.
+MUT="$TMP/ft57-dangling-mutant"; rm -rf "$MUT"; mkdir -p "$MUT"
+sed -e 's#^      cp -Pp "\$p" "\$BACKUP_DIR/\$p" || rc=1#      cp -p "$p" "$BACKUP_DIR/$p" || rc=1#' "$BLK" > "$MUT/blk.sh"
+assert_ok "! diff -q '$BLK' '$MUT/blk.sh' >/dev/null" "mutation actually changed the extracted block"
+cp -r "$DS/consumer" "$MUT/consumer"
+# WORK_DIR/TARGET_REPO are consumed by the SOURCED block, which shellcheck
+# cannot follow — hence the disable, not a rename.
+mut_rc="$( ( set -euo pipefail
+  # shellcheck disable=SC2034
+  WORK_DIR="$MUT"
+  # shellcheck disable=SC2034
+  TARGET_REPO="owner/repo"
+  cd "$MUT/consumer"
+  # shellcheck disable=SC1090
+  source "$MUT/blk.sh"
+  if backup_existing_surfaces; then :; else exit 1; fi ) >"$MUT/out.txt" 2>&1; echo $? )"
+assert_eq "$mut_rc" "1" "mutant (bare cp -p) DOES abort on a dangling link — the CI-0023 bug, reproduced"
+
 # --- fail-closed paths -------------------------------------------------------
 FR="$TMP/ft57-fresh"; rm -rf "$FR"; mkdir -p "$FR/consumer"
 rc="$(_ft57_run "$FR")"
@@ -536,7 +602,15 @@ _ft57_scope="$(python3 - "$ROOT/install/templates/manifest.json" "$INSTALL" <<'P
 import sys, json, re
 manifest, install = sys.argv[1], sys.argv[2]
 src = open(install, encoding="utf-8").read()
-m = re.search(r"for r in (.*?); do\n\s*\[ -e", src, re.S)
+# Anchor on the loop HEADER and require its body to be the enumeration
+# (`files+=`), not on the exact existence test — that expression is load-bearing
+# and has changed once already (CI-0023 added `|| [ -L … ]` so a dangling
+# root-list symlink is admitted). A regex pinned to its shape turns any future
+# correction there into a spurious failure HERE, which reads as "the manifest
+# drifted" and sends the next reader to the wrong file.
+m = re.search(r"for r in (.*?); do\n(.*?)\n\s*done", src, re.S)
+if m and "files+=" not in m.group(2):
+    m = None          # matched some other loop — fail loud, never vacuously pass
 roots = set(re.findall(r"[^\s\\]+", m.group(1))) if m else set()
 bad = [f["path"] for f in json.load(open(manifest, encoding="utf-8"))["files"]
        if not f["path"].startswith(".github/") and f["path"] not in roots]
