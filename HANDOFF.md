@@ -12,9 +12,19 @@ context compaction.
 > reads `ci/v2.15.0`; the tag does not exist. Nothing reaches a consumer until
 > it is cut.
 >
-> **Prep merge SHA: `3a4a3eaec8a72f3b52d875a49c82f4c1e7bcf30f`** (PR #326,
-> merged with `--admin` per the documented FT-21 chicken-and-egg — founder
-> authorized 2026-07-26).
+> **The SHA to use is whatever `main` HEAD is when you run this** — the tag is
+> cut from HEAD, so that is the tree that ships. Get it with
+> `git -C <repo> rev-parse main`. Do NOT copy a SHA out of this file: it was
+> `3a4a3eaec8a72f3b52d875a49c82f4c1e7bcf30f` at the prep merge (PR #326, merged
+> with `--admin` per the documented FT-21 chicken-and-egg — founder authorized
+> 2026-07-26) and has already moved once since. A stale SHA here would validate a
+> tree that is not the one being tagged, which is the same silent-falsification
+> class as CI-0024.
+>
+> Only files `install.sh` actually fetches affect the dry-run, so a HEAD that
+> differs from the prep merely by governance edits gives an identical result —
+> but check rather than assume:
+> `git diff --name-only 3a4a3ea main -- install/`.
 >
 > **What is owed: the 🔴 FT-30 cold-start dry-run.** `install/install.sh`
 > changed (FT-57 + CI-0023), so `release.sh tag` will REFUSE without
@@ -24,7 +34,7 @@ context compaction.
 > ```bash
 > # 1. founder, against a throwaway repo that ALREADY EXISTS on GitHub
 > #    (install.sh clones it; it will not create it for you):
-> export CI_TAG=3a4a3eaec8a72f3b52d875a49c82f4c1e7bcf30f
+> export CI_TAG=$(git -C /opt/data/aidoc-flow/aidoc-flow-ci rev-parse main)
 > bash <(curl -fsSL "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/install.sh") \
 >   <owner>/<throwaway-repo>
 >
