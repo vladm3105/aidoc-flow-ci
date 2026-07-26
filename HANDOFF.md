@@ -42,8 +42,9 @@ context compaction.
 > | #305-#309 | CLOSED — the framework migration findings, fixed by #312 (CI-0014..CI-0019) |
 > | #310 | CLOSED — cross-repo defects filed upstream, #314 (**CI-0020**, `REPO_STANDARDS` §18) |
 > | #311 | CLOSED — infrastructure break-glass, #316 (**CI-0021**, §19) |
-> | #315 | **OPEN** — NEW, filed from re-scoping #81 |
-> | #81 | **OPEN** — re-scoped, blocked on #315 |
+> | #315 | CLOSED — reviewer-input honesty, #319 (**CI-0022**, §20) |
+> | #81 | CLOSED — its v2 form was #315; closed by the same PR |
+> | #318 | **OPEN** — NEW, the asset docs still describe v1 sparse-checkout |
 >
 > **⚠️ CI-0021 is OPT-IN and currently UNARMED everywhere.** It activates only
 > when a repo sets `vars.CI0021_BREAKGLASS_APPROVERS`. **Read `REPO_STANDARDS`
@@ -54,13 +55,40 @@ context compaction.
 > adversarial review cycles each found a real bypass in this feature before it
 > shipped; both are fixed and regression-tested, but the residual is real.
 >
-> **#315 is the live canon defect worth picking up next.** The `ai-review`
-> rubric still instructs the model to list and read working-tree files, but the
-> v2 reviewer is a single-shot completion with **no checkout by design**
-> (IPLAN-0024) — it receives only the diff and a changed-file inventory. So the
-> doc-coverage precondition and the dead-link check are unanswerable, and the
-> model answers anyway. This is the v2 form of #81, which stays open until #315
-> lands.
+> **CI-0022 SHIPPED (2026-07-25) — PR #319 (`d20b882`), closing #315 AND #81.**
+> The `ai-review` rubric told the model it had a working tree; the job has had
+> **no checkout since before ci/v1.9.5** (IPLAN-0024), and the v2 reviewer is a
+> single-shot completion with no tools. An unexecutable instruction is not
+> skipped by a model — it is answered anyway, which is a better generator of
+> confabulation than the truncation #81 originally blamed. The rubric now
+> enumerates its exact inputs, `ai-review.yml` passes a **repo-root inventory**
+> (one `gh api` call at the PR base commit) so the doc-coverage precondition is
+> decidable, and both inventories fail soft to the literal `UNAVAILABLE` that
+> the rubric branches on. `REPO_STANDARDS` §20 generalises it to any prompt
+> canon ships.
+>
+> **The review is the part worth carrying forward.** Six OPS-0065 agents found
+> **1 critical + 5 medium** — and the critical was *this fix re-creating its own
+> defect*: the first draft filtered the inventory to `type == "file"`, so every
+> root **directory** was absent from a list the new dead-link rule reads as
+> authoritative for absence (`docs/…` would be flagged dead because `docs` was
+> filtered out). One finding came from attacking the test harness rather than
+> the code: it stubbed `gh`'s return value but never its **arguments**, so three
+> separate live mutations — dropping the directory marking, inverting the
+> base-sha guard, collapsing the retry loop — all stayed green. **A stub that
+> controls only what a command returns tests nothing about how it was called.**
+>
+> **➡️ NEXT — and #318 is the next canon DEFECT, not the next ACTION.** The
+> release cut is still outstanding: `VERSION` is `ci/v2.14.0`, no `ci/v2.15.0`
+> tag exists, and CI-0020, CI-0021 and CI-0022 now all sit under `## Unreleased`
+> from four merged PRs (#312, #314, #316, #319). **None of them reach any
+> consumer until that tag is cut** — consumers pin `@ci/vX.Y.Z`. The founder's
+> MINOR call (below) still stands and predates CI-0020..0022; confirm it covers
+> them, then cut. **#318** is the queued defect: `ai-review/README.md` +
+> `docs/ai-review-assets.md` still describe the v1 `actions/checkout` +
+> sparse-checkout asset delivery, which now contradicts §20.3's "no checkout"
+> head-on. Two doc surfaces, one PR — deferred out of #319 only by the OPS-0061
+> three-surface cap.
 ---
 > **MERGED** as PR #312 (squash, `bc28e80`, 2026-07-25 EST). Suite green at merge
 > (14 suites, 801 assertions); all six required checks passed.
