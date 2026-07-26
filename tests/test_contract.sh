@@ -398,6 +398,128 @@ drive_ft43() { # $1=COMPOSITION_BOT_ID -> rc
 drive_ft43 ""; assert_eq "$?" "1" "unarmed (COMPOSITION_BOT_ID unset) → guard FAILS CLOSED (rc=1) — the FT-43 teeth"
 drive_ft43 "294948438"; assert_eq "$?" "0" "armed (COMPOSITION_BOT_ID set) → guard proceeds (rc=0; composition holds)"
 
+echo "== CI-0021: infrastructure break-glass (issue #311) =="
+# Drives the REAL block out of composition.yml (marker-delimited, like FT-43
+# above) with a stubbed `gh`. The control under test has THREE conditions and
+# no two of them may substitute for the third:
+#   label = signal, allowlisted approval = authorization, non-authorship = SoD.
+CY=.github/workflows/composition.yml
+assert_eq "$(grep -c '# >>> CI0021-INFRA-BREAKGLASS >>>' "$CY" || true)" "1" "CI-0021 exactly one break-glass start marker"
+assert_eq "$(grep -c '# <<< CI0021-INFRA-BREAKGLASS <<<' "$CY" || true)" "1" "CI-0021 exactly one break-glass end marker"
+BS="$(grep -n '# >>> CI0021-INFRA-BREAKGLASS >>>' "$CY" | cut -d: -f1)"
+BE="$(grep -n '# <<< CI0021-INFRA-BREAKGLASS <<<' "$CY" | cut -d: -f1)"
+BG="$(mktemp)"; awk "NR>${BS} && NR<${BE}" "$CY" > "$BG"
+assert_ok "grep -q 'BREAKGLASS_APPROVERS' '$BG'" "CI-0021 break-glass block extracted (carries the approver allowlist)"
+
+_bg_bin="$(mktemp -d)"
+# The stub emits the SLURPED shape the block now requests (an array of pages).
+# BG_COMMITS is a space-separated author list; "null" yields an unattributed commit.
+cat > "$_bg_bin/gh" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  *"/pulls/7/reviews"*) [ "${BG_REVIEWS_RC:-0}" = "0" ] || exit 1; [ -n "$BG_REVIEWS" ] && printf '%s\n' "$BG_REVIEWS"; exit 0 ;;
+  *"/pulls/7/commits"*)
+    [ "${BG_COMMITS_RC:-0}" = "0" ] || exit 1
+    printf '[['; sep=""
+    for a in ${BG_COMMITS:-}; do
+      if [ "$a" = "null" ]; then printf '%s{"author":null,"committer":null}' "$sep"
+      else printf '%s{"author":{"login":"%s"},"committer":{"login":"%s"}}' "$sep" "$a" "$a"; fi
+      sep=","
+    done
+    printf ']]\n'; exit 0 ;;
+  *"--jq .commits"*|*"--jq"*".commits"*) printf '%s\n' "${BG_NCOMMITS:-$(set -- ${BG_COMMITS:-}; echo $#)}" ;;
+  *"/pulls/7"*)         [ "${BG_LABEL_RC:-0}" = "0" ] || exit 1; printf '%s\n' "$BG_LABEL" ;;
+  *) exit 1 ;;
+esac
+SH
+chmod +x "$_bg_bin/gh"
+drive_bg() { # env: BG_LABEL BG_REVIEWS BG_COMMITS BREAKGLASS_APPROVERS (+_RC) -> rc
+  { echo 'set -uo pipefail'; echo 'GH_REPO=acme/demo'; echo 'PR=7'; echo 'HEAD_SHA=deadbeef';
+    echo 'EXPECTED_ID=123'; cat "$BG"; echo 'exit 9'; } \
+    | PATH="$_bg_bin:$PATH" bash >/dev/null 2>&1
+}
+
+# (1) No infra label -> inert; falls through to the normal App-approval block.
+BG_LABEL="" BG_REVIEWS="" BG_COMMITS="" BREAKGLASS_APPROVERS="alice" drive_bg
+assert_eq "$?" "9" "CI-0021 without the infra label the break-glass is inert (normal path unchanged)"
+
+# (2) OPT-IN: label present but no allowlist configured -> does NOT engage.
+BG_LABEL="1" BG_REVIEWS="alice" BG_COMMITS="bob" BREAKGLASS_APPROVERS="" drive_bg
+assert_eq "$?" "9" "CI-0021 unconfigured (no allowlist var) the break-glass cannot apply — opt-in"
+
+# (3) Label + allowlisted approval by someone who did NOT write the code -> passes.
+BG_LABEL="1" BG_REVIEWS="alice" BG_COMMITS="bob" BREAKGLASS_APPROVERS="alice carol" drive_bg
+assert_eq "$?" "0" "CI-0021 label + allowlisted approval by a non-author -> passes"
+
+# (4) Label alone, no approval -> BLOCKS. A label is not authorization.
+BG_LABEL="1" BG_REVIEWS="" BG_COMMITS="bob" BREAKGLASS_APPROVERS="alice" drive_bg
+assert_eq "$?" "1" "CI-0021 the label alone does NOT open the gate"
+
+# (5) SEPARATION OF DUTIES — the blocker found in review. GitHub forbids the
+#     PR AUTHOR from approving but says nothing about whoever PUSHED the
+#     commits, and canon's tiers set required_approving_review_count: 0, so
+#     without this a single account could push code and self-clear it.
+BG_LABEL="1" BG_REVIEWS="alice" BG_COMMITS="alice" BREAKGLASS_APPROVERS="alice" drive_bg
+assert_eq "$?" "1" "CI-0021 an approver who authored/pushed a commit at HEAD does NOT qualify (SoD)"
+BG_LABEL="1" BG_REVIEWS="Alice" BG_COMMITS="alice" BREAKGLASS_APPROVERS="alice" drive_bg
+assert_eq "$?" "1" "CI-0021 the SoD check is case-insensitive (GitHub logins are)"
+
+# (6) Approver not on the allowlist -> BLOCKS, even though the review is valid.
+#     author_association alone is not a permission check: MEMBER/COLLABORATOR
+#     do not imply write access.
+BG_LABEL="1" BG_REVIEWS="mallory" BG_COMMITS="bob" BREAKGLASS_APPROVERS="alice" drive_bg
+assert_eq "$?" "1" "CI-0021 an approval from a login off the allowlist does not qualify"
+
+# (7) FAIL-CLOSED on every unreadable input — never as an implicit approval.
+BG_LABEL="1" BG_REVIEWS="" BG_REVIEWS_RC=1 BG_COMMITS="bob" BREAKGLASS_APPROVERS="alice" drive_bg
+assert_eq "$?" "1" "CI-0021 unreadable reviews fail CLOSED"
+BG_LABEL="1" BG_REVIEWS="alice" BG_COMMITS="" BG_COMMITS_RC=1 BREAKGLASS_APPROVERS="alice" drive_bg
+assert_eq "$?" "1" "CI-0021 unreadable commit authorship fails CLOSED (SoD cannot be verified)"
+
+# (7b) UNATTRIBUTABLE commit -> FAIL-CLOSED. A commit whose email matches no
+#      GitHub account has null author AND committer; dropping it (the first
+#      draft's `// empty`) silently exempted the one actor SoD exists to catch —
+#      one `git -c user.email=x@invalid commit` away from self-clearing.
+BG_LABEL="1" BG_REVIEWS="alice" BG_COMMITS="null" BREAKGLASS_APPROVERS="alice" drive_bg
+assert_eq "$?" "1" "CI-0021 an unattributable commit at HEAD fails CLOSED (SoD unverifiable)"
+BG_LABEL="1" BG_REVIEWS="alice" BG_COMMITS="bob null" BREAKGLASS_APPROVERS="alice" drive_bg
+assert_eq "$?" "1" "CI-0021 one unattributable commit among attributed ones still fails CLOSED"
+
+# (7c) TRUNCATED commit listing -> FAIL-CLOSED. The API caps at 250 and exits 0,
+#      so a shortfall must not read as "no other authors".
+BG_LABEL="1" BG_REVIEWS="alice" BG_COMMITS="bob" BG_NCOMMITS="250" BREAKGLASS_APPROVERS="alice" drive_bg
+assert_eq "$?" "1" "CI-0021 an incomplete commit listing fails CLOSED (250-commit cap)"
+
+# (7d) Allowlist accepts newline/CRLF separation, not just commas — the repo
+#      variable UI is a multi-line textarea, and rejecting a plainly-listed login
+#      would disable the break-glass during the outage it exists for.
+BG_LABEL="1" BG_REVIEWS="carol" BG_COMMITS="bob" BREAKGLASS_APPROVERS="$(printf 'alice\ncarol')" drive_bg
+assert_eq "$?" "0" "CI-0021 a newline-separated allowlist is honoured"
+BG_LABEL="1" BG_REVIEWS="carol" BG_COMMITS="bob" BREAKGLASS_APPROVERS="$(printf 'alice\r\ncarol')" drive_bg
+assert_eq "$?" "0" "CI-0021 a CRLF-separated allowlist is honoured"
+BG_LABEL="1" BG_REVIEWS="bo" BG_COMMITS="bob" BREAKGLASS_APPROVERS="bob" drive_bg
+assert_eq "$?" "1" "CI-0021 allowlist matching is word-exact ('bo' is not admitted by 'bob')"
+
+# (8) The shipped query must pin the head SHA, exclude bots, and take the LATEST
+#     review per user — an APPROVED later retracted at the same SHA by a
+#     REQUEST_CHANGES is still returned by the API as its own APPROVED object.
+assert_ok "grep -q 'commit_id ==' '$BG'" "CI-0021 the approval must be at THIS head SHA (no stale carry)"
+assert_ok "grep -q 'user.type' '$BG'" "CI-0021 bot approvals are excluded from the human-approval test"
+assert_ok "grep -q 'group_by(.user.login) | map(last)' '$BG'" "CI-0021 latest review per user wins (a retracted approval does not qualify)"
+# `--slurp` is what makes that aggregation span pages: without it `gh --paginate`
+# applies --jq PER PAGE, so latest-per-user would be computed within 30 reviews.
+assert_ok "grep -q -- '--paginate --slurp' '$BG'" "CI-0021 the reviews aggregation spans pages (--slurp, not per-page --jq)"
+assert_ok "grep -q 'CHANGES_REQUESTED' '$BG'" "CI-0021 only state-CHANGING reviews take part in latest-wins (a COMMENTED review does not disqualify)"
+assert_ok "grep -q 'UNATTRIBUTED' '$BG'" "CI-0021 a null commit login becomes a sentinel, never dropped"
+rm -rf "$_bg_bin"
+
+# The signal must be a canonical label, or the break-glass is unreachable.
+assert_ok "jq -e '.[] | select(.name == \"ai:review-infra-error\")' install/templates/labels.json >/dev/null" "CI-0021 ai:review-infra-error is a canonical label"
+# The allowlist must be a repo VARIABLE, not a caller input — otherwise the repo
+# being gated would choose its own overriders.
+assert_ok "grep -q 'vars.CI0021_BREAKGLASS_APPROVERS' '$CY'" "CI-0021 the approver allowlist is an admin-writable repo variable"
+assert_absent "$(sed -n '/workflow_call:/,/^permissions:/p' "$CY")" "CI0021_BREAKGLASS_APPROVERS" "CI-0021 the allowlist is NOT a caller-settable input"
+
 echo "== FT-25: adopter-facing wizard/doc gaps =="
 WZ=install/deploy-ci-wizard.sh
 # .1 labeler config is now installable (scaffold drops the starter when labeler is chosen).
