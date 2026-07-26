@@ -290,7 +290,7 @@ Quick-reference:
    has no default:
    `{"version": 2, "litellm": {"model": "ai-reviewer"}, ...}`
 3. Drop deprecated vendor-CLI secrets (`OPENAI_API_KEY`, etc.)
-4. `CI_TAG=ci/v2.14.0 bash install.sh <owner/repo> --repin` — and **only add
+4. `CI_TAG=ci/v2.15.0 bash install.sh <owner/repo> --repin` — and **only add
    `--update` if this consumer actually needs canon's new caller bodies**. The
    `v2.0.0` migration itself does not: it is secrets + config + a **hand-edit of
    the caller's `with:` block** (drop the removed `reviewer:` / vendor-model

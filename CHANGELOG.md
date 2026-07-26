@@ -5,6 +5,8 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+## ci/v2.15.0 — 2026-07-26
+
 > **Consumer notes — read before re-pinning.**
 >
 > 1. **`docs-sync` callers.** Consumers installed from `ci/v2.11.0` onward need
