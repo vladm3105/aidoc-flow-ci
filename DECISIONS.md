@@ -996,6 +996,62 @@ Finding 7 of the framework `ci/v2.14.0` migration report (2026-07-25).
 
 ---
 
+## CI-0020: Cross-repo defects are filed as issues on the owning repo (2026-07-25)
+
+**Context**
+
+CI-0014 was discovered by a consumer (`aidoc-flow-framework`) during its
+`ci/v2.14.0` migration, but the defect was owned by canon. Before it was filed
+upstream, the consumer's `HANDOFF.md` recorded a **wrong** root cause ("no
+working reviewer key") and prescribed a fix that would not have worked — the
+credential was valid throughout and never consulted.
+
+That misdiagnosis survived multiple sessions, and it survived **precisely
+because it was only ever written down locally**. Nothing about a per-repo
+`HANDOFF.md` reaches canon, and canon is where the fix lived. Meanwhile the
+same defect sat latent on six other consumers.
+
+**Decision**
+
+Adopt the rule proposed in issue #310: when work in one repo surfaces a defect
+**owned by another repo**, file it there as a GitHub issue. The test is
+**ownership, not severity** — if the fix belongs in another repo's files, it
+gets an issue there, and a local workaround does not discharge the obligation.
+One issue per defect; new evidence for an already-filed defect is a comment,
+not a new thread; the issue number is linked back in the finding repo.
+
+A filed issue carries: reproduction against their source (`file:line` + the
+command or run), blast radius actually checked rather than assumed, why the
+symptom misnames the cause, a concrete suggested fix, and what is *not* broken.
+
+**Consequences**
+
+- Codified as `docs/REPO_STANDARDS.md` §18, and as a `## GitHub operations`
+  subsection in `install/templates/CLAUDE.md.template` so adopters inherit it.
+- Wave 0 self-adoption: this repo's own `CLAUDE.md` carries it, including the
+  inbound direction — canon is the OWNER for defects consumers file against it.
+- Corollary of §0 (canonical source authority): if canon owns the rule, canon
+  owns the defect report. The two sections should be read together.
+- Does not change any workflow behaviour; it is a process rule with no CI
+  enforcement. Compliance is visible in the issue tracker, which is the point —
+  a rule whose observance is public needs no gate.
+
+- **Operational addendum (§18.4):** `gh issue create --body -` sets the body to
+  a literal `-` — it exits 0 and prints a URL, so it looks like it worked.
+  `--body-file -` is the flag that reads stdin. All five issues from this
+  migration (#305-#309) were initially published EMPTY that way and were caught
+  only because a human looked. The rule therefore requires reading the artifact
+  back (`gh issue view <N> --json body --jq '.body | length'`); an empty issue
+  discharges nothing. A filing rule that does not survive its own tooling is not
+  a filing rule.
+
+**Origin**
+
+Issue #310 (2026-07-25), proposed from the `ci/v2.14.0` migration and adopted
+first in `aidoc-flow-framework` (its PR #340). Motivating incident: CI-0014.
+
+---
+
 <!-- Append new entries above this line; append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
 and update the superseded entry's "Consequences" section to reference

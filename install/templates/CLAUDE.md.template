@@ -63,6 +63,32 @@ servers (`github-tt`, `github-vl`) or raw API calls. If `gh` is
 unauthenticated, run `gh auth login` rather than falling back to
 MCP/API.
 
+### Cross-repo defects get filed UPSTREAM, not recorded locally
+
+When work here surfaces a defect owned by **another** repo — the CI
+canon, a sibling submodule, an upstream spec — **file a GitHub issue on
+that repo**. Writing it only into this repo's `HANDOFF.md` /
+`DECISIONS.md` / `plans/` is not sufficient: those are read by sessions
+entering *this* repo, never by whoever owns the fix, so the defect stays
+latent for every other consumer.
+
+- **The test is OWNERSHIP, not severity.** A local workaround does not
+  discharge the obligation — ship the workaround **and** file the issue.
+- Include a reproduction against *their* source (`file:line` + the run
+  that exercised it), the blast radius you actually checked, why the
+  symptom misnames the cause, a suggested fix, and what is *not* broken.
+- **Link the issue number back here**, so a later session finds the
+  upstream thread instead of rediscovering the defect.
+- ⚠️ **`gh issue create --body -` publishes a literal `-` as the body.**
+  It exits 0 and prints a URL, so it looks like it worked; `--body-file -`
+  is the flag that reads stdin. **Read the artifact back** —
+  `gh issue view <N> -R <owner>/<repo> --json body --jq '.body | length'`
+  — before treating the defect as reported. An empty issue discharges
+  nothing.
+
+Canonical rule + the incident that motivated it:
+`aidoc-flow-ci/docs/REPO_STANDARDS.md` §18.
+
 ## Workspace standards (aidoc-flow canon — read the canonical rules directly)
 
 Every workspace-standard rule below states (a) a one-sentence summary of

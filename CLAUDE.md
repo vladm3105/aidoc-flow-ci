@@ -88,6 +88,25 @@ servers (`github-tt`, `github-vl`) or raw API calls. If `gh` is
 unauthenticated, run `gh auth login` rather than falling back to
 MCP/API.
 
+### Cross-repo defects get filed UPSTREAM (CI-0020, §18)
+
+A defect this repo surfaces but does NOT own — in a sibling submodule,
+an upstream spec, `operations` — gets a **GitHub issue on that repo**,
+not just a line in `HANDOFF.md`/`DECISIONS.md`. The test is **ownership,
+not severity**; a local workaround does not discharge it. Link the issue
+number back here. Full rule + the CI-0014 incident that motivated it:
+`docs/REPO_STANDARDS.md` §18.
+
+**`gh issue create --body -` publishes a literal `-`** (exit 0, prints a
+URL — it looks fine). Use `--body-file`, then read it back with
+`gh issue view <N> --json body --jq '.body | length'`. Issues #305–#309
+were all published empty this way. Same trap on `gh issue comment` /
+`gh pr comment`.
+
+Note the inbound direction too: consumers filing defects **against
+canon** land here as issues, and this repo is the owner that must act on
+them.
+
 ## Workspace standards (aidoc-flow canon — read the canonical rules directly)
 
 Every workspace-standard rule below states (a) a one-sentence summary of
