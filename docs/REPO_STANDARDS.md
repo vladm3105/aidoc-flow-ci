@@ -1560,3 +1560,81 @@ See:
   implementation.
 - `install/templates/workflows/auto-merge-ai-prs-{public,private}.yml`
   (this repo) — canonical caller templates.
+
+## 18. Cross-repo defects are filed as issues on the OWNING repo
+
+**When work in one repo surfaces a defect owned by ANOTHER repo — the CI canon,
+a sibling submodule, an upstream spec — file it there as a GitHub issue.**
+
+Recording it only in the finding repo's `DECISIONS.md` / `HANDOFF.md` /
+`plans/` is not sufficient. Those files are read by sessions entering _that_
+repo, never by the people or agents who own the fix, so the defect stays latent
+for every other consumer.
+
+This is the corollary of §0 (canonical source authority): **if canon owns the
+rule, canon owns the defect report.**
+
+### 18.1 The rule
+
+- **The test is OWNERSHIP, not severity.** If the fix belongs in another repo's
+  files, it gets an issue there. A local workaround does not discharge the
+  obligation — ship the workaround **and** file the issue.
+- **One issue per defect.** Group only trivially-related items (e.g. several
+  doc-accuracy corrections), and say so up front. New evidence for an
+  already-filed defect goes on that issue as a **comment**, not a new thread.
+- **Link it back.** Record the issue number in the finding repo's `DECISIONS.md`
+  or `HANDOFF.md`, so a later session finds the upstream thread instead of
+  rediscovering the defect as a fresh bug.
+
+### 18.2 What a filed issue must contain
+
+| Element | Why |
+|---|---|
+| Reproduction against **their** source — `file:line` plus the command or run that exercised it | An unreproduced report is a guess the owner must re-derive |
+| Blast radius, **checked** across the fleet rather than assumed | Distinguishes "my repo" from "every consumer" |
+| Why it was hard to diagnose, when the symptom misnames the cause | The diagnostic cost is often the larger half of the defect |
+| A concrete suggested fix | Turns a complaint into a starting point |
+| What is **not** broken, where you checked and it was fine | Bounds the owner's search |
+
+### 18.3 Why this is a canon rule and not a preference
+
+The evidence is CI-0014 (issue #305). `ci/v1.x` `ai-review` silently fell back
+to an engine no consumer had credentials for once the shared trust config moved
+to schema v2. That broke the AI review gate on **seven repos for ~9 days**,
+behind a symptom (`no parseable verdict — fail-closed`) naming neither the
+cause, nor the trigger — a schema change in a _different repository_ — nor the
+owner.
+
+A consumer's `HANDOFF.md` had recorded a **wrong** root cause and prescribed a
+fix that would not have worked. That misdiagnosis survived multiple sessions.
+It survived **precisely because it was only ever written down locally**: nothing
+about a per-repo `HANDOFF.md` reaches canon, and canon is where the fix lived.
+
+This generalises. Where **one shared config plus per-consumer version pins** is
+the norm (§4.2b), a defect found in one repo is very often a defect for all of
+them, and the finding repo is systematically the wrong place to write it down.
+
+### 18.4 Read the filed artifact back — `--body -` publishes an empty issue
+
+**`gh issue create --body -` sets the body to a literal `-`.** It exits 0 and
+prints a URL, so it looks like it worked. `--body-file -` is the flag that reads
+stdin.
+
+This is not hypothetical: **all five issues from the `ci/v2.14.0` migration
+(#305–#309) were initially published empty this way**, and were caught only
+because a human went and looked. A filing rule that does not survive its own
+tooling is not a filing rule.
+
+**Therefore: after filing or commenting, read the artifact back.**
+
+```sh
+gh issue view <N> -R <owner>/<repo> --json body --jq '.body | length'
+```
+
+A length of `1` (or `0`) means the body did not land. The same applies to
+`gh issue comment` and `gh pr comment`. Prefer `--body-file <path>` for anything
+longer than a sentence, and verify before considering the defect reported —
+under §18 an empty issue discharges nothing.
+
+**Origin:** issue #310, proposed from the `ci/v2.14.0` migration; adopted first
+in `aidoc-flow-framework`. Recorded as CI-0020.

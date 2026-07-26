@@ -9,6 +9,27 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 > onward need only a re-pin; older or hand-edited callers must also grant
 > `pull-requests: write`. See CI-0015 below.
 
+### Added — canon rule: cross-repo defects are filed upstream (CI-0020)
+
+- A defect surfaced in one repo but **owned by another** now gets a GitHub issue
+  on the owning repo, not just a line in the finding repo's `HANDOFF.md` /
+  `DECISIONS.md` / `plans/`. **The test is ownership, not severity**, and a local
+  workaround does not discharge it.
+- Motivated by CI-0014: the consumer that found it recorded a wrong root cause
+  locally, that misdiagnosis survived multiple sessions, and six other consumers
+  sat on the same latent defect — because nothing in a per-repo `HANDOFF.md`
+  reaches canon, and canon is where the fix lived.
+- Codified as `docs/REPO_STANDARDS.md` §18 (with the required contents of a filed
+  issue) and as a `## GitHub operations` subsection in
+  `install/templates/CLAUDE.md.template`, so adopters inherit it.
+- Wave 0 self-adoption: this repo's `CLAUDE.md` carries it too, including the
+  inbound direction — canon is the owner for defects filed against it.
+- Also records the **`--body -` trap**: `gh issue create --body -` publishes a
+  literal `-` while exiting 0 and printing a URL. Issues #305-#309 were all
+  published empty that way. The rule requires reading the artifact back
+  (`gh issue view <N> --json body --jq '.body | length'`).
+- Process rule, no CI enforcement and no workflow behaviour change.
+
 ### Fixed — a v1 consumer silently mis-routed once the shared trust config went v2 (CI-0014)
 
 - The trust config is a **single shared source** (`trust_config_repo`, default
