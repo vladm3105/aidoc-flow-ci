@@ -1425,6 +1425,143 @@ run re-falsified the rollback instruction, which is what surfaced it.
 
 ---
 
+## CI-0025: Only a code-changing event may cancel an in-flight run of a required gate (2026-07-26)
+
+**Context**
+
+`ai-review`'s caller template subscribes to `pull_request_review: [submitted]`,
+and the reusable's concurrency predicate was
+`cancel-in-progress: ${{ github.event.action != 'labeled' && github.event.action != 'unlabeled' }}`.
+
+A `pull_request_review` event carries `action == 'submitted'`, which is neither
+`labeled` nor `unlabeled`, so the predicate evaluated **true**. The reviewer's own
+review submission therefore started a run that cancelled **the run that had just
+posted that review** — both on the same head SHA.
+
+A cancelled required check is **not** success and the rollup stays `FAILURE`
+(scope, evidence and the open platform question: §23.1 and #330). `call / ai-review` is a required context on the ops, product and
+governance tiers, so those PRs could only merge with `--admin`.
+
+Nothing reported an error. `gh pr checks` showed a green `call / ai-review` (the
+later run); `gh pr merge` said only "the base branch policy prohibits the merge",
+naming no check. The cancelled duplicate was visible only through the GraphQL
+`isRequired` projection. The documented recovery made it worse: the
+`skip-ai-review` label-cycle starts more runs, each able to cancel another, so the
+SHA accumulated cancelled contexts.
+
+This is a strong candidate for the standing "every PR needs `--admin`" folklore in
+consumer repos. On `aidoc-flow-framework` it had been recorded as a `composition`
+defect; composition was in fact green on the PR head.
+
+**Decision**
+
+**Only a genuinely code-changing event may cancel an in-flight run of a gate**,
+expressed as an **allowlist**, not as a denylist of self-emitted events.
+
+`ai-review`'s predicate is now
+`github.event_name == 'pull_request_target' && contains(fromJSON('["opened","synchronize"]'), github.event.action)`.
+
+The first draft of this fix was a denylist — it added `pull_request_review` to
+FT-43's `labeled`/`unlabeled` exemptions — and **it did not close the defect.**
+The caller subscribes to eight `(event, action)` pairs; a denylist naming the
+known self-emitted ones still cancelled on `reopened`, `ready_for_review` and
+`converted_to_draft`, all of which fire at the CURRENT head SHA. FT-43 added the
+latter two to the caller after the predicate was written, and nobody re-derived
+it.com, but GHES consumers may still see it —
+the same discussion reports it on **3.18.4**, so an earlier draft of this entry
+bounding it at "GHES ≤ 3.16" was refuted by its own citation). This is canon
+shipped to arbitrary consumers. With `!=` clauses an empty context makes every
+comparison true → cancel everything → this very defect. With `==` it yields false
+→ never cancel → the fail-safe stance. **A guard whose
+degraded mode is the bug it exists to prevent is not a guard.**
+
+FT-43 established exactly this rule for the gate's own **label** writes and did not
+generalise it to the gate's own **review** writes, which fire the same way — the
+reviewer submits a review on the approval path and again on the IPLAN-0029
+non-counting comment-state path.
+
+Letting the review-triggered run finish is cheap **on an armed repo**, and the
+qualifier matters: the R3 early-exit skips the heavy reviewer on a
+`pull_request_review` event and concludes SUCCESS via the skip-notice step, so no
+model call happens. But R3's unarmed guard runs BEFORE that skip (deliberately —
+it closes the ci/v2.0.1 review-event bypass), so on a repo with
+`vars.APP_REVIEWER_1_BOT_ID` unset **every review event runs a full review**. And
+the `trust` job runs in full on every review event regardless, consuming one
+serial runner slot. "Cheap" is not "free", and it is armed-only.
+
+**`composition.yml` had already reached this conclusion** and states it at its own
+`concurrency:` block — "the run started by the App's `pull_request_review:submitted`
+is exactly the one that records the check GREEN — cancelling it … would leave a
+satisfied PR permanently blocked." It uses a flat `cancel-in-progress: false`.
+`ai-review` cannot: its runs are expensive, so a real push must still supersede an
+in-flight review. Hence a predicate rather than `false`. **The lesson existed in
+canon and was not carried across the two workflows that needed it** — which is the
+generalisable failure here, not the missing clause itself.
+
+**Consequences**
+
+- **`ai-review` is the only workflow fixed here — it is NOT the only one exposed.**
+  An earlier draft of this entry claimed it was, scoped to the
+  `pull_request_review` trigger; that scoping was wrong, because §23.1's mechanism
+  does not care *who* emits the event. Any required context whose caller
+  subscribes to a non-code-changing action while `cancel-in-progress: true` is in
+  force has the same defect. **Note where that flag lives**, because it decides
+  the release boundary: `ai-review` is the only one that sets it in the
+  **reusable**, which is why this fix reaches consumers by a re-pin alone. For
+  `audit-trail` and the lint family the reusables carry no `concurrency:` block
+  at all — the flag is in the **caller templates**, so fixing them requires
+  consumers to re-install workflow files. Bundling them here would falsify this
+  entry's own "no consumer action beyond re-pinning". The other known instances are
+  `audit-trail` (`call / verify`, required on all three tiers) whose caller
+  subscribes to `labeled`/`unlabeled` **deliberately**, for the documented
+  `skip-audit-trail` escape hatch — so canon's own instructions fire it, by a
+  *human* label write; and the lint family (`call / Lint / format / security
+  hooks`, required on every tier but umbrella) via `reopened`. Filed as #329 rather than
+  expanded into this PR.
+- **The sweep's negatives, recorded so nobody re-derives them.** (a) There is **no
+  `issue_comment` trigger anywhere in the repo**, so the gate's verdict comments
+  are inert and cannot re-trigger anything. (b) The gate self-emits exactly **one**
+  workflow-triggering event per run: `set_label` writes labels with
+  `secrets.GITHUB_TOKEN`, and GITHUB_TOKEN-authored events do not start workflow
+  runs — only the App-token review submission triggers. Two carve-outs to that
+  "exactly one": it breaks if `set_label` is ever moved to the App token, and it
+  is already false when `autofix` is armed (default-off), since the autofix push
+  re-fires the gate with `synchronize` — which is correctly in the allowlist, so
+  no behavioural impact.
+- **Residual, NOT closed — and cheaper to reach than first written.** GitHub
+  documents that queueing behind a concurrency group cancels any previously
+  *pending* run in that group, regardless of `cancel-in-progress`. So the trigger
+  is one in-flight run plus **two** exempt events, and **the gate supplies one of
+  them itself**: a `synchronize` review is running, it posts its own review
+  (exempt → run B pending), a human adds any label (exempt → run C pending, B
+  cancelled) → a cancelled required context on the live head SHA. No external
+  actor and no review spam required. What remains genuinely unverified is only
+  whether an evicted-while-pending run has already materialised its check-run;
+  queued reusable jobs do surface as pending checks, which suggests it has.
+  **This applies to a flat `cancel-in-progress: false` too**, so it is not
+  something the allowlist or composition's stance eliminates. CI-0025 is narrowed
+  decisively — the deterministic, every-PR case is gone — not proven closed.
+- The FT-43 contract test asserted the predicate by **grepping its literal text**,
+  so it stayed green while the `pull_request_review` case was absent, and would
+  have gone red on a harmless reordering. It now **evaluates** the shipped
+  expression, and **derives its case list from the caller template's own `types:`
+  and asserts that list has not changed** — an added trigger fails the suite by
+  name, which a length floor would not have caught, and un-re-derived triggers
+  are the CI-0025 history. All eight subscribed pairs are classified, plus an
+  empty-context case. Mutation-verified three ways: the original predicate, the
+  failed denylist first draft, and a complete-but-fail-unsafe denylist all go red.
+- **Consumer action: none beyond re-pinning.** No input, secret, permission or
+  required-context change. Consumers already carrying cancelled contexts on an
+  open PR's head SHA need one new push (or a re-run of the cancelled context) to
+  clear the stale conclusion; the fix prevents recurrence, it does not rewrite
+  history.
+
+**Origin**
+
+Issue #322 (2026-07-26), reproduced on `aidoc-flow-framework` PR #346.
+
+---
+
 <!-- Append new entries above this line; append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
 and update the superseded entry's "Consequences" section to reference

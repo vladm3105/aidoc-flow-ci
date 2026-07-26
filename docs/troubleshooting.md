@@ -494,6 +494,21 @@ the requirement so consumers can add it when they hit this.
 
 ## 15. Stuck check — label-cycle retrigger (+ R3 force-fresh path, ci/v1.3.0+)
 
+> ⚠️ **Read `docs/REPO_STANDARDS.md` §23.1 before using this — it may make a
+> stuck check WORSE.** §23.1 records, from a live incident, that a `cancelled`
+> required check and a later `SUCCESS` from a *different* run both persist on the
+> same head SHA and the rollup stays `FAILURE`. If that is right, a label cycle —
+> which starts a *fresh* run — cannot clear a `cancelled` context, and each cycle
+> can add another: during the CI-0025 incident one cycle took a PR from one
+> cancelled run to two. This section and §23.1 assert opposite platform
+> semantics; which is correct is **unresolved** and tracked as **#330**.
+>
+> Until then: if the stuck context is `cancelled` or `failure`, prefer **one new
+> push**, or **re-run that specific run** (a re-run replaces its conclusion in
+> place, which a fresh run does not). Reach for the label cycle when the context
+> never *reported* at all ("Expected — waiting for status"), which is the case
+> this section was written for.
+
 `ai-review.yml` still listens on `pull_request_target` event types
 that include `labeled` + `unlabeled` — so a **label cycle** still
 injects synthetic PR events that fire ai-review on the current
