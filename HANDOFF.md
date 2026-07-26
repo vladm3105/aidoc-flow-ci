@@ -34,11 +34,21 @@ context compaction.
 > `pull-requests: write`. `--repin` does NOT fix it (it rewrites `uses:` lines
 > only). Callers generated before that release grant `read` and stay broken.
 >
-> **NEXT:** open the PR (one PR, founder-approved 2026-07-25), merge on green,
-> then cut the release. **Semver is an open decision** — see the note below on
-> whether the CI-0014 assertion makes this MINOR or MAJOR. Canon deliberately
-> carries no hardcoded next-tag reference, so the number can be chosen at
-> release time without editing shipped text.
+> **MERGED** as PR #312 (squash, `bc28e80`, 2026-07-25 EST). Suite green at merge
+> (14 suites, 801 assertions); all six required checks passed.
+>
+> **NEXT: cut `ci/v2.15.0`.** Semver settled by the founder 2026-07-25 —
+> **MINOR**, because the CI-0014 assertion enforces what the published v2 schema
+> always required (`version: {const: 2}`), canon's template has always shipped
+> it, the live operations config has it, and no in-workspace consumer is
+> affected. The only break is a hypothetical external adopter with a hand-rolled
+> config lacking `version`. Canon carries **no hardcoded next-tag reference**, so
+> the release needs no text edits beyond `VERSION` + the changelog heading.
+>
+> ⚠️ **Consumer note for the release:** `docs-sync` consumers installed from
+> `ci/v2.11.0` onward need **only a re-pin** (the missing half was always the
+> callee); only pre-`v2.11.0` or hand-edited callers must also be raised to
+> `pull-requests: write`. Procedure: `docs/UPDATE_GUIDE.md`.
 > The six repos still on `ci/v1.9.5` remain the outstanding fleet item; migrating
 > them is deferred to the founder.
 >
