@@ -79,17 +79,46 @@ context compaction.
 >   that command alone** — verified: `MIGRATION_v2.0.0.md` is absent from the
 >   prep diff.
 >
-> ### Open, filed upstream per CI-0020 §18
+> ### Since the release was prepped — the issue sweep (2026-07-26)
 >
-> | Issue | Repo | What |
+> All three open issues reviewed and fixed; **they ship in `ci/v2.15.0`** because
+> the tag was not yet cut when they merged.
+>
+> | Issue | Fix | PR |
 > |---|---|---|
-> | [#341](https://github.com/vladm3105/aidoc-flow-framework/issues/341) | framework | `ai-review/config.json` is `version: 1`; its "becomes authoritative" comment is false as of CI-0014 |
-> | [#71](https://github.com/vladm3105/aidoc-flow-interlog/issues/71) | interlog | same, plus no `litellm.model` at all |
-> | [#323](https://github.com/vladm3105/aidoc-flow-ci/issues/323) | **this repo** | pre-commit `files:` filter drifted behind `TARGETS` — 8 of 14 targets skip the LOCAL hook (CI unaffected, runs `--all-files`) |
+> | #322 | `ai-review` cancelled itself — its own review submission cancelled the run that posted it, stranding a `cancelled` required check on the live head SHA. Required on 3 tiers, so those PRs were `--admin`-only. **CI-0025**, §23. | #332 |
+> | #318 | The asset docs described a `sparse-checkout` delivery removed at `ci/v1.1.5`, contradicting §20. | #333 |
+> | #323 | The `sync-version-refs` pre-commit hook skipped 8 of its 14 targets locally. | #334 |
 >
-> Both sibling configs are **inert today** — every `trust_config_repo` override
-> across the workspace is commented out, so all consumers read operations'
-> config (`version: 2`). Nothing breaks on re-pin.
+> **#322 took five review passes** (past the OPS-0066 cap of 3, each escalated
+> and authorised — see PR #332). Only the FIRST found a code defect: the initial
+> fix was a denylist that still cancelled on `reopened` / `ready_for_review` /
+> `converted_to_draft`. Every later pass found *prose* defects — a false safety
+> property asserted four times (one as a canon rule, disproved by mutation), an
+> annotation describing an `exit 1` the code does not perform, a GHES version
+> bound refuted by its own citation. The last pass recommended **cutting** rather
+> than correcting, and the cut version is what shipped.
+>
+> **The volume of explanatory prose was itself the defect surface** — each
+> correction had been an added paragraph explaining why a neighbouring claim was
+> wrong, until the `concurrency:` block was ~68 lines of comment above a one-line
+> expression. Prefer one scoped statement plus pointers. (Note: PR #332 squashed
+> using the PR body, so main's commit message says "five cycles" and carries no
+> record of the cut; this entry is that record.)
+>
+> ### Open, filed by that sweep — none blocks the tag
+>
+> | Issue | What |
+> |---|---|
+> | #329 | The same CI-0025 defect in `audit-trail` (`call / verify`) and the lint family. **Caller-template-side**, so it needs a re-install not a re-pin — hence a separate release. |
+> | #330 | §23.1 and `troubleshooting` §15 assert **opposite** required-check semantics. §15 gained a warning; reconciliation needs empirical work. |
+> | #331 | `ai-review`'s FT-43 guard writes a permanent non-success on the live head SHA — the §23 defect class, in the file §23 was added to. |
+>
+> Upstream, filed per CI-0020 §18: framework #341 is **CLOSED** (2026-07-26);
+> interlog [#71](https://github.com/vladm3105/aidoc-flow-interlog/issues/71)
+> remains open. Both were **inert** regardless — every `trust_config_repo`
+> override in the workspace is commented out, so all consumers read operations'
+> `version: 2` config.
 >
 > ### Semver
 >
