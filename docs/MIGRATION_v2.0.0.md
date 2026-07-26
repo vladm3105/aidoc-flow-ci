@@ -106,8 +106,14 @@ In `.github/ai-review/config.json`, add:
 ```
 
 The old `reviewer:` input on caller templates is removed. Model selection is
-now config-driven — the reusable reads `litellm.model` from the trusted
-config. The default is `"ai-reviewer"` if absent.
+now config-driven — the reusable reads `litellm.model` from the trusted config.
+
+> **`litellm.model` is REQUIRED — there is no default.** Earlier revisions of
+> this guide said it defaulted to `"ai-reviewer"` if absent. That fallback was
+> removed by CI-0014: the reusable now asserts `version == 2` and reads
+> `litellm.model` with no `//` default, failing loud instead of silently
+> selecting an engine the repo has no key for. A config without both fields
+> fails the `ai-review` gate.
 
 ### 4. Drop `reviewer:` / `model:` inputs from callers
 
@@ -120,9 +126,16 @@ must be dropped from consumer caller `with:` blocks:
 
 ### 5. Repin all callers to `@ci/v2.0.0`
 
+<!-- sync-version-refs:ignore-start -->
 ```bash
-CI_TAG=ci/v2.14.0 bash install.sh <owner/repo> --repin
+CI_TAG=ci/v2.0.0 bash install.sh <owner/repo> --repin
 ```
+<!-- sync-version-refs:ignore-end -->
+
+> The tag above is **pinned deliberately**: this is the historical `v2.0.0`
+> cutover step, not an instruction to install the current release. It is wrapped
+> so `sync-version-refs.sh` cannot rewrite it — see `REPO_STANDARDS.md` §22
+> (CI-0024). To install the CURRENT release, follow `docs/UPDATE_GUIDE.md`.
 
 `--repin` does a version-only pin bump (`@ci/vX.Y.Z` → `@ci/v2.0.0` on every
 `uses:` line) without replacing files — this is the correct, complete cutover
@@ -173,9 +186,19 @@ its documentation was missing. (CI-0016.)
 
 To revert a consumer from `ci/v2.0.0` to the last `ci/v1.x` tag:
 
+<!-- sync-version-refs:ignore-start -->
 ```bash
-CI_TAG=ci/v2.14.0 bash install.sh <owner/repo> --repin
+CI_TAG=ci/v1.9.5 bash install.sh <owner/repo> --repin
 ```
+<!-- sync-version-refs:ignore-end -->
+
+> ⚠️ **This command must name a `ci/v1.x` tag — never the current release.**
+> From `ci/v2.1.0` to `ci/v2.14.0` inclusive, 16 published tags carried
+> `CI_TAG=<the then-current v2 tag>` here, because `sync-version-refs.sh`
+> rewrote it at every cut. Following it re-pinned a consumer **forward** to the
+> newest v2 — the opposite of a rollback. It is now wrapped so the rewriter
+> cannot touch it (CI-0024, `REPO_STANDARDS.md` §22). `ci/v1.9.5` is the last
+> `ci/v1.x` release.
 
 Then restore the deprecated vendor-CLI secrets and drop the LiteLLM secrets.
 The `ci/v1.x` reusables still reference the old secret names.

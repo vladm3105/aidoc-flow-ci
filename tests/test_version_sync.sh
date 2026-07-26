@@ -280,7 +280,10 @@ else
        ILLUSTRATIVE or HISTORICAL install commands — a rollback command, a
        'repin to @ci/vX.Y.Z' step from a past migration. Wrap each in
        <!-- sync-version-refs:ignore-start --> / <!-- ...ignore-end --> or it
-       will be silently falsified. Diff:
+       will be silently falsified. Check too for any LITERAL occurrence of those
+       marker strings in prose or fenced examples — once the file is a target
+       they parse as real spans, and an unbalanced or same-line pair is a hard
+       exit 2. Diff:
 $(diff <(printf '%s\n' "$_svr_expected") <(printf '%s\n' "$_svr_targets") | sed 's/^/       /')"
 fi
 
