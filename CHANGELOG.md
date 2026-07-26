@@ -9,6 +9,75 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 > onward need only a re-pin; older or hand-edited callers must also grant
 > `pull-requests: write`. See CI-0015 below.
 
+### Fixed — the ai-review rubric described inputs the reviewer never had (CI-0022)
+
+- `ai-review/review-prompt.md` instructed the model that "the changed files are
+  in the current directory", that "the working tree is the base branch", and to
+  "VERIFY by listing the file". The `ai-review` job has **no `actions/checkout`**
+  by design (IPLAN-0024) — true at `ci/v1.9.5` as well as every `ci/v2.x` — and
+  the v2 reviewer is a single-shot completion with no tools. An unexecutable
+  instruction is not skipped by a model: it is **answered anyway**.
+- Two rules were affected in defined ways. The doc-coverage precondition ("does
+  this consumer have `CHANGELOG.md` at its root?") was unanswerable from a
+  changed-file inventory, which lists only touched paths — so it either silently
+  disabled itself on every consumer or fired on a guess. The dead-relative-link
+  check had the same shape for any target outside the diff.
+- **The rubric now opens by enumerating its exact inputs** and states the
+  operative consequence: a finding that cannot be grounded in them is not
+  emitted, not softened into a suspicion, and never described as having been
+  checked. Silence is the required output when evidence is absent.
+- **`ai-review.yml` passes a third input block — a repo-root file inventory**
+  (every entry at the repository root at the PR's base commit, directories
+  marked with a trailing slash, one `gh api` call), which makes the
+  doc-coverage precondition genuinely decidable instead of scoped away. It
+  lists directories too: a files-only listing would make every root directory
+  absent from a list the rubric reads as authoritative for absence, which is
+  the same defect in a new place.
+- The inventory **fails soft** to the literal marker `UNAVAILABLE` on an API
+  failure, an empty body, or a listing at the contents API's 1000-entry cap
+  (which truncates with no flag). The rubric branches on that marker and treats
+  the dependent rules as inapplicable — an unavailable input can only suppress a
+  blocking finding, never manufacture one.
+- The dead-link rule is narrowed to the three decidable cases (a target that
+  names a root entry directly — no interior `/` — a target this PR deletes or
+  renames, and a reference internal to the diff) and instructs silence for the
+  rest. Two block-rule bullets that needed inputs the reviewer never gets are
+  narrowed the same way: a locked-decision contradiction is flaggable only when
+  the diff shows the decision text, and the model-identifier rule only when a
+  commit message appears inside the diff. Quantitative claims are scoped to
+  counts recountable from the diff text.
+- **The changed-file inventory now carries the same honesty.** Its listing is
+  fetched fail-soft (the governance floor locks on an incomplete one, but the
+  job continues), so it could reach the reviewer labelled `(complete)` when it
+  was truncated — and the rubric's new precondition keys on it. It is now
+  reported as `UNAVAILABLE` unless provably complete, and the rubric falls back
+  to the diff's own `diff --git` headers, which are equally complete.
+- **All three input blocks are now fenced** (`<untrusted_changed_files>`,
+  `<untrusted_root_inventory>`, `<untrusted_diff>`) and labelled untrusted. Paths
+  are attacker-influenced and git permits a newline in a path, so an unfenced
+  list sat in the prompt's highest-authority position as free text.
+- **A degraded input set is disclosed in the verdict comment.** A review with a
+  missing input is by construction the one that goes green, and nobody reads the
+  log of a green check; an unevaluated rule was indistinguishable from a passed
+  one.
+- `tests/test_contract.sh` +31 assertions, 11 of them **driving** the shipped
+  root-inventory block through nine stubbed `gh` scenarios — including one that
+  runs the block's own `-q` filter through real `jq` against a contents-API
+  payload, one that records the API arguments, and one that fails twice before
+  succeeding. The rest assert same-name same-order parity between the prompt
+  assembly and the rubric's "Your inputs" section, and the `UNAVAILABLE` marker
+  contract across both files. Verified by mutation: deleting the fallback, the
+  cap, or the assembly's inventory line goes red — and so does dropping
+  directories from the filter, inverting the base-sha guard, or collapsing the
+  retry loop, none of which an earlier version of these tests caught.
+- **No consumer action.** No input, secret, permission or required-context
+  change; the extra API call needs repo-contents read, which the job's existing
+  `contents: write` already includes. The behaviour change is confined to the
+  reviewer's verdicts and its PR comment.
+- Codified as `docs/REPO_STANDARDS.md` §20 (a general prompt-construction rule,
+  since `fix-prompt.md` is subject to the same failure) and `DECISIONS.md`
+  CI-0022. Closes #315; closes #81, whose v1 symptom this generalises.
+
 ### Added — infrastructure break-glass: an outage no longer requires `--admin` (CI-0021)
 
 - A reviewer **outage** previously left no non-`--admin` path to merge anything —
