@@ -27,6 +27,26 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 >    deliberately, because failing *it* would SKIP `ai-review`, and a skipped
 >    required check reports green.
 
+### Docs — the ai-review asset docs described a delivery mechanism removed at `ci/v1.1.5` (#318)
+
+- `ai-review/README.md` said the reusable "checks out `aidoc-flow-ci` … via
+  sparse-checkout", and `docs/ai-review-assets.md` carried a worked
+  `actions/checkout` + `sparse-checkout` YAML example. IPLAN-0024 replaced that
+  with a `curl` fetch at `ci/v1.1.5`; the `ai-review` job has **no
+  `actions/checkout` at all** (verified: zero checkout steps in that job — the two
+  in the file belong to `trust` and `autofix`).
+- Not merely stale. `docs/REPO_STANDARDS.md` §20, added days earlier by CI-0022,
+  codifies "the reviewer is a single-shot completion with **no checkout**" as
+  canon — so a reader following the cross-reference from the asset README landed
+  in a direct contradiction with canon, with nothing marking which was current.
+- Both files now describe the real mechanism: resolve the caller's own
+  `uses: …@ci/vX.Y.Z` pin, then `curl` each asset from
+  `raw.githubusercontent.com` into `reviewer-assets/ai-review/`, with a fetch
+  failure reported as an **infrastructure** error and never as a verdict.
+- Dropped the "(98 lines)" count on `review-prompt.md` — it was already wrong
+  before CI-0022 and is the kind of claim that keeps going wrong.
+- Docs only; no workflow, input, secret or permission change.
+
 ### Fixed — a dangling symlink under `.github/` bricked `install.sh` entirely (CI-0023)
 
 - FT-57's mandatory pre-write backup is deliberately fail-CLOSED. Its
