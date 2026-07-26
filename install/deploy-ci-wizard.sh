@@ -17,7 +17,29 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TPL="$HERE/templates"
-CI_TAG="$(cat "$HERE/../VERSION" 2>/dev/null | tr -d '[:space:]' || echo 'ci/v1.9.5')"
+# PLAN-018 F7 — fail loud, carry NO literal fallback.
+#
+# The previous form ended `|| echo 'ci/v1.9.5'`. That was not dead code: under
+# `set -euo pipefail` a missing or unreadable VERSION makes `cat` exit 1, the
+# pipeline exit 1, and the fallback FIRE — so the wizard scaffolded callers
+# pinned to ci/v1.9.5 while VERSION said ci/v2.10.0. Fourteen releases back,
+# green and silent, with nothing to indicate the pin was not the one requested.
+# (Verified by execution across all five modes: missing / empty / whitespace-only
+# / unreadable / good. The empty case produced the unresolvable `@` pin.)
+#
+# The obvious replacement dies before reaching its own guard: under `set -e` an
+# assignment whose command substitution fails terminates the script, and the
+# redirection error is reported before `2>/dev/null` applies to it. Hence the
+# explicit `|| CI_TAG=""` and the `2>/dev/null` BEFORE the `<` redirection.
+#
+# `tests/test_version_sync.sh` asserts this shipped behaviour, including the
+# missing-file case, so a literal fallback cannot reappear unnoticed.
+CI_TAG="$(tr -d '[:space:]' 2>/dev/null < "$HERE/../VERSION")" || CI_TAG=""
+[ -n "$CI_TAG" ] || {
+  echo "deploy-ci-wizard: cannot resolve the canon version — $HERE/../VERSION is missing, empty, or unreadable." >&2
+  echo "                  Refusing to scaffold: a guessed pin would silently write callers at the wrong canon tag." >&2
+  exit 2
+}
 BOT_ID="294948438"                    # aidoc-reviewer App bot-user id (App-global)
 GH="${GH:-gh}"
 
@@ -65,24 +87,137 @@ preflight() {
   [ "$missing" = 1 ] && c_wn "ai-review/composition cannot work until the 🔴 secrets land."
 
   hdr "3. Canon labels"
+  # PLAN-018 FT-25: check ALL canonical labels, not a hardcoded 5-of-18. Read the
+  # names from the shipped labels.json so a new canon label is surveyed for free.
   local labs; labs="$($GH label list -R "$repo" --json name -q '.[].name' 2>/dev/null || echo '')"
-  for l in ai:review-passed ai:review-changes ai:human-review-required skip-ai-review skip-audit-trail; do
-    echo "$labs" | grep -qx "$l" && c_ok "label $l" || c_wn "label $l missing → 🟢 gh label create $l -R $repo (see §1.4)"
-  done
+  local canon_labels; canon_labels="$(python3 -c "import json;print('\n'.join(l['name'] for l in json.load(open('$HERE/templates/labels.json'))))" 2>/dev/null || echo '')"
+  if [ -z "$canon_labels" ]; then
+    c_wn "could not read canon labels.json — cannot survey labels"
+  else
+    local _lmiss=0 l
+    while IFS= read -r l; do
+      [ -n "$l" ] || continue
+      echo "$labs" | grep -qx "$l" || { c_wn "label $l missing → 🟢 gh label create $l -R $repo"; _lmiss=$((_lmiss+1)); }
+    done <<< "$canon_labels"
+    [ "$_lmiss" -eq 0 ] && c_ok "all $(printf '%s\n' "$canon_labels" | grep -c .) canonical labels present" \
+      || c_wn "$_lmiss of $(printf '%s\n' "$canon_labels" | grep -c .) canonical labels missing (install.sh creates all on bootstrap)"
+  fi
 
   hdr "4. Allowed-actions policy"
-  local pol; pol="$($GH api "repos/$repo/actions/permissions/selected-actions" --jq '.patterns_allowed|join(", ")' 2>/dev/null || echo 'unreadable/all-allowed')"
-  echo "  patterns_allowed: $pol"
-  echo "$pol" | grep -q 'aidoc-flow-ci' && c_ok "aidoc-flow-ci allowlisted" || c_wn "confirm aidoc-flow-ci/* is allowlisted (else reusables startup_failure)"
+  # PLAN-018 FT-25: read /actions/permissions FIRST and branch on allowed_actions.
+  # The selected-actions endpoint 409s when allowed_actions != "selected", and the
+  # old `|| echo unreadable/all-allowed` masked distinct states behind one string.
+  # NB canon reusables use actions/* + github/* internally, so "green" requires
+  # more than the aidoc-flow-ci reference being reachable: local_only and
+  # selected-without-github-owned both BLOCK those and startup_failure.
+  local aa; aa="$($GH api "repos/$repo/actions/permissions" --jq '.allowed_actions // "unreadable"' 2>/dev/null || echo 'unreadable')"
+  case "$aa" in
+    all)
+      c_ok "allowed_actions=all — every action allowed; aidoc-flow-ci reusables run" ;;
+    local_only)
+      # local_only allows only SAME-OWNER actions/reusables — the aidoc-flow-ci
+      # reference is reachable (shared owner), but it BLOCKS GitHub-authored actions
+      # (actions/checkout, actions/* , github/*) that the canon reusables use
+      # internally, so their jobs startup_failure. NOT a green state.
+      c_no "allowed_actions=local_only BLOCKS GitHub-authored actions (actions/checkout, actions/*, github/*) that canon reusables use internally → they startup_failure. Set allowed_actions=all, or =selected WITH github-owned enabled + 'vladm3105/*' allowlisted." ;;
+    selected)
+      # Need BOTH: canon reusables allowlisted AND github_owned_allowed — the
+      # reusables depend on actions/* + github/*, so an allowlist without
+      # github-owned still startup_failures.
+      local sa; sa="$($GH api "repos/$repo/actions/permissions/selected-actions" 2>/dev/null || echo '{}')"
+      local pol goa
+      pol="$(printf '%s' "$sa" | jq -r '(.patterns_allowed // [])|join(", ")' 2>/dev/null || echo '')"
+      goa="$(printf '%s' "$sa" | jq -r '.github_owned_allowed' 2>/dev/null || echo '')"
+      echo "  allowed_actions=selected; github_owned_allowed=${goa:-?}; patterns_allowed: ${pol:-<none>}"
+      local _sok=1
+      # CI-0011: the canonical pattern is the account-wide `vladm3105/*`; the older
+      # repo-scoped `vladm3105/aidoc-flow-ci/*` also admits the reusables, so accept
+      # either. Match each array element ANCHORED — a substring match on the joined
+      # string reports green for a look-alike owner (`evilcorp-vladm3105/*`) whose
+      # reusables would in fact startup_failure. GitHub allowlist wildcards span
+      # `/`, so `vladm3105/aidoc-flow-ci*` is also a valid working spelling.
+      local _canon_ok=0 _pat
+      while IFS= read -r _pat; do
+        if printf '%s' "$_pat" | grep -qE '^vladm3105/(\*|aidoc-flow-ci[/*])'; then _canon_ok=1; break; fi
+      done < <(printf '%s' "$sa" | jq -r '(.patterns_allowed // [])[]' 2>/dev/null || true)
+      [ "$_canon_ok" = 1 ] || { c_no "canon reusables NOT admitted by patterns_allowed → startup_failure. Add 'vladm3105/*' (CI-0011 canonical) or 'vladm3105/aidoc-flow-ci/*'."; _sok=0; }
+      [ "$goa" = "true" ] || { c_no "github_owned_allowed=${goa:-?} → actions/checkout + github/* (used inside canon reusables) are BLOCKED → startup_failure. Enable GitHub-owned actions."; _sok=0; }
+      [ "$_sok" = 1 ] && c_ok "canon reusables allowlisted AND GitHub-owned actions enabled" ;;
+    *)
+      c_wn "could not read actions/permissions (auth/scope?) — confirm allowed_actions=all, or =selected WITH github-owned enabled + 'vladm3105/*' allowlisted (local_only will startup_failure)" ;;
+  esac
 
   hdr "5. Already-deployed workflows"
-  local have; have="$($GH api "repos/$repo/contents/.github/workflows?ref=main" --jq '[.[].name]|join(" ")' 2>/dev/null || echo '')"
+  # Resolve the repo's DEFAULT BRANCH once — do not assume `main`. A repo on
+  # `master`/`develop` would otherwise read as "no workflows" (and skip the
+  # FT-31 check below) rather than reporting its real state.
+  local defbr; defbr="$($GH api "repos/$repo" --jq '.default_branch' 2>/dev/null || echo main)"
+  [ -n "$defbr" ] || defbr=main
+  local have; have="$($GH api "repos/$repo/contents/.github/workflows?ref=$defbr" --jq '[.[].name]|join(" ")' 2>/dev/null || echo '')"
   for pair in $ALL_WF; do
     local wf="${pair%%:*}"
     echo "$have" | grep -qw "$wf.yml" && c_ok "$wf.yml present" || echo "     ·  $wf.yml — not yet"
   done
   echo "$have" | grep -qw 'security.yml'  && c_wn "ships own security.yml → treat secret-scan as covered-by-own (don't double-add)"
   echo "$have" | grep -qw 'docs-lint.yml' && c_wn "ships own docs-lint.yml → treat markdown-lint as covered-by-own (don't clobber .markdownlint.json)"
+
+  # PLAN-018 FT-31 — zero-hook detector. If the repo already runs the pre-commit
+  # caller, its required 'call / Lint / format / security hooks' check is only
+  # meaningful if the repo's .pre-commit-config.yaml selects a hook at the
+  # pre-commit stage. A config with only pre-push hooks passes green while
+  # inspecting nothing (F3). Same standalone check install.sh + the release
+  # checklist run — never on the reusable's gating path.
+  if echo "$have" | grep -qw 'pre-commit.yml'; then
+    local pcfg; pcfg="$($GH api "repos/$repo/contents/.pre-commit-config.yaml?ref=$defbr" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || echo '')"
+    if [ -z "$pcfg" ]; then
+      c_wn "pre-commit.yml present but .pre-commit-config.yaml unreadable — cannot verify the required check has hooks (FT-31)"
+    else
+      local pctmp; pctmp="$(mktemp)"; printf '%s' "$pcfg" > "$pctmp"
+      local pcrc; bash "$HERE/check-precommit-hooks.sh" "$pctmp" >/dev/null 2>&1 && pcrc=0 || pcrc=$?
+      case "$pcrc" in
+        0) c_ok ".pre-commit-config.yaml selects ≥1 pre-commit-stage hook (required check is real)" ;;
+        1) c_no ".pre-commit-config.yaml selects ZERO pre-commit-stage hooks → the required 'call / Lint / format / security hooks' check would inspect NOTHING (F3/FT-31). Add commit-stage hooks (canon fragment: check-yaml/end-of-file-fixer/trailing-whitespace)." ;;
+        *) c_wn "could not verify .pre-commit-config.yaml hooks (FT-31 detector rc=$pcrc — PyYAML missing or unparseable config)" ;;
+      esac
+      rm -f "$pctmp"
+    fi
+  fi
+
+  # PLAN-018 FT-18 — required-context ↔ producer validator (general form of F2).
+  # For each tier, does every required status-check context have an INSTALLED
+  # caller producing it? A required context with no producer never reports, so
+  # arming protection at that tier pins every PR on "Expected — Waiting for
+  # status to be reported" forever (exactly F2). The context->producer map is
+  # DERIVED from canon (required-context-map.py), never hand-maintained.
+  hdr "6. Required-context producers (FT-18) — would arming brick a PR?"
+  local mapout; mapout="$(python3 "$HERE/required-context-map.py" "$HERE/.." 2>/dev/null || echo '')"
+  if [ -z "$mapout" ] || [ "$mapout" = SKIP ]; then
+    c_wn "could not derive the required-context map (PyYAML missing?) — cannot check producers"
+  else
+    # List tiers from the template FILES (not only tiers the map emitted rows
+    # for) so umbrella — which has no required contexts — still gets a line
+    # rather than being silently omitted.
+    local tiers; tiers="$(ls "$HERE"/templates/branch-protection-*.json 2>/dev/null | sed -E 's#.*/branch-protection-(.*)\.json#\1#' | sort -u)"
+    local t
+    for t in $tiers; do
+      local missing="" ctx producer nreq=0
+      while IFS=$'\t' read -r ctx producer; do
+        nreq=$((nreq+1))
+        case "$producer" in
+          '?non-call') : ;;  # a bare (repo-local) required context — no canon producer expected, not a defect
+          '?') missing="$missing\n       · $ctx → canon ships NO producer — canon defect" ;;
+          *) echo "$have" | grep -qw "$producer" || missing="$missing\n       · $ctx → needs $producer (NOT installed)" ;;
+        esac
+      done < <(printf '%s\n' "$mapout" | awk -F'\t' -v tt="$t" '$1==tt{print $2"\t"$3}')
+      if [ "$nreq" -eq 0 ]; then
+        c_ok "$t: no required contexts (nothing to produce)"
+      elif [ -z "$missing" ]; then
+        c_ok "$t: all $nreq required-context producer(s) installed"
+      else
+        c_no "$t: arming would HANG PRs — required context(s) with no installed producer:$(printf '%b' "$missing")"
+      fi
+    done
+  fi
   echo; echo "→ Next: 'plan $repo' then 'scaffold $repo <dir>'. See docs/AI_CI_DEPLOYMENT.md."
 }
 
@@ -102,7 +237,8 @@ plan() {
    6. auto-merge-ai-prs    (inert without ai-review)
    7. doc-maintainer (dry-run)  (LiteLLM required; live-mode App is 🔴)
       docs-sync is legacy and should not be co-installed on new v2 adopters.
-   8. codeql               (skip docs-only repos)
+   8. codeql               (skip docs-only repos; PRIVATE repos need GHAS —
+                            without Advanced Security codeql-action/init errors)
   Variant: $([ "$vis" = PRIVATE ] && echo 'PRIVATE → runner_labels ["self-hosted","ci-runner","single-use"]' || echo 'PUBLIC → ubuntu-latest')
   Each PR: branch-first · pin @$CI_TAG · CHANGELOG entry · OPS-0069 audit phrase · verify green.
   Gotchas: docs/AI_CI_DEPLOYMENT.md §5.  Verify: §6.  Arm: §7.
@@ -127,12 +263,34 @@ scaffold() {
     else c_wn "$wf: no template — skipped"; continue; fi
     local dst="$dir/.github/workflows/$wf.yml"
     cp "$src" "$dst"
-    # normalize pin to current tag
-    sed -i "s#@ci/v[0-9.]*#@$CI_TAG#g" "$dst"
+    # normalize pin to current tag (FT-50: `-i.bak` is portable — bare GNU `sed -i`
+    # errors on BSD/macOS sed, which requires a backup suffix). `rm` is a separate
+    # statement so a sed failure still aborts under `set -e` and the backup is
+    # cleaned unconditionally.
+    sed -i.bak "s#@ci/v[0-9.]*#@$CI_TAG#g" "$dst"
+    rm -f "$dst.bak"
     # single-template repos: for PRIVATE inject runner_labels into EVERY job's
-    # with: (handles multi-job links); for markdown-lint set report-only.
-    # (Variant workflows already bake in labels/report-only, so skip them.)
-    if [ ! -f "$TPL/workflows/$wf-$suffix.yml" ]; then
+    # with: (handles multi-job links). Variant templates already bake in their
+    # labels, and the injector re-checks that per job, so they are inert here.
+    #
+    # PLAN-018 F6 — markdown-lint runs the injector REGARDLESS of whether a
+    # variant exists. Gating the whole block on `[ ! -f <variant> ]` gave new
+    # PUBLIC adopters report-only (no markdown-lint-public.yml → injected) and
+    # new PRIVATE adopters a blocking gate (markdown-lint-private.yml exists →
+    # skipped), even though BOTH templates ship `fail-on-findings` commented out
+    # and carry the same rollout recommendation in their headers. The asymmetry
+    # was never intended — it was a side effect of which variant files happen to
+    # exist.
+    #
+    # The fix stays in the WIZARD, not the template. Uncommenting
+    # `fail-on-findings: false` in markdown-lint-private.yml would silently
+    # downgrade live gates: business/iplanic/interlog deliberately carry
+    # `fail-on-findings: true  # graduated to blocking (PLAN-007 W3)`, and the
+    # caller is safe_to_replace, so `--update --non-interactive` would replace
+    # them with a report-only canon template and turn three graduated blocking
+    # gates back off with nobody asking. Graduating a repo stays a per-repo,
+    # deliberate act (FT-11).
+    if [ ! -f "$TPL/workflows/$wf-$suffix.yml" ] || [ "$wf" = markdown-lint ]; then
       python3 - "$dst" "$wf" "$vis" <<'PY'
 import sys, re
 d, wf, vis = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -194,12 +352,26 @@ PY
       c_ok "config .github/ai-review/config.json"
       ;;
   esac
+  # PLAN-018 FT-25: labeler's caller uses `configuration-path: .github/labeler.yml`,
+  # but that config was installable by NO path — the starter `labeler.yml` template
+  # was never copied, so a scaffolded labeler ran against a missing config. Drop the
+  # starter when labeler is scaffolded; the operator customizes it (see REVIEW note).
+  case " $wfs " in
+    *" labeler "*)
+      if [ -f "$TPL/labeler.yml" ]; then
+        mkdir -p "$dir/.github"; cp "$TPL/labeler.yml" "$dir/.github/labeler.yml"
+        c_ok "config .github/labeler.yml (starter — MUST be customized to THIS repo's paths→labels)"
+      else
+        c_wn "labeler scaffolded but no starter labeler.yml template — author .github/labeler.yml by hand"
+      fi
+      ;;
+  esac
   cat <<EOF
 
   ⚠️  REVIEW before committing (docs/AI_CI_DEPLOYMENT.md §4-§5):
    - .markdownlint.json — DELETE it if the repo already has one (don't clobber).
    - .lychee.toml — add repo-specific cross-repo/sibling + debt excludes.
-   - .github/labeler.yml — author it: map THIS repo's paths → THIS repo's labels.
+   - .github/labeler.yml — CUSTOMIZE the scaffolded starter: map THIS repo's paths → THIS repo's labels.
    - set APP_REVIEWER_1_BOT_ID var (=$BOT_ID) if unset; ensure 🔴 App+secrets before ai-review.
   Then: branch-first, one PR per workflow, CHANGELOG + OPS-0069 phrase, verify (§6).
 EOF
@@ -208,6 +380,27 @@ EOF
 verify() {
   local repo="$1" pr="$2"
   hdr "Verifying ai-review + composition on $repo #$pr"
+  # PLAN-018 FT-25: ai-review (pull_request_target) and composition/auto-merge
+  # (workflow_run) resolve their workflow definition from the DEFAULT BRANCH, so on
+  # the PR that first ADDS them they do not run at all — the poll below would burn
+  # its full 24×25s matching nothing. Adoption is a TWO-PR shape: PR-1 merges the
+  # callers to the default branch; the gates arm on PR-2 onward. `verify` is only
+  # meaningful once the callers are on the default branch.
+  # Distinguish a confirmed 404 (caller genuinely not on the default branch → the
+  # pull_request_target/workflow_run gates cannot run on the PR that ADDS them, so
+  # skip the empty poll) from a transient/auth read error (do NOT false-skip and
+  # claim "not deployed" when we simply couldn't read — warn and poll anyway).
+  local _cout _crc
+  # `if …; then` captures the rc without `set -e` aborting on a non-zero gh exit
+  # (404 on the adoption PR is expected, not fatal).
+  if _cout="$($GH api "repos/$repo/contents/.github/workflows/ai-review.yml" 2>&1)"; then _crc=0; else _crc=$?; fi
+  if [ "$_crc" -ne 0 ]; then
+    if printf '%s' "$_cout" | grep -qiE '404|not found'; then
+      c_wn "ai-review.yml is not on the default branch yet — its pull_request_target trigger arms only AFTER the caller is merged there. If #$pr is the PR that ADDS it, the gate will NOT run here (two-PR adoption: merge the callers first, then verify on the next PR). Skipping the poll."
+      return 0
+    fi
+    c_wn "could not read the default branch (auth/scope/network?) — cannot confirm the caller is deployed; polling anyway."
+  fi
   local air_done=0
   for i in $(seq 1 24); do
     local air comp

@@ -15,7 +15,7 @@ a duplicate — always defer to §T-D for the load-bearing per-wave scope.
 - **PR-V1** (this repo, 2026-07-08) — 5 canon templates in
   `install/templates/` + `docs/REPO_STANDARDS.md` §16 + Wave 0
   self-adoption (this repo's `CLAUDE.md` + `HANDOFF.md` + `DECISIONS.md`
-  + `ROADMAP.md` created from templates).
+  - `ROADMAP.md` created from templates).
 - **PR-V2** (this repo, 2026-07-08) — `install/parse-governance-table.py`
   parser implementing §4.5 contract + `governance_check` in
   `install/apply-standards.sh` (fires in `--check` / `--dry-run` /
@@ -31,7 +31,7 @@ FULLY green: all PRs merged, and zero drift on every wave repo. Run the
 drift check from each consumer's repo root:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.8.0/install/apply-standards.sh) --check
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.14.0/install/apply-standards.sh) --check
 ```
 
 `apply-standards.sh` lives in `aidoc-flow-ci`, not the consumer, so it is
@@ -67,7 +67,7 @@ per PLAN-002 §5.4 precedent + record via OPS-0069 audit-trail phrase.
 
 Before closing a wave:
 
-1. `bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.8.0/install/apply-standards.sh) --check`
+1. `bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.14.0/install/apply-standards.sh) --check`
    on every repo in the wave (run from each consumer's repo root — the
    script is fetched from `aidoc-flow-ci`, not present in the consumer).
    Zero drift required.

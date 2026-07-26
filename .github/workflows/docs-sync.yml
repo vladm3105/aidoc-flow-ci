@@ -28,7 +28,7 @@
 #     push: { branches: [main] }
 #   jobs:
 #     call:
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v2.8.0
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v2.14.0
 #       secrets: inherit
 
 name: docs-sync
@@ -56,9 +56,25 @@ on:
         description: 'aidoc-flow-bot App private key (PEM). Required for non-dry-run mode.'
         required: false
 
+# CI-0015: `pull-requests` MUST be `write` here, not `read`.
+#
+# GitHub computes a reusable workflow's token as the INTERSECTION of the caller's
+# grant and this declaration, so a callee capped at `read` can never be raised by
+# any caller — the "Post dry-run comment" step's `gh pr comment` then dies on
+# `GraphQL: Resource not accessible by integration (addComment)` under
+# `set -euo pipefail`. That step is gated on `proposed != 0`, so it had never
+# executed and this workflow reported green from the day it shipped until a merge
+# finally produced a proposal.
+#
+# CONSUMER ACTION: the caller must ALSO grant `pull-requests: write`, because the
+# intersection cuts both ways. The shipped caller template has granted it since
+# ci/v2.11.0, so for most consumers the remedy is simply to re-pin to a release
+# containing this fix — the missing half was always THIS file. Only a caller
+# generated before ci/v2.11.0, or one hand-edited down to `read`, also needs a
+# caller-side change. See docs/UPDATE_GUIDE.md.
 permissions:
   contents: read
-  pull-requests: read
+  pull-requests: write
 
 concurrency:
   group: docs-sync-${{ github.ref }}
@@ -103,21 +119,73 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "::notice::docs-sync running; dry_run=$DRY_RUN"
 
-      - name: Fetch operation scripts from aidoc-flow-ci
+      - name: Fetch operation scripts from the adopted canon tag
         if: ${{ steps.cfg.outputs.skip != 'true' }}
-        env:
-          CI_TAG: ${{ github.workflow_ref }}
         run: |
           set -euo pipefail
-          # The reusable workflow's `github.workflow_ref` looks like:
-          # vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v2.8.0
-          # Extract the @<tag> portion and owner to fetch matching scripts.
-          TAG="${CI_TAG##*@}"
-          CI_OWNER=$(echo "${CI_TAG}" | cut -d/ -f1)
-          BASE="https://raw.githubusercontent.com/${CI_OWNER}/aidoc-flow-ci/${TAG}/scripts/docs-sync"
+          # WHICH canon version: read the adopted `@ci/vX.Y.Z` pin from the
+          # consumer's OWN checked-out docs-sync caller (the `actions/checkout`
+          # above put it on disk). We deliberately do NOT use
+          # `github.workflow_ref` — inside a `workflow_call` reusable it is the
+          # CALLER's entry ref (the consumer's default branch), NOT this
+          # reusable's pin, so it silently fetched scripts from `main` regardless
+          # of the adopted tag (FT-15, confirmed live 2026-07-21). And
+          # `github.job_workflow_sha` is not accessible as a workflow expression
+          # (actionlint rejects it; it is an OIDC claim, not a context field).
+          # Matches both pin forms canon accepts — plain `@ci/vX.Y.Z` and the
+          # commented-SHA `@<40-hex> # ci/vX.Y.Z` — and is keyed to THIS
+          # workflow's filename so a pin for a different reusable can never be
+          # picked up. (Two callers pinned to different tags resolve to the
+          # highest — an abnormal install.)
+          [ -d .github/workflows ] \
+            || { echo "::error::docs-sync: .github/workflows/ not found after checkout — INFRASTRUCTURE error, not a sync result."; exit 1; }
+
+          # Read only real `uses:` lines in files GitHub actually executes: a
+          # *.yml.bak/*.disabled leftover or a commented-out example must never
+          # supply the tag (it would WIN the version sort — verified).
+          set +e
+          USES_LINES="$(grep -rhE --include='*.yml' --include='*.yaml' '^[[:space:]]*uses:' .github/workflows/)"
+          grc=$?
+          set -e
+          # grep rc: 0=match, 1=no match, >=2=real error (unreadable dir). Without
+          # this split, an I/O error is misreported as "caller not installed".
+          [ "$grc" -le 1 ] \
+            || { echo "::error::docs-sync: could not read .github/workflows/ (grep exit $grc) — INFRASTRUCTURE error, not a sync result."; exit 1; }
+
+          PINS="$(printf '%s\n' "$USES_LINES" \
+            | grep -ohE 'vladm3105/aidoc-flow-ci/\.github/workflows/docs-sync\.yml@([0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' \
+            | sort -u || true)"
+          PIN_COUNT="$(printf '%s' "$PINS" | grep -c . || true)"
+          [ "$PIN_COUNT" -ge 1 ] \
+            || { echo "::error::docs-sync: could not find a docs-sync '@ci/vX.Y.Z' pin on a 'uses:' line in .github/workflows/ — is this caller installed from the canon template? INFRASTRUCTURE error, not a sync result."; exit 1; }
+          # Fail CLOSED on ambiguity: only one reusable actually runs, so the
+          # correct tag is unknowable from the tree. Picking the highest would
+          # silently fetch a version the repo never adopted.
+          [ "$PIN_COUNT" -eq 1 ] \
+            || { echo "::error::docs-sync: found $PIN_COUNT differing docs-sync pins in .github/workflows/ — resolve to one. INFRASTRUCTURE error, not a sync result."; printf '%s\n' "$PINS" | sed 's/^/  /'; exit 1; }
+
+          CANON_TAG="$(printf '%s' "$PINS" | grep -oE 'ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?')"
+          CANON_SHA="$(printf '%s' "$PINS" | grep -oE '@[0-9a-f]{40}' | tr -d '@' || true)"
+          case "$CANON_TAG" in
+            *-*) echo "::error::docs-sync: pre-release canon pin '${CANON_TAG}' is not supported — pin a released ci/vX.Y.Z tag. INFRASTRUCTURE error, not a sync result."; exit 1 ;;
+          esac
+          # When the caller pinned by SHA, GitHub EXECUTES that SHA — so fetch the
+          # assets from the SHA too. The trailing `# ci/vX.Y.Z` is documentation
+          # and can lag the SHA; trusting it would run one version's workflow with
+          # another version's scripts (FT-15's class via the other pin form).
+          FETCH_REF="${CANON_SHA:-$CANON_TAG}"
+          echo "::notice::docs-sync: adopted canon pin vladm3105/aidoc-flow-ci@${CANON_TAG} (fetching at ${FETCH_REF})"
+
+          # owner/repo hardcoded to the canonical canon — never derived from
+          # caller-controlled input (FT-15 D2: deriving the owner from
+          # `workflow_ref` broke external adopters, who fetched
+          # <their-org>/aidoc-flow-ci and 404'd).
+          BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${FETCH_REF}/scripts/docs-sync"
           mkdir -p .docs-sync-scripts
           for op in changelog_stub version_sync cross_ref_repair; do
-            curl -fsSL "${BASE}/${op}.py" -o ".docs-sync-scripts/${op}.py"
+            curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
+              -o ".docs-sync-scripts/${op}.py" "${BASE}/${op}.py" \
+              || { echo "::error::docs-sync: failed to fetch ${op}.py from vladm3105/aidoc-flow-ci@${FETCH_REF} — INFRASTRUCTURE error, not a sync result. Re-run."; exit 1; }
             chmod +x ".docs-sync-scripts/${op}.py"
           done
           ls -la .docs-sync-scripts/

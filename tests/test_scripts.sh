@@ -52,6 +52,15 @@ assert_ok "grep -qE 's#.*aidoc-flow-ci.*@ci/v' '$ROOT/install/install.sh'" "inst
 assert_ok "grep -qE '@\[0-9a-f\]\{40\}' '$ROOT/install/install.sh'"          "install.sh has the SHA-pin sed"
 assert_ok "grep -q 'CI_TAG_FALLBACK=\"'$current_tag'\"' '$ROOT/install/install.sh'" "standalone installer fallback matches VERSION"
 
+echo "== FT-50: portability (adopter macOS runs install.sh + wizard) =="
+# No bare GNU `sed -i ` — BSD/macOS sed requires a backup suffix, so bare `-i`
+# errors there. The portable `-i.bak … && rm` form has `-i.`, never `-i<space>`.
+assert_ok "! grep -nE 'sed -i[[:space:]]' '$ROOT/install/install.sh' '$ROOT/install/deploy-ci-wizard.sh'" \
+  "no bare GNU 'sed -i ' in install.sh / deploy-ci-wizard.sh (portable -i.bak only)"
+# install.sh uses `mapfile` (bash 4+) and must guard it up front, not fail cryptically.
+assert_ok "grep -q 'BASH_VERSINFO' '$ROOT/install/install.sh'" \
+  "install.sh guards bash>=4 (mapfile) with an actionable message up front"
+
 echo "== deploy wizard LiteLLM scaffold contract =="
 cat > "$TMP/wizard-gh" <<'SH'
 #!/usr/bin/env bash
@@ -327,7 +336,7 @@ cat > "$TMP/drift-contract/bin/gh" <<'SH'
 case "$*" in
   "auth status") exit 0 ;;
   *"branches/main/protection"*) cat "$DRIFT_FIXTURES/bp-actual.json" ;;
-  *"actions/permissions/selected-actions"*) echo '{"github_owned_allowed":true,"verified_allowed":true}' ;;
+  *"actions/permissions/selected-actions"*) echo '{"github_owned_allowed":true,"verified_allowed":false,"patterns_allowed":["vladm3105/*","actions/*","github/*"]}' ;;
   *"actions/permissions/workflow"*) echo '{"default_workflow_permissions":"read"}' ;;
   *"actions/permissions/access"*) echo '{"access_level":"none"}' ;;
   *"actions/permissions"*) echo '{"allowed_actions":"selected"}' ;;
@@ -356,5 +365,262 @@ if DRIFT_FIXTURES="$TMP/drift-contract/fixtures" PATH="$TMP/drift-contract/bin:$
 else
   assert_ok "grep -q 'branch-protection.required_pull_request_reviews' '$drift_out' && grep -q 'repo-settings.allow_update_branch' '$drift_out' && grep -q 'repo-settings.squash_merge_commit_title' '$drift_out' && grep -q 'repo-settings.squash_merge_commit_message' '$drift_out'" "strict drift mode detects PR-only, update-branch, and squash metadata drift"
 fi
+
+echo ""
+echo "== standards-drift compares patterns_allowed (FT-53) =="
+# Since CI-0011 set verified_allowed=false this list is the ONLY non-GitHub-owned
+# admission, and it was the one field drift never compared. Vary ONLY it.
+mkdir -p "$TMP/drift-pa/bin" "$TMP/drift-pa/fixtures"
+cp "$ROOT/install/templates/actions-permissions.json" "$TMP/drift-pa/fixtures/actions.json"
+cp "$ROOT/install/templates/branch-protection-product.json" "$TMP/drift-pa/fixtures/bp.json"
+cp "$ROOT/install/templates/repo-settings.json" "$TMP/drift-pa/fixtures/repo.json"
+cp "$ROOT/install/templates/labels.json" "$TMP/drift-pa/fixtures/labels.json"
+jq '. + {default_branch:"main", visibility:"public"}' "$TMP/drift-pa/fixtures/repo.json" > "$TMP/drift-pa/fixtures/repo-actual.json"
+cat > "$TMP/drift-pa/bin/gh" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  "auth status") exit 0 ;;
+  *"branches/main/protection"*) cat "$DRIFT_FIXTURES/bp.json" ;;
+  *"actions/permissions/selected-actions"*) echo "{\"github_owned_allowed\":true,\"verified_allowed\":false,\"patterns_allowed\":${PA_LOCAL}}" ;;
+  *"actions/permissions/workflow"*) echo '{"default_workflow_permissions":"read"}' ;;
+  *"actions/permissions/access"*) echo '{"access_level":"none"}' ;;
+  *"actions/permissions"*) echo '{"allowed_actions":"selected"}' ;;
+  *"labels?per_page=100"*) cat "$DRIFT_FIXTURES/labels.json" ;;
+  *"repos/owner/repo --jq .default_branch"*) echo main ;;
+  *"repos/owner/repo --jq .visibility"*) echo public ;;
+  *"repos/owner/repo"*) cat "$DRIFT_FIXTURES/repo-actual.json" ;;
+  *) echo "unexpected gh call: $*" >&2; exit 1 ;;
+esac
+SH
+cat > "$TMP/drift-pa/bin/curl" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  *"branch-protection-product.json"*) cat "$DRIFT_FIXTURES/bp.json" ;;
+  *"repo-settings.json"*) cat "$DRIFT_FIXTURES/repo.json" ;;
+  *"actions-permissions.json"*) cat "$DRIFT_FIXTURES/actions.json" ;;
+  *"labels.json"*) cat "$DRIFT_FIXTURES/labels.json" ;;
+  *) echo "unexpected curl call: $*" >&2; exit 1 ;;
+esac
+SH
+chmod +x "$TMP/drift-pa/bin/gh" "$TMP/drift-pa/bin/curl"
+_pa_run() { # $1 = JSON array literal for the repo's live patterns_allowed; $2.. = extra flags
+  local pa="$1"; shift
+  PA_LOCAL="$pa" DRIFT_FIXTURES="$TMP/drift-pa/fixtures" PATH="$TMP/drift-pa/bin:$PATH" \
+    bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 "$@" 2>&1 || true
+}
+_pa_rc() { # same, but yields the EXIT CODE (the strict gate is the point of the feature)
+  local pa="$1"; shift
+  PA_LOCAL="$pa" DRIFT_FIXTURES="$TMP/drift-pa/fixtures" PATH="$TMP/drift-pa/bin:$PATH" \
+    bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 "$@" >/dev/null 2>&1
+  echo $?
+}
+# Derive the fixtures FROM the template rather than freezing literals — adding a
+# 4th canon pattern must not fail tests whose names are about ordering.
+_pa_canon="$(jq -c '.selected_actions.patterns_allowed' "$TMP/drift-pa/fixtures/actions.json")"
+_pa_reordered="$(jq -c '.selected_actions.patterns_allowed | reverse' "$TMP/drift-pa/fixtures/actions.json")"
+_pa_dropone="$(jq -c '.selected_actions.patterns_allowed[1:]' "$TMP/drift-pa/fixtures/actions.json")"
+_pa_dropped="$(jq -r '.selected_actions.patterns_allowed[0]' "$TMP/drift-pa/fixtures/actions.json")"
+_pa_plus="$(jq -c '.selected_actions.patterns_allowed + ["aquasecurity/*"]' "$TMP/drift-pa/fixtures/actions.json")"
+
+# (1) same SET, different ORDER => no drift. Paired with a POSITIVE control, so the
+#     assertion cannot be satisfied merely by the feature not existing.
+pa_ord="$(_pa_run "$_pa_reordered")"
+assert_absent "$pa_ord" "patterns_allowed" "drift: identical patterns in a different ORDER is not drift"
+assert_contains "$pa_ord" "0 drift" "drift: reordered set really produced ZERO drift (positive control)"
+assert_eq "$(_pa_rc "$_pa_reordered" --strict)" "0" "drift: reordered set passes the strict gate"
+
+# (2) a canon pattern MISSING and uncovered => availability drift, named, and it
+#     must COUNT and FAIL the strict gate — warning text alone is not the feature.
+pa_miss="$(_pa_run "$_pa_dropone")"
+assert_contains "$pa_miss" "patterns_allowed: MISSING" "drift: a missing canon pattern is reported"
+assert_contains "$pa_miss" "$_pa_dropped" "drift: names the missing pattern"
+assert_contains "$pa_miss" "startup_failure" "drift: explains the missing-pattern consequence"
+assert_contains "$pa_miss" "1 drift" "drift: a missing pattern INCREMENTS the drift count"
+assert_eq "$(_pa_rc "$_pa_dropone" --strict)" "1" "drift: a missing pattern FAILS the strict gate"
+
+# (3) an EXTRA owner => supply-chain drift, reported separately, counted, strict-fatal.
+pa_extra="$(_pa_run "$_pa_plus")"
+assert_contains "$pa_extra" "patterns_allowed: EXTRA" "drift: an extra owner is reported"
+assert_contains "$pa_extra" "aquasecurity/*" "drift: names the extra owner"
+assert_absent "$pa_extra" "patterns_allowed: MISSING" "drift: an extra owner is NOT reported as missing"
+assert_contains "$pa_extra" "1 drift" "drift: an extra owner INCREMENTS the drift count"
+assert_eq "$(_pa_rc "$_pa_plus" --strict)" "1" "drift: an extra owner FAILS the strict gate (supply-chain widening)"
+
+# (4) both at once => both reported, and BOTH counted (2, not 1).
+pa_both="$(_pa_run '["actions/*","aquasecurity/*"]')"
+assert_contains "$pa_both" "patterns_allowed: MISSING" "drift: reports MISSING when both conditions hold"
+assert_contains "$pa_both" "patterns_allowed: EXTRA" "drift: reports EXTRA when both conditions hold"
+assert_contains "$pa_both" "2 drift" "drift: MISSING and EXTRA each count once"
+
+# (5) GLOB SUBSUMPTION. `vladm3105/*` covers `vladm3105/aidoc-flow-ci/*`, so a
+#     BROADENED pattern loses no coverage and must NOT be reported as blocked.
+#     This is the live CI-0011 rollout shape: consumers pinned at an older tag whose
+#     settings were already widened. A literal set-diff called it MISSING and
+#     asserted a startup_failure that cannot happen — and failed the strict gate.
+mkdir -p "$TMP/drift-pa/fixtures-old"
+cp "$TMP/drift-pa/fixtures/"*.json "$TMP/drift-pa/fixtures-old/"
+jq '.selected_actions.patterns_allowed = ["vladm3105/aidoc-flow-ci/*","actions/*","github/*"]' \
+  "$TMP/drift-pa/fixtures/actions.json" > "$TMP/drift-pa/fixtures-old/actions.json"
+pa_broad="$(PA_LOCAL='["vladm3105/*","actions/*","github/*"]' DRIFT_FIXTURES="$TMP/drift-pa/fixtures-old" \
+  PATH="$TMP/drift-pa/bin:$PATH" bash "$ROOT/sync/check-standards-drift.sh" \
+  --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_absent "$pa_broad" "patterns_allowed: MISSING" "drift: a BROADENED pattern is not a false MISSING (glob subsumption)"
+assert_contains "$pa_broad" "patterns_allowed: EXTRA" "drift: the broadening is still reported as EXTRA"
+
+# (6) the INVERSE — repo narrower than canon — IS a real loss of coverage and must fire.
+pa_narrow="$(_pa_run '["vladm3105/aidoc-flow-ci/*","actions/*","github/*"]')"   # canon is account-wide
+assert_contains "$pa_narrow" "patterns_allowed: MISSING" "drift: a NARROWED repo pattern is real drift (coverage lost)"
+# ...and symmetrically: that narrower live pattern sits INSIDE canon's `vladm3105/*`,
+# so it widens nothing. Reporting it EXTRA ("wider than canon") would be false.
+assert_absent "$pa_narrow" "patterns_allowed: EXTRA" "drift: a live pattern subsumed BY canon is not a false EXTRA"
+
+# (7) an unreadable API body must say so, not invent a missing-pattern list.
+pa_bad="$(_pa_run '"not-an-object"')"
+assert_contains "$pa_bad" "patterns_allowed" "drift: unreadable response is surfaced"
+assert_absent "$pa_bad" "patterns_allowed: MISSING" "drift: unreadable response is NOT reported as missing patterns"
+
+# ── CI-0018: repo-settings must apply the SAME unreadable-vs-drifted rule ──────
+# Under the default GITHUB_TOKEN the admin-only merge settings are simply ABSENT
+# from the `gh api repos/` body. The old arm compared canon against the missing
+# value and printed `canon=false actual=null`, presenting unreadable state as a
+# drift finding — while the neighbouring actions.* arm (case 7 above) correctly
+# said "cannot check". These lock in the consistent behaviour.
+mkdir -p "$TMP/drift-ro/fixtures" "$TMP/drift-ro/bin"
+cp "$TMP/drift-pa/fixtures/"*.json "$TMP/drift-ro/fixtures/"
+cp "$TMP/drift-pa/bin/gh" "$TMP/drift-pa/bin/curl" "$TMP/drift-ro/bin/"
+# a read-only token's view: repo metadata present, admin-only merge fields absent
+jq '{name:"repo", default_branch:"main", visibility:"public", private:false}' \
+  "$TMP/drift-pa/fixtures/repo-actual.json" > "$TMP/drift-ro/fixtures/repo-actual.json"
+ro_out="$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-ro/fixtures" PATH="$TMP/drift-ro/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_absent   "$ro_out" "actual=null"                "drift: an UNREADABLE repo-setting is never printed as canon-vs-null drift"
+assert_absent   "$ro_out" "repo-settings.allow_merge_commit" "drift: no per-key drift line for fields the token could not read"
+assert_contains "$ro_out" "cannot check repo-settings" "drift: unreadable repo-settings is reported as cannot-check"
+assert_contains "$ro_out" "administration: read"       "drift: names the missing token scope (actionable)"
+# ANCHORED to the cannot-check message. An unanchored "allow_merge_commit" match
+# is satisfied by the OLD buggy output (`repo-settings.allow_merge_commit:
+# canon=false actual=null`) — i.e. by the very defect it exists to detect.
+assert_contains "$ro_out" "admin PAT: allow_merge_commit" "drift: names WHICH fields were unreadable"
+assert_contains "$ro_out" "0 drift"                    "drift: unreadable repo-settings contributes ZERO drift"
+assert_eq "$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-ro/fixtures" PATH="$TMP/drift-ro/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 --strict >/dev/null 2>&1; echo $?)" \
+  "1" "drift: strict still FAILS on uncheckable repo-settings (a gate that cannot read must not pass)"
+
+# POSITIVE CONTROL — with the fields READABLE, genuine drift must still fire.
+# Without this, the assertions above would be satisfied by the check not existing.
+mkdir -p "$TMP/drift-rw/fixtures" "$TMP/drift-rw/bin"
+cp "$TMP/drift-pa/fixtures/"*.json "$TMP/drift-rw/fixtures/"
+cp "$TMP/drift-pa/bin/gh" "$TMP/drift-pa/bin/curl" "$TMP/drift-rw/bin/"
+jq '.allow_merge_commit = (.allow_merge_commit | not)' \
+  "$TMP/drift-pa/fixtures/repo-actual.json" > "$TMP/drift-rw/fixtures/repo-actual.json"
+rw_out="$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-rw/fixtures" PATH="$TMP/drift-rw/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_contains "$rw_out" "repo-settings.allow_merge_commit" "drift: a READABLE drifted repo-setting is still reported"
+assert_contains "$rw_out" "1 drift"                          "drift: a readable drifted repo-setting INCREMENTS the count"
+assert_absent   "$rw_out" "cannot check repo-settings"        "drift: readable settings are not mislabelled uncheckable"
+
+# ── CI-0018: the coverage summary bounds what a green result claims ────────────
+assert_contains "$ro_out" "coverage — verified"    "drift: emits a coverage summary"
+assert_contains "$ro_out" "NOT verified"           "drift: names the families it could NOT verify"
+assert_contains "$ro_out" "NOT verified: repo-settings" "drift: the unverified list includes repo-settings"
+assert_contains "$rw_out" "coverage — verified 4/4" "drift: a fully-readable run reports full coverage"
+
+# ── CI-0017: the http:// opt-in and the loopback-in-container diagnosis ───────
+assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location('lc', sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+
+# http:// is REJECTED without the opt-in, regardless of host.
+os.environ.pop('LITELLM_ALLOW_INSECURE_HTTP', None)
+try:
+    m.endpoint('http://172.17.0.1:4001/v1')
+    raise AssertionError('http:// accepted without the opt-in')
+except SystemExit:
+    pass
+# ...and ACCEPTED with it. The flag is keyed on the SCHEME, not on any
+# visibility/repo signal — that is the whole point of CI-0017.
+os.environ['LITELLM_ALLOW_INSECURE_HTTP'] = 'true'
+assert m.endpoint('http://172.17.0.1:4001/v1') == 'http://172.17.0.1:4001/v1/chat/completions'
+assert m.endpoint('https://proxy.example/v1') == 'https://proxy.example/v1/chat/completions'
+
+# Inside a container, loopback gets a NAMED cause; the bridge address does not.
+os.environ['LITELLM_ASSUME_CONTAINER'] = 'true'
+for host in ('127.0.0.1', 'localhost', '::1'):
+    url = f'http://[{host}]:4001/v1' if host == '::1' else f'http://{host}:4001/v1'
+    hint = m.loopback_hint(url)
+    assert 'bridge' in hint and '172.17.0.1' in hint, f'no bridge hint for {host}: {hint!r}'
+assert m.loopback_hint('http://172.17.0.1:4001/v1') == ''
+assert m.loopback_hint('https://proxy.example/v1') == ''
+
+# Outside a container the hint is silent — it must never fire on a developer
+# host, where loopback is legitimately correct.
+os.environ['LITELLM_ASSUME_CONTAINER'] = 'false'
+m.Path = m.Path  # keep reference explicit
+if not (m.Path('/.dockerenv').exists() or m.Path('/run/.containerenv').exists()):
+    assert m.loopback_hint('http://127.0.0.1:4001/v1') == '' or m.in_container()
+
+# The hint is message-only: it cannot raise, even on a URL endpoint() rejected.
+assert isinstance(m.loopback_hint('http://127.0.0.1:4001/v1'), str)
+PY" "litellm: http opt-in is scheme-keyed and loopback-in-container is named (CI-0017)"
+
+# ── CI-0018 regressions found in review: "verified" must be ALL-OR-NOTHING ─────
+# The first cut marked a family verified on ANY partial progress, so a run could
+# say "cannot check repo-settings" AND "verified 4/4" in the same output — the
+# exact defect the coverage summary exists to prevent.
+mkdir -p "$TMP/drift-partial/fixtures" "$TMP/drift-partial/bin"
+cp "$TMP/drift-pa/fixtures/"*.json "$TMP/drift-partial/fixtures/"
+cp "$TMP/drift-pa/bin/gh" "$TMP/drift-pa/bin/curl" "$TMP/drift-partial/bin/"
+# a token that can read exactly ONE of the eight admin-only merge settings
+jq '{name:"repo",default_branch:"main",visibility:"public",allow_merge_commit:.allow_merge_commit}' \
+  "$TMP/drift-pa/fixtures/repo-actual.json" > "$TMP/drift-partial/fixtures/repo-actual.json"
+part_out="$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-partial/fixtures" PATH="$TMP/drift-partial/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_contains "$part_out" "cannot check repo-settings" "drift: a PARTIAL repo-settings read is reported uncheckable"
+assert_absent   "$part_out" "verified 4/4"               "drift: a partially-read family is NOT counted as verified"
+assert_contains "$part_out" "NOT verified: repo-settings" "drift: the partially-read family is named unverified"
+
+# Same rule for `actions`, which has four independent arms. The pre-existing
+# pa_bad fixture (unreadable selected-actions) used to report `verified 4/4`.
+assert_absent   "$pa_bad" "verified 4/4"                 "drift: an unreadable actions arm withholds the actions verified mark"
+assert_contains "$pa_bad" "NOT verified: actions"        "drift: the unreadable actions family is named unverified"
+
+# An EMPTY-but-successful `gh api` body must be an API/transport error, never
+# eight `actual=` drift lines. `jq -e` exits 0 on empty input for ANY filter, so
+# the `[ -s ]` file test in the shape guard is load-bearing.
+mkdir -p "$TMP/drift-empty/fixtures" "$TMP/drift-empty/bin"
+cp "$TMP/drift-pa/fixtures/"*.json "$TMP/drift-empty/fixtures/"
+cp "$TMP/drift-pa/bin/curl" "$TMP/drift-empty/bin/"
+sed 's|\*"repos/owner/repo"\*) cat "$DRIFT_FIXTURES/repo-actual.json" ;;|*"repos/owner/repo"*) : ;;|' \
+  "$TMP/drift-pa/bin/gh" > "$TMP/drift-empty/bin/gh"
+chmod +x "$TMP/drift-empty/bin/gh"
+empty_out="$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-empty/fixtures" PATH="$TMP/drift-empty/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_absent   "$empty_out" "actual="                    "drift: an empty API body yields NO canon-vs-blank drift lines"
+assert_contains "$empty_out" "empty or is not a JSON object" "drift: an empty API body is diagnosed as a transport failure"
+assert_contains "$empty_out" "0 drift"                    "drift: an empty API body contributes ZERO drift"
+assert_absent   "$empty_out" "verified 4/4"               "drift: an empty API body does not report full coverage"
+
+# A malformed (non-JSON) body takes the same path, not the token-scope message.
+mkdir -p "$TMP/drift-html/fixtures" "$TMP/drift-html/bin"
+cp "$TMP/drift-pa/fixtures/"*.json "$TMP/drift-html/fixtures/"
+cp "$TMP/drift-pa/bin/curl" "$TMP/drift-html/bin/"
+sed 's|\*"repos/owner/repo"\*) cat "$DRIFT_FIXTURES/repo-actual.json" ;;|*"repos/owner/repo"*) echo "<html>502</html>" ;;|' \
+  "$TMP/drift-pa/bin/gh" > "$TMP/drift-html/bin/gh"
+chmod +x "$TMP/drift-html/bin/gh"
+html_out="$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-html/fixtures" PATH="$TMP/drift-html/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_contains "$html_out" "empty or is not a JSON object" "drift: a non-JSON body is diagnosed as a transport failure"
+assert_absent   "$html_out" "actual="                       "drift: a non-JSON body yields no drift comparison"
+
+# The emptiest possible run (no jq) must still state its coverage, rather than
+# exiting 0 silently — that was the greenest result for the least verification.
+# An invalid --tier bails out through the same `stop_uncheckable` path as a
+# missing gh/jq, before any control family is examined. That run checks the
+# LEAST while still exiting 0 in non-strict mode, so it is exactly the one that
+# must not read as a clean pass.
+early_out="$(bash "$ROOT/sync/check-standards-drift.sh" --tier bogus --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_contains "$early_out" "coverage — verified 0/4" "drift: an early bail-out still reports 0/4 coverage"
+assert_contains "$early_out" "NOT verified"            "drift: an early bail-out names every family as unverified"
 
 suite_summary "scripts"

@@ -21,7 +21,7 @@ This plan is the **unified successor** to two overlapping efforts:
   .gitattributes), server-side canon JSONs (5 branch-protection tiers +
   actions-permissions + repo-settings + labels), and the apply tooling
   (`install/apply-standards.sh` with `--check`/`--dry-run`/`--report`/`--apply`
-  + `sync/check-standards-drift.sh`). PRs #55, #56, #57, #58, #60 merged
+  - `sync/check-standards-drift.sh`). PRs #55, #56, #57, #58, #60 merged
   2026-07-07. PLAN-001 §5.4 rollout scope is absorbed into this plan.
 - **PLAN-002 (v1)** proposed self-review mechanical enforcement. Adversarial
   gap review 2026-07-07 identified 20 substantive findings (5 HIGH shipping
@@ -209,7 +209,8 @@ follow the same rule.
 ### 4.5 Bootstrap-tier semantics (M3 fix)
 
 Bootstrap tier (`aidoc-flow-interlog`) MUST install the local pre-push hook
-+ audit-trail check (single-file bash — no CI dependency). CI
+
+- audit-trail check (single-file bash — no CI dependency). CI
 `call / verify` workflow: **not installed** (caller file omitted from
 `.github/workflows/`) until the repo joins the ai-review consumer set.
 §5.5 Wave 4 rollout PR ships the hook + adds a HANDOFF note that CI
@@ -334,7 +335,7 @@ mechanical layer + fix stale docs contradicted by OPS-0069.
 - `docs/README.md` — line 21 stale description updated to reflect the
   post-OPS-0069 rewrite ("local AI review via `claude` CLI mirrors CI's
   `ai-review.yml` gate" → "canonical OPS-0069 pre-push audit-trail check
-  + mechanical linter pass; bash-only, no CLI dependency").
+  - mechanical linter pass; bash-only, no CLI dependency").
 - `CHANGELOG.md` — [Unreleased] entry.
 
 **6 surfaces** — bundled as atomic doc-suite per PLAN-001 §5.1 precedent
