@@ -1137,6 +1137,132 @@ checks into line with its tier template. Motivating incident: CI-0014.
 
 ---
 
+## CI-0022: A prompt states the model's real inputs — and nothing else (2026-07-25)
+
+**Context**
+
+`ai-review/review-prompt.md` told the reviewer that "the changed files are in
+the current directory", that "the working tree is the base branch", and to
+"VERIFY by listing the file" before applying the doc-coverage rule.
+
+None of that is true and none of it has ever been true. The `ai-review` job has
+**no `actions/checkout`** by design (IPLAN-0024) — verified at `ci/v1.9.5` as
+well as across `ci/v2.x`. Its prompt is assembled from exactly the rubric, a
+changed-file inventory, and the diff, and is sent as a single completion.
+
+What changed at `ci/v2.0.0` was not the access but the model's ability to
+compensate for the claim. The v1 agentic CLIs had a shell and `GH_TOKEN`, so a
+model told to look at a file could fetch it — a partial fetch is a plausible
+mechanism for #81, where the reviewer asserted that an existing `OPS-NNNN`
+decision "does not exist anywhere in `ops/DECISIONS.md`". The v2 completion has
+no tools at all, so the instruction is not merely inaccurate; it is
+**unexecutable**, and an unexecutable instruction is not skipped — it is
+answered from nothing. Those verdicts blocked merges and spent OPS-0066
+circuit-breaker budget on fabricated findings.
+
+Two rules were affected in defined ways. The doc-coverage precondition ("does
+this consumer have `CHANGELOG.md` at its root?") is **unanswerable** from the
+diff plus a changed-file inventory: a repo that has the file and did not touch
+it is indistinguishable from a repo that has none, so the rule either disabled
+itself silently on every consumer or fired on a guess, and canon did not
+determine which. The dead-relative-link check had the same shape — a target
+outside the diff is simply not visible.
+
+**Decision**
+
+Align the prompt with the architecture, not the reverse; the no-checkout design
+is deliberate and worth keeping. Three parts:
+
+1. **State the inputs.** The rubric opens by enumerating exactly what the model
+   receives and asserting it has no shell, no tools and no working tree, with
+   the operative consequence spelled out: a finding that cannot be grounded in
+   those blocks must not be emitted, softened into a suspicion, or described as
+   having been checked. Under-reporting is the intended failure mode.
+2. **Make the precondition evaluable.** `ai-review.yml` now passes a **repo-root
+   file inventory** — the regular files at the repository root at the PR's base
+   commit, one `gh api` call — as a third input block. This was option 3 in
+   issue #315 and is the only branch that makes the doc-coverage precondition
+   genuinely decidable rather than scoped away.
+3. **Narrow what is left.** The dead-link rule is restricted to the three cases
+   the inputs settle (root-level target, a target this PR deletes or renames, a
+   reference internal to the diff) and instructs silence — not a hedge — for
+   everything else. The quantitative-claims section is scoped to counts
+   recountable from the diff text.
+
+**Consequences**
+
+- Codified as `docs/REPO_STANDARDS.md` §20, written as a general
+  prompt-construction rule rather than an `ai-review` fix, because
+  `fix-prompt.md` and any future canon prompt are subject to the same failure.
+- The root inventory **fails soft** to the literal marker `UNAVAILABLE` on an
+  API failure, an empty body, or a listing at the contents API's 1000-entry cap
+  (which truncates with no flag, so "absent from it" would stop meaning "absent
+  from the repo"). The rubric branches on that marker and treats the dependent
+  rules as inapplicable. This is not a fail-open: an unavailable input can only
+  suppress a blocking finding, never manufacture one, and hard-failing a
+  required check on a transient contents-API blip would be strictly worse.
+- **The inventory lists every root entry, directories marked with a trailing
+  `/`.** A files-only listing was the first draft and was caught in review: it
+  would have made every root directory absent from a list the dead-link rule
+  reads as authoritative for absence, so a link to `docs/…` would be flagged
+  dead because `docs` was filtered out. A filtered input is a lying input; the
+  general form is `REPO_STANDARDS` §20.2 rule 5.
+- **The changed-file inventory is held to the same standard.** Its listing is
+  fetched fail-soft while the diff fetch is fail-hard, so it could reach the
+  reviewer labelled `(complete)` when it was truncated — and this change makes
+  the doc-coverage precondition key on it. It is now reported `UNAVAILABLE`
+  unless provably complete, and the rubric falls back to the diff's own
+  `diff --git` headers, which are equally complete.
+- **All three blocks are fenced and labelled untrusted.** Paths are
+  attacker-influenced and git permits a newline in a path, so an unfenced list
+  sat in the prompt's highest-authority position as free text. The fence bounds
+  that channel rather than closing it; the root inventory itself is read from
+  the base repo, so no fork can put a byte in it.
+- **A degraded input set is disclosed in the verdict comment**, not only in a
+  `::warning::`. A review missing an input is by construction the one that goes
+  green, and nobody reads the log of a green check.
+- The marker is a **contract between the workflow and the rubric** — the
+  workflow writes the literal, the rubric keys on it. `tests/test_contract.sh`
+  gains 31 assertions: both halves of that contract, same-name same-order
+  same-count parity between the prompt assembly and the rubric's "Your inputs"
+  section, and 11 assertions that **drive the shipped root-inventory block**
+  through nine stubbed `gh` scenarios — success, API failure, empty body,
+  output-then-failure, at-cap, below-cap, fail-twice-then-succeed, missing base
+  sha, and one that runs the block's own `-q` filter through real `jq` against a
+  contents-API payload. A stub that only controls the return value left the URL
+  and the filter untested; that gap hid three live mutations (dropping
+  directories, inverting the base-sha guard, collapsing the retry loop) until
+  review named it.
+- Behaviour change for consumers is confined to the reviewer's verdicts and its
+  PR comment; no input, secret, permission or required-context changes. The extra
+  API call needs repo-contents read, which the job's existing `contents: write`
+  already includes.
+- `ai-review/README.md` and `docs/ai-review-assets.md` still describe the v1
+  sparse-checkout asset delivery, which now contradicts §20.3's "no checkout"
+  head-on. Filed as **#318** rather than folded in here — this PR is already at
+  the OPS-0061 Rule 1 three-doc-surface cap.
+- The DECISIONS-substitution branch stays explicitly deferred and
+  must-not-be-invented: this rubric still specifies no reliable mechanism for
+  detecting a per-consumer alternate docs-of-record convention.
+- #81 stays open as the record of the user-visible symptom and closes when this
+  ships. Its "file-window truncation" root cause is a v1-era hypothesis that is
+  now **moot** rather than disproved — under v2 the file is never read at all —
+  and its symptom class (asserting that an unseen `OPS-NNNN` decision does not
+  exist) is what the dead-reference rule now forbids. Its structural mitigation
+  (splitting `operations/ops/DECISIONS.md` by year) is deliberately NOT carried
+  forward: the truncation it targeted is not the mechanism. The guard is
+  prompt-level, so a recurrence reopens #81.
+
+**Origin**
+
+Issue #315 (2026-07-25), filed from re-scoping #81. The scope widened during
+verification: the mismatch is not "restore what v2 dropped" but "state the
+reviewer's real inputs, which have never included a working tree" — the
+doc-coverage rule dates from #78, written when the reviewer was agentic, and was
+always describing a working tree that did not exist.
+
+---
+
 <!-- Append new entries above this line; append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
 and update the superseded entry's "Consequences" section to reference

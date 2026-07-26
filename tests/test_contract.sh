@@ -615,4 +615,103 @@ if bad:
     sys.exit(1)
 PY" "CI-0015 no caller template grants a permission its callee caps lower (intersection parity)"
 
+# ── CI-0022: the rubric describes the inputs the reviewer actually gets ───────
+# The v2 reviewer is a single-shot completion with no checkout, so every
+# "list/read the file" instruction in the rubric was unexecutable — and an
+# unexecutable instruction is not skipped, it is answered from nothing. These
+# assertions keep the rubric and the prompt assembly describing the same world.
+echo "== CI-0022: rubric ↔ prompt-assembly input parity =="
+RP=ai-review/review-prompt.md
+AR=.github/workflows/ai-review.yml
+
+# .1 The rubric must not re-acquire a filesystem it does not have. These are the
+#    exact claims that shipped through ci/v1.x and every ci/v2.x tag.
+for phrase in \
+  "changed files are in the current directory" \
+  "The working tree is the" \
+  "VERIFY by listing the file" \
+  "Read \`.ai-review/diff.txt\`"; do
+  assert_absent "$(cat "$RP")" "$phrase" "rubric claims no filesystem access: '$phrase'"
+done
+# Phrase bans are one-directional — a reworded reintroduction of the same false
+# claim slips past them. Assert the true disclaimer positively too, so diluting
+# it also goes red.
+assert_ok "grep -q 'no shell, no tools, no network, no' '$RP' && grep -q 'no working tree' '$RP'" "rubric states positively that it has no tools and no working tree"
+assert_ok "grep -q 'never evidence that something is absent' '$RP'" "rubric states UNAVAILABLE is not evidence of absence"
+
+# .2 The rubric must enumerate the blocks the assembly actually appends, by the
+#    SAME tag names in the SAME order, and there must be exactly three. Either
+#    half drifting on its own is the CI-0022 defect returning.
+_asm=$(sed -n '/^          if ! {/,/} | python3 reviewer-assets\/litellm_client.py/p' "$AR")
+assert_ok "[ -n \"\$_asm\" ]" "prompt-assembly block extracted (the assertions below are not vacuous)"
+_asm_tags=$(printf '%s' "$_asm" | grep -o '<untrusted_[a-z_]*>' | tr -d '<>' | awk '!seen[$0]++' | tr '\n' ' ')
+_rp_tags=$(grep -o '<untrusted_[a-z_]*>' "$RP" | tr -d '<>' | awk '!seen[$0]++' | tr '\n' ' ')
+assert_eq "$_asm_tags" "untrusted_changed_files untrusted_root_inventory untrusted_diff " "assembly fences exactly the three input blocks, in order"
+assert_eq "$_rp_tags" "$_asm_tags" "rubric names the same three blocks in the same order as the assembly"
+assert_contains "$_asm" "Changed-file inventory:" "assembly labels the changed-file inventory"
+assert_contains "$_asm" "Repo-root file inventory" "assembly labels the repo-root inventory"
+assert_contains "$_asm" "cat .ai-review/root.txt" "assembly reads the root inventory the fetch step writes"
+assert_contains "$_asm" 'FILES_COMPLETE:-false' "assembly reports an unprovable changed-file listing as UNAVAILABLE, not as the whole set"
+assert_ok "grep -q 'echo \"FILES_COMPLETE=' '$AR'" "the fetch step exports the completeness bit the assembly branches on"
+
+# .3 The unavailable marker is a CONTRACT between the workflow and the rubric:
+#    the workflow writes the literal, the rubric branches on it. A rename on
+#    one side silently turns "unknowable" into "root has no CHANGELOG.md".
+assert_ok "grep -q \"printf 'UNAVAILABLE\\\\\\\\n' > .ai-review/root.txt\" '$AR'" "workflow writes the literal UNAVAILABLE marker"
+assert_ok "grep -q 'UNAVAILABLE' '$RP'" "rubric branches on the same UNAVAILABLE marker"
+# A degraded input set produces a GREEN check, so the log is the one place
+# nobody looks. The verdict comment has to say it.
+assert_ok "grep -q 'Degraded inputs (CI-0022)' '$AR'" "the verdict comment discloses a degraded input set"
+
+# .4 DRIVEN: extract the shipped root-inventory block and run it with `gh`
+#    stubbed. A static grep would stay green if the fallback were deleted, so
+#    every outcome is executed for real — and the stub RECORDS ITS ARGUMENTS and
+#    runs the shipped `-q` filter through real jq, because a stub that only
+#    controls the return value leaves the URL and the filter untested.
+assert_eq "$(grep -c '# >>> CI0022-ROOT-INVENTORY >>>' "$AR")" "1" "CI-0022 root-inventory block is extractable"
+assert_eq "$(grep -c '# <<< CI0022-ROOT-INVENTORY <<<' "$AR")" "1" "CI-0022 root-inventory block has its end marker"
+_ci22_fix="$(mktemp -d)"
+trap 'rm -rf "$_ci22_fix"' EXIT
+awk '/# >>> CI0022-ROOT-INVENTORY >>>/{f=1;next} /# <<< CI0022-ROOT-INVENTORY <<</{f=0} f' "$AR" > "$_ci22_fix/block.sh"
+assert_ok "grep -q 'ROOT_OK' '$_ci22_fix/block.sh'" "CI-0022 block body extracted"
+
+# $1 = stub `gh` body; $2 = BASE_SHA (default deadbeef).
+# Leaves $_ci22_fix/run intact so callers can inspect gh_args.log; echoes root.txt.
+drive_root() {
+  rm -rf "$_ci22_fix/run"; mkdir -p "$_ci22_fix/run/.ai-review"
+  {
+    # Mirrors the GitHub Actions default shell + the step's own `set`.
+    echo 'set -eo pipefail'
+    echo 'set -uo pipefail'
+    echo 'GH_REPO=owner/repo'
+    printf 'BASE_SHA=%s\n' "${2-deadbeef}"
+    echo 'sleep() { :; }'
+    # every stub records the call before doing anything else
+    printf 'gh() { printf "%%s\\n" "$*" >> gh_args.log; %s\n}\n' "$1"
+    cat "$_ci22_fix/block.sh"
+  } > "$_ci22_fix/run/drive.sh"
+  ( cd "$_ci22_fix/run" && bash drive.sh >/dev/null 2>&1; cat .ai-review/root.txt )
+}
+
+# A real contents-API payload pushed through the block's OWN `-q` filter (arg 4).
+# This is what proves directories survive with a trailing slash: a files-only
+# filter would drop `docs`, and the rubric treats "absent" as decidable.
+_ci22_json='[{"name":"CHANGELOG.md","type":"file"},{"name":"docs","type":"dir"},{"name":"link.md","type":"symlink"}]'
+assert_eq "$(drive_root "printf '%s' '$_ci22_json' | jq -r \"\$4\"" | tr '\n' ' ')" "CHANGELOG.md docs/ link.md " "CI-0022 the shipped jq filter keeps directories, marked with a trailing slash"
+assert_ok "grep -q 'contents?ref=deadbeef' '$_ci22_fix/run/gh_args.log'" "CI-0022 the listing is fetched at the PR BASE sha, not the default branch"
+assert_eq "$(grep -c 'contents' "$_ci22_fix/run/gh_args.log")" "1" "CI-0022 a first-attempt success makes exactly one API call"
+
+assert_eq "$(drive_root 'printf "CHANGELOG.md\nREADME.md\n"' | tr '\n' ' ')" "CHANGELOG.md README.md " "CI-0022 a successful listing reaches the reviewer verbatim"
+assert_eq "$(drive_root 'return 1')" "UNAVAILABLE" "CI-0022 an API failure yields UNAVAILABLE, never an empty listing"
+assert_eq "$(drive_root 'return 0')" "UNAVAILABLE" "CI-0022 an empty listing yields UNAVAILABLE (200-but-empty pathology)"
+assert_eq "$(drive_root 'printf "partial.md\n"; return 1')" "UNAVAILABLE" "CI-0022 output written before a failing call is discarded, not shipped as the listing"
+assert_eq "$(drive_root 'seq 1 1000')" "UNAVAILABLE" "CI-0022 a listing at the 1000-entry API cap is not provably complete → UNAVAILABLE"
+assert_eq "$(drive_root 'seq 1 999' | wc -l | tr -d ' ')" "999" "CI-0022 a listing below the cap is passed through"
+# The retry loop is load-bearing per its own comment; a stub that always returns
+# the same thing can never prove it runs more than once.
+assert_eq "$(drive_root 'n=$(cat n.txt 2>/dev/null || echo 0); n=$((n+1)); echo $n > n.txt; [ "$n" -ge 3 ] || return 1; printf "CHANGELOG.md\n"')" "CHANGELOG.md" "CI-0022 a transient blip is survived — the third attempt's listing is used"
+# An unknown base sha would silently list the DEFAULT branch while the prompt
+# header still says "at the PR base commit". That substitution must not happen.
+assert_eq "$(drive_root 'printf "CHANGELOG.md\n"' '')" "UNAVAILABLE" "CI-0022 a missing base sha is UNAVAILABLE, not a silent default-branch listing"
+
 suite_summary "contract"

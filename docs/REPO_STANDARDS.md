@@ -1741,3 +1741,92 @@ passed one.
   produces an automated merge.
 
 **Origin:** issue #311, from the `ci/v2.14.0` migration. Recorded as CI-0021.
+
+## 20. A prompt states the model's real inputs — and nothing else
+
+**Every instruction in a model-facing prompt must be executable with the inputs
+that prompt is actually given. An instruction the model cannot carry out is not
+skipped — it is answered anyway.**
+
+### 20.1 The failure mode
+
+A deterministic step that cannot do what it was told fails loudly: the file is
+missing, the command exits non-zero, the job goes red. A model told to do
+something it cannot do produces text _consistent with having done it_. The
+instruction becomes a licence to assert, and the assertion arrives with the
+same confidence as a real finding.
+
+This is worse than a missing check, because the reviewer's output is a merge
+gate. A fabricated `medium` blocks a PR, consumes an OPS-0066 review cycle, and
+sends the author to fix something that was never wrong.
+
+### 20.2 The rule
+
+For any prompt this repo ships (`ai-review/review-prompt.md`,
+`ai-review/fix-prompt.md`):
+
+1. **Enumerate the inputs.** The prompt states, up front, exactly what the model
+   receives and that it receives nothing else — no tools, no filesystem, no
+   working tree unless one is genuinely present.
+2. **Every rule is decidable from that list.** A rule whose precondition cannot
+   be evaluated from the stated inputs is either given the input it needs, or
+   narrowed to the cases the inputs settle, or removed. "The model will probably
+   get it right" is not a third option.
+3. **Name the undecidable cases explicitly.** Where a check is partly decidable,
+   the prompt says which cases are decidable and instructs the model to emit
+   nothing — not a hedge, not a `low` — for the rest. Silence is the required
+   output when evidence is absent.
+4. **An unavailable input has a literal marker.** When an input can fail to be
+   collected — or to be shown COMPLETE — the assembly writes a fixed sentinel
+   (canon uses `UNAVAILABLE`) and the prompt branches on it. An empty or
+   truncated block must never be able to read as evidence of absence.
+5. **A filtered input is a lying input.** If the assembly narrows what it
+   collects, the prompt must say so where the rule consumes it, or the omitted
+   category reads as "absent from the repo". Prefer collecting the whole set
+   with the distinction marked over filtering it away.
+6. **The assembly and the prompt are one contract.** The step that builds the
+   prompt and the prompt's own "your inputs" section must list the same blocks,
+   by the same names, in the same order; `tests/test_contract.sh` asserts the
+   names, the order and the count. Changing one without the other re-creates
+   this defect.
+7. **A degraded input set is disclosed to humans.** A review that ran with an
+   input missing is, by construction, the one that goes green — and nobody
+   reads the log of a green check. Canon puts the degradation in the PR comment,
+   so an unevaluated rule is not indistinguishable from a passed one.
+
+### 20.3 Applied to `ai-review` (ci/v2.x)
+
+The reviewer is a **single-shot completion with no checkout** (IPLAN-0024,
+`ai-review.yml`). Its inputs are exactly three fenced blocks: the changed-file
+inventory, the repo-root file inventory, and the secret-redacted unified diff.
+
+The doc-coverage rule (§"Doc-coverage rule" in the rubric) is gated on whether
+the consumer has `CHANGELOG.md` **at its root** — a fact the diff and the
+changed-file inventory cannot establish, since a repo that has the file and did
+not touch it looks identical to a repo that has none. That precondition is now
+answered by the repo-root inventory rather than guessed. The dead-link rule is
+narrowed to the three cases the inputs settle: a root-level target, a target the
+PR itself deletes or renames, and a reference internal to the diff.
+
+The root inventory lists **every** root entry, directories carrying a trailing
+`/`. Listing only regular files would have been rule 5's failure: every root
+directory would be absent from a list the dead-link rule reads as authoritative
+for absence, so `docs/…` would be flagged dead because `docs` was filtered out.
+
+It **fails soft**: on an API failure, an empty body, an unknown base commit, or a
+listing at the contents API's 1000-entry cap, the block is the literal
+`UNAVAILABLE` and the dependent rules are inapplicable. That is not a fail-open
+— an unavailable input can only _suppress_ a blocking finding, never manufacture
+one — and hard-failing a required check on a transient API blip would be worse.
+The changed-file inventory is held to the same standard: it is reported
+`UNAVAILABLE` unless provably complete, and the rubric falls back to the diff's
+own `diff --git` headers.
+
+### 20.4 Scope note
+
+This is a **prompt-construction** rule, not a model-quality one. It says nothing
+about how good the review is; it says the reviewer must not be asked questions
+it has no way to answer. The same discipline applies to any future prompt canon
+ships, including a per-consumer rubric override if one is ever built.
+
+**Origin:** issue #315 (and #81, its v1 symptom). Recorded as CI-0022.
