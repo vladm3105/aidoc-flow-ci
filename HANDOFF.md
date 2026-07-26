@@ -34,6 +34,34 @@ context compaction.
 > `pull-requests: write`. `--repin` does NOT fix it (it rewrites `uses:` lines
 > only). Callers generated before that release grant `read` and stay broken.
 >
+> **ISSUE SWEEP COMPLETE (2026-07-25).** All eight open issues triaged; six
+> closed, two open by design.
+>
+> | Issue | Disposition |
+> |---|---|
+> | #305-#309 | CLOSED — the framework migration findings, fixed by #312 (CI-0014..CI-0019) |
+> | #310 | CLOSED — cross-repo defects filed upstream, #314 (**CI-0020**, `REPO_STANDARDS` §18) |
+> | #311 | CLOSED — infrastructure break-glass, #316 (**CI-0021**, §19) |
+> | #315 | **OPEN** — NEW, filed from re-scoping #81 |
+> | #81 | **OPEN** — re-scoped, blocked on #315 |
+>
+> **⚠️ CI-0021 is OPT-IN and currently UNARMED everywhere.** It activates only
+> when a repo sets `vars.CI0021_BREAKGLASS_APPROVERS`. **Read `REPO_STANDARDS`
+> §19.3 before arming:** condition 3 (separation of duties) checks the git
+> author/committer identity, NOT the pusher — GitHub exposes no pusher field and
+> those values are written by whoever ran `git commit`. Without
+> `required_signatures` it stops an accident, not a determined actor. Two
+> adversarial review cycles each found a real bypass in this feature before it
+> shipped; both are fixed and regression-tested, but the residual is real.
+>
+> **#315 is the live canon defect worth picking up next.** The `ai-review`
+> rubric still instructs the model to list and read working-tree files, but the
+> v2 reviewer is a single-shot completion with **no checkout by design**
+> (IPLAN-0024) — it receives only the diff and a changed-file inventory. So the
+> doc-coverage precondition and the dead-link check are unanswerable, and the
+> model answers anyway. This is the v2 form of #81, which stays open until #315
+> lands.
+---
 > **MERGED** as PR #312 (squash, `bc28e80`, 2026-07-25 EST). Suite green at merge
 > (14 suites, 801 assertions); all six required checks passed.
 >
