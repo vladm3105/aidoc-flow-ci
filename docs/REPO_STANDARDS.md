@@ -1638,3 +1638,106 @@ under §18 an empty issue discharges nothing.
 
 **Origin:** issue #310, proposed from the `ci/v2.14.0` migration; adopted first
 in `aidoc-flow-framework`. Recorded as CI-0020.
+
+## 19. Infrastructure break-glass — an outage must not require `--admin`
+
+**When the reviewer is DOWN (as opposed to requesting changes), the supported
+path is `ai:review-infra-error` plus an allowlisted human approval at HEAD — not
+`gh pr merge --admin`.** Opt-in per repo.
+
+### 19.1 The problem
+
+`call / ai-review` is a required context on every non-bootstrap tier, and
+`skip-ai-review` is deliberately **advisory**: it carries a _prior_ App approval
+across trivial pushes and refuses when the App has never approved. Correct as a
+default — but it means that during a reviewer outage there is **no
+non-`--admin` path to merge anything**, including the PR that would fix the
+reviewer.
+
+`--admin` is not a targeted override. **It bypasses every required check, not
+just the broken one.** So an outage pushes operators into a habit that disables
+the entire gate, and once `--admin` is routine, nobody reads the gate at all.
+
+That is how CI-0014 stayed hidden: seven repos ran a fail-closed `ai-review` for
+~9 days, every merge went through `--admin`, and a wrong root cause sat
+unchallenged the whole time. The outage and the normalisation of `--admin` were
+mutually reinforcing.
+
+### 19.2 The exchange — three independent conditions
+
+`composition` passes only when **all three** hold:
+
+| # | Condition | Role |
+|---|---|---|
+| 1 | `ai:review-infra-error` is on the PR | **Signal** — the reviewer is down, not dissenting |
+| 2 | An `APPROVED` review at the **current head SHA** from a non-Bot login in `vars.CI0021_BREAKGLASS_APPROVERS` | **Authorization** |
+| 3 | That approver **did not author or push any commit at HEAD** | **Separation of duties** |
+
+**Opt-in.** `vars.CI0021_BREAKGLASS_APPROVERS` unset — the default — means the
+break-glass does not exist and behaviour is exactly as before. It is a repo
+**variable**, not a caller input, because it must be admin-writable only: a
+caller-supplied input would let the repo being gated choose its own overriders.
+
+### 19.3 Why each condition is load-bearing
+
+- **The label is never authorization.** Anyone with write access can add a
+  label, and `ai-review` auto-applies this one on any reviewer-client failure —
+  including an oversized diff, which a determined actor can induce.
+- **`author_association` is not a permission check.** `MEMBER` and
+  `COLLABORATOR` do not imply write access, so they cannot stand in for an
+  allowlist. The App path next to this one pins a numeric id for the same
+  reason: identity claims that are easy to obtain are not authorization.
+- **Separation of duties is the one GitHub does not give you.** GitHub forbids
+  the PR **author** from approving — it says nothing about whoever **pushed**
+  the commits. A collaborator can push to another user's PR branch and then
+  legitimately approve it. Canon's tier templates set
+  `required_approving_review_count: 0` and `require_last_push_approval: false`,
+  so on `ops`/`product`/`bootstrap` this check is the only gate on the diff.
+  Without condition 3, one account could push code and clear it.
+
+  **What condition 3 actually checks, and its limit.** It compares the approver
+  against the git **author** and **committer** logins of every commit at HEAD.
+  It does _not_ check the pusher: GitHub's REST API exposes no pusher field —
+  that exists only on the push webhook and the audit log. Author and committer
+  are written by whoever ran `git commit`, so a **deliberate** actor can set a
+  commit email that resolves to a different account, or to none.
+
+  Unattributable commits therefore **fail closed**: when an email matches no
+  GitHub account both login fields are `null`, and treating that as "no author"
+  would exempt exactly the actor this condition exists to catch. An incomplete
+  commit listing (the API caps at 250) fails closed for the same reason.
+
+  The residual is real and worth stating plainly: **without commit signature
+  verification, condition 3 stops an accident and a careless actor, not a
+  determined one.** A repo arming this break-glass on a tier where
+  `required_approving_review_count: 0` should also set `required_signatures:
+  true`, so that authorship is cryptographic rather than self-asserted.
+- **Latest review per user wins.** The reviews API returns every submission as
+  its own object retaining its own state, so an `APPROVED` later retracted by a
+  `REQUEST_CHANGES` at the same SHA would otherwise still match.
+
+Do **not** describe this as guaranteeing "a second person": it guarantees a
+second **account** on the allowlist that did not write the code. An
+organisation that allowlists a machine account has given that account the
+authority, which is a choice the allowlist makes visible.
+
+Fail-closed throughout: if the review list _or_ the commit authorship cannot be
+fetched, the check blocks. An unverifiable separation-of-duties test is not a
+passed one.
+
+### 19.4 Properties worth preserving
+
+- **Targeted.** Only the `ai-review` gate is discharged; `verify`, `gitleaks`,
+  lint and audit-trail still apply. That is the entire difference from `--admin`.
+- **Auditable.** The pass emits a `::warning::` naming the approver and stating
+  the App did not approve. `--admin` leaves no comparable trace.
+- **Revocable**, with a caveat: removing the label re-blocks on the next
+  evaluation, but during a live outage `ai-review` fails again and re-applies
+  `ai:review-infra-error`. Do not plan a rollback around removing the label
+  alone — remove the approver from the allowlist to actually disarm it.
+- **Cannot drive auto-merge.** `auto-merge-ai-prs.yml` independently requires
+  `ai:review-passed` plus an App approval, and `ai:review-passed` /
+  `ai:review-infra-error` are mutually exclusive — so a break-glass pass never
+  produces an automated merge.
+
+**Origin:** issue #311, from the `ci/v2.14.0` migration. Recorded as CI-0021.

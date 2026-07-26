@@ -1052,6 +1052,91 @@ first in `aidoc-flow-framework` (its PR #340). Motivating incident: CI-0014.
 
 ---
 
+## CI-0021: An infrastructure outage gets a targeted break-glass, not `--admin` (2026-07-25)
+
+**Context**
+
+`call / ai-review` is required on every non-bootstrap tier, and `skip-ai-review`
+is deliberately advisory. Fail-closed is right, but the consequence is that
+during a reviewer **outage** there is no non-`--admin` path to merge anything,
+including the PR that would fix the reviewer. `--admin` bypasses **every**
+required check, not just the broken one.
+
+CI-0014 is the demonstration: seven repos ran a fail-closed `ai-review` for ~9
+days, every merge went through `--admin`, and a wrong root cause sat
+unchallenged throughout. Once the bypass is routine, nobody reads the gate.
+
+**Decision**
+
+Let the INFRASTRUCTURE-vs-verdict distinction canon already maintains
+(`ai:review-infra-error`) reach `composition`, discharging the ai-review gate —
+and only that gate — on **three independent conditions**: the label is present;
+an `APPROVED` review exists at the current head SHA from a non-Bot login in
+`vars.CI0021_BREAKGLASS_APPROVERS`; and that approver authored/pushed **no**
+commit at HEAD.
+
+**Opt-in**: with the variable unset (the default) the break-glass does not
+exist. A repo variable rather than a caller input, because it must be
+admin-writable — a caller input would let the gated repo pick its own
+overriders.
+
+**Consequences**
+
+- **Separation of duties is mandatory, and it is the condition GitHub does not
+  provide.** GitHub forbids the PR AUTHOR from approving but says nothing about
+  whoever PUSHED the commits, and canon's tiers set
+  `required_approving_review_count: 0` + `require_last_push_approval: false`, so
+  `composition` is the only gate on the diff. An earlier draft of this change
+  omitted condition 3 and was a **single-account merge bypass**: push to a
+  colleague's PR branch, induce or apply the label, approve your own code.
+  Caught in adversarial review before shipping.
+- **State the property accurately, including the residual.** Condition 3 compares
+  the approver against the git **author/committer** logins at HEAD. It does NOT
+  check the pusher — GitHub's REST API exposes no pusher field. Author and
+  committer are written by whoever ran `git commit`, so a determined actor can
+  set an email resolving to another account or to none. Unattributable commits
+  and truncated commit listings therefore fail CLOSED (a second review cycle
+  found that treating a null login as "no author" re-opened the bypass). The
+  honest claim: **without `required_signatures`, condition 3 stops an accident
+  and a careless actor, not a determined one** — a repo arming the break-glass
+  on a tier with `required_approving_review_count: 0` should also require
+  signatures.
+- **State the property accurately.** This guarantees a second **account** on the
+  allowlist that did not write the code — not "a second person". `MEMBER` /
+  `COLLABORATOR` do not imply write access, and `user.type != "Bot"` does not
+  exclude a machine account driven by a PAT; the allowlist is what makes the set
+  of overriders an explicit, admin-controlled decision.
+- **Latest review per user wins, across pages.** The reviews API returns each
+  submission as its own object retaining its own state, so an `APPROVED`
+  retracted at the same SHA would otherwise still match. `--slurp` is
+  load-bearing here: `gh --paginate` applies `--jq` to each page separately, so
+  without it the aggregation computed latest-per-user within a 30-review page —
+  inert on exactly the long-lived PRs it was written for. Only state-CHANGING
+  reviews take part, since GitHub treats `COMMENTED` as non-state-changing.
+- **Fail-closed on both fetches.** An unreadable review list or unreadable
+  commit authorship blocks; an unverifiable separation-of-duties test is not a
+  passed one.
+- **Targeted + auditable.** Only ai-review is discharged; the pass emits a
+  warning naming the approver and stating the App did not approve.
+- **Cannot drive auto-merge**: `auto-merge-ai-prs.yml` independently requires
+  `ai:review-passed`, which is mutually exclusive with `ai:review-infra-error`.
+- Normal path unchanged: with no infra label the block is inert.
+- **Correction to an earlier claim in this entry's first draft:** the composition
+  caller templates do NOT subscribe to label events (`pull_request_target` was
+  dropped in IPLAN-0026 Phase 2), so "removing the label re-triggers
+  composition" is only true indirectly — via ai-review's own label trigger and
+  the `workflow_run` chain. The break-glass does not depend on it, because the
+  human approval fires `pull_request_review` directly.
+- Codified as `docs/REPO_STANDARDS.md` §19; 18 assertions, nine of which drive
+  the shipped block itself via markers (FT-43 precedent).
+
+**Origin**
+
+Issue #311 (2026-07-25), raised while bringing `aidoc-flow-framework`'s required
+checks into line with its tier template. Motivating incident: CI-0014.
+
+---
+
 <!-- Append new entries above this line; append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
 and update the superseded entry's "Consequences" section to reference

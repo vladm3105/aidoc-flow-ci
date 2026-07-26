@@ -9,6 +9,42 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 > onward need only a re-pin; older or hand-edited callers must also grant
 > `pull-requests: write`. See CI-0015 below.
 
+### Added — infrastructure break-glass: an outage no longer requires `--admin` (CI-0021)
+
+- A reviewer **outage** previously left no non-`--admin` path to merge anything —
+  including the PR that would fix the reviewer. `--admin` bypasses **every**
+  required check, so an outage trained operators to disable the whole gate. That
+  is how CI-0014 stayed hidden for ~9 days.
+- `composition` now discharges the ai-review gate — **and only that gate** — on
+  **three** conditions: `ai:review-infra-error` is set; an `APPROVED` review
+  exists at the **current head SHA** from a non-Bot login in
+  `vars.CI0021_BREAKGLASS_APPROVERS`; and that approver **authored or pushed no
+  commit at HEAD**.
+- **Opt-in.** With `vars.CI0021_BREAKGLASS_APPROVERS` unset (the default) the
+  break-glass does not exist and behaviour is unchanged. It is a repo variable,
+  not a caller input, so the repo being gated cannot choose its own overriders.
+- The separation-of-duties condition is the one GitHub does not provide: it
+  forbids the PR *author* from approving but says nothing about whoever *pushed*
+  the commits, and canon's tiers set `required_approving_review_count: 0`. An
+  earlier draft omitted it and was a single-account merge bypass; caught in
+  adversarial review before shipping.
+- Latest review per user wins **across pages** (`--slurp`; `gh --paginate`
+  otherwise applies `--jq` per page, making the aggregation inert on exactly the
+  long PRs it targets). Only state-changing reviews participate, so a later
+  `COMMENTED` does not disqualify an approver.
+- Fail-closed if the reviews or commit authorship cannot be fetched, if any
+  commit at HEAD has **no GitHub account** linked to its author/committer email
+  (treating that as "no author" re-opened the bypass), or if the commit listing
+  is truncated by the API's 250-commit cap.
+- **Documented residual:** condition 3 checks the git author/committer identity,
+  not the pusher — GitHub exposes no pusher field, and those values are written
+  by whoever ran `git commit`. Without `required_signatures` it stops an accident
+  and a careless actor, not a determined one.
+- Cannot drive auto-merge: `auto-merge-ai-prs.yml` independently requires
+  `ai:review-passed`, mutually exclusive with `ai:review-infra-error`.
+- Codified as `docs/REPO_STANDARDS.md` §19; 18 assertions, nine driving the
+  shipped block itself via markers.
+
 ### Added — canon rule: cross-repo defects are filed upstream (CI-0020)
 
 - A defect surfaced in one repo but **owned by another** now gets a GitHub issue
