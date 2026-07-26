@@ -768,8 +768,10 @@ assertion enforces a contract the schema stated but no code checked).
   hand-rolled config with no `"version"` field now fails the `ai-review` job
   where it previously ran on a guessed default. This enforces what the published
   v2 schema always required, and canon's own template has always shipped
-  `"version": 2`; every in-workspace consumer is unaffected. Recorded here
-  because the semver classification depends on it.
+  `"version": 2`; every in-workspace consumer is unaffected. **Classified MINOR**
+  (founder, 2026-07-25): enforcing an already-published schema requirement that
+  no real consumer violates does not warrant a fleet-wide major bump, and this
+  repo's stated consumers are the sibling aidoc-flow repos.
 - Three distinguishable preconditions get three distinct errors — `jq` missing,
   config missing/empty, config unparseable — each labelled INFRASTRUCTURE and
   each saying *do not edit the config schema in response to this*. Collapsing
