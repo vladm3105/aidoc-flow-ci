@@ -4,7 +4,92 @@ Live cross-session resume point for the workspace CI + governance-workflow
 canon library. Read at session start; refresh at milestones and before
 context compaction.
 
-## Current state (2026-07-25)
+## Current state (2026-07-26)
+
+> ## 🔴 THE RELEASE IS ONE FOUNDER-EXECUTED STEP FROM DONE
+>
+> `ci/v2.15.0` is **prepped and merged but NOT TAGGED**. `VERSION` on `main`
+> reads `ci/v2.15.0`; the tag does not exist. Nothing reaches a consumer until
+> it is cut.
+>
+> **Prep merge SHA: `3a4a3eaec8a72f3b52d875a49c82f4c1e7bcf30f`** (PR #326,
+> merged with `--admin` per the documented FT-21 chicken-and-egg — founder
+> authorized 2026-07-26).
+>
+> **What is owed: the 🔴 FT-30 cold-start dry-run.** `install/install.sh`
+> changed (FT-57 + CI-0023), so `release.sh tag` will REFUSE without
+> `--dry-run-verified`. It is a write-to-another-repo action; the AI does not
+> run it in-session.
+>
+> ```bash
+> # 1. founder, against a throwaway repo that ALREADY EXISTS on GitHub
+> #    (install.sh clones it; it will not create it for you):
+> export CI_TAG=3a4a3eaec8a72f3b52d875a49c82f4c1e7bcf30f
+> bash <(curl -fsSL "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/install.sh") \
+>   <owner>/<throwaway-repo>
+>
+> # 2. then, back here:
+> bash scripts/release.sh tag ci/v2.15.0 --dry-run-verified
+> ```
+>
+> **`export CI_TAG=<that SHA>` is the load-bearing line.** Without it the
+> dry-run resolves `CI_TAG` from `VERSION`/the fallback and fetches templates
+> from the PREVIOUS release — validating the pre-fix files, not the ones about
+> to ship.
+>
+> Expect: the run reaches "creating canonical labels" and the final next-steps
+> block; the **backup line** prints (`==> backup: no pre-existing CI/governance
+> surfaces (fresh repo)` on an empty target — FT-57 is new, so if NEITHER backup
+> line appears the hook did not run and the gate has FAILED); next-steps names
+> the backup dir + restore command; runner-pool probe and LiteLLM-HTTP note both
+> print; no `FAIL`, no `404`. Tear down the throwaway repo after.
+>
+> **Known blind spot, stated deliberately:** a fresh repo has no dangling
+> symlinks, so this dry-run will NOT exercise CI-0023. That case is covered by
+> `tests/test_install.sh` (114 assertions, incl. a mutation case). What the
+> dry-run proves is that bootstrap completes end-to-end with the new
+> fail-closed backup step in front of every writer.
+>
+> ### What shipped into this release since the last handoff
+>
+> Two defects found by the pre-cut review itself, both fixed before the tag:
+>
+> - **CI-0023** (PR #324) — `install.sh`'s FT-57 mandatory backup was wrong on
+>   broken symlinks in BOTH directions: the `.github/` arm's bare `cp -p`
+>   dereferences, so a dangling link aborted the fail-closed backup and made
+>   `install.sh` unusable in EVERY mode incl. `--repin`; the root-list arm's
+>   `[ -e ]` also dereferences, so the same shape was silently DROPPED —
+>   fail-OPEN. Never released (FT-57 is in no tag). §21.
+> - **CI-0024** (PRs #324 + #325) — `sync-version-refs.sh` rewrote install
+>   references by shape, so `MIGRATION_v2.0.0.md`'s Rollback command (which
+>   exists to pin BACK to `ci/v1.x`) was rewritten FORWARD at every cut.
+>   **16 published tags carry it — `ci/v2.1.0` through `ci/v2.14.0`.** Ignore
+>   markers + validator + a pinned-`TARGETS` guard now exist, and the docs are
+>   corrected. §22. **The `ci/v2.15.0` prep was the first cut in 17 that left
+>   that command alone** — verified: `MIGRATION_v2.0.0.md` is absent from the
+>   prep diff.
+>
+> ### Open, filed upstream per CI-0020 §18
+>
+> | Issue | Repo | What |
+> |---|---|---|
+> | [#341](https://github.com/vladm3105/aidoc-flow-framework/issues/341) | framework | `ai-review/config.json` is `version: 1`; its "becomes authoritative" comment is false as of CI-0014 |
+> | [#71](https://github.com/vladm3105/aidoc-flow-interlog/issues/71) | interlog | same, plus no `litellm.model` at all |
+> | [#323](https://github.com/vladm3105/aidoc-flow-ci/issues/323) | **this repo** | pre-commit `files:` filter drifted behind `TARGETS` — 8 of 14 targets skip the LOCAL hook (CI unaffected, runs `--all-files`) |
+>
+> Both sibling configs are **inert today** — every `trust_config_repo` override
+> across the workspace is commented out, so all consumers read operations'
+> config (`version: 2`). Nothing breaks on re-pin.
+>
+> ### Semver
+>
+> **MINOR**, re-confirmed against the diff after CI-0020..0024 landed: no
+> `workflow_call` input added, removed or retyped since `ci/v2.14.0`; no schema
+> change; CI-0021 inert with its repo var unset; CI-0022 adds no input, secret
+> or permission. The one permission reduction is caller-side trimming of a grant
+> the callee already capped — intersected away, so a no-op.
+
+## Previous state (2026-07-25)
 
 > **TL;DR (2026-07-25).** **Seven findings from the `aidoc-flow-framework`
 > `ci/v2.14.0` migration are FIXED on branch `fix/canon-findings-v2-migration`**
@@ -1245,6 +1330,15 @@ enforcement, PR-U1/U2/U3/U4, 2026-07-08).
 
 ## Next-session start-here
 
+0. **🔴 CUT `ci/v2.15.0` — this outranks everything below.** `VERSION` on `main`
+   says `ci/v2.15.0`; the tag does not exist, so CI-0014..CI-0024 + FT-57 reach
+   **no consumer**. The only thing owed is the founder-executed FT-30 cold-start
+   dry-run, then `release.sh tag ci/v2.15.0 --dry-run-verified`. Full command
+   block, the prep-merge SHA to export as `CI_TAG`, and the pass criteria are in
+   **`## Current state (2026-07-26)`** at the top of this file. Do not start the
+   items below until the tag is cut — several of them re-pin consumers, which is
+   pointless against an unpublished tag.
+
 1. **PLAN-007 production-hardening — W1/W2/W3(markdown-lint)/W5 DONE; the two
    remaining items are BOTH 🔴 founder-gated:**
    - **W4 — arm the gates as required checks** (`docs/FLEET_BRANCH_PROTECTION_ARMING.md`).
@@ -1266,7 +1360,18 @@ enforcement, PR-U1/U2/U3/U4, 2026-07-08).
 
 ## Recent decisions
 
-See `DECISIONS.md` for the full CI-NNNN record. Latest:
+See `DECISIONS.md` for the full CI-NNNN record — **it is authoritative and
+current through CI-0024.** The excerpt below is a convenience list that has
+repeatedly fallen behind (it sat at CI-0011 while CI-0012..CI-0024 landed, which
+contradicted the top of this very file). Treat a gap here as staleness in the
+excerpt, never as evidence a decision does not exist.
+
+**Since this list was last curated:** CI-0012..CI-0019 (the framework
+`ci/v2.14.0` migration findings), **CI-0020** (cross-repo defects filed upstream,
+§18), **CI-0021** (opt-in infrastructure break-glass, §19), **CI-0022** (a prompt
+states the model's real inputs, §20), **CI-0023** (a fail-closed guard fails on
+faults, not on a consumer's tree shape, §21), **CI-0024** (a mechanical rewriter
+must not rewrite illustrative examples, §22).
 
 - **CI-0011** (DECIDED 2026-07-24 — founder) — `verified_allowed` supply-chain
   boundary: **dropped** the verified marketplace; `patterns_allowed` narrowed to the
