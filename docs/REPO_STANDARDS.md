@@ -1977,11 +1977,14 @@ first draft of this section called both unguarded, which was itself the error
 this section legislates against:
 
 - **Pinned to an OLD tag** (the #175 case): **guarded.** `--check` flags it as a
-  stale reference and fails **CI** — `pre-commit run --all-files` checks every
-  target regardless of what a commit touched. The _local_ hook's `files:` filter
-  has drifted behind `TARGETS` and skips 8 of 14, including
-  `MIGRATION_v2.0.0.md` itself, so do not rely on it at `git commit` time
-  (issue #323). Its message names _both_ remedies,
+  stale reference and fails **both** the local pre-commit hook and CI. The hook
+  is `always_run` (#323): it was previously scoped by a `files:` regex that had
+  drifted behind `TARGETS` and skipped 8 of 14 entries — including
+  `MIGRATION_v2.0.0.md`, the file CI-0024 is about — so a commit touching only
+  that file never fired it locally. Because the hook is `pass_filenames: false`,
+  the regex never decided _what_ was checked, only _whether_ the hook ran; a
+  second list to keep in step with `TARGETS` was pure drift surface.
+  Its message names _both_ remedies,
   because offering only "run the rewriter" pointed the operator at the one action
   that falsifies the command — a guard that fires and then misdirects is barely
   better than none.

@@ -623,4 +623,36 @@ early_out="$(bash "$ROOT/sync/check-standards-drift.sh" --tier bogus --repo owne
 assert_contains "$early_out" "coverage — verified 0/4" "drift: an early bail-out still reports 0/4 coverage"
 assert_contains "$early_out" "NOT verified"            "drift: an early bail-out names every family as unverified"
 
+echo "== #323: the sync-version-refs pre-commit hook must stay always_run =="
+# A `files:` regex on this hook is pure drift surface: it is `pass_filenames: false`,
+# so the script always checks every TARGETS entry regardless — the regex only decides
+# WHETHER the hook runs. The old one listed 6 of 14 targets and had drifted behind
+# TARGETS, so a commit touching only docs/MIGRATION_v2.0.0.md (the file CI-0024 is
+# about) skipped the hook locally and the author first learned at PR time.
+svr_hook="$(python3 - "$ROOT" <<'PYEOF'
+import yaml, os, sys
+d = yaml.safe_load(open(os.path.join(sys.argv[1], ".pre-commit-config.yaml")))
+h = [x for r in d.get("repos", []) for x in r.get("hooks", []) if x.get("id") == "sync-version-refs"]
+if len(h) != 1:
+    print("HOOK-NOT-FOUND:%d" % len(h)); raise SystemExit
+h = h[0]
+bad = []
+if h.get("always_run") is not True:      bad.append("not-always_run")
+if "files" in h:                          bad.append("has-files-filter:%s" % h["files"])
+if h.get("pass_filenames") is not False:  bad.append("pass_filenames-not-false")
+# `stages:` would silence the hook at commit time — the SAME outcome #323 fixes,
+# and REPO_STANDARDS §14.1a records a prior vacuous-check bug on this exact
+# surface. Absence of the key means "all default stages".
+if "stages" in h:                         bad.append("has-stages:%s" % h["stages"])
+# `--check-published` does a `git ls-remote`; the script's own header forbids
+# wiring it into pre-commit because it would deadlock every release (VERSION
+# names a tag that is cut FROM the bump commit).
+entry = h.get("entry", "")
+if "--check" not in entry:                bad.append("entry-not-check:%s" % entry)
+if "--check-published" in entry:          bad.append("entry-is-check-published")
+print(",".join(bad) or "OK")
+PYEOF
+)"
+assert_eq "$svr_hook" "OK" "sync-version-refs hook is always_run with no files: filter (#323)"
+
 suite_summary "scripts"

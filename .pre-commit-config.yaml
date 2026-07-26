@@ -61,5 +61,13 @@ repos:
     name: docs install refs match VERSION (PLAN-004 BL-4)
     entry: scripts/sync-version-refs.sh --check
     language: script
-    files: '^(VERSION|README\.md|install/README\.md|docs/(multi-project-guide|PLAYBOOK_governance-canon-rollout|REVIEWER_APP_ONBOARDING|BRANCH_PROTECTION)\.md|install/templates/workflows/.*\.yml)$'
+    # `always_run`, NOT a `files:` filter. The hook is `pass_filenames: false`, so
+    # the filter never decided WHAT was checked (the script always checks every
+    # TARGETS entry) — only WHETHER the hook ran at all. It listed 6 of the 14
+    # static targets and had drifted behind `TARGETS`, so a commit touching only
+    # e.g. `docs/MIGRATION_v2.0.0.md` — the file CI-0024 is about — skipped the
+    # hook locally and the author first learned at PR time. CI was never affected
+    # (`pre-commit run --all-files`). A regex duplicating TARGETS is a second list
+    # to keep in step; always_run removes it. (#323.)
+    always_run: true
     pass_filenames: false
