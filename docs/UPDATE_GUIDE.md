@@ -285,7 +285,10 @@ a normal `--update` or `--repin` cycle. Read the full migration guide:
 Quick-reference:
 
 1. Add `LITELLM_BASE_URL` + `LITELLM_REVIEW_API_KEY` secrets
-2. Add `"litellm": {"model": "ai-reviewer"}` to `.github/ai-review/config.json`
+2. Set `.github/ai-review/config.json` to the **v2 shape** — BOTH fields, since
+   CI-0014 asserts `version == 2` before reading anything and `litellm.model`
+   has no default:
+   `{"version": 2, "litellm": {"model": "ai-reviewer"}, ...}`
 3. Drop deprecated vendor-CLI secrets (`OPENAI_API_KEY`, etc.)
 4. `CI_TAG=ci/v2.14.0 bash install.sh <owner/repo> --repin` — and **only add
    `--update` if this consumer actually needs canon's new caller bodies**. The

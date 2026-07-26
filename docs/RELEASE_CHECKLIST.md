@@ -119,8 +119,12 @@ the 🔴 dry-run for you.
   the current recommended tag.
 - [ ] **Release notes uploaded:** paste the `## ci/vX.Y.Z` section from
   CHANGELOG as the release body.
-- [ ] **`docs/WORKFLOWS.md` updated:** current pin state (§5) reflects the
-  new tag. Fleet applicability matrix (§2) reflects any new adopters.
+- [ ] **`docs/WORKFLOWS.md` checked:** the fleet applicability matrix (§2)
+  reflects any new adopters. **§5 needs no edit** — it was rewritten to read the
+  current release from `../VERSION` and deliberately hardcodes no
+  **current-release** tag, so there is nothing there to bump. (It does name
+  `@ci/v1.9.4`/`v1.9.5` as historical first-pin values; those are correct and
+  must stay.) Do not "update" it back to a literal current version.
 
 ## Post-release verification
 

@@ -5,9 +5,25 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-> **Consumer note.** For `docs-sync`, consumers installed from `ci/v2.11.0`
-> onward need only a re-pin; older or hand-edited callers must also grant
-> `pull-requests: write`. See CI-0015 below.
+> **Consumer notes — read before re-pinning.**
+>
+> 1. **`docs-sync` callers.** Consumers installed from `ci/v2.11.0` onward need
+>    only a re-pin; older or hand-edited callers must also grant
+>    `pull-requests: write`. `--repin` will NOT fix it — it rewrites `uses:`
+>    lines only. See CI-0015 below.
+> 2. **Expected new `standards-drift` warnings (CI-0011).** After re-pinning you
+>    will see `actions.selected.verified_allowed` and
+>    `actions.selected.patterns_allowed: MISSING`. **Nothing is broken** — those
+>    are template values applied per-repo, and your live pattern is *narrower*
+>    than canon's. `strict` defaults to `false`, so it warns and exits 0. Apply
+>    the settings alongside the re-pin to clear them; see the last entry in this
+>    release and `docs/UPDATE_GUIDE.md`.
+> 3. **Self-hosted trust config.** If you point `trust_config_repo` at your own
+>    repo, verify it has `"version": 2` AND `litellm.model` before re-pinning.
+>    CI-0014 makes both jobs assert this instead of silently defaulting; the
+>    **`ai-review` job fails the gate**, while the `trust` job only warns —
+>    deliberately, because failing *it* would SKIP `ai-review`, and a skipped
+>    required check reports green.
 
 ### Fixed — a dangling symlink under `.github/` bricked `install.sh` entirely (CI-0023)
 
@@ -98,9 +114,11 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   reference, so nothing can tell them apart, and it drifts at the next cut. Only
   the markers cover that case.
 - Codified as `docs/REPO_STANDARDS.md` §22 and `DECISIONS.md` CI-0024.
-- ⚠️ **This entry ships the mechanism only.** The two falsified commands in
-  `docs/MIGRATION_v2.0.0.md` are corrected and wrapped in a follow-up PR that
-  must land before this release is tagged (tracked as issue #321).
+- **The falsified commands are corrected in this release** (issue #321): the
+  Rollback command is back to `ci/v1.9.5` and the §5 step to `ci/v2.0.0`, both
+  wrapped in ignore markers. Verified end-to-end — bumping `VERSION` to
+  `ci/v2.15.0` and running the rewriter now leaves both untouched, where the same
+  bump on the previous tree re-falsified them.
 - **No consumer action.**
 
 ### Fixed — the ai-review rubric described inputs the reviewer never had (CI-0022)
