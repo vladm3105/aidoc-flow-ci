@@ -119,21 +119,94 @@ if [ "$CHECK_PUBLISHED" -eq 1 ]; then
   exit 1
 fi
 
-# The three install-reference contexts, each anchored so only install pins are
-# touched (never bare historical mentions of a tag). NOTE (code-review LOW):
-# these patterns distinguish install-reference SHAPE (raw-URL / uses:@tag /
-# CI_TAG=), not current-vs-historical. That is safe only because the target
-# docs contain no ILLUSTRATIVE old-tag install commands — bare prose like
-# "supersedes docs-sync.yml at ci/v2.0.0" has none of these shapes and is left
-# untouched. If a historical `uses:…@ci/vX.Y.Z` EXAMPLE is ever added to a
-# target, mark that line to exclude it (or narrow the pattern) rather than let
-# it be silently rewritten.
+# The four install-reference shapes, each anchored so only install pins are
+# touched (never bare historical mentions of a tag). These patterns distinguish
+# install-reference SHAPE (raw-URL / uses:@tag / CI_TAG=), NOT
+# current-vs-historical. Bare prose like "supersedes docs-sync.yml at
+# ci/v2.0.0" has none of these shapes and is left untouched.
+#
+# CI-0024. The header above used to say this was "safe only because the target
+# docs contain no ILLUSTRATIVE old-tag install commands", and told the reader to
+# "mark that line to exclude it" if one were ever added. That caveat was ACCURATE
+# when written (a0fc68c, 2026-07-09): TARGETS was README.md + install/README.md,
+# and docs/MIGRATION_v2.0.0.md did not yet exist. It was a correct, prospective
+# warning — though it anticipated the wrong direction: it expected an example to
+# be added to a target, and what happened was a file ALREADY containing two being
+# added to TARGETS.
+#
+# The trigger fired on 2026-07-17, when 1a027da (#175) added
+# docs/MIGRATION_v2.0.0.md to TARGETS. That doc carries two illustrative
+# `CI_TAG=` commands that must NOT track VERSION: its §5 "repin to @ci/v2.0.0"
+# step and, far worse, its Rollback section, whose command exists to pin a
+# consumer BACK to ci/v1.x. It read `ci/v1.9.5` through 5992b9b and became
+# `ci/v2.0.1` in 1a027da, tracking the release tag at every cut since — so the
+# published rollback instruction re-pinned FORWARD, the exact opposite of its
+# stated intent.
+#
+# The lesson is NOT "the comment was wrong". It is that a prospective caveat
+# naming a future trigger has no way to stop the commit that trips it months
+# later, because that commit's author never reads this file. The remedy the
+# caveat prescribed was never IMPLEMENTED, only described — so there was nothing
+# for #175 to fail against. A named trigger condition must be enforced
+# mechanically or it is decoration — so tests/test_version_sync.sh now PINS the
+# EXPLICIT TARGETS array below: adding a file to it fails the suite and tells you
+# to check the new target for illustrative install commands first. NB the two
+# GLOB arms further down are not pinned — a new caller template joins TARGETS
+# silently. That is acceptable only because a caller's pin SHOULD track VERSION;
+# do not read the guard as covering them.
+#
+# For a file that is ALREADY a target, per REPO_STANDARDS §22.2:
+#   - an illustrative command on an OLD tag IS caught by --check (it reads as a
+#     stale reference); the failure message names the marker remedy alongside the
+#     rewriter, because advising the rewriter alone falsifies the command.
+#   - an illustrative command written at the CURRENT tag is genuinely unguarded —
+#     textually identical to a live reference, so only the markers below help.
+#
+# The mechanism the old comment promised now exists. Wrap any span whose install
+# references are ILLUSTRATIVE or HISTORICAL:
+#
+#   <!-- sync-version-refs:ignore-start -->
+#   ```bash
+#   CI_TAG=ci/v1.9.5 bash install.sh <owner/repo> --repin
+#   ```
+#   <!-- sync-version-refs:ignore-end -->
+#
+# Markers are inert in rendered Markdown and are matched literally, so the same
+# pair works in shell/YAML targets behind a `#` comment. Both --check and the
+# rewrite honour them, and unbalanced markers are a hard error (see below) —
+# an unterminated ignore-start would otherwise silently freeze the rest of a
+# file, turning this guard into the very drift it exists to prevent.
+IGNORE_START='sync-version-refs:ignore-start'
+IGNORE_END='sync-version-refs:ignore-end'
+
+# Fail LOUD on malformed markers rather than degrading to a partial rewrite.
+# Checks pairing AND ordering: a stray `ignore-end` before any start, a nested
+# start, or a start with no end each abort. `grep -c` counts LINES, so two
+# markers on one line would miscount — hence the awk state machine, which also
+# gives the exact line number in the message.
+validate_ignore_markers() {
+  awk -v s="$IGNORE_START" -v e="$IGNORE_END" -v f="$1" '
+    index($0, s) && index($0, e) { printf "%s:%d: both ignore-start and ignore-end on one line\n", f, FNR; bad=1; next }
+    index($0, s) { if (open) { printf "%s:%d: nested sync-version-refs:ignore-start (previous opened at line %d)\n", f, FNR, openln; bad=1 } ; open=1; openln=FNR; next }
+    index($0, e) { if (!open) { printf "%s:%d: sync-version-refs:ignore-end with no matching ignore-start\n", f, FNR; bad=1 } ; open=0; next }
+    END { if (open) { printf "%s:%d: unterminated sync-version-refs:ignore-start\n", f, openln; bad=1 } ; exit (bad ? 1 : 0) }
+  ' "$1"
+}
+
+# The substitutions are applied ONLY to lines outside an ignore span. Each rule
+# carries its OWN negated address range (`/start/,/end/!s#…#`) rather than
+# sharing one `{ … }` block: a bare `}` line — measured, not theorised —
+# truncated the function-extraction awk
+# in tests/test_version_sync.sh, which stops at the first line that is exactly
+# `}`. Per-rule addresses keep the shipped code drivable by the tests that guard
+# it. Deliberately not an awk rewrite: awk's gsub cannot express the \1
+# backreferences these patterns depend on.
 sed_program() {
   cat <<SED
-s#(raw\.githubusercontent\.com/vladm3105/aidoc-flow-ci/)ci/v[0-9]+\.[0-9]+\.[0-9]+#\1${TAG}#g
-s#(vladm3105/aidoc-flow-ci/[^@[:space:]]*@)ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?#\1${TAG}#g
-s#(^|[^A-Za-z0-9_])(CI_TAG=)ci/v[0-9]+\.[0-9]+\.[0-9]+#\1\2${TAG}#g
-s#(CI_TAG_FALLBACK=")ci/v[0-9]+\.[0-9]+\.[0-9]+#\1${TAG}#g
+/${IGNORE_START}/,/${IGNORE_END}/!s#(raw\.githubusercontent\.com/vladm3105/aidoc-flow-ci/)ci/v[0-9]+\.[0-9]+\.[0-9]+#\1${TAG}#g
+/${IGNORE_START}/,/${IGNORE_END}/!s#(vladm3105/aidoc-flow-ci/[^@[:space:]]*@)ci/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?#\1${TAG}#g
+/${IGNORE_START}/,/${IGNORE_END}/!s#(^|[^A-Za-z0-9_])(CI_TAG=)ci/v[0-9]+\.[0-9]+\.[0-9]+#\1\2${TAG}#g
+/${IGNORE_START}/,/${IGNORE_END}/!s#(CI_TAG_FALLBACK=")ci/v[0-9]+\.[0-9]+\.[0-9]+#\1${TAG}#g
 SED
 }
 
@@ -141,6 +214,13 @@ stale=0
 for f in "${TARGETS[@]}"; do
   path="$REPO_ROOT/$f"
   [ -f "$path" ] || { echo "sync-version-refs: target missing: $f" >&2; exit 2; }
+  # Validate BEFORE substituting, and in --check mode too: a malformed marker
+  # must never silently widen or narrow what gets rewritten.
+  if ! marker_err="$(validate_ignore_markers "$path")"; then
+    echo "sync-version-refs: malformed ignore markers:" >&2
+    printf '  %s\n' "$marker_err" >&2
+    exit 2
+  fi
   updated="$(sed -E -f <(sed_program) "$path")"
   if [ "$updated" != "$(cat "$path")" ]; then
     if [ "$CHECK_ONLY" -eq 1 ]; then
@@ -154,7 +234,18 @@ for f in "${TARGETS[@]}"; do
 done
 
 if [ "$CHECK_ONLY" -eq 1 ] && [ "$stale" -eq 1 ]; then
-  echo "sync-version-refs: run 'scripts/sync-version-refs.sh' to fix." >&2
+  # Two different faults reach this message and they have OPPOSITE remedies.
+  # Offering only the rewriter is how CI-0024 stayed invisible: an illustrative
+  # or historical command pinned to an old tag DOES trip this check, and the
+  # operator was then told to run the very rewriter that falsifies it. Naming
+  # both remedies is what turns this from a misdirecting guard into a real one.
+  echo "sync-version-refs: two possible causes — pick the right remedy:" >&2
+  echo "  1. A genuinely stale CURRENT install reference:" >&2
+  echo "       run 'scripts/sync-version-refs.sh'" >&2
+  echo "  2. An ILLUSTRATIVE or HISTORICAL command that must NOT track VERSION" >&2
+  echo "     (a rollback to an old tag, a past migration's repin step):" >&2
+  echo "       do NOT run the rewriter — it will falsify the command. Wrap it in" >&2
+  echo "       <!-- ${IGNORE_START} --> / <!-- ${IGNORE_END} -->" >&2
   exit 1
 fi
 echo "sync-version-refs: all install references match VERSION=$TAG"

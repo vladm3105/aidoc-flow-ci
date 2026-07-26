@@ -327,17 +327,44 @@ backup_existing_surfaces() {
   # MANDATORY backup. `! -type d` is the right predicate under -L: it keeps
   # regular files, symlinks-to-files (followed) and broken symlinks, while
   # excluding directories AND the symlinked-directory root itself (which `cp -p`
-  # cannot copy). Symlinks are captured by CONTENT, which is what a restore wants.
+  # cannot copy). A resolvable symlink is captured by CONTENT, which is what a
+  # restore wants; a BROKEN one has no content to capture and is copied as the
+  # LINK instead (see the cp branch below) — `cp -p` dereferences, so a bare
+  # `cp -p` on a dangling link fails and, being fail-closed, aborted the whole
+  # installer in EVERY mode on any consumer that had one. (CI-0023.)
   list="$(mktemp)" || return 1
   if [ -d .github ]; then
     # find's own status is checked: a partial traversal (unreadable subdir) still
     # prints what it could read and exits non-zero. Swallowing that would report
     # a successful backup that is quietly missing files.
-    if ! find -L .github ! -type d -print0 > "$list" 2>/dev/null; then
-      rm -f "$list"
-      echo "  FAIL  could not enumerate .github (unreadable subdirectory?) — refusing to write" >&2
+    # stderr is kept, not discarded: the two causes need different remedies and
+    # the message alone cannot tell them apart. An unreadable subdirectory is a
+    # permissions problem; a symlink LOOP (`ln -s a b; ln -s b a`) makes `find -L`
+    # exit non-zero having enumerated nothing, and the old text blamed
+    # permissions for it — sending the operator to `chmod` for a cycle no chmod
+    # can fix. A loop is a genuine FAULT and still aborts (unlike a dangling
+    # link, which is a shape and is handled below): `find -L` cannot traverse it,
+    # so we cannot prove the snapshot is complete, and a mandatory backup that
+    # cannot prove completeness must not proceed. (CI-0023.)
+    # LC_ALL=C is load-bearing, not hygiene: the branch below keys on find's
+    # ELOOP strerror text, which is TRANSLATED under a non-English locale. Without
+    # it the grep misses, control falls to the permissions branch, and the run
+    # reprints the exact misdiagnosis this block exists to remove — on an operator
+    # whose locale we never see in CI, so no test would catch it.
+    local find_err; find_err="$(mktemp)" || { rm -f "$list"; return 1; }
+    if ! LC_ALL=C find -L .github ! -type d -print0 > "$list" 2>"$find_err"; then
+      echo "  FAIL  could not enumerate .github — refusing to write" >&2
+      if grep -qi 'too many levels of symbolic links' "$find_err"; then
+        echo "        cause: a symlink LOOP under .github/ — find cannot traverse it." >&2
+        echo "        Break the cycle, then re-run. (chmod will not help.)" >&2
+      else
+        echo "        cause: likely an unreadable subdirectory — check permissions." >&2
+      fi
+      sed 's/^/        /' "$find_err" >&2
+      rm -f "$list" "$find_err"
       return 1
     fi
+    rm -f "$find_err"
     while IFS= read -r -d '' p; do files+=("$p"); done < "$list"
   fi
   rm -f "$list"
@@ -347,17 +374,49 @@ backup_existing_surfaces() {
   # stop covering a surface the manifest drops. tests/test_install.sh
   # cross-checks this list AGAINST the manifest, so a manifest ADDITION outside
   # .github/ fails the suite instead of going unbacked.
+  # `-e` alone is WRONG here: it dereferences, so a DANGLING symlink at one of
+  # these paths tests false and is skipped — silently. The path still exists as
+  # a link, install.sh can still overwrite it, and the run reports success with
+  # that surface absent from the snapshot. That is fail-OPEN, the one outcome a
+  # mandatory backup must never produce, and it is the same broken-symlink blind
+  # spot as the `cp -p` defect below — this list simply lost it one step earlier,
+  # at enumeration rather than at copy. `|| [ -L … ]` admits the link, and the
+  # copy loop's fault-vs-shape branch then handles it. (CI-0023.)
   local r
   for r in .markdownlint.json .lychee.toml .yamllint.yaml .yamllint.yml \
            .pre-commit-config.yaml .gitignore .gitattributes CLAUDE.md \
            scripts/pre_push_check.sh; do
-    [ -e "$r" ] && files+=("$r")
+    { [ -e "$r" ] || [ -L "$r" ]; } && files+=("$r")
   done
 
   for p in ${files[0]+"${files[@]}"}; do
     d="$(dirname "$p")"
     mkdir -p "$BACKUP_DIR/$d" || rc=1
-    cp -p "$p" "$BACKUP_DIR/$p" || rc=1
+    # A dangling symlink is enumerated by `find -L … ! -type d` (the stat fails,
+    # so find yields the link itself) but has no content for `cp -p` to
+    # dereference. Copy the LINK verbatim instead (`-Pp`: no-dereference AND
+    # preserve, since bare `-P` would not carry the link's own timestamps) — that
+    # is the only faithful backup of it, and it keeps the mandatory snapshot
+    # fail-CLOSED for real errors rather than aborting on a broken link the
+    # consumer merely happens to carry. Do NOT collapse this to a plain `cp -P`
+    # for every path: a resolvable symlink must still be captured by content.
+    #
+    # RESIDUAL, stated rather than papered over: `-e` reports false for EACCES as
+    # well as ENOENT, so a resolvable link whose target sits behind an
+    # unsearchable directory is classified here as dangling and backed up as a
+    # link rather than by content. It is not silently lost, and the case needs
+    # the installer to be run by someone who cannot traverse the consumer's own
+    # tree — but it is a real gap, not a handled case.
+    #
+    # Reachable only via the ROOT-LIST arm. On the `.github/` arm `find -L`
+    # stats the link first, gets EACCES, and the run hard-aborts above — so that
+    # arm never reaches this branch and is stricter than this comment implies.
+    # (CI-0023.)
+    if [ -L "$p" ] && [ ! -e "$p" ]; then
+      cp -Pp "$p" "$BACKUP_DIR/$p" || rc=1
+    else
+      cp -p "$p" "$BACKUP_DIR/$p" || rc=1
+    fi
     [ "$rc" -eq 0 ] || { echo "  FAIL  could not back up $p — refusing to write" >&2; return 1; }
     n=$((n + 1))
   done

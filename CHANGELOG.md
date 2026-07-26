@@ -9,6 +9,100 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 > onward need only a re-pin; older or hand-edited callers must also grant
 > `pull-requests: write`. See CI-0015 below.
 
+### Fixed — a dangling symlink under `.github/` bricked `install.sh` entirely (CI-0023)
+
+- FT-57's mandatory pre-write backup is deliberately fail-CLOSED. Its
+  enumeration (`find -L .github ! -type d`) yields a **dangling symlink** — the
+  stat fails, so `find` returns the link itself — and the copy was a bare
+  `cp -p`, which **dereferences** and therefore fails on it. One broken link
+  anywhere under `.github/` became `exit 1`.
+- A consumer carrying one could not run `install.sh` **in any mode**, including
+  the documented `--repin` upgrade path. Nothing was wrong with that repo and
+  the backup was not impossible: a dangling link is copyable *as a link*. The
+  adjacent comment already claimed broken symlinks were handled, so the code
+  read as correct.
+- A resolvable symlink is still captured by **content** (what a restore wants);
+  only a dangling one is copied as the link. Collapsing the branch to a blanket
+  `cp -P` would be a different defect in the same place, so the suite asserts
+  both directions.
+- Caught **before the tag was published**, so no released version carries it —
+  the regression was introduced by FT-57 inside this same unreleased window. It
+  sits on the FT-30 cold-start bootstrap write path, where the throwaway-repo
+  dry-run would not have surfaced it: a fresh repo has no dangling links.
+- **The sweep found the same shape wrong in a second arm, the other way round.**
+  The root-list loop gated on `[ -e "$r" ]`, which dereferences — so a dangling
+  symlink at a root path was **silently dropped**: rc=0, "success", that surface
+  absent from the snapshot while `install.sh` could still overwrite it.
+  Fail-OPEN, strictly worse than the abort, and it announced nothing.
+- A symlink **loop** remains a fault (`find -L` cannot traverse it, so
+  completeness cannot be proven) but now names itself: the old message blamed an
+  "unreadable subdirectory?", sending the operator to `chmod` for a cycle no
+  `chmod` can fix.
+- **Residual, stated not papered over:** `[ ! -e ]` is false for `EACCES` as well
+  as `ENOENT`, so a resolvable link whose target sits behind an unsearchable
+  directory is backed up as a link rather than by content — reachable only on the
+  root-list arm; the `.github/` arm hard-aborts first.
+- `tests/test_install.sh` 101→114, driving the `MANDATORY-BACKUP` block
+  extracted from `install.sh` itself, including a mutation case — restoring the
+  bare `cp -p` must make the dangling-link fixture abort.
+- Codified as `docs/REPO_STANDARDS.md` §21 and `DECISIONS.md` CI-0023.
+- **No consumer action.** No input, secret or permission change.
+
+### Added — a mechanism to exempt illustrative install references from version sync (CI-0024)
+
+- `scripts/sync-version-refs.sh` propagates `VERSION` into install references by
+  matching their **shape** (raw-URL / `uses:…@tag` / `CI_TAG=`). Shape says "this
+  is an install reference"; it does not say "this one should be current."
+- `docs/MIGRATION_v2.0.0.md` is a target and carries two `CI_TAG=` commands that
+  must **not** track `VERSION` — its §5 "repin to `@ci/v2.0.0`" step and, far
+  worse, its **Rollback** section, whose command exists to pin a consumer *back*
+  to `ci/v1.x`. Both were rewritten to the new tag at every cut, so the published
+  rollback instruction re-pinned **forward**: an operator following it during an
+  incident would do the exact opposite of what the heading promised.
+- The script's header had already **named this risk and prescribed the remedy**
+  ("if a historical install command is *ever added* to a target, mark that line
+  to exclude it") — and that caveat was **accurate when written**: at `a0fc68c`
+  (2026-07-09) `TARGETS` held two READMEs and `MIGRATION_v2.0.0.md` did not
+  exist. The trigger fired on 2026-07-17 in `1a027da` (#175), which added the doc
+  to `TARGETS`; the rollback command read `ci/v1.9.5` until then and has tracked
+  the release tag ever since — and note the event was the inverse of the one
+  anticipated: not an example added to a target, but a file already containing
+  two being added to `TARGETS`. The defect is that the prescribed remedy was
+  **described but never implemented**, so there was nothing for #175 to fail
+  against — a caveat naming a future trigger cannot stop the commit that trips it
+  months later.
+- The mechanism now exists: wrap illustrative or historical spans in
+  `<!-- sync-version-refs:ignore-start -->` / `<!-- sync-version-refs:ignore-end -->`.
+  Both `--check` and the rewrite honour it. **Unbalanced markers are a hard
+  error** naming file and line — an unterminated start would otherwise freeze the
+  rest of a file silently, turning the guard into the drift it prevents.
+- Each substitution now carries its own negated address range instead of sharing
+  a `{ … }` block, because a bare `}` — as measured here — truncated the
+  function-extraction `awk` the tests use to drive the shipped code.
+- `tests/test_version_sync.sh` 9→29, driving `sed_program` and
+  `validate_ignore_markers` extracted from the script — both directions, all four
+  malformed-marker cases, and a mutation case proving that stripping the address
+  ranges clobbers the historical rollback command.
+- **The trigger is now mechanical, not prose.** `tests/test_version_sync.sh`
+  pins the **explicit** `TARGETS` array: adding a file to it fails the suite with
+  instructions to check the new target for illustrative install commands first —
+  the exact event #175 tripped silently. The two glob arms are not pinned; a
+  caller template's pin should track `VERSION`.
+- **`--check`'s failure message now names both remedies.** An illustrative
+  old-tag command in an existing target *does* trip the check — but the message
+  said only "run `scripts/sync-version-refs.sh` to fix", which is precisely the
+  action that falsifies it. A guard that fires and then misdirects is barely
+  better than none.
+- **What is genuinely unguarded, said plainly:** an illustrative command pinned
+  to the *current* tag when written. It is textually identical to a live
+  reference, so nothing can tell them apart, and it drifts at the next cut. Only
+  the markers cover that case.
+- Codified as `docs/REPO_STANDARDS.md` §22 and `DECISIONS.md` CI-0024.
+- ⚠️ **This entry ships the mechanism only.** The two falsified commands in
+  `docs/MIGRATION_v2.0.0.md` are corrected and wrapped in a follow-up PR that
+  must land before this release is tagged (tracked as issue #321).
+- **No consumer action.**
+
 ### Fixed — the ai-review rubric described inputs the reviewer never had (CI-0022)
 
 - `ai-review/review-prompt.md` instructed the model that "the changed files are
