@@ -27,6 +27,25 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 >    deliberately, because failing *it* would SKIP `ai-review`, and a skipped
 >    required check reports green.
 
+### Fixed — the `sync-version-refs` pre-commit hook skipped 8 of its 14 targets locally (#323)
+
+- The hook was scoped by a `files:` regex listing 6 of the 14 static `TARGETS`
+  entries. It had drifted behind `TARGETS` and skipped, among others,
+  `docs/MIGRATION_v2.0.0.md` — **the file CI-0024 is about** — so a commit
+  touching only that file never fired the hook locally and the author first
+  learned at PR time.
+- The regex was never load-bearing for correctness: the hook is
+  `pass_filenames: false`, so the script always checks every target regardless of
+  what a commit touched. The regex only decided *whether* the hook ran. It was a
+  second list to keep in step with `TARGETS`, i.e. pure drift surface — so it is
+  replaced with `always_run: true` rather than widened.
+- **CI was never affected** — `pre-commit.yml` runs `pre-commit run --all-files`.
+  This closes a local-feedback gap; §22 is updated to say the old-tag case fails
+  both the local hook and CI, which is now true at `git commit` time as well.
+- Regression test asserts the hook stays `always_run` with no `files:` filter;
+  mutation-verified (restoring a filter goes red).
+- Config + docs only; no workflow behaviour change.
+
 ### Docs — the ai-review asset docs described a delivery mechanism removed at `ci/v1.1.5` (#318)
 
 - `ai-review/README.md` said the reusable "checks out `aidoc-flow-ci` … via
