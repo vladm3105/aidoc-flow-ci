@@ -4,9 +4,45 @@ Live cross-session resume point for the workspace CI + governance-workflow
 canon library. Read at session start; refresh at milestones and before
 context compaction.
 
-## Current state (2026-07-24)
+## Current state (2026-07-25)
 
-> **TL;DR (2026-07-24).** **`ci/v2.14.0` is SHIPPED** — tag on `f15b88d`, Release
+> **TL;DR (2026-07-25).** **Seven findings from the `aidoc-flow-framework`
+> `ci/v2.14.0` migration are FIXED on branch `fix/canon-findings-v2-migration`**
+> (commit `e6c6fb2`), filed as `CI-0014`..`CI-0019`. Source report:
+> `../framework/tmp/CANON-FINDINGS_ci-canon-v2-migration.md`. Each was reproduced
+> against canon source or live state before fixing. Suite green (16 suites, 843
+> assertions).
+>
+> **Two of these were live faults, not detection gaps:**
+>
+> - **CI-0014** — the trust config is a **single shared source** while each
+>   consumer pins its own reusable, and every read was `jq '.field // "default"'`.
+>   The v1→v2 cutover (2026-07-16) therefore silently routed **seven repos** on
+>   `ci/v1.9.5` to the codex engine, which none has a key for: a fail-closed
+>   review gate that could not pass for ~9 days, merges via `--admin`, and an
+>   error naming neither cause nor owner (framework's HANDOFF recorded it as a
+>   lapsed key — a misdiagnosis that survived sessions). Fixed forward-only:
+>   both jobs now assert `version == 2` and fail loud. **No `ci/v1.x` backport**
+>   (founder direction 2026-07-25) — the six un-migrated repos stay latent until
+>   they re-pin, which is the actual remedy.
+> - **CI-0015** — `docs-sync` could not post its dry-run comment on **any**
+>   consumer: the callee capped `pull-requests: read`, and a reusable's token is
+>   the caller∩callee intersection. Green only because the step is gated on
+>   `proposed != 0` and had never fired.
+>
+> **⚠️ CONSUMER ACTION on the next release:** `docs-sync` callers must grant
+> `pull-requests: write`. `--repin` does NOT fix it (it rewrites `uses:` lines
+> only). Callers generated before that release grant `read` and stay broken.
+>
+> **NEXT:** open the PR (one PR, founder-approved 2026-07-25), merge on green,
+> then cut the release. **Semver is an open decision** — see the note below on
+> whether the CI-0014 assertion makes this MINOR or MAJOR. Canon deliberately
+> carries no hardcoded next-tag reference, so the number can be chosen at
+> release time without editing shipped text.
+> The six repos still on `ci/v1.9.5` remain the outstanding fleet item; migrating
+> them is deferred to the founder.
+>
+> **Previously — `ci/v2.14.0` is SHIPPED** — tag on `f15b88d`, Release
 > marked Latest, suite fully green. It carries: the **8 missing canonical labels**
 > created on canon (incl. `skip-audit-trail`, the escape hatch for the now-required
 > `call / verify`); **FT-53** — `standards-drift` compares `patterns_allowed` with

@@ -56,9 +56,25 @@ on:
         description: 'aidoc-flow-bot App private key (PEM). Required for non-dry-run mode.'
         required: false
 
+# CI-0015: `pull-requests` MUST be `write` here, not `read`.
+#
+# GitHub computes a reusable workflow's token as the INTERSECTION of the caller's
+# grant and this declaration, so a callee capped at `read` can never be raised by
+# any caller — the "Post dry-run comment" step's `gh pr comment` then dies on
+# `GraphQL: Resource not accessible by integration (addComment)` under
+# `set -euo pipefail`. That step is gated on `proposed != 0`, so it had never
+# executed and this workflow reported green from the day it shipped until a merge
+# finally produced a proposal.
+#
+# CONSUMER ACTION: the caller must ALSO grant `pull-requests: write`, because the
+# intersection cuts both ways. The shipped caller template has granted it since
+# ci/v2.11.0, so for most consumers the remedy is simply to re-pin to a release
+# containing this fix — the missing half was always THIS file. Only a caller
+# generated before ci/v2.11.0, or one hand-edited down to `read`, also needs a
+# caller-side change. See docs/UPDATE_GUIDE.md.
 permissions:
   contents: read
-  pull-requests: read
+  pull-requests: write
 
 concurrency:
   group: docs-sync-${{ github.ref }}

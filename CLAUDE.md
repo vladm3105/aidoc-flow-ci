@@ -168,8 +168,13 @@ session must not re-derive or get wrong:
   Do NOT "fix" slow feedback by moving jobs to `ubuntu-latest` on a private repo.
 - **LiteLLM route:** the container uses the default docker bridge, so it reaches
   the host proxy at **`http://172.17.0.1:4001`** (the `LITELLM_BASE_URL` secret).
-  It is HTTP on the private bridge → private callers set
-  `litellm_allow_insecure_http: true`.
+  Loopback (`127.0.0.1`/`localhost`) resolves to the *container*, not the host —
+  it works when tested from the host and fails only in CI.
+  It is HTTP on the private bridge → callers set
+  `litellm_allow_insecure_http: true`. **This is scoped by the URL SCHEME, not by
+  repo visibility:** any caller whose `LITELLM_BASE_URL` is `http://` needs the
+  flag, and since PLAN-013 puts the whole AI flow on the shared pool, that
+  includes every PUBLIC repo too — not just the private trio. (CI-0017.)
 
 **PUBLIC repos run the AI-flows FULLY on the ephemeral self-hosted pool (PLAN-013,
 `ci/v2.2.0`) — trust job included. This is safe and is NOT the "untrusted code on

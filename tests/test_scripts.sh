@@ -479,4 +479,148 @@ pa_bad="$(_pa_run '"not-an-object"')"
 assert_contains "$pa_bad" "patterns_allowed" "drift: unreadable response is surfaced"
 assert_absent "$pa_bad" "patterns_allowed: MISSING" "drift: unreadable response is NOT reported as missing patterns"
 
+# ── CI-0018: repo-settings must apply the SAME unreadable-vs-drifted rule ──────
+# Under the default GITHUB_TOKEN the admin-only merge settings are simply ABSENT
+# from the `gh api repos/` body. The old arm compared canon against the missing
+# value and printed `canon=false actual=null`, presenting unreadable state as a
+# drift finding — while the neighbouring actions.* arm (case 7 above) correctly
+# said "cannot check". These lock in the consistent behaviour.
+mkdir -p "$TMP/drift-ro/fixtures" "$TMP/drift-ro/bin"
+cp "$TMP/drift-pa/fixtures/"*.json "$TMP/drift-ro/fixtures/"
+cp "$TMP/drift-pa/bin/gh" "$TMP/drift-pa/bin/curl" "$TMP/drift-ro/bin/"
+# a read-only token's view: repo metadata present, admin-only merge fields absent
+jq '{name:"repo", default_branch:"main", visibility:"public", private:false}' \
+  "$TMP/drift-pa/fixtures/repo-actual.json" > "$TMP/drift-ro/fixtures/repo-actual.json"
+ro_out="$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-ro/fixtures" PATH="$TMP/drift-ro/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_absent   "$ro_out" "actual=null"                "drift: an UNREADABLE repo-setting is never printed as canon-vs-null drift"
+assert_absent   "$ro_out" "repo-settings.allow_merge_commit" "drift: no per-key drift line for fields the token could not read"
+assert_contains "$ro_out" "cannot check repo-settings" "drift: unreadable repo-settings is reported as cannot-check"
+assert_contains "$ro_out" "administration: read"       "drift: names the missing token scope (actionable)"
+# ANCHORED to the cannot-check message. An unanchored "allow_merge_commit" match
+# is satisfied by the OLD buggy output (`repo-settings.allow_merge_commit:
+# canon=false actual=null`) — i.e. by the very defect it exists to detect.
+assert_contains "$ro_out" "admin PAT: allow_merge_commit" "drift: names WHICH fields were unreadable"
+assert_contains "$ro_out" "0 drift"                    "drift: unreadable repo-settings contributes ZERO drift"
+assert_eq "$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-ro/fixtures" PATH="$TMP/drift-ro/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 --strict >/dev/null 2>&1; echo $?)" \
+  "1" "drift: strict still FAILS on uncheckable repo-settings (a gate that cannot read must not pass)"
+
+# POSITIVE CONTROL — with the fields READABLE, genuine drift must still fire.
+# Without this, the assertions above would be satisfied by the check not existing.
+mkdir -p "$TMP/drift-rw/fixtures" "$TMP/drift-rw/bin"
+cp "$TMP/drift-pa/fixtures/"*.json "$TMP/drift-rw/fixtures/"
+cp "$TMP/drift-pa/bin/gh" "$TMP/drift-pa/bin/curl" "$TMP/drift-rw/bin/"
+jq '.allow_merge_commit = (.allow_merge_commit | not)' \
+  "$TMP/drift-pa/fixtures/repo-actual.json" > "$TMP/drift-rw/fixtures/repo-actual.json"
+rw_out="$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-rw/fixtures" PATH="$TMP/drift-rw/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_contains "$rw_out" "repo-settings.allow_merge_commit" "drift: a READABLE drifted repo-setting is still reported"
+assert_contains "$rw_out" "1 drift"                          "drift: a readable drifted repo-setting INCREMENTS the count"
+assert_absent   "$rw_out" "cannot check repo-settings"        "drift: readable settings are not mislabelled uncheckable"
+
+# ── CI-0018: the coverage summary bounds what a green result claims ────────────
+assert_contains "$ro_out" "coverage — verified"    "drift: emits a coverage summary"
+assert_contains "$ro_out" "NOT verified"           "drift: names the families it could NOT verify"
+assert_contains "$ro_out" "NOT verified: repo-settings" "drift: the unverified list includes repo-settings"
+assert_contains "$rw_out" "coverage — verified 4/4" "drift: a fully-readable run reports full coverage"
+
+# ── CI-0017: the http:// opt-in and the loopback-in-container diagnosis ───────
+assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location('lc', sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+
+# http:// is REJECTED without the opt-in, regardless of host.
+os.environ.pop('LITELLM_ALLOW_INSECURE_HTTP', None)
+try:
+    m.endpoint('http://172.17.0.1:4001/v1')
+    raise AssertionError('http:// accepted without the opt-in')
+except SystemExit:
+    pass
+# ...and ACCEPTED with it. The flag is keyed on the SCHEME, not on any
+# visibility/repo signal — that is the whole point of CI-0017.
+os.environ['LITELLM_ALLOW_INSECURE_HTTP'] = 'true'
+assert m.endpoint('http://172.17.0.1:4001/v1') == 'http://172.17.0.1:4001/v1/chat/completions'
+assert m.endpoint('https://proxy.example/v1') == 'https://proxy.example/v1/chat/completions'
+
+# Inside a container, loopback gets a NAMED cause; the bridge address does not.
+os.environ['LITELLM_ASSUME_CONTAINER'] = 'true'
+for host in ('127.0.0.1', 'localhost', '::1'):
+    url = f'http://[{host}]:4001/v1' if host == '::1' else f'http://{host}:4001/v1'
+    hint = m.loopback_hint(url)
+    assert 'bridge' in hint and '172.17.0.1' in hint, f'no bridge hint for {host}: {hint!r}'
+assert m.loopback_hint('http://172.17.0.1:4001/v1') == ''
+assert m.loopback_hint('https://proxy.example/v1') == ''
+
+# Outside a container the hint is silent — it must never fire on a developer
+# host, where loopback is legitimately correct.
+os.environ['LITELLM_ASSUME_CONTAINER'] = 'false'
+m.Path = m.Path  # keep reference explicit
+if not (m.Path('/.dockerenv').exists() or m.Path('/run/.containerenv').exists()):
+    assert m.loopback_hint('http://127.0.0.1:4001/v1') == '' or m.in_container()
+
+# The hint is message-only: it cannot raise, even on a URL endpoint() rejected.
+assert isinstance(m.loopback_hint('http://127.0.0.1:4001/v1'), str)
+PY" "litellm: http opt-in is scheme-keyed and loopback-in-container is named (CI-0017)"
+
+# ── CI-0018 regressions found in review: "verified" must be ALL-OR-NOTHING ─────
+# The first cut marked a family verified on ANY partial progress, so a run could
+# say "cannot check repo-settings" AND "verified 4/4" in the same output — the
+# exact defect the coverage summary exists to prevent.
+mkdir -p "$TMP/drift-partial/fixtures" "$TMP/drift-partial/bin"
+cp "$TMP/drift-pa/fixtures/"*.json "$TMP/drift-partial/fixtures/"
+cp "$TMP/drift-pa/bin/gh" "$TMP/drift-pa/bin/curl" "$TMP/drift-partial/bin/"
+# a token that can read exactly ONE of the eight admin-only merge settings
+jq '{name:"repo",default_branch:"main",visibility:"public",allow_merge_commit:.allow_merge_commit}' \
+  "$TMP/drift-pa/fixtures/repo-actual.json" > "$TMP/drift-partial/fixtures/repo-actual.json"
+part_out="$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-partial/fixtures" PATH="$TMP/drift-partial/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_contains "$part_out" "cannot check repo-settings" "drift: a PARTIAL repo-settings read is reported uncheckable"
+assert_absent   "$part_out" "verified 4/4"               "drift: a partially-read family is NOT counted as verified"
+assert_contains "$part_out" "NOT verified: repo-settings" "drift: the partially-read family is named unverified"
+
+# Same rule for `actions`, which has four independent arms. The pre-existing
+# pa_bad fixture (unreadable selected-actions) used to report `verified 4/4`.
+assert_absent   "$pa_bad" "verified 4/4"                 "drift: an unreadable actions arm withholds the actions verified mark"
+assert_contains "$pa_bad" "NOT verified: actions"        "drift: the unreadable actions family is named unverified"
+
+# An EMPTY-but-successful `gh api` body must be an API/transport error, never
+# eight `actual=` drift lines. `jq -e` exits 0 on empty input for ANY filter, so
+# the `[ -s ]` file test in the shape guard is load-bearing.
+mkdir -p "$TMP/drift-empty/fixtures" "$TMP/drift-empty/bin"
+cp "$TMP/drift-pa/fixtures/"*.json "$TMP/drift-empty/fixtures/"
+cp "$TMP/drift-pa/bin/curl" "$TMP/drift-empty/bin/"
+sed 's|\*"repos/owner/repo"\*) cat "$DRIFT_FIXTURES/repo-actual.json" ;;|*"repos/owner/repo"*) : ;;|' \
+  "$TMP/drift-pa/bin/gh" > "$TMP/drift-empty/bin/gh"
+chmod +x "$TMP/drift-empty/bin/gh"
+empty_out="$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-empty/fixtures" PATH="$TMP/drift-empty/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_absent   "$empty_out" "actual="                    "drift: an empty API body yields NO canon-vs-blank drift lines"
+assert_contains "$empty_out" "empty or is not a JSON object" "drift: an empty API body is diagnosed as a transport failure"
+assert_contains "$empty_out" "0 drift"                    "drift: an empty API body contributes ZERO drift"
+assert_absent   "$empty_out" "verified 4/4"               "drift: an empty API body does not report full coverage"
+
+# A malformed (non-JSON) body takes the same path, not the token-scope message.
+mkdir -p "$TMP/drift-html/fixtures" "$TMP/drift-html/bin"
+cp "$TMP/drift-pa/fixtures/"*.json "$TMP/drift-html/fixtures/"
+cp "$TMP/drift-pa/bin/curl" "$TMP/drift-html/bin/"
+sed 's|\*"repos/owner/repo"\*) cat "$DRIFT_FIXTURES/repo-actual.json" ;;|*"repos/owner/repo"*) echo "<html>502</html>" ;;|' \
+  "$TMP/drift-pa/bin/gh" > "$TMP/drift-html/bin/gh"
+chmod +x "$TMP/drift-html/bin/gh"
+html_out="$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-html/fixtures" PATH="$TMP/drift-html/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_contains "$html_out" "empty or is not a JSON object" "drift: a non-JSON body is diagnosed as a transport failure"
+assert_absent   "$html_out" "actual="                       "drift: a non-JSON body yields no drift comparison"
+
+# The emptiest possible run (no jq) must still state its coverage, rather than
+# exiting 0 silently — that was the greenest result for the least verification.
+# An invalid --tier bails out through the same `stop_uncheckable` path as a
+# missing gh/jq, before any control family is examined. That run checks the
+# LEAST while still exiting 0 in non-strict mode, so it is exactly the one that
+# must not read as a clean pass.
+early_out="$(bash "$ROOT/sync/check-standards-drift.sh" --tier bogus --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_contains "$early_out" "coverage — verified 0/4" "drift: an early bail-out still reports 0/4 coverage"
+assert_contains "$early_out" "NOT verified"            "drift: an early bail-out names every family as unverified"
+
 suite_summary "scripts"
