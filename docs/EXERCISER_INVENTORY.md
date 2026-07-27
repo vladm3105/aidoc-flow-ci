@@ -103,6 +103,7 @@ installer/update path plus the offline tests that drive it.
 | `install/set-litellm-secrets.sh` | — | **unexercised** — operator helper, no consumer surface, low risk; `accepted-no-FT` |
 | `scripts/sync-version-refs.sh` | `test_version_sync.sh`; pre-commit hook | self-caller + offline-test |
 | `scripts/release.sh` | `test_release.sh` (guard rejections: bad version, tag-without-dry-run-gate, existing-tag prep, on-main) | offline-test |
+| `scripts/ft30-dry-run.sh` | `test_scripts.sh` (preflight arg-handling + criteria assertions driven against crafted logs) | offline-test |
 | `sync/check-drift.sh` | `test_scripts.sh` | offline-test |
 | `sync/check-pin-currency.sh` | `test_scripts.sh` | offline-test |
 | `sync/check-standards-drift.sh` | `standards-drift-self.yml` self-caller; `test_scripts.sh` | self-caller + offline-test |

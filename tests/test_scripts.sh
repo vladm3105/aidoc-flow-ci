@@ -655,4 +655,56 @@ PYEOF
 )"
 assert_eq "$svr_hook" "OK" "sync-version-refs hook is always_run with no files: filter (#323)"
 
+echo "== FT-30 dry-run helper (scripts/ft30-dry-run.sh) =="
+FT30="$ROOT/scripts/ft30-dry-run.sh"
+assert_ok "[ -x '$FT30' ]" "ft30-dry-run.sh is executable"
+assert_ok "bash -n '$FT30'" "ft30-dry-run.sh parses"
+# A real run WRITES to another repo, so only the offline paths are exercised.
+assert_ok "bash '$FT30' --nonsense >/dev/null 2>&1; [ \$? -eq 2 ]" "unknown arg exits 2"
+assert_ok "bash '$FT30' --help 2>&1 | grep -q 'FT-30'" "--help prints usage"
+# A real run without --target must refuse rather than write somewhere by default.
+ft30_notarget="$(bash "$FT30" 2>&1; echo "rc=$?")"
+assert_contains "$ft30_notarget" "--target owner/repo is required" "a real run without --target refuses"
+assert_contains "$ft30_notarget" "rc=1" "  and exits non-zero"
+
+# Drive the SHIPPED criteria block against crafted logs — the assertions are the
+# point of the script, so a copy here would prove nothing.
+FT30_CRIT="$(mktemp)"
+awk '/^note "==> FT-30 criteria"/,/^# ---.*verdict/' "$FT30" | head -n -1 > "$FT30_CRIT"
+assert_ok "grep -q 'creating canonical labels' '$FT30_CRIT'" "criteria block extracted from the shipped script"
+_ft30_drive() { # $1=log $2=rc -> failure count
+  # `bad` MUST increment — a no-op stub makes every mutation look caught-free and
+  # the whole battery passes for the wrong reason.
+  LOG="$1" RC="$2" bash -c '
+    RED=""; GRN=""; RST=""; BLD=""; FAILED=0
+    ok(){ :; }; note(){ :; }
+    bad(){ FAILED=$((FAILED+1)); }
+    source "'"$FT30_CRIT"'" >/dev/null 2>&1
+    echo "$FAILED"' 2>/dev/null
+}
+_ft30_good="$(mktemp)"
+cat > "$_ft30_good" <<'GOODLOG'
+==> backup: no pre-existing CI/governance surfaces (fresh repo)
+==> creating canonical labels on owner/x
+==> done. Next steps (founder) — SECRETS BEFORE THE PR:
+       Pre-write backup of everything that already existed (FT-57):
+       Restore one file:  cp "/b/<path>" /c/<path>
+       review job pins the self-hosted pool even on public repos):
+         - LITELLM_BASE_URL + LITELLM_REVIEW_API_KEY (ai-review proxy; REQUIRED since ci/v2.0.0)
+GOODLOG
+assert_eq "$(_ft30_drive "$_ft30_good" 0)" "0" "a complete run passes every criterion"
+# Each removal must be caught individually — a criterion that never fails is decoration.
+for _m in "creating canonical labels" "backup: no pre-existing" "Restore one file" "self-hosted pool even on public repos" "LITELLM_BASE_URL"; do
+  _mut="$(mktemp)"; grep -vF "$_m" "$_ft30_good" > "$_mut"
+  assert_ok "[ \"\$(_ft30_drive '$_mut' 0)\" -ge 1 ]" "removing '$_m' from the log is caught"
+  rm -f "$_mut"
+done
+# And the failure markers must trip it.
+_mut="$(mktemp)"; { cat "$_ft30_good"; echo "  FAIL  something broke"; } > "$_mut"
+assert_ok "[ \"\$(_ft30_drive '$_mut' 0)\" -ge 1 ]" "a FAIL line in the installer output is caught"
+{ cat "$_ft30_good"; echo "404: not found"; } > "$_mut"
+assert_ok "[ \"\$(_ft30_drive '$_mut' 0)\" -ge 1 ]" "a 404 in the installer output is caught"
+assert_ok "[ \"\$(_ft30_drive '$_ft30_good' 1)\" -ge 1 ]" "a non-zero installer exit is caught"
+rm -f "$_mut" "$_ft30_good" "$FT30_CRIT"
+
 suite_summary "scripts"

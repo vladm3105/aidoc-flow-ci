@@ -5,6 +5,31 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — `scripts/ft30-dry-run.sh`, so the 🔴 release gate is not judged by eye
+
+- The FT-30 cold-start dry-run is founder-executed and its pass criteria lived
+  only as prose in `RELEASE_CHECKLIST.md` — "did it pass?" was a judgement call
+  over ~60 lines of installer output, made once per release by whoever ran it.
+- The script asserts each criterion against the markers `install.sh` actually
+  prints: label creation reached, final next-steps block, the FT-57 backup line
+  (**neither** variant present means the mandatory backup never ran), the backup
+  dir + restore command in next-steps, the runner-pool probe, the LiteLLM note,
+  and no `FAIL` / `ABORT` / `404`. It reports **every** failed criterion, not the
+  first.
+- **It resolves `CI_TAG` from `main` HEAD itself.** Copying a stale SHA validates
+  the *previous* release's installer while looking green — the single most common
+  way this gate is wasted, and the reason the checklist calls that line the most
+  important one in the runbook.
+- `--check` is a no-write preflight: is the gate even owed, is HEAD **pushed**
+  (an unpushed HEAD 404s every template fetch and reads as a broken installer),
+  is `gh` authenticated, does the target exist. It also refuses a target that
+  looks like a real workspace repo — the run creates ~18 labels.
+- It does **not** create or delete the throwaway repo; teardown is printed, never
+  executed.
+- Exercised by `test_scripts.sh`: the criteria block is extracted from the
+  shipped script and driven against crafted logs, with each criterion's marker
+  removed individually to prove it is caught. 88→96 assertions.
+
 ### Fixed — `ai-review`'s FT-43 fail-closed step made unarmed repos `--admin`-only (closes #331)
 
 - The step `exit 1`d on every draft or non-`skip-ai-review` label event while the

@@ -92,7 +92,19 @@ the 🔴 dry-run for you.
   step's exit code rather than exiting, so a fault there degrades the *report*, not
   the install. **If your release changes those, pass `--dry-run-verified`
   deliberately — the gate will not force you.**
-  When the gate DOES fire, run it as follows. Canon is
+  **Use `scripts/ft30-dry-run.sh`** rather than doing this by eye — it resolves
+  `CI_TAG` from `main` HEAD (the mistake that silently validates the PREVIOUS
+  release), refuses to write to anything that looks like a real workspace repo,
+  and asserts every criterion below against the markers `install.sh` actually
+  prints instead of leaving "did it pass?" to a judgement call over ~60 lines of
+  output. Preflight first — it costs nothing and catches the wasted-run mistakes:
+
+  ```bash
+  bash scripts/ft30-dry-run.sh --check                      # no writes anywhere
+  bash scripts/ft30-dry-run.sh --target <owner>/<throwaway> # the real thing
+  ```
+
+  When the gate DOES fire, the criteria are as follows. Canon is
   already adopted, so it cannot exercise its own cold start; nothing else does
   either, which is how F1 (a bootstrap template deleted at `ci/v2.2.0`) shipped
   broken for nine releases. Before cutting a tag that changes `install.sh`, the
