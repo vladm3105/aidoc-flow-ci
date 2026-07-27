@@ -5,6 +5,29 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — canon asserted two opposite models of required-check semantics (#330)
+
+- `REPO_STANDARDS` §23.1 said a later SUCCESS never replaces an earlier
+  non-success on the same head SHA. `troubleshooting` §15 recommended a label
+  cycle to clear a stuck check, which only works if it does. Both shipped in
+  `ci/v2.15.0`, §15 carrying a warning that the question was unresolved.
+- **Settled.** The mechanism is a re-run *attempt* vs. an independent run — `gh
+  run rerun` reuses the same workflow-run id, while a label add/remove is a
+  distinct trigger and so produces a distinct check-run. That architectural
+  distinction is what carries the conclusion; both sides were then confirmed
+  directly. An **in-place re-run** replaces the check-run: the
+  `suite` context on `fdebb05` went from check-run `89856301834` (`failure`) to
+  `89857163070` (`success`) with **one** check-run left on the SHA. A **separate
+  run adds one alongside**: `aidoc-flow-framework` #346 carries **two**
+  `call / ai-review` check-runs (`cancelled` + `success`) and a `FAILURE` rollup.
+- So §23.1 is correct **for separate runs**, and §15 was wrong: a label cycle
+  starts a separate run, so it adds a context rather than clearing one — during
+  the CI-0025 incident one cycle took a PR from one cancelled run to two.
+- §15 is now scoped to contexts that never **reported** ("Expected — waiting for
+  status"), with a table giving the correct remedy for a `cancelled`/`failure`
+  context: re-run that run, or push.
+- Docs only.
+
 ## ci/v2.15.0 — 2026-07-26
 
 > **Consumer notes — read before re-pinning.**

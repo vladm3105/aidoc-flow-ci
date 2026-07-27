@@ -111,7 +111,7 @@ context compaction.
 > | Issue | What |
 > |---|---|
 > | #329 | The same CI-0025 defect in `audit-trail` (`call / verify`) and the lint family. **Caller-template-side**, so it needs a re-install not a re-pin — hence a separate release. |
-> | #330 | §23.1 and `troubleshooting` §15 assert **opposite** required-check semantics. §15 gained a warning; reconciliation needs empirical work. |
+> | ~~#330~~ | **RESOLVED** — settled by measurement: an in-place re-run *replaces* a check-run, a separate run *adds* one alongside. §15 corrected (a label cycle adds, so it cannot clear a cancelled context); §23.1 scoped to separate runs. |
 > | #331 | `ai-review`'s FT-43 guard writes a permanent non-success on the live head SHA — the §23 defect class, in the file §23 was added to. |
 >
 > Upstream, filed per CI-0020 §18: framework #341 is **CLOSED** (2026-07-26);
