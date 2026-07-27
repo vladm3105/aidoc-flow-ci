@@ -2053,16 +2053,23 @@ in-flight required check just as effectively. Canon has at least two more
 instances beyond `ai-review`: `audit-trail` (`call / verify`) whose caller
 subscribes to `labeled`/`unlabeled` for the documented `skip-audit-trail` escape
 hatch, and the lint family (`call / Lint / format / security hooks`) via
-`reopened` (both tracked as #329). A workflow that is not a required context on
-any tier is exempt, because a cancelled non-required context does not block
-anything.
+`reopened`. **Both are fixed** (#329): the eight caller templates feeding a
+required context — `audit-trail`, `pre-commit`, `secret-scan`, `markdown-lint`,
+each in its public and private variant — now carry the same fail-safe allowlist,
+**and so do canon's own five** (`audit-trail`, `self-pre-commit`,
+`self-markdown-lint`, `self-secret-scan`, `tests`) per the §16.6 Wave 0 rule. The
+first draft of this fix shipped the templates only and left canon's own `main`
+exposed — the lesson-not-swept failure §23.3 names, committed while amending §23.3.
+A workflow that is not a required context on any tier is exempt, because a
+cancelled non-required context does not block anything; `labeler`, `links` and
+`codeql` are therefore deliberately left alone.
 
 **Where `cancel-in-progress` lives decides the release boundary.** `ai-review`
-sets it in the **reusable**, so its fix reaches consumers by a re-pin. For
+sets it in the **reusable**, so its fix reached consumers by a re-pin. For
 `audit-trail` and the lint family the reusables carry no `concurrency:` block at
 all — the flag is in the **caller templates**, so those fixes require consumers to
-re-install workflow files. Ship them separately; a bundled fix cannot honestly
-claim "no consumer action beyond re-pinning".
+**re-install** the affected callers; `--repin` rewrites `uses:` lines only and
+will not deliver them. That is why the two shipped in different releases.
 
 A denylist fails twice over, and canon shipped both failures before arriving here:
 
@@ -2078,9 +2085,21 @@ A denylist fails twice over, and canon shipped both failures before arriving her
   yields false and cancels nothing. **A guard whose degraded mode is the failure it
   exists to prevent is not a guard.**
 
-Prefer a flat `cancel-in-progress: false` when runs are cheap — that is
-composition's choice. Use an allowlist only when a run is expensive enough that a
-real push must supersede it, as with `ai-review`.
+Both a flat `cancel-in-progress: false` and a correct allowlist are acceptable;
+the contract test accepts either. `false` is the simplest safe answer and is
+composition's choice. Prefer an **allowlist** when superseding on push still
+matters — which on the **serial** self-hosted pool it does even for cheap jobs,
+because the constraint is pool occupancy, not cost per run: a stale lint run that
+is not superseded blocks the next job in the queue. That is why the required-context
+lint and scan callers use an allowlist rather than `false`.
+
+**Residual, not closed by this rule.** GitHub cancels a _pending_ run when a
+newer one queues in the same group, independently of `cancel-in-progress`. If a
+pending-cancelled run materialises a check-run, a second non-code-changing event
+while one is already queued reproduces the defect. Unverified either way, and it
+applies to a flat `false` too. This rule removes the deterministic case; it does
+not make the group safe by construction. Dropping `concurrency` entirely, or
+keying the group by event, would.
 
 **The test must evaluate the expression, and must derive its cases from the
 caller's own `types:` list** — so adding a trigger fails the suite until someone

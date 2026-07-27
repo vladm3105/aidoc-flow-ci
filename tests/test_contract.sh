@@ -802,4 +802,123 @@ assert_eq "$(drive_root 'n=$(cat n.txt 2>/dev/null || echo 0); n=$((n+1)); echo 
 # header still says "at the PR base commit". That substitution must not happen.
 assert_eq "$(drive_root 'printf "CHANGELOG.md\n"' '')" "UNAVAILABLE" "CI-0022 a missing base sha is UNAVAILABLE, not a silent default-branch listing"
 
+echo "== CI-0025 caller-side: a required-context caller may only cancel on code-changing events =="
+# §23.2. The ai-review fix was reusable-side; these callers set cancel-in-progress
+# themselves, so the same defect lived here too — audit-trail's `labeled` trigger
+# is the DOCUMENTED skip-audit-trail hatch, so canon's own instructions fired it.
+ci0025_callers="$(python3 - "$ROOT" <<'PYEOF'
+import yaml, sys, os, re, json, subprocess
+
+root = sys.argv[1]
+
+# DERIVED, not hardcoded: every caller template feeding a required context, from
+# install/required-context-map.py, plus this repo's own callers (Wave 0 §16.6) and
+# the live-protection-only `call / markdownlint`. A hardcoded list would let a NEW
+# required-context caller ship unguarded — the drift class this whole section is about.
+def derived():
+    out = set()
+    try:
+        r = subprocess.run([sys.executable, os.path.join(root, "install/required-context-map.py")],
+                           capture_output=True, text=True, timeout=60)
+        for line in (r.stdout or "").splitlines():
+            m = re.search(r"([\w.-]+)\.ya?ml\s*$", line.strip())
+            if not m: continue
+            # The map emits the caller BASE name; several ship only as
+            # -public/-private variants. Expand to whatever exists on disk.
+            base = m.group(1)
+            for cand in (base, base + "-public", base + "-private"):
+                rel = "install/templates/workflows/%s.yml" % cand
+                if os.path.exists(os.path.join(root, rel)): out.add(rel)
+    except Exception:
+        pass
+    return out
+
+CALLERS = derived() | {
+    "install/templates/workflows/%s.yml" % n for n in
+    ("audit-trail-public", "audit-trail-private", "pre-commit", "pre-commit-private",
+     "secret-scan", "secret-scan-private", "markdown-lint", "markdown-lint-private")
+} | {
+    # Wave 0: canon's own callers behind its five required contexts.
+    ".github/workflows/%s.yml" % n for n in
+    ("audit-trail", "self-pre-commit", "self-markdown-lint", "self-secret-scan", "tests")
+}
+
+# Actions coerces null and '' alike, so probe the degraded context with '' — using
+# Python None would make `x == ''` read False here while it is TRUE in Actions.
+EMPTY = {"github.event_name": "", "github.event.action": ""}
+CODE_ACTIONS = {"opened", "synchronize"}
+PR_EVENTS = {"pull_request", "pull_request_target"}
+SUPERSEDABLE = {"push", "workflow_dispatch", "schedule"}
+
+def ev(expr, ctx):
+    body = " ".join(expr.split())
+    if not body.startswith("${{"): raise ValueError("not an expression: %s" % body[:40])
+    body = body[3:-2]
+    def term(t):
+        t = t.strip()
+        m = re.fullmatch(r"contains\(fromJSON\('(\[[^\]]*\])'\),\s*([\w.]+)\)", t)
+        if m: return ctx.get(m.group(2)) in json.loads(m.group(1))
+        m = re.fullmatch(r"([\w.]+)\s*==\s*'([^']*)'", t)
+        if not m: raise ValueError("unsupported term: %s" % t)
+        return ctx.get(m.group(1)) == m.group(2)
+    def parse(e):
+        e = e.strip()
+        while e.startswith("(") and e.endswith(")"):
+            d = 0; whole = True
+            for i, c in enumerate(e):
+                d += c == "("; d -= c == ")"
+                if d == 0 and i < len(e) - 1: whole = False; break
+            if not whole: break
+            e = e[1:-1].strip()
+        for op, fn in (("||", any), ("&&", all)):
+            parts, d, cur, i = [], 0, "", 0
+            while i < len(e):
+                d += e[i] == "("; d -= e[i] == ")"
+                if d == 0 and e[i:i+2] == op:
+                    parts.append(cur); cur = ""; i += 2; continue
+                cur += e[i]; i += 1
+            parts.append(cur)
+            if len(parts) > 1: return fn(parse(x) for x in parts)
+        return term(e)
+    return parse(body)
+
+# Default action sets, so a non-PR event with real actions is probed with ITS
+# actions rather than a bare None.
+DEFAULT_TYPES = {
+    "pull_request": ["opened", "synchronize", "reopened"],
+    "pull_request_target": ["opened", "synchronize", "reopened"],
+}
+
+bad = []
+for rel in sorted(CALLERS):
+    f = os.path.join(root, rel)
+    if not os.path.exists(f): bad.append("%s:MISSING" % rel); continue
+    d = yaml.safe_load(open(f))
+    expr = (d.get("concurrency") or {}).get("cancel-in-progress")
+    if expr is None: continue                 # no concurrency: nothing can be cancelled
+    if expr is False: continue                # flat false: the safest form, §23.2's default
+    if expr is True: bad.append("%s:literal-true" % rel); continue
+    if not isinstance(expr, str): bad.append("%s:%r" % (rel, expr)); continue
+    on = d.get(True, d.get("on", {})) or {}
+    try:
+        if ev(expr, EMPTY) is not False: bad.append("%s:empty-context-cancels" % rel)
+        for e, cfg in on.items():
+            types = (cfg or {}).get("types") if isinstance(cfg, dict) else None
+            acts = types or DEFAULT_TYPES.get(e, [None])
+            for a in acts:
+                got = ev(expr, {"github.event_name": e, "github.event.action": a or ""})
+                # A cancel is legitimate only when the event supersedes work: a push
+                # or dispatch, or a CODE-CHANGING action on a PR event. Keyed on the
+                # (event, action) PAIR — an action name alone is ambiguous, e.g.
+                # `issues: [opened]` is not code-changing.
+                want = (e in SUPERSEDABLE) or (e in PR_EVENTS and a in CODE_ACTIONS)
+                if got is not want: bad.append("%s:%s/%s=%s(want %s)" % (rel, e, a, got, want))
+    except ValueError as x:
+        bad.append("%s:UNSUPPORTED(%s)" % (rel, x))
+print(",".join(bad) or "OK")
+PYEOF
+)"
+assert_eq "$ci0025_callers" "OK" \
+  "required-context callers cancel ONLY on push/dispatch/opened/synchronize, and fail safe on an empty context (CI-0025 §23.2)"
+
 suite_summary "contract"
