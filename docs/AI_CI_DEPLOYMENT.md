@@ -75,6 +75,12 @@ Do NOT trust a stale doc's visibility column — always re-check with `gh`.
 
 ### 1.2 Runner pool (PRIVATE repos only) — 🔴 if absent
 
+> **Floor:** the pool must run **Actions Runner >= 2.327.1** — the reusables call
+> node24 actions. Below it, jobs die on the runtime in `ai-review`'s first job with
+> a runner-side error that is not expected to name the action or the floor. See
+> `docs/runners.md` §2 and
+> `docs/troubleshooting.md` §19. (#342.)
+
 ```bash
 gh api repos/<owner/repo>/actions/runners --jq '.runners[]|{name,status,labels:[.labels[].name]}'
 ```

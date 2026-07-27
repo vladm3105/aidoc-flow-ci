@@ -45,6 +45,19 @@ the 🔴 dry-run for you.
   covers required consumer actions (new secrets, removed inputs, config
   changes, repin commands, rollback). Cross-referenced from CHANGELOG and
   `docs/UPDATE_GUIDE.md`.
+- [ ] **Consumer-visible RUNTIME floors ship IN the tag.** If anything in the
+  release raises a floor a consumer's environment must meet — an action major
+  moving to a new node runtime, a required tool version, a minimum runner — the
+  doc change lands **before** the tag, not after. `ci/v2.15.0` shipped a
+  node24 `actions/checkout` in the `trust` job with the >= 2.327.1 Actions
+  Runner floor recorded nowhere in the tagged tree; the CHANGELOG entry was
+  written ~14 hours later, so consumers reading docs at their own pin could not
+  find it (#342). **Grepping the tree cannot find this** — `runs.using: node24` lives in the
+  *action's* repo, never here, so a prose grep returns nothing at both a tag that
+  carries the floor and one that does not. Enumerate the pinned action majors and
+  resolve their runtime upstream, e.g.
+  `git grep -hoE 'uses: [^@]+@[0-9a-f]+ # v[0-9.]+' <tag> -- .github/workflows | sort -u`
+  then check any major that moved for a `runs.using` change.
 - [ ] **Release notes drafted:** copy the relevant `## Unreleased` entries
   from CHANGELOG.md into a `## ci/vX.Y.Z — <date>` section. Promote
   `## Unreleased` entries to the new tag header.

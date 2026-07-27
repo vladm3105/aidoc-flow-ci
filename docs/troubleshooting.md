@@ -31,6 +31,7 @@ For the broader architecture, see
 | Reusable workflow `startup_failure` (no logs, empty jobs) | [§13 Actions allowlist blocks reusable](#13-startup_failure--reusable-workflow-blocked-by-consumers-actions-allowlist) |
 | Reusable workflow `startup_failure` after §13 fix | [§14 Caller workflow_permissions blocks reusable](#14-startup_failure--callers-workflow_permissions-read-blocks-reusables-write) |
 | Stuck check on latest commit (no new push to retrigger) | [§15 Label-cycle retrigger](#15-stuck-check--label-cycle-retrigger--r3-force-fresh-path-civ130) |
+| Self-hosted job dies on a node/runtime error before any step | [§19 Runner below the node24 floor](#19-self-hosted-runner-below-the-node24-floor) |
 
 ## 1. Composition pre-ai-review race
 
@@ -705,3 +706,46 @@ If you hit something not covered here:
 
 Recurring issues become their own section here. One-off issues
 stay in the GitHub issue tracker.
+
+## 19. Self-hosted runner below the node24 floor
+
+**Symptom.** On a self-hosted pool, `ai-review` fails in its **first** job
+(`trust`) with a node/runtime error, before any of the job's own steps produce
+output. The whole gate looks broken.
+
+The exact message is runner-version dependent and is **not reproduced here** — but
+it is a runner-side runtime failure, so expect it not to name the action, a
+version floor, or the runner itself. The natural suspects are then the trust
+config, the App credentials, or the LiteLLM proxy. **None of those are
+involved** — if the job died before its own steps produced output, check the
+runner version first.
+
+**Cause.** The reusables call **node24** actions (`actions/checkout` v5+,
+`setup-node` v5+, `setup-python` v6+, `labeler` v6+, `create-github-app-token`
+v3+, `download-artifact` v7+). node24 requires **Actions Runner >= 2.327.1**. An
+older runner cannot start the action at all.
+
+**Diagnose.**
+
+```sh
+gh api repos/<owner>/<repo>/actions/runners --jq '.runners[] | "\(.name) \(.version)"'
+```
+
+Anything below `2.327.1` is the cause.
+
+**Fix.** Rebuild the runner image — the base digest in
+`install/templates/runner/Dockerfile` carries the runner, and the image is built
+**per host with no registry push**, so a host that has not re-run
+`build-image.sh` keeps its old runner however current canon is:
+
+```sh
+bash install/templates/runner/build-image.sh
+# then restart the pool's ci-runner@ instances
+```
+
+`provision-runner.sh` asserts the floor at provision time, so a fresh pool fails
+here with a named cause instead of mid-PR.
+
+**Not this.** GitHub-hosted callers (`ubuntu-latest`) are never affected. This is
+also not tied to a particular `ci/vX.Y.Z` — node24 actions reach back into the
+early `ci/v1.x` series; it simply went undocumented until #342.

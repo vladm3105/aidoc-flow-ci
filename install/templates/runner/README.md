@@ -41,6 +41,16 @@ exposure and never attach the Docker socket.
 
 ## Host prerequisites (no sudo required)
 
+- **Actions Runner >= 2.327.1** — the reusables call node24 actions (`actions/checkout` **v5+**, `actions/setup-node` **v5+**,
+`actions/setup-python` **v6+**, `actions/labeler` **v6+**,
+`actions/create-github-app-token` **v3+**, `actions/download-artifact` **v7+**),
+  which will not start on an older runner. The failure is a node-runtime error in
+  `ai-review`'s first job. (The exact text is runner-version dependent and has not
+  been reproduced here; expect it not to name the action or the floor.) Not tied to a
+  particular tag: node24 actions have been in the reusables since the early
+  `ci/v1.x` series. The pinned base image here satisfies it and
+  `provision-runner.sh` asserts it; verify a live pool with
+  `gh api repos/<owner>/<repo>/actions/runners --jq '.runners[].version'`.
 - Docker usable without sudo (user in the `docker` group)
 - `gh` authenticated on the host (the supervisor mints JIT configs via `gh api`)
 - `loginctl enable-linger "$USER"` for reboot-persistent user services

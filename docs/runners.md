@@ -122,6 +122,34 @@ custom names.
 >    point caller `runner_labels_*` inputs at the resulting
 >    `ci-runner` + `single-use` pool.
 
+### ⚠️ Version floor — Actions Runner >= 2.327.1
+
+The reusables call **node24** actions (`actions/checkout` **v5+**, `actions/setup-node` **v5+**,
+`actions/setup-python` **v6+**, `actions/labeler` **v6+**,
+`actions/create-github-app-token` **v3+**, `actions/download-artifact` **v7+**). node24 requires **Actions
+Runner >= 2.327.1**. A pool below that fails at the **runtime**, not on your
+config, and it surfaces in `ai-review`'s FIRST job (`trust`) — so the whole gate
+looks broken rather than version-gated.
+
+**This is not new, and not tied to one tag.** node24 actions have been in the
+reusables since the early `ci/v1.x` series; at `ci/v2.15.0` there were already
+**30 node24 call sites across 16 workflow files** (17 `checkout` v7, 6
+`create-github-app-token` v3, 5 `setup-python` v6, 1 `setup-node` v6, 1
+`labeler` v6). It went undocumented until #342 — do not read a particular tag as
+the boundary.
+
+Check your pool:
+
+```sh
+gh api repos/<owner>/<repo>/actions/runners --jq '.runners[].version'
+```
+
+`aidoc-flow-runner:latest` built from the canon `Dockerfile` satisfies this, and
+`provision-runner.sh` now asserts it at provision time. **Rebuilding matters**:
+the image is built per host with no registry push, so a host that has not re-run
+`build-image.sh` keeps whatever runner its old base shipped. `ubuntu-latest` is
+unaffected — GitHub-hosted runners are always current.
+
 The reference self-hosted runner image spec lives at
 [`../install/templates/runner/`](../install/templates/runner/)
 (`Dockerfile` + `build-image.sh`). It builds atop a **digest-pinned**
