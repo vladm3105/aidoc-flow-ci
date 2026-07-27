@@ -8,18 +8,25 @@ this directory is the canonical home for the reviewer assets that
 
 | File | What | Notes |
 |---|---|---|
-| `review-prompt.md` | The system prompt the reviewer LLM uses (98 lines) — defines the rubric (severity scale, dimensions, doc-currency rule, governance-PR discipline, anti-injection guidance) | Generalized 2026-06-25 to address "the calling consumer repo" instead of `aidoc-flow-operations` specifically (1-line additive change vs the 97-line source on operations) |
+| `review-prompt.md` | The system prompt the reviewer LLM uses — defines the rubric (severity scale, dimensions, doc-currency rule, governance-PR discipline, anti-injection guidance) | Generalized 2026-06-25 to address "the calling consumer repo" instead of `aidoc-flow-operations` specifically (1-line additive change vs the 97-line source on operations) |
 | `verdict.schema.json` | JSON Schema for the structured verdict the reviewer emits | Downstream parsers depend on this shape; changes require careful coordination |
 | `README.md` | This file | — |
 
 ## How it's consumed
 
-The reusable `ai-review.yml` workflow checks out `aidoc-flow-ci` at the
-**consumer's pinned tag** (parsed from `github.workflow_ref`) via
-sparse-checkout (only this directory), then passes:
+The reusable `ai-review.yml` workflow **fetches these files with `curl`** from
+`raw.githubusercontent.com`, at the tag the consumer's own caller is pinned to,
+into `reviewer-assets/ai-review/`. It then passes:
 
 - `review-prompt.md` → instructions prepended to the LiteLLM request
 - `verdict.schema.json` → downstream parser for the structured verdict
+
+**The `ai-review` job has no `actions/checkout` and no working tree.** That is
+deliberate (IPLAN-0024, `ci/v1.1.5`+) and is the fact `docs/REPO_STANDARDS.md`
+§20 depends on: the reviewer is a single-shot completion that can see only its
+rubric, a changed-file inventory, a repo-root listing and the diff. Earlier
+revisions of this file described a `sparse-checkout` delivery; that mechanism was
+removed and the description contradicted §20.
 
 ## Why aidoc-flow-ci instead of operations
 

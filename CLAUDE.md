@@ -88,6 +88,25 @@ servers (`github-tt`, `github-vl`) or raw API calls. If `gh` is
 unauthenticated, run `gh auth login` rather than falling back to
 MCP/API.
 
+### Cross-repo defects get filed UPSTREAM (CI-0020, §18)
+
+A defect this repo surfaces but does NOT own — in a sibling submodule,
+an upstream spec, `operations` — gets a **GitHub issue on that repo**,
+not just a line in `HANDOFF.md`/`DECISIONS.md`. The test is **ownership,
+not severity**; a local workaround does not discharge it. Link the issue
+number back here. Full rule + the CI-0014 incident that motivated it:
+`docs/REPO_STANDARDS.md` §18.
+
+**`gh issue create --body -` publishes a literal `-`** (exit 0, prints a
+URL — it looks fine). Use `--body-file`, then read it back with
+`gh issue view <N> --json body --jq '.body | length'`. Issues #305–#309
+were all published empty this way. Same trap on `gh issue comment` /
+`gh pr comment`.
+
+Note the inbound direction too: consumers filing defects **against
+canon** land here as issues, and this repo is the owner that must act on
+them.
+
 ## Workspace standards (aidoc-flow canon — read the canonical rules directly)
 
 Every workspace-standard rule below states (a) a one-sentence summary of
@@ -168,8 +187,13 @@ session must not re-derive or get wrong:
   Do NOT "fix" slow feedback by moving jobs to `ubuntu-latest` on a private repo.
 - **LiteLLM route:** the container uses the default docker bridge, so it reaches
   the host proxy at **`http://172.17.0.1:4001`** (the `LITELLM_BASE_URL` secret).
-  It is HTTP on the private bridge → private callers set
-  `litellm_allow_insecure_http: true`.
+  Loopback (`127.0.0.1`/`localhost`) resolves to the *container*, not the host —
+  it works when tested from the host and fails only in CI.
+  It is HTTP on the private bridge → callers set
+  `litellm_allow_insecure_http: true`. **This is scoped by the URL SCHEME, not by
+  repo visibility:** any caller whose `LITELLM_BASE_URL` is `http://` needs the
+  flag, and since PLAN-013 puts the whole AI flow on the shared pool, that
+  includes every PUBLIC repo too — not just the private trio. (CI-0017.)
 
 **PUBLIC repos run the AI-flows FULLY on the ephemeral self-hosted pool (PLAN-013,
 `ci/v2.2.0`) — trust job included. This is safe and is NOT the "untrusted code on

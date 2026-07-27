@@ -35,7 +35,7 @@ runners):
 
 | Tool | Why |
 |---|---|
-| **`bash` ≥ 4.0** | The canon `scripts/pre_push_check.sh` this installs uses `mapfile` (bash 4+). macOS ships bash 3.2 — `brew install bash`, or skip installing the pre-push hook. |
+| **`bash` ≥ 4.0** | `install.sh` **itself** uses `mapfile` (bash 4+), so bash ≥ 4 is required to run it — not avoidable by skipping the pre-push hook. macOS ships bash 3.2: `brew install bash` and run install.sh with that bash (e.g. `/opt/homebrew/bin/bash install.sh …`). install.sh guards this up front with an actionable error (FT-50). |
 | **`gh`** (authenticated, write on the target repo) | clones the consumer + creates labels |
 | **`git`** + **`curl`** | clone + template fetch |
 | **`python3`** | **always** — used for canonical-label creation (stdlib only) and, when present, the `.pre-commit-config.yaml` merge |
@@ -44,11 +44,11 @@ runners):
 ## Run it
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.11.0/install/install.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.15.0/install/install.sh) \
   vladm3105/<consumer-repo> --visibility private
 
 # Or override the tag explicitly:
-CI_TAG=ci/v2.11.0 bash install.sh vladm3105/<consumer-repo> --visibility public
+CI_TAG=ci/v2.15.0 bash install.sh vladm3105/<consumer-repo> --visibility public
 ```
 
 The pinned tag is resolved as **`CI_TAG` env > repo-root `VERSION` file
@@ -71,7 +71,7 @@ templates as they are fetched.
 | `--canon-ci-url <url>` | the `CLAUDE.md` link to this CI canon repo | `../aidoc-flow-ci` |
 
 ```bash
-CI_TAG=ci/v2.11.0 bash install.sh acme/their-repo --visibility private \
+CI_TAG=ci/v2.15.0 bash install.sh acme/their-repo --visibility private \
   --codeowner acme-bot \
   --canon-operations-url https://github.com/acme/ops-canon \
   --canon-ci-url https://github.com/acme/ci-canon
@@ -195,7 +195,7 @@ discovered during framework Phase A):
 
 | Setting | Why | Doc |
 |---|---|---|
-| **Actions allowlist** | If the consumer is in `selected actions` mode, `vladm3105/aidoc-flow-ci/*` must be in `patterns_allowed` or the reusable returns `startup_failure` | [`../docs/troubleshooting.md` §13](../docs/troubleshooting.md) |
+| **Actions allowlist** | If the consumer is in `selected actions` mode, `patterns_allowed` must admit canon — `vladm3105/*` (canonical) or the older `vladm3105/aidoc-flow-ci/*` — or the reusable returns `startup_failure` | [`../docs/troubleshooting.md` §13](../docs/troubleshooting.md) |
 | **Caller `permissions:` block** | If the consumer's repo-default `workflow_permissions: read`, the reusable's `contents: write` is rejected — add an explicit `permissions:` block to the caller | [`../docs/troubleshooting.md` §14](../docs/troubleshooting.md) |
 | **LiteLLM secrets** (ci/v2.0.0) | `LITELLM_BASE_URL` + `LITELLM_REVIEW_API_KEY` are required for the ai-review gate to connect to the LiteLLM proxy. `LITELLM_DOC_API_KEY` is required for doc-maintainer (optional). Set per-repo or at org level. | [`../docs/REVIEWER_APP_ONBOARDING.md`](../docs/REVIEWER_APP_ONBOARDING.md), [`../docs/MIGRATION_v2.0.0.md`](../docs/MIGRATION_v2.0.0.md) |
 

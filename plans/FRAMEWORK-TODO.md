@@ -8,6 +8,84 @@ when resolved.
 
 ## Open
 
+### FT-52 — canon does not govern itself to the standard it ships (🔴 founder)
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G4 self-governance, S1).
+**Surface:** canon `main` — `branches/main/protection` → 404, `rulesets` → `[]`
+(verified live), while `install/templates/branch-protection-product.json` names
+`aidoc-flow-ci` product-tier.
+**Effect:** canon `main` is unprotected AND `ci/v*` release tags are mutable — the
+fleet pins canon by mutable tag, so a force-moved tag reaches every consumer next
+run with nothing stopping it.
+**Fix (🔴 founder-executed runbook, NOT AI-run):** `plans/ROLLOUT_ft52-canon-self-governance.md`
+— (A) immutable `ci/v*` tag ruleset (deletion + non-fast-forward blocked, creation
+allowed); (B) branch protection with **canon's own check set** (NOT product-tier —
+requiring `ai-review`/`composition` canon doesn't self-run would hang every PR, F2).
+**RESOLVED — EXECUTED 2026-07-24 at the founder's in-session direction. Both parts
+are LIVE:** Part A tag ruleset `19687369` (active, no bypass actors; create allowed,
+delete + force-move rejected — verified by execution) and Part B branch protection on
+`main` with canon's own 5-check set (0 required reviews, `enforce_admins: false`,
+`required_signatures: false`, so AI auto-merge and the FT-21 `--admin` prep path both
+still work). See CHANGELOG `## Unreleased` +
+`plans/ROLLOUT_ft52-canon-self-governance.md` (header records the applied state).
+
+### FT-51 — `runners.md` leads with org-level registration, impossible on a personal account
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G4 docs, §5).
+**Surface:** `docs/runners.md:150` "### 3.1 Org-level registration (recommended)",
+with §3.2 per-repo as "fallback".
+**Effect:** `vladm3105` is a personal account; org-level runner registration is
+impossible (PLAN-009 §Phase-0), so the doc sends an operator down an unavailable
+path first.
+**Fix:** flip the primacy — §3.1 per-repo (primary, with the personal-account
+note), §3.2 org-level scoped to a true GitHub org only.
+**RESOLVED (Unreleased -> `ci/v2.12.0`, PLAN-019 Workstream D / G4):** see CHANGELOG
+`## Unreleased`.
+
+### FT-50 — GNU-only `sed -i` + unguarded `mapfile` break on adopter macOS
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G4 portability, §5).
+**Surface:** `install/install.sh` two `--repin` `sed -i -E` + an unguarded
+`mapfile`; `install/deploy-ci-wizard.sh` one `sed -i`; `install/README.md:38`
+implied bash4 was avoidable by skipping the pre-push hook.
+**Effect:** bare GNU `sed -i` errors on BSD/macOS sed (adopters run these); a
+macOS bash-3.2 user hits a cryptic `mapfile: command not found`.
+**Fix:** portable `sed -i.bak … && rm` (3 sites); a `BASH_VERSINFO` guard up front
+in `install.sh` with an actionable message; corrected `install/README.md` (bash≥4
+is unconditional for install.sh). `test_scripts.sh` 27→29; a bare-`sed -i` revert
+goes red.
+**RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream D / G4):** see CHANGELOG
+`## Unreleased`.
+
+### FT-49 — `FLEET_BRANCH_PROTECTION_ARMING.md` imperatively repins to a 10-release-old tag
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G3 doc-currency, §4).
+**Surface:** `docs/FLEET_BRANCH_PROTECTION_ARMING.md:64-67` said `CI_TAG=ci/v2.1.0`
+in a founder-executed re-pin runbook; `docs/REPO_STANDARDS.md:1368` said the
+auto-merge templates pin `@ci/v2.0.0` (actual `@ci/v2.11.0`).
+**Effect:** an operator following the runbook would re-pin the fleet ~10 releases
+backwards.
+**Fix:** both rewritten version-neutral — "the current release tag (`../VERSION`)".
+**RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream C / G3):** see CHANGELOG
+`## Unreleased`. Remaining §4 content-currency (architecture.md rows/header,
+4-doc markdown-autofix corruption, README EXERCISER row) tracked as a follow-up
+doc-currency PR.
+
+### FT-48 — `release.sh prep` has no on-main / up-to-date guard
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G3 ship-with-tag).
+**Surface:** `scripts/release.sh` `prep()` checked tag/VERSION/tree/branch but not
+`HEAD == origin/main` (which `tag()` does).
+**Effect:** a prep from a stale/off-main tree promotes an incomplete
+`## Unreleased` CHANGELOG into the release; `tag`'s VERSION-match guard can't catch
+it (VERSION still matches).
+**Fix:** `prep()` gains the same on-main + `origin/main`-up-to-date guards `tag`
+carries, after the tag/VERSION checks (so a current-version prep still rejects with
+its specific reason). `test_release.sh` 21→27: fixture tests reject off-main and
+local-ahead prep, mutate nothing; removing either guard goes red.
+**RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream B / G3):** see CHANGELOG
+`## Unreleased`.
+
 ### FT-47 — CI only ever exercises the fallback YAML backend
 
 **Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G3 ship-with-tag).
@@ -22,6 +100,217 @@ under PyYAML and only a human reviewer caught it.
 step is present (removing it goes red).
 **RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream B / G3):** see CHANGELOG
 `## Unreleased`.
+
+### FT-57 — `install.sh` had no mandatory backup of a consumer's existing surfaces
+
+**Found:** 2026-07-24, founder question — "consumers may have their own customized
+established flow; the deployment script may override only flow-ci flows but MUST
+back up all existing flows as a mandatory part of deployment."
+**Surface:** `install/install.sh`. Three code paths mutate files in the consumer
+clone — `fetch_template`'s `curl -o`, the `--update` replace's `cp`+`mv`, and
+`--repin`'s `sed -i` — and none took a backup. The only `.bak` in the file was the
+transient FT-50 portability artifact, created and `rm -f`'d immediately.
+**What already held (verified, so this was narrower than it looked):** writes are
+manifest-scoped, so a consumer's own workflow is never written; there is no
+wildcard write or delete over `.github/workflows/`; `--repin`'s sed only rewrites
+`uses: vladm3105/aidoc-flow-ci/…` lines; bootstrap preserves existing files;
+12 sensitive paths are `safe_to_replace: false`; and install.sh **never commits or
+pushes** (0 call sites) — it writes to a clone the operator reviews. Git was the
+de-facto backup.
+**Effect:** the guarantee was *inferred*, not inspectable, and asymmetric —
+`apply-standards.sh` backs up settings to `install/backups/` before any mutation
+while the file path had no equivalent. The sharp edge is
+`--update --non-interactive`, which auto-replaces every `safe_to_replace: true`
+file, including 16 workflow callers; a consumer that customized `runner_labels`,
+`permissions` or triggers loses it silently (the FT-9 clobber).
+**Fix (this release):** an unconditional pre-write snapshot immediately after the
+clone, before any writer — one hook that a future fourth write path cannot bypass.
+Review caught two BLOCKERs in the first implementation, both proven on fixtures: an
+unquoted `for p in $(find …)` word-split a space-named path (installer unusable) and
+glob-expanded a bracket-named path onto a sibling (silent fail-OPEN with a lying
+count); and `scripts/pre_push_check.sh` — a manifest path `--update` can replace —
+was outside the scope.
+Scope is all of `.github/` (so the consumer's OWN flows are captured too — a backup
+covering only what we *intend* to touch is worthless when the bug is touching what
+we did not) plus root-level configs. Deliberately not manifest-derived, so it
+cannot drift with the manifest. Sited in `WORK_DIR` (piped-safe; `$0` is not a real
+path under `bash <(curl …)`), which is never auto-cleaned. **Fails closed** — no
+backup, no writes. `tests/test_install.sh` drives the extracted block.
+**Still open (deliberately not done here):** make
+`--update --non-interactive` *refuse* on a file whose local content differs from
+both canon and the previous canon body — i.e. treat customization as a stop, not
+something to overwrite. That is a behaviour change needing a founder call.
+**Status:** fix landed; the `--update` refusal is OPEN.
+
+### FT-55 — the immutable `ci/v*` tag ruleset is an act, not a standard
+
+**Found:** 2026-07-24, while checking whether FT-52's ruleset was templated.
+**Surface:** the ruleset exists only as a `gh api` snippet at
+`plans/ROLLOUT_ft52-canon-self-governance.md:78`. No canon machinery knows rulesets
+exist — not `install/templates/`, not `install/apply-standards.sh`, not
+`sync/check-standards-drift.sh`, not `docs/REPO_STANDARDS.md`.
+**Effect:** the ruleset is the mitigation for the whole fleet pinning canon by a
+**mutable** tag — a force-moved `ci/vX.Y.Z` reaches every consumer on its next run.
+If it were set to `enforcement: disabled` or deleted, **nothing would detect it**.
+Branch protection is drift-checked; the ruleset protecting the tags the fleet pins
+is not. Its own protection is unprotected.
+**Fix:** `plans/PLAN-020_canon-self-adoption-and-ruleset-canon.md` Phase 1 — a
+scoped `rulesets-canon.json` template plus an opt-in `--rulesets <template>`
+comparison in the drift script (ABSENT / WEAKENED / EXTRA-as-notice), keyed on
+`target` + `conditions.ref_name.include` rather than the mutable `name`, and a
+REPO_STANDARDS §2 tag-immutability rule.
+**Status:** OPEN — **DEFERRED to the next release cycle** (founder, 2026-07-24).
+PLAN-020 drafted but not ready. Detection gap only; canon's ruleset is live and
+correct, so deferring adds no exposure.
+
+### FT-56 — canon's self-drift output is produced but never consumed
+
+**Found:** 2026-07-24, generalising three instances of canon drifting from its own
+canon (FT-46/FT-27 template values; CI-0011 actions settings; 8 of 18 canonical
+labels absent, including `skip-audit-trail` — the documented escape hatch for the
+by-then **required** `call / verify` check).
+**Surface:** `.github/workflows/standards-drift-self.yml:55` already runs
+`check-standards-drift.sh` weekly against canon.
+**Effect — two distinct defects, and the first framing of this was wrong.** The
+premise "canon has no self-check" is false; it has one. What actually happens:
+
+- **56a blindness** — the highest-value comparisons (branch-protection,
+  actions-permissions) cannot execute in CI at all. The job grants only
+  `contents: read` and `administration` is not a grantable `GITHUB_TOKEN` scope
+  (FT-5), so those reads 403 into `warn_uncheckable` and verify nothing. This is
+  why instances 1 and 2 went unnoticed.
+- **56b unconsumed signal** — where the check *can* see, it emits `::warning::`
+  into a scheduled run nobody reads. Instance 3 (labels) is the proof: the check
+  fired weekly, correctly, and was never acted on. A warning-only gate does not
+  change behaviour.
+
+Plus **coverage holes** even with a good token: `can_approve_pull_request_reviews`
+is shipped in the template but never compared, and label colour/description are
+written by `apply_labels()` but never compared.
+**Fix:** PLAN-020 Phase 2 — make the output *consumed* (fail the job, or
+open/refresh an issue; the latter needs `issues: write`, currently not granted) and
+close the coverage holes. Ordering is Phase 0 (resolve blindness) → FT-54 (model
+canon's deliberate branch-protection deviation) → consumption, else consumption
+converts a permanent yellow into a permanent red.
+**Status:** OPEN — **DEFERRED to the next release cycle** (founder, 2026-07-24).
+PLAN-020 drafted but not ready; one scheduling decision open. All three instances
+that prompted this are already remediated, so the recurrence risk — not an active
+fault — is what remains.
+
+### FT-54 — canon's weekly self-drift reports 2 permanent warnings (needs a decision)
+
+**Found:** 2026-07-24, after applying CI-0011 + the FT-53 drift work.
+**Surface:** `.github/workflows/standards-drift-self.yml:55` runs
+`check-standards-drift.sh --tier product` on a weekly cron.
+**Effect:** canon's branch protection is deliberately **not** product-tier — FT-52
+gave it canon's own 5-check set because product-tier requires `call / ai-review` +
+`call / composition`, reusables canon does not self-run (requiring them hangs every
+PR, F2). It also sets `enforce_admins: false` so the FT-21 expected-red prep can be
+`--admin` merged. So the weekly run reports, forever:
+
+```text
+branch-protection.enforce_admins: canon=true actual=false
+branch-protection.contexts: canon=[…ai-review,…composition…] actual=[…markdownlint,suite…]
+```
+
+**CORRECTION (2026-07-24, found by PLAN-020 Pass 4):** the two lines above are what
+a **local/admin-token** run reports — they were observed that way and wrongly
+generalised to CI. The **weekly** run cannot emit them: the job grants only
+`contents: read` (`.github/workflows/standards-drift-self.yml:45-46`), so the
+branch-protection read 403s into `warn_uncheckable`
+(`sync/check-standards-drift.sh:133-134`). Today's weekly noise is therefore a
+permanent `warn_uncheckable`/`FETCH_ERRORS`, not these drift lines; they materialise
+only once an admin-class token exists (FT-5 / PLAN-020 Phase 0). **This matters for
+the decision below:** option 3 is "accept and annotate the two expected lines", which
+would be chosen on a false premise if read as-filed.
+
+Two permanent warnings is how a real drift signal gets trained away. Note
+`branch-protection-product.json`'s `_comment` still lists `aidoc-flow-ci` among its
+tier repos, which FT-52 showed is wrong for branch protection specifically.
+
+**Fix — needs a founder call between:**
+
+1. **A canon branch-protection profile.** Add `branch-protection-canon.json` encoding
+   canon's real check set and point self-drift at it. Drift becomes meaningful again
+   (it would catch protection actually being removed). Cost: a 6th entry in the
+   REPO_STANDARDS §2 tier taxonomy — a governance change.
+2. **Scope the self-check.** Add `--skip-branch-protection` to
+   `check-standards-drift.sh` (mirroring the flag `apply-standards.sh` already has)
+   and pass it from `standards-drift-self.yml` with an FT-52 rationale. Cheaper, but
+   canon then has **no** automated branch-protection drift detection at all.
+3. **Accept and annotate.** Leave it, and document the two expected lines so a reader
+   knows they are by design. Cheapest; the noise remains.
+
+**Recommendation (revised 2026-07-24, after the correction above): option 1's
+intent, but implemented as a TEMPLATE OVERRIDE rather than a new tier.** PLAN-020's
+opt-in `--rulesets <template>` pattern generalises: add
+`--branch-protection <template>`, passed only by canon's self-caller, pointing at a
+`branch-protection-canon.json`. Canon stays product-tier for every other surface —
+no 6th tier, no consumer impact, and the check stays honest. Option 2 blinds canon
+to branch-protection drift entirely (worse now that FT-52's protection is
+load-bearing); option 3 trains people to ignore output, which is the disease that
+caused FT-56b. Whichever is chosen, correct
+`branch-protection-product.json`'s tier-repo list.
+
+**Not urgent**, per the correction above: the weekly run cannot emit these lines
+today. Decide once an admin-class token exists (PLAN-020 Phase 0).
+**Status:** OPEN — **DEFERRED to the next release cycle** (founder, 2026-07-24).
+
+### FT-53 — `standards-drift` never compares `patterns_allowed`, now the whole boundary
+
+**Found:** 2026-07-24, CI-0011 pre-push review (security-auditor + code-reviewer,
+both independently).
+**Surface:** `sync/check-standards-drift.sh:240` — `for k in github_owned_allowed
+verified_allowed; do`. `patterns_allowed` is never compared against canon.
+**Effect:** tolerable while `verified_allowed: true` was a wide standing grant. Now
+that CI-0011 set it `false`, `patterns_allowed` is the **entire** non-GitHub-owned
+admission — and it is the one field drift ignores. An operator who edits a
+consumer's `patterns_allowed` in the Settings UI (adding `aquasecurity/*`, or
+dropping `vladm3105/*` and bricking every canon reusable with a silent
+`startup_failure`) gets **zero drift**, including in strict mode.
+`tests/test_contract.sh` does not cover this — it reads the local canon template,
+never a deployed repo.
+**Fix:** extend the drift comparison to `patterns_allowed` (set-compare the array,
+order-insensitive; report added/removed owners). Mind that the comparison is
+against the template fetched at the consumer's own pinned tag, so a consumer on an
+older pin must not be reported as drifted for a pattern that tag never shipped.
+**RESOLVED (2026-07-24, Unreleased → next tag):** `check-standards-drift.sh` now
+compares `patterns_allowed` as a set, reporting MISSING (availability — a blocked
+action `startup_failure`s silently) and EXTRA (supply chain — boundary wider than
+CI-0011 decided) as distinct conditions. Order-insensitive, since the API returns
+arbitrary order. MISSING accounts for glob subsumption (`vladm3105/*` covers
+`vladm3105/aidoc-flow-ci/*`), without which the in-flight CI-0011 rollout would
+have produced a false "blocked at run-init" and hard-failed `--strict` on every
+consumer widened ahead of its pin. `tests/test_scripts.sh` 29→50; five mutations
+confirmed red (comparison removed; order-sensitive compare; MISSING/EXTRA
+collapsed; drift increments removed; subsumption removed).
+REPO_STANDARDS §4.3 updated — the gap paragraph is replaced by what the two layers
+actually cover. Verified live against canon: 0 actions-related drift.
+
+### FT-46 — canon has not applied its own FT-27 values; allowlist is wider than the rule
+
+**Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G3 ship-with-tag).
+**Surface:** `install/templates/actions-permissions.json` — `verified_allowed: true`
+(wider than REPO_STANDARDS §4.3); canon's LIVE `can_approve_pull_request_reviews`
+is `true` while the template ships `false`.
+**Effect:** `verified_allowed: true` admits every verified-creator action,
+undermining the allowlist that §4.3 enforces (and that forced `gacts/gitleaks` →
+binary). Separately, canon's own live settings drifted from the template it ships.
+**Blocked on:** decision **CI-0011** — PLAN-019's FT-46 spec never referenced it,
+so the flip was NOT shipped with `ci/v2.12.0`; held in `git stash` pending the
+founder's call.
+**Fix:** set `verified_allowed: false` (only github-owned + `patterns_allowed`
+admit an action); `patterns_allowed` broadened to the account-wide `vladm3105/*`;
+REPO_STANDARDS §4.3 + security/troubleshooting/AI_CI_DEPLOYMENT synced;
+`deploy-ci-wizard.sh` preflight grep widened so `vladm3105/*` is not a false
+negative; `test_contract.sh` asserts both halves (mutations confirmed red).
+**G4 / 🔴:** applying `actions-permissions.json` to canon itself (and to each
+consumer) is a founder-executed settings write, tracked as a RELEASE_CHECKLIST
+post-release item. FT-27/FT-46 are template values until applied per-repo.
+**RESOLVED — CI-0011 DECIDED 2026-07-24 (drop the verified marketplace; admit only
+the owner's account). Template + docs landed; canon-apply remains G4/🔴
+(Unreleased → next tag after `ci/v2.12.0`, PLAN-019 Workstream B / G3):** see
+CHANGELOG `## Unreleased` + `DECISIONS.md` CI-0011.
 
 ### FT-45 — `required-context-map.py` discards the job-id half of the context
 

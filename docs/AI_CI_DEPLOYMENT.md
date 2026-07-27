@@ -168,7 +168,9 @@ gh api repos/<owner/repo>/actions/permissions/selected-actions \
   --jq '{patterns_allowed, verified_allowed, github_owned_allowed}'
 ```
 
-Should allow `vladm3105/aidoc-flow-ci/*`, `actions/*`, `github/*` (+ verified).
+Should allow `vladm3105/*`, `actions/*`, `github/*` — and `verified_allowed`
+**false** (CI-0011: the founder's own account replaces the verified marketplace
+as the sole non-GitHub-owned allowance).
 This is why the reusables install tools as **binaries/npm**, never third-party
 marketplace actions (see §5). If a repo's policy is stricter, a caller that
 pulls a blocked action will `startup_failure` silently.
@@ -267,6 +269,21 @@ re-applies the template body and clobbers `runner_labels`/permissions/triggers
 
 Every one of these cost real debugging time. They are load-bearing.
 
+0. **⚠️ CI-0011: re-pinning to `ci/v2.14.0`+ produces expected `standards-drift`
+   warnings until the repo's Actions settings are applied.** `ci/v2.13.0` narrowed
+   the canon template (`verified_allowed: false`, `patterns_allowed` →
+   `vladm3105/*`). Those are **template values, applied per-repo** — so a consumer
+   that re-pins without applying them reports
+   `actions.selected.verified_allowed` and `actions.selected.patterns_allowed:
+   MISSING`. **Nothing is broken**: the repo's live pattern is *narrower* than
+   canon's, so every canon reusable it calls is still admitted; the "BLOCKED at
+   run-init" wording applies only to a hypothetical action under another
+   `vladm3105/` repo. `strict` defaults to `false`, so it **warns and exits 0** —
+   only a gate passing `strict: true` would newly fail. Apply the settings
+   alongside the re-pin and it is a non-event. **Scan the target's `uses:` first**,
+   and never blanket-apply: `web-site` and `knowledge-rag` call verified-creator
+   actions admitted today only by `verified_allowed: true`. Full procedure:
+   `docs/UPDATE_GUIDE.md`; decision: `DECISIONS.md` CI-0011.
 1. **Private repos = self-hosted ONLY.** Never `ubuntu-latest` on a private
    repo. `runner-self` is a placeholder, not a registered label — a caller left
    on it queues forever.
@@ -294,10 +311,13 @@ Every one of these cost real debugging time. They are load-bearing.
    `DavidAnson/markdownlint-cli2-action` are additionally published by
    **non-verified** creators, so they are blocked at run-init → silent
    `startup_failure` (the error is web-UI-only; `actionlint` does NOT catch
-   it). This is not a universal rule about third-party actions: the deployed
-   allowlist sets `verified_allowed: true`, so a verified creator's action IS
-   admitted and would fail later and loudly, if at all. The reusables already
-   install binaries/npm — you don't touch this, but know the failure signature.
+   it). Since FT-46 / CI-0011 the deployed allowlist sets `verified_allowed:
+   false`, so a verified creator's action is **also** blocked unless it matches
+   `patterns_allowed` (`vladm3105/*`, `actions/*`, `github/*`). Note the deployed
+   boundary is deliberately a little **wider** than the canon authoring rule above
+   — the owner's whole account versus canon's single repo; do not infer one from
+   the other. The reusables already install
+   binaries/npm — you don't touch this, but know the failure signature.
    `continue-on-error` is ILLEGAL on a reusable-call job — for report-only, use
    the reusable's `fail-on-findings: false` input, not `continue-on-error`.
 7. **`links`: cross-repo `../sibling/` links break in single-repo CI.** They

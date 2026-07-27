@@ -26,41 +26,36 @@ operations@main for the assets; that path is now removed.
 
 ## 2. How the workflow consumes them
 
-```yaml
-# In aidoc-flow-ci/.github/workflows/ai-review.yml
-- name: Resolve aidoc-flow-ci pinned ref from workflow_ref
-  id: pin
-  env:
-    GITHUB_WORKFLOW_REF: ${{ github.workflow_ref }}
-  run: |
-    # github.workflow_ref looks like:
-    # vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v1.1.0
-    REF="${GITHUB_WORKFLOW_REF##*@}"
-    echo "ref=$REF" >> "$GITHUB_OUTPUT"
+The `ai-review` job has **no `actions/checkout`** — it never has a working tree.
+It resolves the tag its own caller is pinned to, then `curl`s each asset from
+`raw.githubusercontent.com`:
 
-- name: Checkout reviewer assets from aidoc-flow-ci (at pinned tag)
-  uses: actions/checkout@<sha>
-  with:
-    repository: vladm3105/aidoc-flow-ci
-    ref: ${{ steps.pin.outputs.ref }}
-    path: ./reviewer-assets
-    sparse-checkout: ai-review
-    sparse-checkout-cone-mode: false
+```bash
+url="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${FETCH_REF}/ai-review/${f}"
+curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
+  -o "reviewer-assets/ai-review/${f}" "${url}"
 ```
+
+`FETCH_REF` is resolved by reading the consumer's caller workflow and parsing its
+`uses: …@ci/vX.Y.Z` pin; a fetch failure is reported as an **infrastructure**
+error, never as a verdict.
 
 **Subsequent steps** read:
 
-- Rubric: `$GITHUB_WORKSPACE/reviewer-assets/ai-review/review-prompt.md`
-- Schema: `$GITHUB_WORKSPACE/reviewer-assets/ai-review/verdict.schema.json`
+- Rubric: `reviewer-assets/ai-review/review-prompt.md`
+- Schema: `reviewer-assets/ai-review/verdict.schema.json`
 
-**Pin semantics:** the assets are versioned with the rest of the library
-via `ci/vX.Y.Z` tags. A consumer pinned at `@ci/v1.0.6` gets the OLD assets
-(via the legacy operations@main path on workflow versions before
-IPLAN-0022). A consumer pinned at `@ci/v1.1.0` or newer gets the assets
-from this directory at that tag.
+**Pin semantics:** the assets are versioned with the rest of the library via
+`ci/vX.Y.Z` tags, so a consumer gets the assets as they existed at the tag its
+caller pins.
 
-**Sparse-checkout** keeps the clone small (only `ai-review/`, not the
-whole aidoc-flow-ci tree).
+> **Why `curl` and not `actions/checkout`.** IPLAN-0024 replaced a
+> `sparse-checkout` delivery at `ci/v1.1.5`. Earlier revisions of this document
+> described that checkout, including a worked YAML example — it no longer exists,
+> and the description contradicted `docs/REPO_STANDARDS.md` §20, which codifies
+> that the reviewer is a single-shot completion with **no working tree**. A
+> reader following the cross-reference landed in a direct contradiction with
+> canon. (#318.)
 
 ## 3. Per-consumer override (future; not shipped today)
 

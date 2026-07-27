@@ -413,4 +413,210 @@ assert_ok "grep -q 'validate_fetched \"\$PRECOMMIT_TMP\"' '$INSTALL'" \
 assert_ok "grep -q 'no TTY and no --non-interactive — keeping local' '$INSTALL'" \
   "update: no-TTY-without-flag defaults to keep, not replace (FT-39)"
 
+echo ""
+echo "== FT-57: mandatory pre-write backup of the consumer's existing surfaces =="
+# Drives the MANDATORY-BACKUP block extracted from install.sh itself, not a copy.
+bstart="$(grep -c '^# >>> MANDATORY-BACKUP >>>' "$INSTALL")"
+bend="$(grep -c '^# <<< MANDATORY-BACKUP <<<' "$INSTALL")"
+assert_eq "$bstart" "1" "exactly one MANDATORY-BACKUP start marker"
+assert_eq "$bend" "1" "exactly one MANDATORY-BACKUP end marker"
+BS="$(grep -n '^# >>> MANDATORY-BACKUP >>>' "$INSTALL" | cut -d: -f1)"
+BE="$(grep -n '^# <<< MANDATORY-BACKUP <<<' "$INSTALL" | cut -d: -f1)"
+assert_ok "[ '${BS:-0}' -lt '${BE:-0}' ]" "MANDATORY-BACKUP start marker precedes end marker"
+
+# The hook must precede EVERY consumer writer, not just fetch_template: the three
+# real writers are `curl -o`, `cp`/`mv`, and `sed -i`. Anchor on the earliest of
+# any of them, so a future write added above the hook fails here.
+FIRST_WRITE="$(grep -nE "curl -fsSL .*-o \"\\\$\{?dst|^[[:space:]]*(cp|mv) \"|sed -i" "$INSTALL" \
+  | awk -F: -v b="$BE" '$1 > b {print $1; exit}')"
+assert_ok "[ -n '${FIRST_WRITE:-}' ]" "found a consumer write path after the backup hook (anchor is meaningful)"
+assert_ok "[ '${BE:-0}' -lt '${FIRST_WRITE:-999999}' ]" "backup hook precedes the first consumer write"
+
+BLK="$TMP/ft57-block.sh"
+sed -n "${BS},${BE}p" "$INSTALL" | grep -v 'backup_existing_surfaces || ' > "$BLK"
+
+# helper: run the extracted block against a fixture dir, echo rc
+_ft57_run() { # $1 = fixture root containing consumer/
+  ( set -euo pipefail
+    WORK_DIR="$1"; TARGET_REPO="owner/repo"
+    cd "$1/consumer"
+    # shellcheck disable=SC1090
+    source "$BLK"
+    # match production semantics: the call site invokes it in a `||` condition,
+    # which disables set -e inside the function body.
+    if backup_existing_surfaces; then :; else exit 1; fi ) > "$1/out.txt" 2>&1
+  echo $?
+}
+
+# --- the requirement: a consumer's OWN established flow is captured -----------
+BK="$TMP/ft57"; rm -rf "$BK"; mkdir -p "$BK/consumer/.github/workflows" "$BK/consumer/.github/ai-review" "$BK/consumer/scripts"
+printf 'name: My Custom Deploy\n' > "$BK/consumer/.github/workflows/my-custom-deploy.yml"
+printf 'name: pre-commit\n'       > "$BK/consumer/.github/workflows/pre-commit.yml"
+printf '{"customized":true}\n'    > "$BK/consumer/.github/ai-review/config.json"
+printf 'CUSTOMIZED\n'             > "$BK/consumer/scripts/pre_push_check.sh"
+printf 'untouched\n'              > "$BK/consumer/README.md"
+# every root-list entry, so dropping any one of them goes red
+for r in .markdownlint.json .lychee.toml .yamllint.yaml .yamllint.yml .pre-commit-config.yaml .gitignore .gitattributes CLAUDE.md; do
+  printf 'local\n' > "$BK/consumer/$r"
+done
+rc="$(_ft57_run "$BK")"
+assert_eq "$rc" "0" "backup succeeds on a populated consumer"
+assert_ok "[ -f '$BK/backup/.github/workflows/my-custom-deploy.yml' ]" "captures the consumer's OWN workflow (not just canon-owned)"
+assert_ok "[ -f '$BK/backup/.github/workflows/pre-commit.yml' ]" "captures a canon-owned workflow"
+assert_ok "[ -f '$BK/backup/.github/ai-review/config.json' ]" "captures nested .github config"
+assert_ok "[ -f '$BK/backup/scripts/pre_push_check.sh' ]" "captures scripts/pre_push_check.sh (a manifest path outside .github/)"
+assert_fail "[ -f '$BK/backup/README.md' ]" "scoped — does not sweep unrelated repo files"
+assert_ok "diff -q '$BK/consumer/.github/workflows/my-custom-deploy.yml' '$BK/backup/.github/workflows/my-custom-deploy.yml'" "backed-up content is byte-identical"
+_ft57_missing=""
+for r in .markdownlint.json .lychee.toml .yamllint.yaml .yamllint.yml .pre-commit-config.yaml .gitignore .gitattributes CLAUDE.md; do
+  [ -f "$BK/backup/$r" ] || _ft57_missing="$_ft57_missing $r"
+done
+assert_eq "$_ft57_missing" "" "every root-list entry is actually backed up"
+
+# --- BLOCKER regressions: paths a word-split list mangled --------------------
+SP="$TMP/ft57-space"; rm -rf "$SP"; mkdir -p "$SP/consumer/.github/ISSUE_TEMPLATE"
+printf 'x\n' > "$SP/consumer/.github/ISSUE_TEMPLATE/bug report.md"
+rc="$(_ft57_run "$SP")"
+assert_eq "$rc" "0" "a filename with a SPACE does not break the backup"
+assert_ok "[ -f '$SP/backup/.github/ISSUE_TEMPLATE/bug report.md' ]" "space-named file is backed up"
+
+GL="$TMP/ft57-glob"; rm -rf "$GL"; mkdir -p "$GL/consumer/.github"
+printf 'BRACKET\n' > "$GL/consumer/.github/notes[1].md"; printf 'PLAIN\n' > "$GL/consumer/.github/notes1.md"
+rc="$(_ft57_run "$GL")"
+assert_eq "$rc" "0" "a filename with a GLOB metachar does not break the backup"
+assert_ok "[ -f '$GL/backup/.github/notes[1].md' ]" "glob-metachar file is backed up (not silently globbed onto a sibling)"
+assert_eq "$(find "$GL/backup" -type f | wc -l | tr -d ' ')" "2" "count matches files actually written (no fail-open over-count)"
+
+SY="$TMP/ft57-symlink"; rm -rf "$SY"; mkdir -p "$SY/consumer/real/workflows"
+printf 'w\n' > "$SY/consumer/real/workflows/ci.yml"; ( cd "$SY/consumer" && ln -s real .github )
+rc="$(_ft57_run "$SY")"
+assert_eq "$rc" "0" "a SYMLINKED .github does not break the backup"
+assert_ok "[ -f '$SY/backup/.github/workflows/ci.yml' ]" "symlinked .github is followed, not silently bypassed"
+
+# --- CI-0023: a DANGLING symlink must not brick the installer ----------------
+# `find -L … ! -type d` enumerates a broken symlink (the stat fails, so find
+# yields the link itself), but `cp -p` DEREFERENCES and therefore fails on it.
+# Because the backup is fail-CLOSED, that aborted install.sh in EVERY mode —
+# including the documented `--repin` upgrade path — on any consumer that merely
+# happened to carry a dangling link under .github/. Shipped in FT-57; this is
+# the regression guard.
+DS="$TMP/ft57-dangling"; rm -rf "$DS"; mkdir -p "$DS/consumer/.github/workflows"
+printf 'w\n' > "$DS/consumer/.github/workflows/real.yml"
+ln -s ../../nowhere/gone.yml "$DS/consumer/.github/workflows/dangling.yml"
+printf 'target\n' > "$DS/consumer/.github/resolvable-target.yml"
+ln -s resolvable-target.yml "$DS/consumer/.github/good-link.yml"
+rc="$(_ft57_run "$DS")"
+assert_eq "$rc" "0" "a DANGLING symlink does not abort the mandatory backup (CI-0023)"
+assert_ok "[ -L '$DS/backup/.github/workflows/dangling.yml' ]" "the dangling symlink is preserved AS A LINK"
+assert_ok "[ -f '$DS/backup/.github/workflows/real.yml' ]" "a real file alongside a dangling link is still captured"
+# The resolvable link must still be captured BY CONTENT — this is what stops a
+# future 'simplify' from collapsing the branch to a blanket `cp -P`.
+assert_ok "[ -f '$DS/backup/.github/good-link.yml' ] && [ ! -L '$DS/backup/.github/good-link.yml' ]" \
+  "a RESOLVABLE symlink is still captured by content, not as a link"
+assert_contains "$(cat "$DS/backup/.github/good-link.yml" 2>/dev/null)" "target" "the resolvable link's content is the target's"
+
+# The ROOT list lost the same broken-symlink case one step EARLIER, at
+# enumeration: `[ -e "$r" ]` dereferences, so a dangling link at a root path
+# tested false and was skipped silently — rc=0, "success", that surface absent
+# from the snapshot while install.sh could still overwrite it. Fail-OPEN, which
+# is strictly worse than the fail-closed abort above.
+RD="$TMP/ft57-dangling-root"; rm -rf "$RD"; mkdir -p "$RD/consumer"
+printf 'real\n' > "$RD/consumer/.gitattributes"
+ln -s ../nowhere/gone "$RD/consumer/.gitignore"
+rc="$(_ft57_run "$RD")"
+assert_eq "$rc" "0" "a dangling ROOT-list symlink does not abort the backup"
+assert_ok "[ -L '$RD/backup/.gitignore' ]" "a dangling ROOT-list symlink IS backed up, as a link (CI-0023 fail-open)"
+assert_ok "[ -f '$RD/backup/.gitattributes' ]" "its real sibling is still captured"
+
+# A symlink LOOP is deliberately the other classification: a genuine fault that
+# still aborts, because `find -L` cannot traverse it and the snapshot therefore
+# cannot be proven complete. What must NOT happen is the old behaviour of
+# blaming permissions — no chmod fixes a cycle.
+LP="$TMP/ft57-loop"; rm -rf "$LP"; mkdir -p "$LP/consumer/.github"
+ln -s l2 "$LP/consumer/.github/l1"; ln -s l1 "$LP/consumer/.github/l2"
+rc="$(_ft57_run "$LP")"
+lp_out="$(cat "$LP/out.txt")"
+assert_eq "$rc" "1" "a symlink LOOP is a fault and still fails closed"
+assert_contains "$lp_out" "symlink LOOP" "the loop is named as the cause, not blamed on permissions"
+assert_absent "$lp_out" "check permissions" "the permissions remedy is NOT offered for a loop"
+
+# Mutation: restore the bare `cp -p` and the abort comes back. Without this the
+# assertions above could pass on a fixture that never exercised the branch.
+MUT="$TMP/ft57-dangling-mutant"; rm -rf "$MUT"; mkdir -p "$MUT"
+sed -e 's#^      cp -Pp "\$p" "\$BACKUP_DIR/\$p" || rc=1#      cp -p "$p" "$BACKUP_DIR/$p" || rc=1#' "$BLK" > "$MUT/blk.sh"
+assert_ok "! diff -q '$BLK' '$MUT/blk.sh' >/dev/null" "mutation actually changed the extracted block"
+cp -r "$DS/consumer" "$MUT/consumer"
+# WORK_DIR/TARGET_REPO are consumed by the SOURCED block, which shellcheck
+# cannot follow — hence the disable, not a rename.
+mut_rc="$( ( set -euo pipefail
+  # shellcheck disable=SC2034
+  WORK_DIR="$MUT"
+  # shellcheck disable=SC2034
+  TARGET_REPO="owner/repo"
+  cd "$MUT/consumer"
+  # shellcheck disable=SC1090
+  source "$MUT/blk.sh"
+  if backup_existing_surfaces; then :; else exit 1; fi ) >"$MUT/out.txt" 2>&1; echo $? )"
+assert_eq "$mut_rc" "1" "mutant (bare cp -p) DOES abort on a dangling link — the CI-0023 bug, reproduced"
+
+# --- fail-closed paths -------------------------------------------------------
+FR="$TMP/ft57-fresh"; rm -rf "$FR"; mkdir -p "$FR/consumer"
+rc="$(_ft57_run "$FR")"
+assert_eq "$rc" "0" "fresh repo: nothing to back up is not an error"
+assert_contains "$(cat "$FR/out.txt")" "no pre-existing CI/governance surfaces" "fresh repo says so explicitly"
+
+if [ "$(id -u)" != "0" ]; then
+  UN="$TMP/ft57-unreadable"; rm -rf "$UN"; mkdir -p "$UN/consumer/.github/secretdir"
+  printf 'HIDDEN\n' > "$UN/consumer/.github/secretdir/x.yml"; printf 'v\n' > "$UN/consumer/.github/CODEOWNERS"
+  chmod 000 "$UN/consumer/.github/secretdir"
+  rc="$(_ft57_run "$UN")"
+  chmod 755 "$UN/consumer/.github/secretdir" 2>/dev/null || true
+  assert_eq "$rc" "1" "an unenumerable .github FAILS CLOSED (no silent partial backup)"
+
+  # Isolate the COPY failure: the enclosing dirs must be enumerable and mkdir-able
+  # so that only `cp` can fail. An unwritable backup dir would trip mkdir first
+  # and pass for the wrong reason. An unreadable SOURCE file does exactly this.
+  NW="$TMP/ft57-nowrite"; rm -rf "$NW"; mkdir -p "$NW/consumer/.github"
+  printf 'v\n' > "$NW/consumer/.github/CODEOWNERS"
+  printf 'secret\n' > "$NW/consumer/.github/unreadable.yml"; chmod 000 "$NW/consumer/.github/unreadable.yml"
+  rc="$(_ft57_run "$NW")"
+  chmod 644 "$NW/consumer/.github/unreadable.yml" 2>/dev/null || true
+  assert_eq "$rc" "1" "a failed copy FAILS CLOSED (cp error is not swallowed)"
+  assert_contains "$(cat "$NW/out.txt")" "refusing to write" "the copy failure names the refusal"
+fi
+
+# --- the call site itself must abort the run (execute it, do not grep it) ----
+CS="$TMP/ft57-callsite.sh"
+{ echo 'set -euo pipefail'; echo 'TARGET_REPO="owner/repo"'
+  echo 'backup_existing_surfaces() { return 1; }'
+  grep 'backup_existing_surfaces || ' "$INSTALL"
+  echo 'echo REACHED_WRITE'; } > "$CS"
+cs_out="$(bash "$CS" 2>&1)"; cs_rc=$?
+assert_eq "$cs_rc" "1" "call site EXITS when the backup fails (guard executed, not grepped)"
+assert_absent "$cs_out" "REACHED_WRITE" "call site does not fall through to the writes"
+
+# --- scope must not drift from the manifest ---------------------------------
+# A manifest path outside .github/ that is not in the backup's root list would be
+# writable-but-unbacked. Fails here rather than in an adopter's repo.
+_ft57_scope="$(python3 - "$ROOT/install/templates/manifest.json" "$INSTALL" <<'PYEOF'
+import sys, json, re
+manifest, install = sys.argv[1], sys.argv[2]
+src = open(install, encoding="utf-8").read()
+# Anchor on the loop HEADER and require its body to be the enumeration
+# (`files+=`), not on the exact existence test — that expression is load-bearing
+# and has changed once already (CI-0023 added `|| [ -L … ]` so a dangling
+# root-list symlink is admitted). A regex pinned to its shape turns any future
+# correction there into a spurious failure HERE, which reads as "the manifest
+# drifted" and sends the next reader to the wrong file.
+m = re.search(r"for r in (.*?); do\n(.*?)\n\s*done", src, re.S)
+if m and "files+=" not in m.group(2):
+    m = None          # matched some other loop — fail loud, never vacuously pass
+roots = set(re.findall(r"[^\s\\]+", m.group(1))) if m else set()
+bad = [f["path"] for f in json.load(open(manifest, encoding="utf-8"))["files"]
+       if not f["path"].startswith(".github/") and f["path"] not in roots]
+print(",".join(sorted(bad)))
+PYEOF
+)"
+assert_eq "$_ft57_scope" "" "every manifest path is inside the backup scope (.github/ or the root list)"
+
 suite_summary "test_install"
