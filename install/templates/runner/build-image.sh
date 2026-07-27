@@ -6,6 +6,8 @@
 # Usage (from any directory — the script resolves its own location):
 #   bash build-image.sh                               # builds aidoc-flow-runner:latest
 #   IMAGE_TAG=aidoc-flow-runner:2026-07-20 bash build-image.sh
+#   GH_VERSION=<newer> bash build-image.sh   # if the pinned gh version has
+#                                            # rotated out of the apt repo
 #
 # After building, run-ephemeral.sh uses the local image automatically via
 # RUNNER_IMAGE (see README.md in this directory). No service restart is needed
@@ -18,7 +20,7 @@ IMAGE_TAG="${IMAGE_TAG:-aidoc-flow-runner:latest}"
 CONTEXT_DIR="$(dirname "$(readlink -f "$0")")"
 
 echo "==> building ${IMAGE_TAG}"
-docker build --pull -t "${IMAGE_TAG}" "${CONTEXT_DIR}"
+docker build --pull ${GH_VERSION:+--build-arg "GH_VERSION=${GH_VERSION}"} -t "${IMAGE_TAG}" "${CONTEXT_DIR}"
 
 echo "==> verifying gh is installed in the built image"
 # Capture first (no live pipe to gh → no SIGPIPE under pipefail), then trim.

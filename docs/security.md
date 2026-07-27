@@ -227,7 +227,7 @@ Consumer callers typically use:
 ```yaml
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.8.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.15.0
     secrets: inherit   # passes all consumer-repo secrets to reusable
 ```
 
@@ -290,7 +290,8 @@ Phase 2 (ci/v1.3.0) dropped that trigger from the install template:
 composition is now driven by `pull_request_review` (App's APPROVED
 review submission) and `workflow_run` (consumer's `ai-review` caller
 completing — any conclusion). Both triggers carry the same BASE-ref
-+ secrets posture as `pull_request_target` (workflow code from
+
+- secrets posture as `pull_request_target` (workflow code from
 default branch; secrets available; no PR code checked out), so the
 security analysis above still applies — composition never executed
 fork code under `pull_request_target` either. The Phase-2 drop is
@@ -370,8 +371,11 @@ same `gitleaks` binary directly (MIT-licensed, no key, no signup),
 with SHA-256 verification at install time. The binary is not wrapped
 in a third-party action, satisfying canon's authoring allowlist
 (`actions/*`, `github/*`, `vladm3105/aidoc-flow-ci/*`). Per REPO_STANDARDS
-§4.3 that authoring rule is deliberately stricter than the boundary the fleet
-deploys, which also admits GitHub-verified creators.
+§4.3, since FT-46 / CI-0011 (`verified_allowed: false`, `patterns_allowed`
+= `vladm3105/*` + the GitHub-owned patterns) the deployed boundary no longer
+admits verified-creator actions at all; it stays deliberately a little wider
+than the authoring rule above — the owner's whole account, versus canon's single
+repo.
 
 ## 8. Reporting security issues
 
