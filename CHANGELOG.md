@@ -5,6 +5,44 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — a human label write or a PR reopen could cancel a required check (#329)
+
+- The CI-0025 fix covered `ai-review`, whose `cancel-in-progress` lives in the
+  **reusable**. The same defect was live in eight **caller templates**, where the
+  flag lives instead: `audit-trail`, `pre-commit`, `secret-scan` and
+  `markdown-lint`, each in its public and private variant.
+- §23.1's mechanism does not care who emits the event. `audit-trail`'s callers
+  subscribe to `labeled`/`unlabeled` **deliberately** — it is the documented
+  `skip-audit-trail` escape hatch — so canon's own instructions could cancel an
+  in-flight `call / verify` at the live head SHA and leave the PR `--admin`-only.
+  The others reach it via `reopened`, which fires at the current head.
+- All eight now carry a fail-safe allowlist: cancel on `push`,
+  `workflow_dispatch`, or a `pull_request`/`pull_request_target` whose action is
+  `opened`/`synchronize` — nothing else. Written with `==` so an unavailable
+  `github` context yields false and cancels nothing; a `!=` denylist would cancel
+  everything in that degraded state.
+- **Canon self-adopts too** (§16.6 Wave 0): its own five required-context callers
+  — `audit-trail`, `self-pre-commit`, `self-markdown-lint`, `self-secret-scan`,
+  `tests` — get the same allowlist. The first draft fixed only the templates
+  consumers receive and left canon's own `main` exposed, which is the
+  lesson-not-swept failure §23.3 names.
+- **Narrowed, not proven closed.** GitHub cancels a *pending* run when a newer one
+  queues in the same group, independently of `cancel-in-progress` — so two
+  non-code-changing events arriving while a run is in flight may still strand a
+  cancelled context. Unverified, and it applies to a flat `false` equally.
+- `labeler`, `links` and `codeql` are deliberately untouched — they are required
+  contexts on no tier, and a cancelled non-required context blocks nothing.
+- New contract test evaluates the shipped expression for every subscribed
+  `(event, action)` pair on each of the eight, plus the empty-context case.
+  Mutation-verified: reverting one template to `true`, or to a `!=` form, goes red.
+- ⚠️ **CONSUMER ACTION — a re-pin is NOT enough.** These are caller templates, so
+  `--repin` (which rewrites `uses:` lines only) will not deliver them. Re-install
+  the affected callers:
+  `CI_TAG=<tag> bash install/install.sh <owner/repo> --update --non-interactive`
+  (without a TTY, `--update` alone defaults to KEEP and delivers nothing — the
+  FT-39 guard), then re-apply any local `runner_labels_*` / `permissions:`
+  customisations.
+
 ### Fixed — canon asserted two opposite models of required-check semantics (#330)
 
 - `REPO_STANDARDS` §23.1 said a later SUCCESS never replaces an earlier
