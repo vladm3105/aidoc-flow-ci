@@ -360,7 +360,7 @@ if skip_ok label "294948438"; then _g "label + armed composition proceeds"; else
 if skip_ok r3 "";        then _g "r3 skip unaffected by composition arm state"; else _r "r3 skip unaffected"; fi
 if skip_ok review-event ""; then _g "review-event skip unaffected"; else _r "review-event skip unaffected"; fi
 
-echo "== FT-43: a label/draft event cannot supersede a RED ai-review while unarmed =="
+echo "== FT-43 triggers + the removal of its fail-closed step (#331) =="
 ARTPL=install/templates/workflows/ai-review.yml
 # (1) template triggers cover the draft transitions (a draft→ready must trigger a
 # real review, not merge un-reviewed) — parsed, not grepped loosely.
@@ -468,23 +468,43 @@ assert_eq "$ft43_cancel" "OK" \
 # (3) both jobs' if: gain the unarmed clause — armed repos still clean-skip a
 # would-skip event (composition holds); unarmed repos RUN so the guard fails closed.
 unarmed_ifs=$(grep -Fc "vars.APP_REVIEWER_1_BOT_ID == ''" "$AR" || true)
-assert_ok "[ ${unarmed_ifs:-0} -ge 2 ]" "trust + ai-review job if: both carry the FT-43 unarmed clause (found ${unarmed_ifs})"
-# (4) DRIVEN teeth: extract the shipped fail-closed guard and run it — armed
-# (COMPOSITION_BOT_ID set) exits 0; unarmed exits 1. Not a re-implementation.
-fstart="$(grep -c '# >>> FT43-FAIL-CLOSED >>>' "$AR" || true)"
-fend="$(grep -c '# <<< FT43-FAIL-CLOSED <<<' "$AR" || true)"
-assert_eq "$fstart" "1" "exactly one FT43-FAIL-CLOSED start marker"
-assert_eq "$fend" "1" "exactly one FT43-FAIL-CLOSED end marker"
-FS="$(grep -n '# >>> FT43-FAIL-CLOSED >>>' "$AR" | cut -d: -f1)"
-FE="$(grep -n '# <<< FT43-FAIL-CLOSED <<<' "$AR" | cut -d: -f1)"
-FT43_GUARD="$(mktemp)"; awk "NR>${FS} && NR<${FE}" "$AR" > "$FT43_GUARD"
-assert_ok "grep -q 'exit 1' '$FT43_GUARD'" "FT-43 guard block extracted (carries the fail-closed exit)"
-drive_ft43() { # $1=COMPOSITION_BOT_ID -> rc
-  { echo 'set -uo pipefail'; printf 'COMPOSITION_BOT_ID=%s\n' "$1"; echo 'EVENT_ACTION=labeled'; cat "$FT43_GUARD"; } \
-    | bash >/dev/null 2>&1
+assert_ok "[ ${unarmed_ifs:-0} -ge 2 ]" "trust + ai-review job if: both carry the unarmed clause (found ${unarmed_ifs})"
+# #331: the unarmed clause must EXCLUDE the gate's own `ai:review-*` label writes.
+# It exists so an unarmed repo still runs a real review — but run1 sets
+# `ai:review-passed`, which fires `labeled`, which would start run2, which would
+# label again on any verdict flip. Unbounded paid reviews on a SERIAL pool, from
+# a label anyone with write access can toggle.
+amp_guard=$(grep -Fc "!startsWith(github.event.label.name, 'ai:review-')" "$AR" || true)
+assert_eq "$amp_guard" "2" "both job if: exclude the gate's OWN ai:review-* label writes from the unarmed path (#331 amplification)"
+# (4) The FT-43 fail-closed STEP is GONE (#331) and must stay gone. Its premise
+#     was disproved by #330 (a later SUCCESS from a separate run does not replace
+#     an earlier conclusion), and it was not preventing an unearned green — it
+#     `exit 1`d on every label/draft event while unarmed, writing a PERMANENT
+#     non-success required context on the live head SHA.
+assert_ok "! grep -q 'name: FT-43 fail-closed' '$AR'" \
+  "the FT-43 fail-closed STEP is absent (#331 — it wrote a permanent non-success and prevented nothing)"
+assert_ok "! grep -q 'FT43-FAIL-CLOSED' '$AR'" "no FT43-FAIL-CLOSED markers remain"
+
+# (5) FT-29 is now the guard that actually holds this line: a PR carrying
+#     `skip-ai-review` must NOT pass while composition is INERT. Previously
+#     grep-asserted only; DRIVEN here, because removing FT-43 makes it
+#     load-bearing.
+SKIPSTEP="$(mktemp)"
+awk '/- name: ai-review skipped \(label OR R3 pre-approved OR review-event\)/{f=1}
+     f&&/^          case "\$\{SKIP_REASON:-\}" in/{c=1}
+     c{print}
+     c&&/^          esac/{exit}' "$AR" > "$SKIPSTEP"
+assert_ok "[ -s '$SKIPSTEP' ]" "FT-29 skip-notice branch extracted from the shipped workflow"
+assert_ok "grep -q 'merge with ZERO review (FT-29)' '$SKIPSTEP'" "extracted block is the FT-29 branch"
+drive_ft29() { # $1=COMPOSITION_BOT_ID  $2=SKIP_REASON -> rc
+  { echo 'set -uo pipefail'
+    printf 'COMPOSITION_BOT_ID=%s\n' "$1"; printf 'SKIP_REASON=%s\n' "$2"
+    echo 'PR=1'; echo 'gh() { :; }'
+    cat "$SKIPSTEP"; } | bash >/dev/null 2>&1
 }
-drive_ft43 ""; assert_eq "$?" "1" "unarmed (COMPOSITION_BOT_ID unset) → guard FAILS CLOSED (rc=1) — the FT-43 teeth"
-drive_ft43 "294948438"; assert_eq "$?" "0" "armed (COMPOSITION_BOT_ID set) → guard proceeds (rc=0; composition holds)"
+drive_ft29 "" "label";          assert_eq "$?" "1" "UNARMED + skip-ai-review → FAILS CLOSED (rc=1) — the FT-29 teeth, now load-bearing"
+drive_ft29 "294948438" "label"; assert_eq "$?" "0" "ARMED + skip-ai-review → proceeds (rc=0; composition holds the gate)"
+drive_ft29 "" "r3";             assert_eq "$?" "0" "UNARMED + r3 reason → proceeds (App already approved at HEAD; not the skip path)"
 
 echo "== CI-0021: infrastructure break-glass (issue #311) =="
 # Drives the REAL block out of composition.yml (marker-delimited, like FT-43

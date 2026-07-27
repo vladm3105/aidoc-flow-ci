@@ -1562,6 +1562,60 @@ Issue #322 (2026-07-26), reproduced on `aidoc-flow-framework` PR #346.
 
 ---
 
+## CI-0026: A fail-closed guard that cannot fail open is only a cost (2026-07-27)
+
+**Context**
+
+`ai-review`'s FT-43 step `exit 1`d on any draft or non-`skip-ai-review` label
+event while the reviewer App was unarmed, to stop a fresh SUCCESS superseding a
+standing `request_changes` at the same HEAD.
+
+Its premise was disproved by CI-0025/#330 — a later SUCCESS from a separate run
+never replaces an earlier conclusion. But the decisive objection is independent
+of that: **the guard never covered the events that would have mattered.**
+`reopened`, `ready_for_review` and `pull_request_review: submitted` each re-fire
+a full review at an unchanged HEAD on an unarmed repo, and its `if:` named none
+of them. Had the supersede risk been real, those three were already the bypass.
+
+What it actually did was write a **permanent** non-success `call / ai-review` —
+required on every non-bootstrap tier — on the live head SHA. And the gate fired
+it itself: run1's `ai:review-passed` write raises a `labeled` event. An unarmed
+repo bricked its own PRs on its own label.
+
+**Decision**
+
+Remove the step. `FT-29` is the guard that actually holds the line: a PR carrying
+`skip-ai-review` sets `SKIP_REVIEW='1'`, every heavy step goes inert, and the
+skip-notice step `exit 1`s while composition is INERT. Every other unarmed path
+now runs a **real review**.
+
+Establish the unsafe state a fail-closed guard blocks before adding it, and
+re-establish it when the model beneath it changes.
+
+**Consequences**
+
+- The job-level `if:` keeps FT-43's armed-repo skip; only the step is removed.
+  Armed repos are doubly unaffected — the step was unreachable when armed (the
+  trust `if:` and the step `if:` are mutually exclusive there) and its armed
+  branch `exit 0`d anyway.
+- **A gate must not re-enter itself.** Removal left the unarmed clause routing the
+  gate's own `ai:review-*` label writes into a fresh full review — unbounded on a
+  verdict flip, on a serial pool, from a label any writer can toggle. Both job
+  `if:`s now exclude them. Codified as §23.4.
+- `tests/test_contract.sh` 354→357: the step must stay absent, both exclusions
+  must be present, and **FT-29 is now DRIVEN rather than grep-asserted** — armed
+  proceeds, unarmed fails closed, `r3` proceeds. Mutation-verified three ways.
+- **Residual:** §23.1's measured pair is `cancelled` + `success`; extending it to
+  `failure` + `success` follows from the stated mechanism but was not itself
+  measured. The removal does not rest on it (see the subset argument above).
+
+**Origin**
+
+Issue #331, filed from the CI-0025 work. Security-reviewed before merge: no
+event/state combination yields SUCCESS without a review on an unarmed repo.
+
+---
+
 <!-- Append new entries above this line; append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
 and update the superseded entry's "Consequences" section to reference

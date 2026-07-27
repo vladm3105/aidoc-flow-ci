@@ -2132,5 +2132,36 @@ contradicted the `GITHUB_TOKEN` bullet beside it. A wrong recorded negative is
 worse than none: it is the thing the next reader trusts instead of checking.
 §21.2 makes the same demand for a guard's multiple arms.
 
+### 23.4 A fail-closed guard that cannot fail open is only a cost
+
+A guard is worth its cost only if some reachable state it blocks would otherwise
+be unsafe. Establish that state before adding one, and re-establish it when the
+model it rests on changes — otherwise the guard survives on its name.
+
+`ai-review`'s FT-43 step is the worked example (#331). It `exit 1`d on any draft
+or non-`skip-ai-review` label event while the reviewer App was unarmed, to stop a
+fresh SUCCESS "superseding" a standing `request_changes`. Two things were wrong,
+and the second is the general lesson:
+
+- §23.1 says a later SUCCESS from a **separate run** never replaces an earlier
+  conclusion, so there was nothing to supersede.
+- **It never covered the events that would have mattered.** `reopened`,
+  `ready_for_review` and `pull_request_review: submitted` all re-fire a full
+  review at an unchanged HEAD on an unarmed repo, and the guard's `if:` named
+  none of them. Had the supersede risk been real, those three were already the
+  bypass. A guard defending a **proper subset** of an open surface closes nothing
+  — so its removal did not depend on §23.1 being right.
+
+What it did instead was write a **permanent** non-success required context on the
+live head SHA (§23.1) — and the gate triggered it _itself_, because its own
+`ai:review-passed` write fires a `labeled` event. An unarmed repo went
+`--admin`-only on its own label.
+
+**Corollary — a gate must not re-enter itself.** Removing the step left the
+job-level `if:` routing the gate's own label writes back into a full review, so
+those `ai:review-*` writes are now excluded explicitly. §23.2's allowlist rule
+covers cancellation; this covers _triggering_. Both reduce to: enumerate what the
+gate emits, and make sure none of it comes back in.
+
 **Origin:** issue #322, reproduced on `aidoc-flow-framework` PR #346. Recorded as
-CI-0025.
+CI-0025. §23.4 added from #331.

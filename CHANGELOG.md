@@ -5,6 +5,47 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — `ai-review`'s FT-43 fail-closed step made unarmed repos `--admin`-only (closes #331)
+
+- The step `exit 1`d on every draft or non-`skip-ai-review` label event while the
+  reviewer App was unarmed, writing a **permanent** non-success `call / ai-review`
+  on the live head SHA. That context is required on every non-bootstrap tier, so
+  one label write made such a repo `--admin`-only — the §23 defect class,
+  produced by the guard meant to prevent a bypass.
+- **Its premise was false in both directions.** It existed to stop a fresh SUCCESS
+  *superseding* a standing `request_changes` at the same HEAD; #330 established
+  that a later SUCCESS from a **separate run** never replaces an earlier
+  conclusion. And it was not preventing an unearned green: with the step gone, a
+  draft or non-skip label event has `SKIP_REVIEW=''`, so R3's unarmed branch
+  `exit 0`s and a **full review runs**.
+- **FT-29 is the guard that actually holds this line**, and it is untouched: a PR
+  carrying `skip-ai-review` sets `SKIP_REVIEW='1'`, every heavy step goes inert,
+  and the skip-notice step `exit 1`s while composition is INERT. That is the only
+  path that could have yielded a pass without a review.
+- The job-level `if:` keeps FT-43's **armed**-repo skip; only the step is removed.
+- Its contract test drove the removed block, so it is replaced with two that
+  matter: the step must stay absent, and **FT-29 is now driven rather than
+  grep-asserted** — armed proceeds, unarmed fails closed, `r3` reason proceeds.
+  Mutation-verified: defanging FT-29's `exit 1`, or reinstating an FT-43 step,
+  each goes red.
+- **The decisive objection is independent of #330.** The guard never covered
+  `reopened`, `ready_for_review` or `pull_request_review: submitted`, each of
+  which already re-fires a full review at an unchanged HEAD while unarmed. Had
+  the supersede risk been real, those three were already the bypass — a guard
+  defending a proper subset of an open surface closes nothing.
+- **A gate must not re-enter itself.** Removing the step left the unarmed clause
+  routing the gate's OWN `ai:review-passed` write back into a fresh full review —
+  unbounded on a verdict flip, on a serial pool, from a label any writer can
+  toggle. Both job `if:`s now exclude `ai:review-*`. Codified as §23.4 and
+  `DECISIONS.md` CI-0026.
+- **Consumer effect.** An unarmed repo that previously went red on a label write
+  now gets a real review instead. It also reviews **drafts** on every push, where
+  an armed repo job-skips them — accepted, since the alternative was a sticky
+  FAILURE. Armed repos are unchanged in every case.
+- **Residual:** §23.1's measured pair is `cancelled` + `success`; extending it to
+  `failure` + `success` follows from the mechanism but was not itself measured.
+  The removal does not rest on it.
+
 ### Changed — the reusables now run node24 actions; self-hosted runners need >= 2.327.1
 
 - Dependabot bumps merged: `actions/checkout` 4.2.2 → **7.0.1** (18 call sites),
