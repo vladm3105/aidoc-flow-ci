@@ -5,6 +5,25 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Docs — `ai-review`'s FT-43 guard rests on a premise #330 disproved (#331)
+
+- The guard's comment and `::error::` say a fresh SUCCESS would **supersede** a
+  prior `request_changes` at the same HEAD. #330 settled that it cannot: a later
+  SUCCESS from a *separate* run does not replace an earlier conclusion — both are
+  retained and the rollup keeps the worst.
+- It is also not preventing an unearned green. Without it the job falls through to
+  the R3 step, whose unarmed branch `exit 0`s and proceeds to a **full review**.
+  The guard stands between a label event and a real review, not a free pass.
+- What it does cost: on an unarmed repo its `exit 1` writes a **permanent**
+  non-success required context on the live head SHA for any non-`skip-ai-review`
+  label or draft event — the §23 defect class, from the guard meant to prevent a
+  bypass.
+- **The premise is corrected in the comment; the guard is retained.** Removing it
+  changes fail-closed behaviour on a required context and gets its own change with
+  a security review — analysis recorded on #331. Its error message's remedies
+  (arm the App, or push) are both still correct.
+- No behaviour change.
+
 ### Fixed — a human label write or a PR reopen could cancel a required check (#329)
 
 - The CI-0025 fix covered `ai-review`, whose `cancel-in-progress` lives in the
