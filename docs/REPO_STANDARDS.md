@@ -2023,26 +2023,23 @@ rollup was `FAILURE`. A later success from a _different run_ did not displace th
 earlier cancellation. Branch protection then refuses the merge and the only escape
 is `--admin`.
 
-**Scope of that claim, stated honestly.** Re-running a check _in place_ (same run)
-does replace its conclusion.
-What does not replace is a _separate_ run's context. Note that
-`docs/troubleshooting.md` §15 recommends a label-cycle to clear a stuck check,
-whose mechanism reads as the opposite; that recovery has not been re-verified
-against this observation, and reconciling the two is tracked as #330. Treat
-§23.1 as describing the separate-run case, which is the one this section is about.
+**Scope, settled (#330).** The mechanism is a **re-run attempt vs. an
+independent run**, not a matter of sample size: `gh run rerun` reuses the same
+workflow-run id (a new _attempt_), while a label add/remove is by definition a
+distinct triggering event and so produces a distinct run and check-run. The rule
+is therefore about _separate runs_. A
+**re-run of the same run replaces** its check-run, which is why re-running clears
+a stuck check; a **separate run adds a second check-run alongside**, and both are
+retained. Measured both ways: an in-place re-run took `suite` from check-run
+`89856301834` (`failure`) to `89857163070` (`success`) leaving **one** check-run
+on the SHA, while two separate runs on `aidoc-flow-framework` #346 left **two**
+`call / ai-review` check-runs (`cancelled` + `success`) and a `FAILURE` rollup.
 
-A gate that writes to the PR can trigger itself. `ai-review` subscribes to
-`pull_request_review: [submitted]` and _submits reviews_ — on the approval path,
-and again for the IPLAN-0029 non-counting comment-state review. Its predicate
-exempted only `labeled`/`unlabeled`, so a `submitted` event evaluated true and
-the resulting run cancelled the run that had just posted that review, on the same
-SHA.
-
-**Nothing reports this.** `gh pr checks` shows the green run. `gh pr merge` says
-only "the base branch policy prohibits the merge", naming no check. The cancelled
-duplicate is visible only via the GraphQL `isRequired` projection. Worse, the
-documented `skip-ai-review` label-cycle recovery starts further runs, each able to
-cancel another, so the SHA accumulates cancelled contexts.
+`docs/troubleshooting.md` §15 previously recommended a label cycle to clear a
+stuck check. A label cycle starts a _separate_ run, so it adds a context rather
+than replacing one — during the CI-0025 incident one cycle took a PR from one
+cancelled run to two. §15 is corrected to scope it to contexts that never
+reported.
 
 ### 23.2 The rule
 

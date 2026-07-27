@@ -494,20 +494,24 @@ the requirement so consumers can add it when they hit this.
 
 ## 15. Stuck check — label-cycle retrigger (+ R3 force-fresh path, ci/v1.3.0+)
 
-> ⚠️ **Read `docs/REPO_STANDARDS.md` §23.1 before using this — it may make a
-> stuck check WORSE.** §23.1 records, from a live incident, that a `cancelled`
-> required check and a later `SUCCESS` from a *different* run both persist on the
-> same head SHA and the rollup stays `FAILURE`. If that is right, a label cycle —
-> which starts a *fresh* run — cannot clear a `cancelled` context, and each cycle
-> can add another: during the CI-0025 incident one cycle took a PR from one
-> cancelled run to two. This section and §23.1 assert opposite platform
-> semantics; which is correct is **unresolved** and tracked as **#330**.
+> ⚠️ **A label cycle does NOT clear a `cancelled` or `failure` required check —
+> it makes it worse.** Settled empirically (#330):
 >
-> Until then: if the stuck context is `cancelled` or `failure`, prefer **one new
-> push**, or **re-run that specific run** (a re-run replaces its conclusion in
-> place, which a fresh run does not). Reach for the label cycle when the context
-> never *reported* at all ("Expected — waiting for status"), which is the case
-> this section was written for.
+> | Action | Effect on the head SHA |
+> |---|---|
+> | **Re-run that specific run** (`gh run rerun <id>`) | **Replaces** the check-run — the old conclusion is gone. This is what clears a stuck check. |
+> | **New push** | New head SHA, evaluated fresh. |
+> | **Label cycle** (this section) | Starts a **separate** run, which **adds a second check-run alongside** the stuck one. Both are retained and the rollup keeps the worst. |
+>
+> Measured: re-running one run in place took `suite` from check-run `89856301834`
+> (`failure`) to `89857163070` (`success`) with **one** check-run left on the SHA;
+> two separate runs on `aidoc-flow-framework` #346 left **two** `call / ai-review`
+> check-runs (`cancelled` + `success`) and a `FAILURE` rollup. During the CI-0025
+> incident one label cycle took a PR from one cancelled run to two.
+>
+> **Use this section only when the context never REPORTED** ("Expected — waiting
+> for status"), which is what it was written for. For a context that reported
+> `cancelled` or `failure`, re-run that run or push.
 
 `ai-review.yml` still listens on `pull_request_target` event types
 that include `labeled` + `unlabeled` — so a **label cycle** still
@@ -601,6 +605,11 @@ the right notice (and posts a PR comment **only** for the
 `label` case to avoid spamming label-cycles).
 
 ### When to use a label cycle
+
+> For a context that already **reported** `cancelled` or `failure`, none of the
+> rows below apply — see the warning at the top of this section. A label cycle
+> adds a second check-run alongside the stuck one rather than clearing it;
+> re-run that specific run, or push.
 
 | Scenario | Use it? |
 | --- | --- |
