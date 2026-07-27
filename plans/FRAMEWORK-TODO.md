@@ -362,7 +362,7 @@ has a real both-checks-green bypass.
 **Fix (fail-closed, NOT step-level-skip — a fresh SUCCESS supersedes):** job-level
 `if:` on both jobs gains an unarmed clause (`vars.APP_REVIEWER_1_BOT_ID == ''`) so
 armed repos still clean-skip (composition holds) but unarmed repos RUN and a new
-first step (`FT43-FAIL-CLOSED`, extracted + driven) `exit 1`s — the FT-29 model.
+first step (`FT43-FAIL-CLOSED (REMOVED in #331 — see CHANGELOG)`, extracted + driven) `exit 1`s — the FT-29 model.
 `cancel-in-progress` excludes label events; template adds `ready_for_review` +
 `converted_to_draft`. `test_contract.sh` 275→283; four mutations go red.
 **RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream B / G3):** see CHANGELOG
