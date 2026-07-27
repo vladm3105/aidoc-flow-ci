@@ -46,7 +46,19 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   `failure` + `success` follows from the mechanism but was not itself measured.
   The removal does not rest on it.
 
-### Changed — the reusables now run node24 actions; self-hosted runners need >= 2.327.1
+### Changed — more node24 actions; the >= 2.327.1 runner floor is now documented (#342)
+
+> **Correction, twice over.** An earlier revision said these bumps *introduce*
+> the node24 floor. They do not — and a first attempt at correcting that was
+> also wrong, claiming `ci/v2.15.0` carried it at one call site. Measured: that
+> tag already had **30 node24 call sites across 16 workflow files** (17
+> `checkout` v7, 6 `create-github-app-token` v3, 5 `setup-python` v6, 1
+> `setup-node` v6, 1 `labeler` v6), and node24 actions reach back into the early
+> `ci/v1.x` series. `setup-python` and `setup-node` were **already** node24, so
+> the bumps do not extend the floor to them; `checkout` gains exactly one site
+> (autofix, which was still v4.2.2). Only `download-artifact` (v4 node20 → v8
+> node24) is a genuinely new node24 surface. Issue #342's own
+> "the floor comes from the trust job alone" is false for the same reason.
 
 - Dependabot bumps merged: `actions/checkout` 4.2.2 → **7.0.1** (18 call sites),
   `actions/setup-python` 6.3.0 → **7.0.0**, `actions/setup-node` 6.4.0 → **7.0.0**,
@@ -60,7 +72,25 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   before merging: the workspace pool reports 2.335.1 / 2.336.0, and public repos
   use `ubuntu-latest`, which is always current. Check your own pool with
   `gh api repos/<owner>/<repo>/actions/runners --jq '.runners[].version'` before
-  re-pinning.
+  re-pinning — already true at `ci/v2.15.0`, not just here.
+- **The floor is now documented where an operator actually looks** (#342):
+  `docs/runners.md` §2, `install/templates/runner/README.md` host prerequisites,
+  `docs/AI_CI_DEPLOYMENT.md` §1.2, and **`docs/troubleshooting.md` §19** — the
+  last matters most, since the symptom (a runtime error in `ai-review`'s first
+  job, and not expected to name the action or the floor) sends an operator to the trust
+  config, the App credentials or the LiteLLM proxy, none of which are involved.
+- `provision-runner.sh` asserts the floor after the image build. Its first
+  version was **inert**: an unanchored version grep took the first number in the
+  runner banner, which is the Ubuntu release (`24.04.4`) — and that sorts *above*
+  `2.327.1`, so it passed unconditionally on the exact image it guards. It now
+  anchors on the banner's `Version:` label, honours `IMAGE_TAG`, uses
+  `$DOCKER_BIN`, and its "cannot read a version" path no longer dies under
+  `set -euo pipefail` before printing the warning.
+- `RELEASE_CHECKLIST.md` gains an item requiring a consumer-visible runtime floor
+  to ship **in** the tag — this one's record landed ~14 hours after `ci/v2.15.0`
+  was cut. It does **not** suggest grepping the tree: `runs.using` lives in the
+  action's repo, so a prose grep returns nothing whether or not the floor
+  applies.
 - `download-artifact` v8 also flips **digest-mismatch from warn to error**. The
   artifact backend is unchanged since v4, so the surviving `upload-artifact@v4.6.2`
   in the same workflow still pairs correctly; only a genuinely corrupt download

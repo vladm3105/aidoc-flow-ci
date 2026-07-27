@@ -65,6 +65,41 @@ step_build() {
     return
   fi
   bash "$SCRIPT_DIR/build-image.sh"
+  assert_runner_floor
+}
+
+# The reusables call node24 actions, which need Actions Runner >= 2.327.1. Below
+# that the job dies on a node-runtime error inside ai-review's FIRST job, naming
+# neither the action nor a version floor — so an operator suspects the trust
+# config, the App credentials or the LiteLLM proxy, none of which are involved.
+# Assert it HERE, where the cause is obvious and the fix is one rebuild. (#342.)
+RUNNER_FLOOR="2.327.1"
+assert_runner_floor() {
+  local img="${IMAGE_TAG:-aidoc-flow-runner:latest}" out v
+  # The runner has no version file; its startup banner carries `Version: X.Y.Z`.
+  # Anchor on that label — an unanchored version grep picks up the FIRST number
+  # in the banner, which is the Ubuntu release (`24.04.4`). That sorts ABOVE the
+  # floor under `sort -V`, so the check would pass unconditionally on any
+  # ubuntu-24.04 image: inert on exactly the image it exists to guard.
+  out="$("$DOCKER_BIN" run --rm --entrypoint sh "$img" -c './run.sh --version 2>&1' 2>/dev/null || true)"
+  v="$(printf '%s\n' "$out" | grep -oE 'Version: [0-9]+\.[0-9]+\.[0-9]+' | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
+  if [ -z "$v" ]; then
+    # Must not abort: `set -euo pipefail` makes an unguarded failed grep fatal,
+    # which would kill provisioning after the build with no message at all.
+    echo "  WARN: could not read the Actions Runner version from '$img'." >&2
+    echo "        Verify a live pool is >= $RUNNER_FLOOR (node24 floor, #342):" >&2
+    echo "          gh api repos/<owner>/<repo>/actions/runners --jq '.runners[].version'" >&2
+    return 0
+  fi
+  if [ "$(printf '%s\n%s\n' "$RUNNER_FLOOR" "$v" | sort -V | head -1)" != "$RUNNER_FLOOR" ]; then
+    echo "ERROR: '$img' ships Actions Runner $v, below the node24 floor $RUNNER_FLOOR." >&2
+    echo "       The reusables use node24 actions; jobs would fail on the runtime with an" >&2
+    echo "       runner-side error not expected to name the action or this floor. Bump" >&2
+    echo "       the FROM digest in" >&2
+    echo "       Dockerfile and re-run build-image.sh." >&2
+    exit 1
+  fi
+  log "runner image ships Actions Runner $v (>= $RUNNER_FLOOR node24 floor)"
 }
 
 step_install_service() {
