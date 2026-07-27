@@ -1,4 +1,4 @@
-# CANON: aidoc-flow-ci pre_push_check (idempotency marker per PLAN-002 §5.2)
+# CANON: aidoc-flow-ci pre_push_check v2 (idempotency marker per PLAN-002 §5.2)
 #
 # Canonical pre-commit fragment wiring the canon pre_push_check.sh hook.
 # `install/install.sh` merges this block into a consumer's
@@ -22,6 +22,28 @@ default_install_hook_types:
 - pre-push
 
 repos:
+# Wave-0 self-adoption of the canon fragment's commit-stage hooks (PLAN-018 F3),
+# per the canon-dogfoods-its-own-canon rule in CLAUDE.md. Originally hand-added
+# because an already-marked config was unreachable by the merge; FT-32 fixed that
+# (the marker above carries canon's CURRENT vN, so this file is in steady state
+# and install.sh no-ops on it for the right reason rather than the broken one).
+# Keep the marker in step with install/templates/pre-commit-hook-block.yaml.
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  # SHA-pinned, not tag-pinned. A git tag is attacker-mutable state on
+  # infrastructure this workspace does not control, and pre-commit `pip install`s
+  # the cloned tree — so the upstream build backend runs arbitrary code at
+  # INSTALL time, on developer machines and on the ephemeral self-hosted CI pool.
+  # Those runners are cold every run (no cache step in the reusable), so they
+  # re-resolve the ref on every execution: a moved tag would reach the whole
+  # fleet within one CI cycle. Canon SHA-pins every `uses:` for exactly this
+  # reason (REPO_STANDARDS §4.3); a mutable rev here would be strictly weaker
+  # than everything else canon does, in the file that propagates furthest.
+  # Format is `pre-commit autoupdate --freeze` output, so bumps round-trip.
+  rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
+  hooks:
+  - id: check-yaml
+  - id: end-of-file-fixer
+  - id: trailing-whitespace
 - repo: local
   hooks:
   - id: aidoc-flow-pre-push
@@ -39,5 +61,13 @@ repos:
     name: docs install refs match VERSION (PLAN-004 BL-4)
     entry: scripts/sync-version-refs.sh --check
     language: script
-    files: '^(VERSION|README\.md|install/README\.md|docs/(multi-project-guide|PLAYBOOK_governance-canon-rollout|REVIEWER_APP_ONBOARDING|BRANCH_PROTECTION)\.md|install/templates/workflows/.*\.yml)$'
+    # `always_run`, NOT a `files:` filter. The hook is `pass_filenames: false`, so
+    # the filter never decided WHAT was checked (the script always checks every
+    # TARGETS entry) — only WHETHER the hook ran at all. It listed 6 of the 14
+    # static targets and had drifted behind `TARGETS`, so a commit touching only
+    # e.g. `docs/MIGRATION_v2.0.0.md` — the file CI-0024 is about — skipped the
+    # hook locally and the author first learned at PR time. CI was never affected
+    # (`pre-commit run --all-files`). A regex duplicating TARGETS is a second list
+    # to keep in step; always_run removes it. (#323.)
+    always_run: true
     pass_filenames: false

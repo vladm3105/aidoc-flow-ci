@@ -111,7 +111,7 @@ grep -rn 'ci/v2\.0\.1' scripts/ .github/   # must be empty
 **`docs-sync`** — post-merge, so the notice appears only *after* the re-pin PR
 merges. In that run's log expect:
 
-```
+```text
 ::notice::docs-sync: adopted canon pin vladm3105/aidoc-flow-ci@ci/v2.10.0 (fetching at ci/v2.10.0)
 ```
 
@@ -119,7 +119,7 @@ merges. In that run's log expect:
 runs the **base** (`v2.0.1`) reusable, so it will still log the old FT-15 line.
 Read the notice on the **next** PR opened after the re-pin merges:
 
-```
+```text
 ::notice::ai-review: adopted canon pin vladm3105/aidoc-flow-ci@ci/v2.10.0 (fetching at ci/v2.10.0)
 ```
 

@@ -3,7 +3,8 @@
 `aidoc-flow-ci` is the **single source-of-truth CI library** for
 every company project — current (`aidoc-flow`) and future (trading,
 future product lines, etc.). This doc covers the architectural model
-+ how a new company project adopts.
+
+- how a new company project adopts.
 
 For the per-project CI architecture inside a single project, see
 [`architecture.md`](architecture.md). For the override patterns, see
@@ -107,7 +108,7 @@ For each consumer repo in the new project (the project's main
 repo, its sub-libraries, etc.):
 
 ```sh
-bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.10.0/install/install.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.15.0/install/install.sh) \
   <owner>/<consumer-repo> --visibility <public|private>
 ```
 
@@ -220,7 +221,7 @@ Full pattern + reference implementation + hardening principles:
 - [`security.md`](security.md) — security model + trust gate +
   App identity
 - [IPLAN-0017](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0017_unified-ci-flows.md)
-  + [IPLAN-0017-CHARTER](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0017-CHARTER_aidoc-flow-ci.md)
+  - [IPLAN-0017-CHARTER](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/iplans/IPLAN-0017-CHARTER_aidoc-flow-ci.md)
   — the founding design + multi-project framing
 - [`OPS-0060`](https://github.com/vladm3105/aidoc-flow-operations/blob/main/ops/DECISIONS.md)
   — the consume-from-aidoc-flow-ci decision (supersession of

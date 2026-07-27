@@ -23,8 +23,8 @@
 #                                 [--codeowner <handle>] [--canon-*-url <url>]
 #   Re-pin (version-only tag bump; preserves all customization — use this for a
 #   re-pin, NEVER --update which re-applies the template body; FT-9):
-#   CI_TAG=ci/v2.10.0 bash install.sh <owner/repo> --repin
-#   CI_TAG=ci/v2.10.0 bash install.sh <owner/repo> --visibility private
+#   CI_TAG=ci/v2.15.0 bash install.sh <owner/repo> --repin
+#   CI_TAG=ci/v2.15.0 bash install.sh <owner/repo> --visibility private
 #   Verify server-side standards (no install; exits non-zero on genuine drift —
 #   PLAN-015 B2; needs an admin-scoped gh token to check branch protection):
 #   bash install.sh <owner/repo> --verify-standards --tier <governance|product|ops|umbrella|bootstrap>
@@ -47,6 +47,15 @@
 # python3 (placeholder substitution + existing label/pre-commit steps).
 
 set -euo pipefail
+
+# FT-50: install.sh itself uses `mapfile` (bash 4+), so bash >= 4 is UNCONDITIONAL
+# to run it — not just for the pre-push hook. macOS ships bash 3.2. Guard up front
+# with an actionable message (mirrors install/apply-standards.sh's guard) instead
+# of a cryptic `mapfile: command not found` deep in --update.
+if (( BASH_VERSINFO[0] < 4 )); then
+  echo "install.sh requires bash >= 4 (uses mapfile); this is bash ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}. macOS ships bash 3.2 — 'brew install bash', then run with that bash (e.g. /opt/homebrew/bin/bash install.sh ...)." >&2
+  exit 1
+fi
 
 TARGET_REPO="${1:?usage: $0 <owner/repo> [--visibility public|private]}"
 shift
@@ -141,7 +150,7 @@ done
 # and the hardcoded fallback is authoritative — that is expected and correct.
 # The startup log below names the winning source so a stale CI_TAG env var in
 # a consumer's CI caller silently overriding VERSION is diagnosable.
-CI_TAG_FALLBACK="ci/v2.10.0"
+CI_TAG_FALLBACK="ci/v2.15.0"
 if [ -n "${CI_TAG:-}" ]; then
   CI_TAG_SOURCE="CI_TAG env"
 else
@@ -209,6 +218,32 @@ verify_standards() {
   fi
   n_drift="$(printf '%s' "$summary" | grep -oE '^[0-9]+')"
   n_fetch="$(printf '%s' "$summary" | grep -oE '[0-9]+ fetch' | grep -oE '^[0-9]+')"
+  # PLAN-018 F2 — name the "required context has no producing workflow" class
+  # rather than folding it into generic drift. That class does not present as a
+  # failing check; it presents as a check that never reports, so a PR sits on
+  # "Expected — Waiting for status to be reported" indefinitely and the operator
+  # has no reason to connect it to a contexts line in a drift report.
+  # REPORT-STRING ONLY — no new check. --verify-standards is standalone (no
+  # clone), so it cannot enumerate the consumer's installed workflows to know
+  # which contexts actually have producers; the automated form of that diff is
+  # the wizard validator (FT-18).
+  # Fires on TIER, not on a contexts delta. Gating it on the drift line was
+  # anti-correlated with the defect it describes: the canonical "required
+  # context has no producer" repo has contexts that MATCH canon exactly (that is
+  # what `apply-standards --apply` writes from the tier template), so no
+  # contexts line is emitted and the note never appeared in precisely the case
+  # F2 exists to fix — while firing on unrelated deltas that had no missing
+  # producer. Reading branch protection also needs an admin-scoped token, so the
+  # common operator path emits no contexts line at all.
+  # Umbrella is excluded because it deliberately has no required checks.
+  if [ "$tier" != "umbrella" ]; then
+    echo "     NOTE  every required context on tier '$tier' must be EMITTED by an"
+    echo "           installed caller in .github/workflows/. A required check with"
+    echo "           no producing workflow does not fail — it never reports, so PRs"
+    echo "           block on 'Expected — Waiting for status to be reported'"
+    echo "           indefinitely. This report compares SETTINGS, not producers;"
+    echo "           the producer diff is the wizard validator (FT-18)."
+  fi
   # Drift (branch protection / settings / actions-perms / labels) takes
   # precedence over an uncheckable control (drift is the actionable signal).
   if [ "${n_drift:-0}" -gt 0 ]; then return 1; fi
@@ -248,9 +283,192 @@ WORK_DIR="${WORK_DIR:-$PWD/aidoc-flow-ci-bootstrap-$$}"
 gh repo clone "$TARGET_REPO" "$WORK_DIR/consumer" -- --depth 1
 cd "$WORK_DIR/consumer"
 
+# >>> MANDATORY-BACKUP >>>  (extracted verbatim by tests/test_install.sh — keep
+# these markers; the test drives THIS code rather than a copy of it.)
+# FT-57: snapshot every pre-existing governance/CI surface BEFORE the first
+# write. Three separate code paths mutate files in this clone — fetch_template's
+# `curl -o`, the --update replace's `cp`+`mv`, and --repin's `sed -i` — so a
+# per-writer hook would have to be remembered by whoever adds the fourth. One
+# snapshot here cannot be bypassed by a later write path.
+#
+# UNCONDITIONAL by design: not gated on mode, --non-interactive, a TTY, or
+# whether the run intends to replace anything. A consumer may carry an
+# established, customized flow, and "we only meant to add files" is exactly the
+# assumption under which the FT-9 --update clobber happened.
+#
+# Scope: all of .github/ (so the consumer's OWN workflows are captured too —
+# this script never writes them, but a backup that only covers what we intend to
+# touch is worthless when the bug is touching something we did not intend), plus
+# the root-level configs the manifest can target. Deliberately NOT derived from
+# manifest.json: a backup that drifts with the manifest would silently stop
+# covering a surface the manifest dropped.
+#
+# Sited in WORK_DIR rather than beside the script: install.sh is documented as
+# runnable piped (`bash <(curl …) --update`), where $0 is not a real path.
+# WORK_DIR is deliberately never auto-cleaned, so the backup outlives the run.
+BACKUP_DIR="$WORK_DIR/backup"
+backup_existing_surfaces() {
+  local n=0 p d list rc=0
+  local -a files=()
+  mkdir -p "$BACKUP_DIR" || return 1
+
+  # NUL-delimited enumeration. A word-split `for p in $(find …)` list is wrong
+  # twice over, and both were live defects here before this was fixed:
+  #   "bug report.md"  -> split into two nonexistent paths; cp fails; the whole
+  #                       installer becomes unusable on that repo, in every mode.
+  #   "notes[1].md"    -> glob-expanded onto a SIBLING file; the bracket file is
+  #                       never backed up, the sibling is copied twice, the count
+  #                       reports success. Fail-OPEN, which is the one outcome a
+  #                       mandatory backup must never produce.
+  # Do not reintroduce an unquoted command substitution here.
+  #
+  # `find -L` so a symlinked .github (or a symlinked caller inside it) is
+  # followed rather than silently yielding nothing — that was a clean bypass of a
+  # MANDATORY backup. `! -type d` is the right predicate under -L: it keeps
+  # regular files, symlinks-to-files (followed) and broken symlinks, while
+  # excluding directories AND the symlinked-directory root itself (which `cp -p`
+  # cannot copy). A resolvable symlink is captured by CONTENT, which is what a
+  # restore wants; a BROKEN one has no content to capture and is copied as the
+  # LINK instead (see the cp branch below) — `cp -p` dereferences, so a bare
+  # `cp -p` on a dangling link fails and, being fail-closed, aborted the whole
+  # installer in EVERY mode on any consumer that had one. (CI-0023.)
+  list="$(mktemp)" || return 1
+  if [ -d .github ]; then
+    # find's own status is checked: a partial traversal (unreadable subdir) still
+    # prints what it could read and exits non-zero. Swallowing that would report
+    # a successful backup that is quietly missing files.
+    # stderr is kept, not discarded: the two causes need different remedies and
+    # the message alone cannot tell them apart. An unreadable subdirectory is a
+    # permissions problem; a symlink LOOP (`ln -s a b; ln -s b a`) makes `find -L`
+    # exit non-zero having enumerated nothing, and the old text blamed
+    # permissions for it — sending the operator to `chmod` for a cycle no chmod
+    # can fix. A loop is a genuine FAULT and still aborts (unlike a dangling
+    # link, which is a shape and is handled below): `find -L` cannot traverse it,
+    # so we cannot prove the snapshot is complete, and a mandatory backup that
+    # cannot prove completeness must not proceed. (CI-0023.)
+    # LC_ALL=C is load-bearing, not hygiene: the branch below keys on find's
+    # ELOOP strerror text, which is TRANSLATED under a non-English locale. Without
+    # it the grep misses, control falls to the permissions branch, and the run
+    # reprints the exact misdiagnosis this block exists to remove — on an operator
+    # whose locale we never see in CI, so no test would catch it.
+    local find_err; find_err="$(mktemp)" || { rm -f "$list"; return 1; }
+    if ! LC_ALL=C find -L .github ! -type d -print0 > "$list" 2>"$find_err"; then
+      echo "  FAIL  could not enumerate .github — refusing to write" >&2
+      if grep -qi 'too many levels of symbolic links' "$find_err"; then
+        echo "        cause: a symlink LOOP under .github/ — find cannot traverse it." >&2
+        echo "        Break the cycle, then re-run. (chmod will not help.)" >&2
+      else
+        echo "        cause: likely an unreadable subdirectory — check permissions." >&2
+      fi
+      sed 's/^/        /' "$find_err" >&2
+      rm -f "$list" "$find_err"
+      return 1
+    fi
+    rm -f "$find_err"
+    while IFS= read -r -d '' p; do files+=("$p"); done < "$list"
+  fi
+  rm -f "$list"
+
+  # Non-.github surfaces install.sh can write. Kept as an explicit list rather
+  # than derived from manifest.json: a manifest-derived scope would silently
+  # stop covering a surface the manifest drops. tests/test_install.sh
+  # cross-checks this list AGAINST the manifest, so a manifest ADDITION outside
+  # .github/ fails the suite instead of going unbacked.
+  # `-e` alone is WRONG here: it dereferences, so a DANGLING symlink at one of
+  # these paths tests false and is skipped — silently. The path still exists as
+  # a link, install.sh can still overwrite it, and the run reports success with
+  # that surface absent from the snapshot. That is fail-OPEN, the one outcome a
+  # mandatory backup must never produce, and it is the same broken-symlink blind
+  # spot as the `cp -p` defect below — this list simply lost it one step earlier,
+  # at enumeration rather than at copy. `|| [ -L … ]` admits the link, and the
+  # copy loop's fault-vs-shape branch then handles it. (CI-0023.)
+  local r
+  for r in .markdownlint.json .lychee.toml .yamllint.yaml .yamllint.yml \
+           .pre-commit-config.yaml .gitignore .gitattributes CLAUDE.md \
+           scripts/pre_push_check.sh; do
+    { [ -e "$r" ] || [ -L "$r" ]; } && files+=("$r")
+  done
+
+  for p in ${files[0]+"${files[@]}"}; do
+    d="$(dirname "$p")"
+    mkdir -p "$BACKUP_DIR/$d" || rc=1
+    # A dangling symlink is enumerated by `find -L … ! -type d` (the stat fails,
+    # so find yields the link itself) but has no content for `cp -p` to
+    # dereference. Copy the LINK verbatim instead (`-Pp`: no-dereference AND
+    # preserve, since bare `-P` would not carry the link's own timestamps) — that
+    # is the only faithful backup of it, and it keeps the mandatory snapshot
+    # fail-CLOSED for real errors rather than aborting on a broken link the
+    # consumer merely happens to carry. Do NOT collapse this to a plain `cp -P`
+    # for every path: a resolvable symlink must still be captured by content.
+    #
+    # RESIDUAL, stated rather than papered over: `-e` reports false for EACCES as
+    # well as ENOENT, so a resolvable link whose target sits behind an
+    # unsearchable directory is classified here as dangling and backed up as a
+    # link rather than by content. It is not silently lost, and the case needs
+    # the installer to be run by someone who cannot traverse the consumer's own
+    # tree — but it is a real gap, not a handled case.
+    #
+    # Reachable only via the ROOT-LIST arm. On the `.github/` arm `find -L`
+    # stats the link first, gets EACCES, and the run hard-aborts above — so that
+    # arm never reaches this branch and is stricter than this comment implies.
+    # (CI-0023.)
+    if [ -L "$p" ] && [ ! -e "$p" ]; then
+      cp -Pp "$p" "$BACKUP_DIR/$p" || rc=1
+    else
+      cp -p "$p" "$BACKUP_DIR/$p" || rc=1
+    fi
+    [ "$rc" -eq 0 ] || { echo "  FAIL  could not back up $p — refusing to write" >&2; return 1; }
+    n=$((n + 1))
+  done
+
+  if [ "$n" -eq 0 ]; then
+    echo "==> backup: no pre-existing CI/governance surfaces (fresh repo)"
+  else
+    echo "==> backed up $n pre-existing file(s) -> $BACKUP_DIR"
+  fi
+}
+# Fail CLOSED: if the snapshot cannot be taken, do not write.
+backup_existing_surfaces || { echo "install: refusing to modify $TARGET_REPO without a backup" >&2; exit 1; }
+# <<< MANDATORY-BACKUP <<<
+
 # Bootstrap creates the canon dirs; --update only touches files the consumer
 # already has, so it must NOT litter empty dirs into the clone.
 [ "$MODE_UPDATE" = 1 ] || [ "$MODE_REPIN" = 1 ] || mkdir -p .github/workflows .github/ai-review
+
+# >>> FETCH-VALIDATE >>>  (extracted verbatim by tests/test_install.sh — keep
+# these markers; the test drives THIS code rather than a copy of it.)
+# FT-39: `curl -f` rejects a 4xx/5xx, but a proxy, CDN, or captive portal can
+# answer a request with a 200 whose body is EMPTY or an HTML error page. Writing
+# that over a canon gate template silently 0-bytes a required check; for the
+# pre-commit fragment it makes marker_version() read 1 and freezes every legacy
+# consumer's FT-32 refresh (fails open). Every fetched body is validated once,
+# here, before it is trusted. An optional 3rd arg names an extended-regex the
+# body MUST match (used for the versioned pre-commit marker).
+validate_fetched() { # $1 = fetched file  $2 = source name (for messages)  [$3 = required ERE]
+  local _f="$1" _src="$2" _need="${3:-}"
+  if [ ! -s "$_f" ]; then
+    echo "  FAIL  fetched ${_src} is empty (a 0-byte 200 body) — refusing (FT-39)" >&2
+    return 1
+  fi
+  # An HTML error page served 200 (a proxy/CDN/captive-portal splash) opens with
+  # an HTML-document tag (`<!DOCTYPE html>`, `<html …>`). Match THAT — not a bare
+  # `<`: a canon markdown template can legitimately open with an HTML comment
+  # (`pull_request_template.md` starts `<!--`), so a bare-`<` reject would false-
+  # fire on it. Inspect only a bounded prefix (whitespace/NUL stripped, lowered)
+  # so a pathological large 200 body is never slurped whole into memory.
+  local _head
+  _head="$(head -c 512 "$_f" 2>/dev/null | tr -d '[:space:]\000' | tr '[:upper:]' '[:lower:]')" || true
+  case "$_head" in
+    '<!doctype'*|'<html'*|'<head'*|'<body'*|'<title'*)
+      echo "  FAIL  fetched ${_src} opens with an HTML-document tag (an error page served 200?) — refusing (FT-39)" >&2
+      return 1 ;;
+  esac
+  if [ -n "$_need" ] && ! grep -qE "$_need" "$_f"; then
+    echo "  FAIL  fetched ${_src} is missing its required marker — refusing (FT-39; an empty/wrong body here silently freezes legacy-consumer refresh, FT-32)" >&2
+    return 1
+  fi
+}
+# <<< FETCH-VALIDATE <<<
 
 fetch_template() {
   # $1 = source path under install/templates/; $2 = destination path
@@ -259,6 +477,8 @@ fetch_template() {
     echo "  FAIL  failed to fetch ${TEMPLATE_BASE}/${src}" >&2
     return 1
   fi
+  # FT-39: reject an empty/HTML 200 body before it is written over a gate.
+  validate_fetched "$dst" "$src" || return 1
 }
 
 substitute_placeholders() {
@@ -355,6 +575,10 @@ PYEOF
       echo "  WARN  failed to fetch ${ctmpl} — skipping $cpath" >&2
       rm -f "$fetched"; continue
     fi
+    # FT-39: an empty/HTML 200 body must never diff-and-replace a good local
+    # file (a safe_to_replace surface under --non-interactive would be
+    # overwritten with the error page). validate_fetched logs the reason; skip.
+    validate_fetched "$fetched" "$ctmpl" || { rm -f "$fetched"; continue; }
     # Substitute uniformly: a template with no declared placeholders is a
     # no-op (and still passes the fail-closed assertion). This makes the
     # diff show what would ACTUALLY land (post-substitution content).
@@ -367,9 +591,17 @@ PYEOF
     # Label the canon side with the template name (not the mktemp path) so the
     # printed diff / audit log names which canon file the drift is against.
     diff -u --label "$cpath" --label "canon:$ctmpl" "$cpath" "$fetched" 2>/dev/null | sed 's/^/    /' | head -60 || true
-    if [ "$NONINTERACTIVE" = 1 ] || [ ! -t 0 ]; then
-      [ "$NONINTERACTIVE" != 1 ] && echo "  (no TTY — treating as --non-interactive)"
+    if [ "$NONINTERACTIVE" = 1 ]; then
+      # Explicit opt-in to the destructive auto-replace of safe_to_replace files.
       if [ "$csafe" = 1 ]; then action="r"; else action="k"; fi
+    elif [ ! -t 0 ]; then
+      # FT-39: a missing TTY is NOT consent to replace. Inferring
+      # --non-interactive from `[ ! -t 0 ]` meant a piped run (`bash <(curl …)
+      # --update`) silently overwrote every customized safe_to_replace caller
+      # with the canon body. With no TTY and no explicit --non-interactive we
+      # cannot prompt, so default to KEEP and tell the operator how to opt in.
+      echo "  (no TTY and no --non-interactive — keeping local; re-run with --non-interactive to auto-replace safe_to_replace surfaces)"
+      action="k"
     else
       printf "  [k]eep local / [r]eplace with canon / [d]iff-only (keep)? "
       read -r action || action="k"
@@ -419,13 +651,19 @@ repin_mode() {
     # rewrite only the pin on aidoc-flow-ci uses: lines; leave @main and
     # comments untouched. Report old→new per file.
     local before; before="$(grep -E '^\s*uses:.*aidoc-flow-ci/.*@(ci/v[0-9.]+|[0-9a-f]{40})' "$f" | grep -oE '@ci/v[0-9.]+|@[0-9a-f]{7}' | sort -u | tr '\n' ' ')"
-    # (1) tag-pinned callers: @ci/vX.Y.Z -> @$target
-    sed -i -E "s#(^[[:space:]]*uses:[[:space:]]*vladm3105/aidoc-flow-ci/[^@]+)@ci/v[0-9.]+#\1@${target}#" "$f"
+    # FT-50: `-i.bak … && rm` is portable in-place (adopter machines run this) —
+    # bare GNU `sed -i` errors on BSD/macOS sed, which requires a backup suffix.
+    # (1) tag-pinned callers: @ci/vX.Y.Z -> @$target. `rm` is a SEPARATE statement,
+    #     not `&& rm` — so a sed failure still aborts under `set -e` (loud), and the
+    #     backup is cleaned unconditionally.
+    sed -i.bak -E "s#(^[[:space:]]*uses:[[:space:]]*vladm3105/aidoc-flow-ci/[^@]+)@ci/v[0-9.]+#\1@${target}#" "$f"
+    rm -f "$f.bak"
     # (2) SHA-pinned callers: @<40hex> (optionally trailed by "# ci/vX") -> @$target.
     #     '|' delimiter because the pattern contains '#'. Converts a SHA pin to a
     #     tag pin so --repin covers the whole fleet (audit-trail was historically
     #     SHA-pinned; without this it was silently skipped).
-    sed -i -E "s|(^[[:space:]]*uses:[[:space:]]*vladm3105/aidoc-flow-ci/[^@]+)@[0-9a-f]{40}([[:space:]]*# ci/v[0-9.]+.*)?$|\1@${target}|" "$f"
+    sed -i.bak -E "s|(^[[:space:]]*uses:[[:space:]]*vladm3105/aidoc-flow-ci/[^@]+)@[0-9a-f]{40}([[:space:]]*# ci/v[0-9.]+.*)?$|\1@${target}|" "$f"
+    rm -f "$f.bak"
     if ! git diff --quiet -- "$f" 2>/dev/null; then
       echo "  repinned  $f  (${before:-?} -> @${target})"
       changed=$((changed+1))
@@ -455,14 +693,74 @@ if [ "$MODE_UPDATE" = 1 ]; then
 fi
 
 # Drop the default consumer-side callers. Preserve existing files.
-for wf in ai-review composition; do
-  if [ -f ".github/workflows/${wf}.yml" ]; then
-    echo "  preserve  .github/workflows/${wf}.yml (already exists — local override)"
-  else
-    fetch_template "workflows/${wf}-${VISIBILITY}.yml" ".github/workflows/${wf}.yml" || exit 1
-    echo "  add       .github/workflows/${wf}.yml"
-  fi
-done
+#
+# PLAN-018 F1: each template is named EXPLICITLY, never derived from
+# "${wf}-${VISIBILITY}.yml". Canon ships three distinct naming shapes, not one
+# convention, so any derivation is wrong for at least one workflow:
+#
+#   ai-review    public: workflows/ai-review.yml            private: same
+#                (PLAN-013 unified it into one protected template — no variants)
+#   composition  public: workflows/composition-public.yml   private: …-private.yml
+#   pre-commit   public: workflows/pre-commit.yml           private: …-private.yml
+#                (asymmetric — the PUBLIC variant is the bare name)
+#
+# The old derivation asked for workflows/ai-review-private.yml, deleted at
+# ci/v2.2.0: a 404 that killed every cold-start install before config.json,
+# CODEOWNERS, CLAUDE.md, pre_push_check.sh, the pre-commit merge, and the labels.
+#
+# LOAD-BEARING — do not refactor into a TEMPLATES[$wf] lookup or any other form
+# that makes fetch_template's first argument a variable. tests/test_install.sh
+# extracts the block between the markers below, evaluates it under both
+# visibilities with fetch_template stubbed, and cross-checks it against
+# manifest.json in BOTH directions: each resolved template must match the
+# visibility_variants resolution for its consumer path, and the installed caller
+# SET must equal the auto_install:true workflow entries. So adding a caller here
+# and flipping its auto_install are one change, and deleting a stanza fails
+# rather than silently shipping a cold start without that workflow.
+# It also asserts every fetch_template first argument in this file is a literal
+# and that no `.github/workflows/` install sits outside the markers — a variable
+# argument or a stray call site silently disarms that cover.
+
+# >>> BOOTSTRAP-CALLERS >>>  (extracted verbatim by tests/test_install.sh)
+# ai-review — single protected template, identical for both visibilities.
+if [ -f ".github/workflows/ai-review.yml" ]; then
+  echo "  preserve  .github/workflows/ai-review.yml (already exists — local override)"
+else
+  fetch_template "workflows/ai-review.yml" ".github/workflows/ai-review.yml" || exit 1
+  echo "  add       .github/workflows/ai-review.yml"
+fi
+
+# composition — per-visibility variants, both explicitly suffixed.
+if [ -f ".github/workflows/composition.yml" ]; then
+  echo "  preserve  .github/workflows/composition.yml (already exists — local override)"
+elif [ "$VISIBILITY" = "private" ]; then
+  fetch_template "workflows/composition-private.yml" ".github/workflows/composition.yml" || exit 1
+  echo "  add       .github/workflows/composition.yml (private)"
+else
+  fetch_template "workflows/composition-public.yml" ".github/workflows/composition.yml" || exit 1
+  echo "  add       .github/workflows/composition.yml (public)"
+fi
+
+# pre-commit — ASYMMETRIC: the PUBLIC variant is the bare name (§16.9).
+#
+# PLAN-018 F2: installed UNCONDITIONALLY, not gated on --tier. `call / Lint /
+# format / security hooks` — emitted by this caller — is a required status check
+# on every tier that has required checks at all, and is the bootstrap tier's ONLY
+# required context. Without a producer, arming protection pins every PR on
+# "Expected — Waiting for status to be reported" forever. TIER defaults to "" and
+# the README's documented one-liner passes none, so a tier-gated fix would leave
+# the primary documented path undefined. On the umbrella tier (no required checks
+# at all) the installed caller is simply advisory — additive, not harmful.
+if [ -f ".github/workflows/pre-commit.yml" ]; then
+  echo "  preserve  .github/workflows/pre-commit.yml (already exists — local override)"
+elif [ "$VISIBILITY" = "private" ]; then
+  fetch_template "workflows/pre-commit-private.yml" ".github/workflows/pre-commit.yml" || exit 1
+  echo "  add       .github/workflows/pre-commit.yml (private)"
+else
+  fetch_template "workflows/pre-commit.yml" ".github/workflows/pre-commit.yml" || exit 1
+  echo "  add       .github/workflows/pre-commit.yml (public)"
+fi
+# <<< BOOTSTRAP-CALLERS <<<
 
 if [ -f ".github/ai-review/config.json" ]; then
   echo "  preserve  .github/ai-review/config.json (already exists)"
@@ -565,20 +863,55 @@ if [ -n "$_missing_tools" ]; then
 fi
 
 # .pre-commit-config.yaml — merge canon hook block idempotently.
-# Idempotency key: canonical marker `# CANON: aidoc-flow-ci pre_push_check`.
-# If present → no-op. If absent → merge (append hook block; upgrade
-# default_install_hook_types root key from [pre-commit] → [pre-commit,
-# pre-push] if consumer had only [pre-commit]).
+# Idempotency key: canonical marker `# CANON: aidoc-flow-ci pre_push_check vN`.
+#
+# PLAN-018 FT-32 — the marker is VERSIONED so this file is refreshable. Before,
+# any marker at all meant no-op forever: bootstrap skipped, `--update` excludes
+# this file from the manifest walk, and `--apply` writes no content files — so an
+# adopted consumer could NEVER receive a canon change to the fragment, and
+# manifest.json's "re-run install.sh to refresh those" was FALSE for it. Now:
+#   no marker            → merge (first adoption)
+#   marker vN  <  canon  → RE-MERGE (the refresh path; additive + de-duped, so
+#                          consumer entries are never clobbered) and stamp vCANON
+#   marker vN  >= canon  → no-op preserve (steady state)
+# An unversioned legacy marker counts as v1.
+# >>> PRECOMMIT-MERGE >>>  (extracted verbatim by tests/test_precommit_refresh.sh
+# — keep these markers; the test drives THIS code rather than a copy of it.)
 PRECOMMIT_TMP=$(mktemp)
 fetch_template "pre-commit-hook-block.yaml" "$PRECOMMIT_TMP" || { rm -f "$PRECOMMIT_TMP"; exit 1; }
+CANON_MARK_RE='# CANON: aidoc-flow-ci pre_push_check'
+# FT-39: the fragment's entire refresh logic hinges on a versioned marker.
+# fetch_template already rejected an empty/HTML body, but a truncated or pre-v2
+# fragment would pass that and then make marker_version() read 1 → every legacy
+# consumer's refresh silently freezes (FT-32 fails open). Assert the versioned
+# marker is present before the file is trusted for the version compare.
+validate_fetched "$PRECOMMIT_TMP" "pre-commit-hook-block.yaml" "^${CANON_MARK_RE} v[0-9]+" \
+  || { rm -f "$PRECOMMIT_TMP"; exit 1; }
+# Marker-version parse, anchored at BOTH ends. Line-start, so an unrelated
+# consumer comment that merely mentions `pre_push_check v1` is not read as THEIR
+# marker (that would trigger a spurious re-merge on an already-current repo);
+# digits-at-end, so a line carrying two versioned mentions cannot produce a
+# multi-line capture (`[` would then print `integer expression expected` to the
+# operator and mis-compare). Unversioned or absent ⇒ 1.
+marker_version() { # $1 = file → prints N
+  local _v
+  _v="$(grep -m1 -oE "^${CANON_MARK_RE} v[0-9]+" "$1" 2>/dev/null | grep -oE '[0-9]+$' || true)"
+  printf '%s' "${_v:-1}"
+}
+CANON_MARK_LINE="$(grep -m1 -E "^${CANON_MARK_RE}" "$PRECOMMIT_TMP" || echo "$CANON_MARK_RE")"
+CANON_MARK_V="$(marker_version "$PRECOMMIT_TMP")"
 if [ ! -f ".pre-commit-config.yaml" ]; then
   # Consumer has no pre-commit config — install canon fragment verbatim.
-  # (Canon fragment carries the marker at line 1 → subsequent re-runs no-op.)
+  # (Canon fragment carries the versioned marker at line 1 → re-runs no-op.)
   cp "$PRECOMMIT_TMP" .pre-commit-config.yaml
-  echo "  add       .pre-commit-config.yaml (from canon fragment)"
-elif grep -qF "# CANON: aidoc-flow-ci pre_push_check" .pre-commit-config.yaml; then
-  echo "  preserve  .pre-commit-config.yaml (canon marker present — no-op)"
+  echo "  add       .pre-commit-config.yaml (from canon fragment, marker v${CANON_MARK_V})"
+elif grep -qE "^${CANON_MARK_RE}" .pre-commit-config.yaml \
+     && { _cmv="$(marker_version .pre-commit-config.yaml)"; [ "$_cmv" -ge "$CANON_MARK_V" ]; }; then
+  echo "  preserve  .pre-commit-config.yaml (canon marker v${_cmv} >= canon v${CANON_MARK_V} — no-op)"
 else
+  if grep -qE "^${CANON_MARK_RE}" .pre-commit-config.yaml 2>/dev/null; then
+    echo "  refresh   .pre-commit-config.yaml (canon marker v${_cmv:-1} < canon v${CANON_MARK_V} — re-merging the canon block; FT-32)"
+  fi
   # M2 fold: fail-fast on missing YAML library BEFORE entering merge, so
   # the operator gets an actionable message instead of a generic FAIL.
   # M1 fold: prefer ruamel.yaml (round-trip preserves consumer comments);
@@ -599,10 +932,12 @@ else
   # rename(2), not cross-fs copy+unlink (which would leave a truncated
   # .pre-commit-config.yaml on SIGINT mid-mv).
   MERGE_TMP=$(mktemp ./.pre-commit-config.yaml.tmp.XXXXXX)
-  if python3 - "$PRECOMMIT_TMP" "$MERGE_TMP" "$yaml_lib" <<'PYEOF' ; then
+  MERGE_OUT=$(mktemp)
+  if python3 - "$PRECOMMIT_TMP" "$MERGE_TMP" "$yaml_lib" "$CANON_MARK_LINE" <<'PYEOF' > "$MERGE_OUT" ; then
 import sys
 
 canon_path, out_path, yaml_lib = sys.argv[1], sys.argv[2], sys.argv[3]
+canon_marker = sys.argv[4] if len(sys.argv) > 4 else "# CANON: aidoc-flow-ci pre_push_check"
 
 if yaml_lib == "ruamel":
     from ruamel.yaml import YAML
@@ -626,6 +961,14 @@ except Exception as e:
     print(f"  FAIL  canon fragment parse error: {e}", file=sys.stderr)
     sys.exit(1)
 
+# A pre-commit config must be a MAPPING. A top-level list (or scalar) otherwise
+# reached `consumer.get(...)` below and died with a raw AttributeError before any
+# of the structural guards further down could report it.
+if not isinstance(consumer, dict):
+    print(f"  FAIL  .pre-commit-config.yaml must be a YAML mapping, got "
+          f"{type(consumer).__name__} — inspect the file", file=sys.stderr)
+    sys.exit(1)
+
 # Root-key upgrade: default_install_hook_types must include pre-push.
 # L1 fold: preserve consumer intent — if scalar (invalid but real), coerce
 # to a single-element list rather than resetting to canonical default.
@@ -641,27 +984,202 @@ for h in canon_hooks:
 consumer['default_install_hook_types'] = consumer_hooks
 
 # Append canon repos-block entries (which are hooks). Preserve existing.
+#
+# De-dup by repo URL, NOT whole-entry structural equality (PLAN-018 F3). Canon
+# now ships a third-party entry (pre-commit-hooks) as well as `repo: local`, and
+# an adopter who already uses that repo at a DIFFERENT rev is structurally
+# unequal — so the old rule appended a second `repos:` entry for the same repo.
+# NOTE: pre-commit does NOT reject that (verified on 4.5.1: duplicate URLs at
+# different revs, and duplicate hook ids, all give validate-config rc=0 and run).
+# The de-dup is for coherence, not validity — two entries for one repo at
+# different revs is confusing and runs the hook twice. On a URL collision the consumer's
+# entry (and their rev) is kept and the collision is REPORTED, listing the canon
+# hook ids they may be missing. Silently merging hook lists would overwrite a
+# deliberate consumer rev; silently skipping would hide that a canon-required
+# hook never arrived.
+#
+# `local` and `meta` are PSEUDO-repos, not identities. pre-commit permits any
+# number of them (verified: two `- repo: local` blocks give
+# `validate-config` rc=0 and both hooks run), and most consumers already have
+# one or more. Keying de-dup on them would treat the consumer's own local block
+# as a collision and never install canon's `aidoc-flow-pre-push` hook — silently
+# dropping the OPS-0069 audit-trail check. So they are exempt from URL keying and
+# de-dup by HOOK ID instead: a consumer missing `aidoc-flow-pre-push` still
+# receives it, one that already carries it gets no duplicate. (Before FT-32 that
+# drop was permanent — the marker made every later run a no-op. A version bump
+# now re-merges, but only ADDITIVELY: an existing hook id is left as-is, which is
+# what preserves a consumer's `pre_push_check_<repo>.sh` wrapper entry.)
+PSEUDO_REPOS = ('local', 'meta')
 consumer_repos = consumer.setdefault('repos', [])
-for canon_repo in canon.get('repos', []):
-    # De-dup by structural equality. Canon uses `repo: local` + a
-    # single hook id `aidoc-flow-pre-push` — check for exact match.
-    if canon_repo not in consumer_repos:
-        consumer_repos.append(canon_repo)
+collisions = []
+skipped_hooks = []  # FT-44: canon local hooks the consumer has by id but with a changed body
+try:
+    if not isinstance(consumer_repos, list):
+        raise TypeError(f"'repos' must be a list, got {type(consumer_repos).__name__}")
+    existing_by_url = {}
+    for r in consumer_repos:
+        if isinstance(r, dict) and isinstance(r.get('repo'), str):
+            existing_by_url.setdefault(r['repo'], r)
+    for canon_repo in canon.get('repos', []):
+        url = canon_repo.get('repo') if isinstance(canon_repo, dict) else None
+        if not isinstance(url, str):
+            continue
+        if url in PSEUDO_REPOS:
+            # Append only the canon hooks whose `id` the consumer does not already
+            # have. Structural equality alone (the B2 form) is right for a FIRST
+            # adoption but DUPLICATES the hook on an FT-32 refresh: a legacy or
+            # locally-customized `aidoc-flow-pre-push` is structurally unequal to
+            # canon's, so canon's copy got appended alongside it. Filtering by id
+            # keeps B2's guarantee (a consumer missing the hook still gets it)
+            # without duplicating one they already carry.
+            # Map the consumer's local hook id -> its dict (local hooks live in
+            # pseudo-repo entries), so we can tell "missing" from "present but
+            # changed". setdefault keeps the FIRST occurrence, matching how
+            # pre-commit resolves a duplicated id.
+            consumer_hooks_by_id = {}
+            for r in consumer_repos:
+                if isinstance(r, dict) and r.get('repo') in PSEUDO_REPOS:
+                    for h in (r.get('hooks') or []):
+                        if isinstance(h, dict) and h.get('id'):
+                            consumer_hooks_by_id.setdefault(h['id'], h)
+            have_ids = set(consumer_hooks_by_id)
+            missing_hooks = [h for h in (canon_repo.get('hooks') or [])
+                             if isinstance(h, dict) and h.get('id') not in have_ids]
+            if missing_hooks:
+                blk = dict(canon_repo); blk['hooks'] = missing_hooks
+                consumer_repos.append(blk)
+            # FT-44: a canon local hook whose id the consumer HAS but whose body
+            # DIFFERS is intentionally NOT clobbered (the refresh is additions-only,
+            # preserving a customized wrapper), but it must be REPORTED — else the
+            # summary prints a clean "canon block appended" and the operator never
+            # learns canon shipped a changed hook their config still overrides.
+            # Most-likely future case: a bumped `aidoc-flow-pre-push`.
+            for h in (canon_repo.get('hooks') or []):
+                if not (isinstance(h, dict) and h.get('id') in have_ids):
+                    continue
+                # Use `not (a == b)`, NOT `a != b`: ruamel's CommentedMap (the
+                # preferred backend) overrides `__eq__` order-INsensitively but
+                # inherits an order-SENSITIVE `__ne__` from OrderedDict, so `!=`
+                # would falsely flag a key-reordered but content-identical hook as
+                # changed — a spurious WARN on healthy configs.
+                if not (h == consumer_hooks_by_id.get(h.get('id'))):
+                    skipped_hooks.append(
+                        f"  WARN  .pre-commit-config.yaml keeps your {h.get('id')!r} hook "
+                        f"(in {url!r}) — canon ships a MODIFIED version; your copy is preserved "
+                        f"(additions-only), so canon's change stays UNAPPLIED until merged by hand.")
+            continue
+        if url not in existing_by_url:
+            consumer_repos.append(canon_repo)
+            existing_by_url[url] = canon_repo
+            continue
+        if canon_repo == existing_by_url[url]:
+            continue  # already exactly canon — nothing to say
+        have = {h.get('id') for h in (existing_by_url[url].get('hooks') or []) if isinstance(h, dict)}
+        want = {h.get('id') for h in (canon_repo.get('hooks') or []) if isinstance(h, dict)}
+        missing = sorted(i for i in (want - have) if i)
+        detail = f"missing canon hook id(s): {', '.join(missing)}" if missing else "hook ids all present"
+        # !r on every consumer-controlled value: YAML double-quoted scalars
+        # process escapes, so a config carrying \e[2K\r could rewrite the line
+        # the operator reads. repr() renders those inert.
+        collisions.append(
+            f"  WARN  .pre-commit-config.yaml already declares {url!r} "
+            f"(kept your entry, rev={existing_by_url[url].get('rev', 'n/a')!r}; canon ships "
+            f"rev={canon_repo.get('rev', 'n/a')!r}) — {detail}")
+except Exception as e:
+    # Same actionable shape as the load() failures above, not a raw traceback.
+    print(f"  FAIL  .pre-commit-config.yaml structure error: {e}", file=sys.stderr)
+    sys.exit(1)
+
+for line in collisions:
+    print(line, file=sys.stderr)
+for line in skipped_hooks:
+    print(line, file=sys.stderr)
+# Machine-readable for the shell, so the summary line cannot claim a clean
+# append when a collision suppressed part of the canon block, or when a canon
+# local hook was kept-but-changed (FT-44).
+if collisions:
+    print(f"COLLISIONS={len(collisions)}")
+if skipped_hooks:
+    print(f"SKIPPED_HOOKS={len(skipped_hooks)}")
+
+# Dump to a buffer first so the consumer's OWN copy of the marker can be dropped.
+# ruamel round-trips the leading comment, so without this a refreshed config
+# accumulates one stale `# CANON:` line per refresh (v1, then v1+v2, ...). The
+# shell reads the version with `grep -m1`, so behaviour stayed correct, but the
+# litter is permanent and misreads as "adopted twice".
+import io
+_buf = io.StringIO()
+dump(consumer, _buf)
+_body = "".join(l for l in _buf.getvalue().splitlines(keepends=True)
+                if not l.startswith("# CANON: aidoc-flow-ci pre_push_check"))
 
 with open(out_path, 'w') as f:
-    # Preserve the canon marker line at top so future re-runs no-op.
-    f.write("# CANON: aidoc-flow-ci pre_push_check (idempotency marker per PLAN-002 §5.2)\n")
-    dump(consumer, f)
+    # Stamp CANON'S marker line (passed in as argv[4]) — not a hardcoded string.
+    # On a refresh this REPLACES the consumer's stale vN with canon's, which is
+    # what makes the next run a no-op instead of re-merging forever (FT-32).
+    f.write(canon_marker.rstrip("\n") + "\n")
+    f.write(_body)
 PYEOF
     mv "$MERGE_TMP" .pre-commit-config.yaml
-    echo "  merge     .pre-commit-config.yaml (canon block appended; default_install_hook_types upgraded if needed; ${yaml_lib}-backed)"
+    # Honest summary: a URL collision means part of the canon block was NOT
+    # appended (the consumer's entry was kept). Saying "canon block appended"
+    # in that case reports success for work that did not happen — and the WARN
+    # explaining it goes to stderr, which an operator reading stdout may miss.
+    if grep -qE '^(COLLISIONS|SKIPPED_HOOKS)=' "$MERGE_OUT"; then
+      # `|| true`: under `set -euo pipefail` a non-matching grep would fail the
+      # pipeline (only ONE of the two signals may be present) and abort before the
+      # summary prints. Empty → the ${:-0} fallbacks below render it 0.
+      _ncol="$(grep -oE '^COLLISIONS=[0-9]+' "$MERGE_OUT" | cut -d= -f2 || true)"
+      _nskip="$(grep -oE '^SKIPPED_HOOKS=[0-9]+' "$MERGE_OUT" | cut -d= -f2 || true)"
+      echo "  merge     .pre-commit-config.yaml (PARTIAL — ${_ncol:-0} repo collision(s), ${_nskip:-0} modified-hook skip(s); your entries kept, see WARN above; default_install_hook_types upgraded if needed; ${yaml_lib}-backed)"
+      # The marker is stamped even on a PARTIAL merge — it has to be, or every
+      # later run would re-merge, re-WARN and never converge. The cost is that
+      # the file then LOOKS current while the collided canon lines are still
+      # missing, so say so here: this is the operator's only notice, and the
+      # residual is exactly what the rollout worklist is for (CI-0013).
+      echo "            NOTE  marker stamped v${CANON_MARK_V} — install.sh will NOT revisit this file. The canon lines named in the WARN(s) above stay UNAPPLIED until merged by hand."
+      echo "                  The refresh delivers ADDITIONS only (new repo entries; new hook ids in canon's 'local' block). A rev bump, or a new hook id inside a repo you already declare, is REPORTED — never applied."
+    else
+      echo "  merge     .pre-commit-config.yaml (canon block appended; default_install_hook_types upgraded if needed; ${yaml_lib}-backed)"
+    fi
+    rm -f "$MERGE_OUT"
   else
-    rm -f "$MERGE_TMP" "$PRECOMMIT_TMP"
+    rm -f "$MERGE_TMP" "$PRECOMMIT_TMP" "$MERGE_OUT"
     echo "  FAIL      .pre-commit-config.yaml merge failed — inspect manually" >&2
     exit 1
   fi
 fi
 rm -f "$PRECOMMIT_TMP"
+# <<< PRECOMMIT-MERGE <<<
+
+# PLAN-018 FT-31 — the zero-hook detector. Verify the .pre-commit-config.yaml we
+# just produced actually selects a hook at the stage the `pre-commit` reusable
+# runs; a config with only pre-push hooks yields a green REQUIRED check that
+# inspects nothing (F3). Advisory, not fatal: the config is installed and the
+# rest of the bootstrap is unaffected, so a vacuous result is surfaced as a
+# prominent warning rather than aborting — the operator needs to see it, but it
+# does not undo a working install.
+#
+# The detector is FETCHED (like a template), not assumed local: under the
+# documented `bash <(curl …)` one-liner install.sh has no sibling file on disk.
+# Fetching keeps ONE source of the check that the wizard + release checklist also
+# run. A fetch failure just skips the advisory — it must never fail a working
+# install over a belt-and-suspenders check.
+if [ -f ".pre-commit-config.yaml" ]; then
+  _DETECTOR_TMP=$(mktemp)
+  if curl -fsSL "${TEMPLATE_BASE%/templates}/check-precommit-hooks.sh" -o "$_DETECTOR_TMP" 2>/dev/null; then
+    # Capture rc — warn ONLY on 1 (genuinely zero hooks). rc 2 means the check
+    # could not determine (no PyYAML / unparseable), which is not the same as
+    # "zero" and must not raise a false vacuous-config alarm.
+    bash "$_DETECTOR_TMP" ".pre-commit-config.yaml" >/dev/null 2>&1 && _drc=0 || _drc=$?
+    if [ "${_drc:-0}" -eq 1 ]; then
+      echo "  ⚠️  WARN  .pre-commit-config.yaml selects ZERO hooks at the pre-commit stage —" >&2
+      echo "           the required 'call / Lint / format / security hooks' check would inspect" >&2
+      echo "           nothing. Run: install/check-precommit-hooks.sh .pre-commit-config.yaml" >&2
+    fi
+  fi
+  rm -f "$_DETECTOR_TMP"
+fi
 
 # Canonical labels — idempotent + fail-loud. Prefetch existing labels so
 # we don't conflate "already exists" with real failures (auth / permission
@@ -708,15 +1226,52 @@ fi
 echo ""
 echo "==> done. Next steps (founder) — SECRETS BEFORE THE PR, or the first PR's ai-review gate fails:"
 echo "    1. Inspect bootstrapped files: cd $WORK_DIR/consumer && git diff"
-echo "    2. Add secrets to the consumer NOW (the ai-review gate hard-fails without them):"
+echo "       Pre-write backup of everything that already existed (FT-57):"
+echo "         $BACKUP_DIR"
+echo "       Restore one file:  cp \"$BACKUP_DIR/<path>\" $WORK_DIR/consumer/<path>"
+# PLAN-018 F4 — runner-pool probe, visibility-INDEPENDENT. The ai-review
+# template is visibility-uniform (PLAN-013) and pins the self-hosted pool for
+# PUBLIC repos too, so a public adopter with no pool gets permanently-queued
+# trust/review jobs just like a private one. GitHub's timeout-minutes starts at
+# job START, so a never-started (Queued) job never times out — the checks sit
+# pending with no error anywhere. Gating this probe on VISIBILITY=private would
+# reproduce exactly the fork-code-on-self-hosted anti-pattern the AI-flow
+# routing avoids. Output only: install.sh writes to no other repo.
+echo "    2. Runner pool — REQUIRED for the AI-flows on BOTH visibilities (the ai-review"
+echo "       review job pins the self-hosted pool even on public repos):"
+if command -v "${GH:-gh}" >/dev/null 2>&1; then
+  _runners="$("${GH:-gh}" api "repos/$TARGET_REPO/actions/runners" --jq '[.runners[]|select(.status=="online")|[.labels[].name]|join(",")]|join(" | ")' 2>/dev/null || echo '')"
+  if printf '%s' "$_runners" | grep -q 'ci-runner' && printf '%s' "$_runners" | grep -q 'single-use'; then
+    echo "         ✅ online ci-runner/single-use pool: $_runners"
+  else
+    echo "         🔴 NO online ci-runner/single-use pool — every AI-flow job will sit Queued forever"
+    echo "            (timeout-minutes never fires on a job that never starts). Register the pool per"
+    echo "            docs/runners.md §2/§3 (templates: install/templates/runner/). Do NOT use ubuntu-latest."
+  fi
+else
+  echo "         ⚠️  could not probe (gh unavailable) — confirm an online ci-runner/single-use pool exists;"
+  echo "            without it every AI-flow job sits Queued forever. docs/runners.md §2/§3."
+fi
+echo "    3. Add secrets to the consumer NOW (the ai-review gate hard-fails without them):"
 echo "         - APP_REVIEWER_1_ID + APP_REVIEWER_1_KEY   (reviewer GitHub App)"
 echo "         - LITELLM_BASE_URL + LITELLM_REVIEW_API_KEY (ai-review proxy; REQUIRED since ci/v2.0.0)"
 echo "         - LITELLM_DOC_API_KEY                        (only if adopting doc-maintainer)"
 echo "       You must already operate a reachable LiteLLM proxy — see docs/AI_CI_DEPLOYMENT.md §1."
-echo "    3. Set vars.APP_REVIEWER_1_BOT_ID = 294948438 (App-global; do NOT wait for a first review —"
+# PLAN-018 F4 — the LiteLLM HTTP flag. litellm_client.py hard-fails unless the
+# proxy scheme is HTTPS or litellm_allow_insecure_http is set, and the flag
+# ships COMMENTED OUT in the ai-review caller template. The workspace's only
+# proxy is HTTP on the docker bridge (172.17.0.1), so an adopter of it needs the
+# flag uncommented in .github/workflows/ai-review.yml. install.sh does NOT
+# uncomment it: ai-review.yml is safe_to_replace, so a later
+# --update --non-interactive would silently re-comment it and the gate would go
+# red — a breaking regression. This is operator-applied, by hand, deliberately."
+echo "       If your proxy is HTTP (e.g. the docker-bridge proxy at 172.17.0.1), UNCOMMENT"
+echo "         litellm_allow_insecure_http: true"
+echo "       in .github/workflows/ai-review.yml — the client hard-fails on a non-HTTPS URL without it."
+echo "    4. Set vars.APP_REVIEWER_1_BOT_ID = 294948438 (App-global; do NOT wait for a first review —"
 echo "       until it is set, composition runs INERT and enforces nothing)."
-echo "    4. Commit + push + open the adoption PR on the consumer."
-echo "    5. SERVER-SIDE STANDARDS — verified now against tier ${TIER:-<none>} (files installed ≠ standards on):"
+echo "    5. Commit + push + open the adoption PR on the consumer."
+echo "    6. SERVER-SIDE STANDARDS — verified now against tier ${TIER:-<none>} (files installed ≠ standards on):"
 if verify_standards "$TIER" "$TARGET_REPO"; then vrc=0; else vrc=$?; fi
 case "$vrc" in
   0) echo "       ✅ verified clean — branch protection + settings match the tier template." ;;
@@ -724,7 +1279,7 @@ case "$vrc" in
   2) echo "       ⚠️  COULD NOT VERIFY — gh unauthenticated/missing tool, or the token lacks admin scope to read branch protection. Re-run: install.sh $TARGET_REPO --verify-standards --tier <tier> with an authenticated admin-scoped gh." ;;
   *) echo "       apply branch protection: docs/BRANCH_PROTECTION.md (tier table + arming)." ;;
 esac
-echo "    6. (Cleanup, your choice) rm -rf $WORK_DIR"
+echo "    7. (Cleanup, your choice) rm -rf $WORK_DIR"
 echo ""
 echo "    Full dependency-ordered playbook + a preflight that audits all of the above:"
 echo "      docs/AI_CI_DEPLOYMENT.md   +   install/deploy-ci-wizard.sh preflight <owner/repo>"

@@ -255,12 +255,12 @@ policy, etc.>
 
 **OPTIONAL** (repo-specific):
 
-6. `## Where things are` (repo file layout — highly repo-specific;
+1. `## Where things are` (repo file layout — highly repo-specific;
    not mandated)
-7. `## Locked decisions` (only if the repo has locked-decision-list content;
+2. `## Locked decisions` (only if the repo has locked-decision-list content;
    framework, operations, business do; others don't).
-8. `## Development workflow` (repo-specific workflow guidance).
-9. Repo-specific sections keyed to that repo's specialty (framework's
+3. `## Development workflow` (repo-specific workflow guidance).
+4. Repo-specific sections keyed to that repo's specialty (framework's
    GATE-SPEC rule, engramory's evaluation-harness discipline, etc.).
 
 ### 4.4 "Not adopted — rationale" pattern
@@ -269,7 +269,7 @@ A repo may INTENTIONALLY omit a file kind. The canon permits this if:
 
 1. The `Per-repo governance` table cell reads `Not adopted — <one-line
    rationale>` (e.g., business `CHANGELOG.md not adopted — DECISIONS.md
-   + git commit log serve as the changelog`).
+   - git commit log serve as the changelog`).
 2. The rationale is durable (not "TODO adopt later").
 
 `apply-standards.sh --check` treats "Not adopted — …" as a valid cell
@@ -287,13 +287,13 @@ in the consumer's CLAUDE.md, not in the parser.
 prefix; permits a trailing dash/em-dash tail, which 7 existing consumers
 use — verified 2026-07-08):
 
-```
+```text
 ^## Per-repo governance(\s+[—-].*)?\s*$
 ```
 
 Matches both `## Per-repo governance` (canon-source form) and
 `## Per-repo governance — this repo owns its own continuity` (existing
-consumer form). The parser reads from this line to the next `^## `
+consumer form). The parser reads from this line to the next `^##`
 line (next H2), which is the table region.
 
 **Table format:** GitHub-Flavored-Markdown pipe table with a Surface/Path
@@ -301,7 +301,7 @@ header pair on the first two non-blank lines after the section body prose.
 Both the "loose" and "tight" GFM forms of the separator row are accepted
 (`| --- | --- |` OR `|---|---|`):
 
-```
+```text
 | Surface | Path (in this repo) |
 | --- | --- |
 ```
@@ -385,7 +385,7 @@ Pass 2 fold:
   own canon in the same PR that shipped it, so the canon is
   demonstrably usable at merge time). See §5.1 below.
 - **Original PR-V4 split into PR-V3 (operations, owns its own governance)
-  + PR-V4 (aidoc-flow-ci, ships the wave-scheduling doc)**. The two
+  - PR-V4 (aidoc-flow-ci, ships the wave-scheduling doc)**. The two
   repos have different reviewers, different governance surfaces, and
   coupling them in one PR would violate OPS-0061 Rule 1 (≤3 surfaces
   PER PR — split by owning repo). See §5.3 + §5.4 below.
@@ -587,7 +587,7 @@ coordinated-merge-window per operations `docs/CROSS_REPO_PLAYBOOKS.md`
    canonical paths); scope per §5.4c row for that repo.
 2. Updates `CLAUDE.md` to include the standardized `## Per-repo
    governance` table (with any repo-specific ADDITIONAL rows per §4.2)
-   + the 5 required sections per §4.3.
+   - the 5 required sections per §4.3.
 3. Preserves existing intentional paths (operations `ops/` retained;
    framework `plans/` retained; framework's dual `governance/DECISIONS.md`
    preserved as an additional row).
@@ -645,7 +645,8 @@ per founder direction 2026-07-04.
 wave's PRs must merge in the order shown (within a wave, alphabetical is
 fine — no coupling across repos in the same wave). Cross-wave: Wave N+1
 does not start until Wave N is FULLY green (all PRs in the wave merged
-+ `--check-governance` passes on each). Wave 5 (umbrella) always last.
+
+- `--check-governance` passes on each). Wave 5 (umbrella) always last.
 
 ## 6. Risks
 
@@ -784,16 +785,19 @@ does not start until Wave N is FULLY green (all PRs in the wave merged
 ## Review log
 
 ### Pass 0 — 2026-07-08 — author draft
+
 Load-bearing gaps identified pre-Pass-2: none (self-check).
 **Result:** hand off to Pass 2.
 
 ### Pass 2 — 2026-07-08 — independent (fresh-context code-reviewer agent)
+
 Verdict: REVISIONS-NEEDED.
 Load-bearing findings (6 HIGH + 6 MED + 6 LOW). Full findings folded
 in §9 Audit trail above + this revision.
 **Result:** author fold (Pass 3).
 
 ### Pass 3 — 2026-07-08 — author fold (this revision)
+
 - H1-H6 folded inline (§2, §4.2, §4.5, §5.1, §5.4a/b/c, §5.5).
 - MED/LOW folded inline (link-summary format §4.2, empty separator row §4.5,
   wave-sequencing constraint §5.5, per-repo delta table §5.4c).
@@ -804,9 +808,11 @@ in §9 Audit trail above + this revision.
 **Result:** hand off to Pass 4 (fresh-context independent re-review).
 
 ### Pass 4 — 2026-07-08 — independent (fresh-context code-reviewer agent)
+
 Verdict: REVISIONS-NEEDED.
 
 **Load-bearing findings** (6 HIGH + 5 MED + 3 LOW). Full findings:
+
 - **F#1 HIGH audit-error-business-handoff:** business has `docs/SESSION_HANDOFF.md`
   (7885 bytes, existing) — §2 originally missed it. Same class of failure
   H1 addressed for iplanic.
@@ -877,6 +883,7 @@ citations introduced by fold.
 final cycle per OPS-0066 3-cycle circuit-breaker).
 
 ### Pass 6 — 2026-07-08 — independent (fresh-context code-reviewer agent) — FINAL PASS PER OPS-0066
+
 Verdict: APPROVED.
 
 Verified all P4 F#1-F#15 resolutions RESOLVED on disk. Spot-checked 7

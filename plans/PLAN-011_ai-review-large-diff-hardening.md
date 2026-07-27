@@ -252,7 +252,7 @@ tests. A throwaway consumer PR at the tagged ref would exercise it post-`ci/v2.1
 | 18  | `set_label` cycles only `ai:review-passed`/`ai:review-changes`                    | `for l in ai:review-passed ai:review-changes` | .github/workflows/ai-review.yml:637 |
 | 19  | Gate step is `success()`-gated (`if: SKIP_REVIEW != '1'`), skipped on prior fail | `Gate · comment · label · merge`    | .github/workflows/ai-review.yml:606   |
 | 20  | `ai:review-passed`/`ai:review-changes` are the two verdict-outcome state labels | `ai:review-passed`                  | install/templates/labels.json:3       |
-| 21  | a PR touching `.github/**` is governance-locked (human-merge)                    | `(^|/)\.github/`                     | .github/workflows/ai-review.yml:530   |
+| 21  | a PR touching `.github/**` is governance-locked (human-merge)                    | `(^\|/)\.github/`                     | .github/workflows/ai-review.yml:530   |
 | 22  | verdict `--timeout` defaults to 600 (client), no `--timeout` passed by ai-review | `default=600`                       | scripts/litellm_client.py:202         |
 | 23  | each attempt is capped at `timeout / 3` (~200s at default)                       | `timeout / 3`                       | scripts/litellm_client.py:104         |
 | 24  | only HTTP 429/5xx are retryable; a 400 fails immediately (non-retryable)         | `429 or 500 <= exc.code`            | scripts/litellm_client.py:124         |

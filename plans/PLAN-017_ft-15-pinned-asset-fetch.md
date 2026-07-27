@@ -66,7 +66,7 @@ Its `sync` job checks out the **caller** repo with no `repository:` override
 sufficient, because that pattern rejects the commented-SHA pin form §5 requires.
 Extend on the same line, **keyed to the workflow filename**, e.g.
 
-```
+```text
 docs-sync\.yml@(?:[0-9a-f]{40} +# +)?ci/v[0-9]+\.[0-9]+\.[0-9]+
 ```
 

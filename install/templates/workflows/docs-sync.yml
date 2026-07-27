@@ -32,14 +32,21 @@ on:
 permissions:
   contents: read
   # `write`, not `read`: in DRY-RUN the reusable posts its proposed edits as a PR
-  # comment (`gh pr comment`), which needs `pull-requests: write`. A callee cannot
-  # grant its own permissions — the caller must. With `read` the job fails 403
-  # exactly when it has something to report, and is green only when idle.
+  # comment (`gh pr comment`), which needs `pull-requests: write`. The effective
+  # token is the INTERSECTION of this grant and the reusable's own `permissions:`
+  # block, so BOTH halves must say `write` — raising only one is inert. (The
+  # callee half was capped at `read` until the CI-0015 fix; a caller re-pinned to
+  # a tag older than that stays broken no matter what it grants.) With `read` the
+  # job fails 403 exactly when it has something to report, and is green only
+  # when idle.
   pull-requests: write
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v2.10.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/docs-sync.yml@ci/v2.15.0
     with:
       runner_labels: '["self-hosted", "ci-runner", "single-use"]'
-    secrets: inherit  # pragma: allowlist secret
+    # Explicit map (FT-27 least-privilege) — exactly the secrets the reusable declares.
+    secrets:
+      AIDOC_FLOW_BOT_ID: ${{ secrets.AIDOC_FLOW_BOT_ID }}
+      AIDOC_FLOW_BOT_KEY: ${{ secrets.AIDOC_FLOW_BOT_KEY }}

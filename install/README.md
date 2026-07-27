@@ -35,7 +35,7 @@ runners):
 
 | Tool | Why |
 |---|---|
-| **`bash` ≥ 4.0** | The canon `scripts/pre_push_check.sh` this installs uses `mapfile` (bash 4+). macOS ships bash 3.2 — `brew install bash`, or skip installing the pre-push hook. |
+| **`bash` ≥ 4.0** | `install.sh` **itself** uses `mapfile` (bash 4+), so bash ≥ 4 is required to run it — not avoidable by skipping the pre-push hook. macOS ships bash 3.2: `brew install bash` and run install.sh with that bash (e.g. `/opt/homebrew/bin/bash install.sh …`). install.sh guards this up front with an actionable error (FT-50). |
 | **`gh`** (authenticated, write on the target repo) | clones the consumer + creates labels |
 | **`git`** + **`curl`** | clone + template fetch |
 | **`python3`** | **always** — used for canonical-label creation (stdlib only) and, when present, the `.pre-commit-config.yaml` merge |
@@ -44,11 +44,11 @@ runners):
 ## Run it
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.10.0/install/install.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.15.0/install/install.sh) \
   vladm3105/<consumer-repo> --visibility private
 
 # Or override the tag explicitly:
-CI_TAG=ci/v2.10.0 bash install.sh vladm3105/<consumer-repo> --visibility public
+CI_TAG=ci/v2.15.0 bash install.sh vladm3105/<consumer-repo> --visibility public
 ```
 
 The pinned tag is resolved as **`CI_TAG` env > repo-root `VERSION` file
@@ -71,7 +71,7 @@ templates as they are fetched.
 | `--canon-ci-url <url>` | the `CLAUDE.md` link to this CI canon repo | `../aidoc-flow-ci` |
 
 ```bash
-CI_TAG=ci/v2.10.0 bash install.sh acme/their-repo --visibility private \
+CI_TAG=ci/v2.15.0 bash install.sh acme/their-repo --visibility private \
   --codeowner acme-bot \
   --canon-operations-url https://github.com/acme/ops-canon \
   --canon-ci-url https://github.com/acme/ci-canon
@@ -104,8 +104,14 @@ Full walkthrough: [`../docs/UPDATE_GUIDE.md`](../docs/UPDATE_GUIDE.md).
 1. **Clones** the consumer repo to `$PWD/aidoc-flow-ci-bootstrap-$$/consumer`
    (stable; not auto-deleted — inspect + commit after the script exits).
 2. **Drops the default callers** `.github/workflows/ai-review.yml` +
-   `composition.yml` (per-visibility templates). Preserves any existing
-   local files.
+   `composition.yml` + `pre-commit.yml`. Preserves any existing local
+   files. Template naming is **not** one convention — `ai-review` has no
+   per-visibility variants, `composition` suffixes both, and `pre-commit`'s
+   *public* variant is the bare name (see `../docs/REPO_STANDARDS.md`
+   §16.9). `pre-commit.yml` is bootstrapped **unconditionally**, regardless
+   of `--tier`: it emits `call / Lint / format / security hooks`, which is a
+   required status check on every tier that has required checks at all, and
+   is the bootstrap tier's only one.
 3. **Drops `.github/ai-review/config.json`** (the per-repo policy).
    Preserves existing.
 4. **Drops `.github/CODEOWNERS`** (owner routes substituted with
@@ -121,6 +127,25 @@ Full walkthrough: [`../docs/UPDATE_GUIDE.md`](../docs/UPDATE_GUIDE.md).
    `.pre-commit-config.yaml` idempotently (via a `# CANON:` marker). The
    merge needs `ruamel.yaml` or `pyyaml` (see Prerequisites) and upgrades
    `default_install_hook_types` to include `pre-push`.
+
+   The marker is **versioned** (`# CANON: … vN`, PLAN-018 FT-32). Bootstrap
+   re-merges when a consumer's `vN` is older than canon's, then stamps
+   canon's — so a fragment change reaches already-adopted repos, and the run
+   after that no-ops. Three things an operator should expect:
+
+   - **Full bootstrap only.** `--update` returns before this step, so it
+     never refreshes the hook block; `--repin` is version-only. Re-run
+     `install.sh <owner/repo>` to pick up a fragment change.
+   - **Additive only.** New repo entries and new hook ids in canon's `local`
+     block are delivered. A `rev` bump — or a new hook id inside a repo the
+     consumer already declares — is reported as a `WARN` and left unapplied,
+     so a consumer's `pre_push_check_<repo>.sh` wrapper entry and their
+     pinned revs are never clobbered. A partial merge says so on stdout and
+     still stamps the marker; resolve the named lines by hand.
+   - **The whole file is rewritten**, not appended to — the merge round-trips
+     the YAML, so a refresh PR shows re-indentation beyond the added lines.
+     Install `ruamel.yaml` first (see Prerequisites): under the `pyyaml`
+     fallback the round-trip **strips the consumer's comments**.
 7. **Creates the 18 canonical labels** via `gh label create` (idempotent +
    fail-loud — prefetches existing labels, exits nonzero on real
    failures): 7 state/control (`ai:review-passed`, `ai:review-changes`,
@@ -134,7 +159,7 @@ Full walkthrough: [`../docs/UPDATE_GUIDE.md`](../docs/UPDATE_GUIDE.md).
 
 The additional caller templates that ship in `install/templates/workflows/`
 (`labeler.yml`, `codeql.yml`, `markdown-lint.yml`, `links.yml`,
-`secret-scan.yml`, `pre-commit.yml`, `docs-sync.yml`, `doc-maintainer.yml`,
+`secret-scan.yml`, `docs-sync.yml`, `doc-maintainer.yml`,
 `auto-merge-ai-prs.yml`) are **not** bootstrapped automatically — the consumer
 chooses which to adopt per
 [`../docs/WORKFLOWS.md`](../docs/WORKFLOWS.md) §4 adoption sequencing.
@@ -170,7 +195,7 @@ discovered during framework Phase A):
 
 | Setting | Why | Doc |
 |---|---|---|
-| **Actions allowlist** | If the consumer is in `selected actions` mode, `vladm3105/aidoc-flow-ci/*` must be in `patterns_allowed` or the reusable returns `startup_failure` | [`../docs/troubleshooting.md` §13](../docs/troubleshooting.md) |
+| **Actions allowlist** | If the consumer is in `selected actions` mode, `patterns_allowed` must admit canon — `vladm3105/*` (canonical) or the older `vladm3105/aidoc-flow-ci/*` — or the reusable returns `startup_failure` | [`../docs/troubleshooting.md` §13](../docs/troubleshooting.md) |
 | **Caller `permissions:` block** | If the consumer's repo-default `workflow_permissions: read`, the reusable's `contents: write` is rejected — add an explicit `permissions:` block to the caller | [`../docs/troubleshooting.md` §14](../docs/troubleshooting.md) |
 | **LiteLLM secrets** (ci/v2.0.0) | `LITELLM_BASE_URL` + `LITELLM_REVIEW_API_KEY` are required for the ai-review gate to connect to the LiteLLM proxy. `LITELLM_DOC_API_KEY` is required for doc-maintainer (optional). Set per-repo or at org level. | [`../docs/REVIEWER_APP_ONBOARDING.md`](../docs/REVIEWER_APP_ONBOARDING.md), [`../docs/MIGRATION_v2.0.0.md`](../docs/MIGRATION_v2.0.0.md) |
 

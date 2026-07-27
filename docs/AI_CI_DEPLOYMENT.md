@@ -22,7 +22,7 @@ secrets), [`runners.md`](runners.md) (self-hosted pools),
 
 ## 0. TL;DR — the deployment in one screen
 
-```
+```text
 1. PREFLIGHT   →  determine visibility; verify runner pool (private), reviewer
                   App + secrets + bot-id var, labels, allowed-actions policy.
                   Some items are 🔴 FOUNDER-ONLY — you cannot do them.
@@ -78,6 +78,7 @@ Do NOT trust a stale doc's visibility column — always re-check with `gh`.
 ```bash
 gh api repos/<owner/repo>/actions/runners --jq '.runners[]|{name,status,labels:[.labels[].name]}'
 ```
+
 Expect an online runner with labels `self-hosted,ci-runner,single-use`. If none:
 **do not fall back to `ubuntu-latest`** — a private caller left on
 `ubuntu-latest` or the placeholder `runner-self` queues forever.
@@ -133,9 +134,11 @@ gh variable list -R <owner/repo> | grep APP_REVIEWER_1_BOT_ID
 - **`APP_REVIEWER_1_BOT_ID` variable → 🟢 you set it.** It's the App's bot-user
   id and is **App-global** (same on every repo): **`294948438`**. Set it
   directly — no need to wait for the first review to capture it:
+
   ```bash
   gh variable set APP_REVIEWER_1_BOT_ID -R <owner/repo> --body "294948438"
   ```
+
   Without it, `composition` runs **INERT** (passes without enforcing).
 - **Trust allowlist:** the repo's PRs are only auto-reviewed if the PR author is
   in `operations@main` `.github/ai-review/config.json` `trust.ai_review`
@@ -153,6 +156,7 @@ gh label create ai:human-review-required -R <owner/repo> --color fbca04 --force
 gh label create skip-ai-review           -R <owner/repo> --color ededed --force
 gh label create skip-audit-trail         -R <owner/repo> --color d876e3 --force
 ```
+
 Plus the diff-class / path labels your `.github/labeler.yml` references
 (`labeler` does NOT create labels). Canonical specs:
 `install/templates/labels.json`.
@@ -163,7 +167,10 @@ Plus the diff-class / path labels your `.github/labeler.yml` references
 gh api repos/<owner/repo>/actions/permissions/selected-actions \
   --jq '{patterns_allowed, verified_allowed, github_owned_allowed}'
 ```
-Should allow `vladm3105/aidoc-flow-ci/*`, `actions/*`, `github/*` (+ verified).
+
+Should allow `vladm3105/*`, `actions/*`, `github/*` — and `verified_allowed`
+**false** (CI-0011: the founder's own account replaces the verified marketplace
+as the sole non-GitHub-owned allowance).
 This is why the reusables install tools as **binaries/npm**, never third-party
 marketplace actions (see §5). If a repo's policy is stricter, a caller that
 pulls a blocked action will `startup_failure` silently.
@@ -218,9 +225,13 @@ before arming checks that would block every future PR.
 For each workflow, per PR:
 
 1. **Branch first** (never commit to `main` directly).
-2. Copy the caller from `install/templates/workflows/<name>-{public,private}.yml`
-   (or the single template for `pre-commit`/`markdown-lint`/`links`/`labeler`/
-   `doc-maintainer`) to `.github/workflows/<name>.yml`.
+2. Copy the caller to `.github/workflows/<name>.yml`. **On a private repo use the
+   `-private.yml` variant** — `pre-commit`/`markdown-lint`/`links`/`labeler`/
+   `secret-scan`/`standards-drift` each ship `install/templates/workflows/<name>-private.yml`
+   (the bare-name `<name>.yml` is the PUBLIC template — `ubuntu-latest`/no labels,
+   which queues forever on a private repo's self-hosted pool, the FT-9 brick).
+   Only `doc-maintainer` (and the PLAN-013-unified `ai-review`) is genuinely
+   single-template.
 3. **Pin the tag** to the current `ci/vX.Y.Z`; for a PRIVATE repo add
    `runner_labels: '["self-hosted", "ci-runner", "single-use"]'` under `with:`.
 4. Add the repo-specific config file(s) (§4).
@@ -258,6 +269,21 @@ re-applies the template body and clobbers `runner_labels`/permissions/triggers
 
 Every one of these cost real debugging time. They are load-bearing.
 
+0. **⚠️ CI-0011: re-pinning to `ci/v2.14.0`+ produces expected `standards-drift`
+   warnings until the repo's Actions settings are applied.** `ci/v2.13.0` narrowed
+   the canon template (`verified_allowed: false`, `patterns_allowed` →
+   `vladm3105/*`). Those are **template values, applied per-repo** — so a consumer
+   that re-pins without applying them reports
+   `actions.selected.verified_allowed` and `actions.selected.patterns_allowed:
+   MISSING`. **Nothing is broken**: the repo's live pattern is *narrower* than
+   canon's, so every canon reusable it calls is still admitted; the "BLOCKED at
+   run-init" wording applies only to a hypothetical action under another
+   `vladm3105/` repo. `strict` defaults to `false`, so it **warns and exits 0** —
+   only a gate passing `strict: true` would newly fail. Apply the settings
+   alongside the re-pin and it is a non-event. **Scan the target's `uses:` first**,
+   and never blanket-apply: `web-site` and `knowledge-rag` call verified-creator
+   actions admitted today only by `verified_allowed: true`. Full procedure:
+   `docs/UPDATE_GUIDE.md`; decision: `DECISIONS.md` CI-0011.
 1. **Private repos = self-hosted ONLY.** Never `ubuntu-latest` on a private
    repo. `runner-self` is a placeholder, not a registered label — a caller left
    on it queues forever.
@@ -285,10 +311,13 @@ Every one of these cost real debugging time. They are load-bearing.
    `DavidAnson/markdownlint-cli2-action` are additionally published by
    **non-verified** creators, so they are blocked at run-init → silent
    `startup_failure` (the error is web-UI-only; `actionlint` does NOT catch
-   it). This is not a universal rule about third-party actions: the deployed
-   allowlist sets `verified_allowed: true`, so a verified creator's action IS
-   admitted and would fail later and loudly, if at all. The reusables already
-   install binaries/npm — you don't touch this, but know the failure signature.
+   it). Since FT-46 / CI-0011 the deployed allowlist sets `verified_allowed:
+   false`, so a verified creator's action is **also** blocked unless it matches
+   `patterns_allowed` (`vladm3105/*`, `actions/*`, `github/*`). Note the deployed
+   boundary is deliberately a little **wider** than the canon authoring rule above
+   — the owner's whole account versus canon's single repo; do not infer one from
+   the other. The reusables already install
+   binaries/npm — you don't touch this, but know the failure signature.
    `continue-on-error` is ILLEGAL on a reusable-call job — for report-only, use
    the reusable's `fail-on-findings: false` input, not `continue-on-error`.
 7. **`links`: cross-repo `../sibling/` links break in single-repo CI.** They
@@ -297,7 +326,7 @@ Every one of these cost real debugging time. They are load-bearing.
    `business/…`/`operations/…` paths, add sibling excludes to `.lychee.toml`
    (`exclude = ["/business/", "/operations/", …]`). Also base the config on the
    canonical template — a hand-written one that omits `accept = ["200","206","429"]`
-   + host excludes will flake on the weekly external run, and the `include_fragments`
+   - host excludes will flake on the weekly external run, and the `include_fragments`
    key is INVALID in lychee 0.24.2 (fatal TOML parse error — fixed in the
    template `ci/v1.9.5`).
 8. **`markdown-lint`: NEVER clobber an existing `.markdownlint.json`.** If the
@@ -347,6 +376,7 @@ Every one of these cost real debugging time. They are load-bearing.
     branch protection includes `call / Lint / format / security hooks` as a
     required check. Even a docs-only or design-spec repo needs a minimal
     pre-commit config to satisfy it. A valid bare-minimum config:
+
     ```yaml
     repos:
       - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -357,6 +387,7 @@ Every one of these cost real debugging time. They are load-bearing.
           - id: end-of-file-fixer
           - id: trailing-whitespace
     ```
+
     If a repo genuinely has no checkable files, remove the check from branch
     protection rather than carrying a hollow pre-commit config.
 
@@ -372,10 +403,12 @@ After ai-review + composition are on `main`:
    - `call / ai-review` → **SUCCESS** (you'll often see a stale `CANCELLED` +
      a `SUCCESS` — the SUCCESS is the real one).
    - An **APPROVED review by `aidoc-reviewer[bot]`** (id `294948438`):
+
      ```bash
      gh api repos/<owner/repo>/pulls/<pr>/reviews \
        --jq '.[]|select(.user.type=="Bot")|{login:.user.login,id:.user.id,state:.state}'
      ```
+
    - `ai:review-passed` label applied.
    - `call / composition` → **SUCCESS** (fires on the App's review + on
      ai-review's `workflow_run`).
@@ -397,6 +430,7 @@ gh api -X PATCH repos/<owner/repo>/branches/main/protection/required_status_chec
   -f 'contexts[]=call / ai-review' -f 'contexts[]=call / composition' \
   -f 'contexts[]=call / verify'  # audit-trail
 ```
+
 (Or edit the full protection payload — see `install/templates/branch-protection-*.json`
 per tier.) Arming is a hard-to-reverse, blast-radius change — confirm with the
 human before arming a repo you don't own.
