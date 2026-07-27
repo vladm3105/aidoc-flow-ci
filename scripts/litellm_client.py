@@ -44,11 +44,60 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
+
+
+def in_container() -> bool:
+    """Best-effort detection that this process runs inside a container.
+
+    Used only to sharpen an error message, never to gate behaviour, so a false
+    negative just restores the previous (vaguer) diagnostics.
+    """
+    if os.environ.get("LITELLM_ASSUME_CONTAINER", "").lower() == "true":
+        return True
+    # Probe the filesystem markers BEFORE reading /proc: on a hardened or Podman
+    # runner /proc/self/cgroup can be masked, and an OSError there must not
+    # discard the /run/.containerenv signal via short-circuit evaluation.
+    if Path("/.dockerenv").exists() or Path("/run/.containerenv").exists():
+        return True
+    try:
+        return "docker" in Path("/proc/self/cgroup").read_text()
+    except OSError:
+        return False
+
+
+def loopback_hint(base_url: str) -> str:
+    """Name the bridge-vs-loopback mistake instead of surfacing a bare URLError.
+
+    Jobs run inside an ephemeral single-use container, so loopback resolves to
+    the container itself, not the host running the proxy. This URL works when
+    tested from the host and fails only in CI, which is what makes it expensive
+    to diagnose. (CI-0017.)
+    """
+    host = urllib.parse.urlsplit(base_url).hostname
+    if host in LOOPBACK_HOSTS and in_container():
+        return (
+            f" — LITELLM_BASE_URL points at loopback ({host}) while running INSIDE a"
+            " container, so it resolves to the container itself, not the host running"
+            " the proxy. Use the Docker bridge gateway instead (default"
+            " http://172.17.0.1:4001/v1). This URL works when tested from the host and"
+            " fails only in CI. See docs/MIGRATION_v2.0.0.md §1."
+        )
+    return ""
+
+
 def endpoint(base_url: str) -> str:
     parsed = urllib.parse.urlsplit(base_url)
     allow_http = os.environ.get("LITELLM_ALLOW_INSECURE_HTTP", "").lower() == "true"
     if parsed.scheme not in ({"https", "http"} if allow_http else {"https"}):
-        fail("LITELLM_BASE_URL must use HTTPS (or explicitly allow HTTP)")
+        fail(
+            "LITELLM_BASE_URL must use HTTPS (or explicitly allow HTTP). If your proxy"
+            " is reached over http:// — which is the case for every consumer on the"
+            " shared self-hosted pool, since the Docker bridge gateway is plain HTTP on"
+            " a private network — set `litellm_allow_insecure_http: true` on the"
+            " caller. This is determined by the URL SCHEME, not by repo visibility:"
+            " public repos need it too. See docs/MIGRATION_v2.0.0.md §1. (CI-0017.)"
+        )
     if not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
         fail("LITELLM_BASE_URL contains a forbidden or missing URL component")
     value = base_url.rstrip("/")
@@ -144,7 +193,8 @@ def completion(
                 fail(f"proxy returned HTTP {exc.code}")
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError, IndexError, TypeError, ResponseShapeError) as exc:
             if attempt == 3:
-                fail(f"proxy request failed after 3 attempts: {type(exc).__name__}")
+                hint = loopback_hint(base_url) if isinstance(exc, (urllib.error.URLError, TimeoutError)) else ""
+                fail(f"proxy request failed after 3 attempts: {type(exc).__name__}{hint}")
         delay = attempt * 2
         if time.monotonic() + delay >= deadline:
             fail(f"proxy request timed out after {timeout} seconds")

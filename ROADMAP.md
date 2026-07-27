@@ -8,17 +8,45 @@ deferred items belong in `plans/` or `HANDOFF.md` open threads.
 
 ---
 
+## Current release — ci/v2.10.0: FT-15 pinned-asset-fetch fix (PLAN-017; prep merged, tag + pilot verification remaining)
+
+The adopted `@ci/vX.Y.Z` pin now actually controls the assets each affected
+reusable fetches. FT-15 was **confirmed live** 2026-07-21: a consumer pinned
+`@ci/v2.0.1` logged `fetching assets from vladm3105/aidoc-flow-ci@refs/heads/main`,
+because inside a `workflow_call` reusable `github.workflow_ref` is the CALLER's
+ref (and its first path segment the CALLER's owner, so external adopters 404'd).
+Fixed one reviewed PR per reusable — `docs-sync` (#236), `doc-maintainer` (#237),
+`ai-review` (#238) — each resolving the tag from the consumer's own adopted pin
+with the canon owner hardcoded, failing loud rather than falling back to `main`.
+Consumers must **re-pin** to get the fix; pre-release pins are now unsupported.
+Rule: `docs/REPO_STANDARDS.md` §4.2a. Remaining: 🔴 pilot consumer re-pin to
+verify live (`plans/ROLLOUT_plan017-verify.md`), then FT-22 (`standards-drift`
+resolver parity) and FT-23 (canon self-adoption so these reusables can
+self-verify).
+
+## Previous release — ci/v2.9.0: runner canon templates (PLAN-016)
+
+`install/templates/runner/` brings the runner reference implementation into
+canon (CI-0012): image spec with `libatomic1`, single-use supervisor with the
+`@RUNNER_HOME@` placeholder unit, provision-runner as sole installer, docker
+dependabot watch. PR 1 merged (#227); W3 operations vendored re-baseline
+merged (operations #277, founder-delegated review); pre-tag ci-preprod-review
+2026-07-20 → SHIP-WITH-FIXES → fixes merged (#230); release prep merged
+(VERSION → ci/v2.9.0, refs synced). Remaining: 🔴 founder tag execution,
+operations re-stamp to the tag, host image rebuild, FT-19 decision; then the
+FT-19/FT-20 hardening deferrals on their own track.
+
 ## Current phase — v2.8.0 shipped (PLAN-015 pre-prod fix closure); founder-gated rollout
 
 `ci/v2.8.0` is the Latest release (2026-07-19). It closes the 5-lens pre-prod
 review's two blockers — **B1** (fleet rollout target reconciled to one tag) and
 **B2** (a consumer-installable `standards-drift` detector + `install.sh
 --verify-standards` that honestly reports server-side state instead of a silent
-reminder) — plus the M/L follow-ups (decision-log closure incl. the OPEN CI-0011
+reminder) — plus the M/L follow-ups (decision-log closure incl. CI-0011
 `verified_allowed`; script hygiene; install ergonomics; doc-count accuracy).
 PRs #209–#218. Remaining PLAN-015 work is 🔴 founder-gated + prepared:
-`plans/ROLLOUT_plan015-arming.md` (per-repo re-pin + arm + install standards-drift)
-and the CI-0011 decision. READ `HANDOFF.md` for live state.
+`plans/ROLLOUT_plan015-arming.md` (per-repo re-pin + arm + install standards-drift).
+CI-0011 is now DECIDED (2026-07-24). READ `HANDOFF.md` for live state.
 
 _Prior — `ci/v2.7.0`:_ On top of the uniform protected AI-flow model
 (`ci/v2.2.0`, PLAN-013) and the ai-review autofix flow (`ci/v2.3.0`, PLAN-012), the
@@ -40,7 +68,7 @@ the still-open autofix-App enablement + fleet re-pin. READ `HANDOFF.md` for live
 | ai-review large-diff hardening (PLAN-011: `max_tokens` budget + honest `ai:review-infra-error` signal) | DONE — shipped in `ci/v2.1.1` (`max_tokens` 4096→8192) + `ci/v2.1.2` (→24576) |
 | PLAN-015 pre-prod review fix closure (B1 target reconcile + B2 drift-detector/install-verify + M/L) | SHIPPED — `ci/v2.8.0` (2026-07-19, PRs #209–#218) |
 | Fleet re-pin to `ci/v2.8.0` + arm + install `standards-drift` (PLAN-015 Task 8) | 🔴 Founder — **unblocked** (v2.8.0 cut); runbook `plans/ROLLOUT_plan015-arming.md`. NOT a drop-in — public repos need pools |
-| `verified_allowed` supply-chain boundary (CI-0011) | 🔴 Founder — OPEN decision (keep vs narrow) |
+| `verified_allowed` supply-chain boundary (CI-0011) | ✅ DECIDED 2026-07-24 — narrowed: verified marketplace dropped, `patterns_allowed` = own account `vladm3105/*` |
 | Server-side pre-prod blockers (composition-required on business/iplanic; branch protection on the 3 unprotected repos incl. canon) | Founder + ops/inbox (cross-repo) |
 | PLAN-007 W4 fleet branch-protection arming | Founder-gated |
 | PLAN-007 W3 docs-sync dry-run → live | Founder-gated (App provisioning or doc-maintainer supersession) |

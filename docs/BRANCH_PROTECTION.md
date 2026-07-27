@@ -16,7 +16,7 @@ reusable's job renders as **`call / <job-name>`** in the checks list:
 | `call / ai-review` | `ai-review.yml` | the AI review verdict |
 | `call / composition` | `composition.yml` | that the App's approval is COUNTED (identity gate) |
 | `call / verify` | `audit-trail.yml` → `audit-trail-check.yml` | the OPS-0069 audit-trail phrase |
-| `call / Lint / format / security hooks` | `pre-commit.yml` (adopted) | mechanical hygiene |
+| `call / Lint / format / security hooks` | `pre-commit.yml` (**bootstrapped**) | mechanical hygiene |
 | `call / gitleaks` | `secret-scan.yml` (adopted) | leaked-credential scan |
 
 `ai-review` + `composition` are a **pair** — require both, or neither
@@ -61,11 +61,11 @@ The canon branch-protection profile per tier ships as
 refuses mutable `main` canon without `--allow-main-canon`):
 
 ```bash
-CI_TAG=ci/v2.8.0 bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.8.0/install/apply-standards.sh) \
+CI_TAG=ci/v2.15.0 bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.15.0/install/apply-standards.sh) \
   --repo <owner>/<repo> --tier <governance|product|ops|umbrella|bootstrap> --apply --yes
 ```
 
-- **`CI_TAG=ci/v2.8.0`** pins which canon the script applies. Without it,
+- **`CI_TAG=ci/v2.15.0`** pins which canon the script applies. Without it,
   `apply-standards.sh` resolves the tag from the *cwd's* workflow pins and
   falls back to `main` — and `--apply` **refuses `CI_TAG=main`** (mutable
   canon), so a run from a scratch or not-yet-adopted repo would exit 2. The
@@ -95,7 +95,7 @@ gh api repos/<owner>/<repo>/branches/<branch>/protection
 # Build the full payload from the tier's canon template, then PUT it.
 # (The template is the same JSON --apply uses; edit the contexts array if
 #  you are adding call/verify after audit-trail adoption.)
-curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.8.0/install/templates/branch-protection-<tier>.json \
+curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.15.0/install/templates/branch-protection-<tier>.json \
   | gh api -X PUT repos/<owner>/<repo>/branches/<branch>/protection \
       -H "Accept: application/vnd.github+json" --input -
 ```
@@ -113,7 +113,7 @@ gh api repos/<owner>/<repo>/branches/<branch>/protection \
   --jq '.required_status_checks.contexts'
 
 # Full drift vs canon for the tier (CI_TAG pins the canon compared against):
-CI_TAG=ci/v2.8.0 bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.8.0/install/apply-standards.sh) \
+CI_TAG=ci/v2.15.0 bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v2.15.0/install/apply-standards.sh) \
   --repo <owner>/<repo> --tier <tier> --check
 ```
 

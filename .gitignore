@@ -5,6 +5,11 @@
 # Private-repo metadata; keep out of git.
 install/backups/
 
+# install.sh bootstrap scratch — a throwaway consumer clone per run
+# (aidoc-flow-ci-bootstrap-<pid>/consumer). Regenerable by re-running
+# install.sh at the pinned CI_TAG; never commit it.
+aidoc-flow-ci-bootstrap-*/
+
 # --- aidoc-flow-ci canon baseline (PLAN-002 §10.1) ---
 .claude/
 .review/

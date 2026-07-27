@@ -30,7 +30,7 @@ For the broader architecture, see
 | Rebase conflict on shared CHANGELOG.md | [§12 CHANGELOG rebase conflicts](#12-changelog-rebase-conflicts-on-stacked-prs) |
 | Reusable workflow `startup_failure` (no logs, empty jobs) | [§13 Actions allowlist blocks reusable](#13-startup_failure--reusable-workflow-blocked-by-consumers-actions-allowlist) |
 | Reusable workflow `startup_failure` after §13 fix | [§14 Caller workflow_permissions blocks reusable](#14-startup_failure--callers-workflow_permissions-read-blocks-reusables-write) |
-| Stuck check on latest commit (no new push to retrigger) | [§15 Label-cycle retrigger](#15-stuck-check--label-cycle-retrigger) |
+| Stuck check on latest commit (no new push to retrigger) | [§15 Label-cycle retrigger](#15-stuck-check--label-cycle-retrigger--r3-force-fresh-path-civ130) |
 
 ## 1. Composition pre-ai-review race
 
@@ -150,10 +150,10 @@ the actual cause surfaced.
 **Fix:**
 
 - **Self-hosted runners:** rebuild the runner image with `gh`
-  baked in. See operations'
-  [`scripts/ci-runner/Dockerfile`](https://github.com/vladm3105/aidoc-flow-operations/blob/main/scripts/ci-runner/Dockerfile)
+  baked in. See the canon
+  [`install/templates/runner/Dockerfile`](../install/templates/runner/Dockerfile)
   for the reference (installs `gh` from GitHub's official APT
-  repo atop `actions-runner:latest`).
+  repo atop the digest-pinned `actions-runner` image).
 - **GitHub-hosted runners** (`ubuntu-latest`): `gh` is
   pre-installed; this error shouldn't occur there.
 
@@ -382,11 +382,10 @@ the `patterns_allowed` list, so GitHub blocks them at workflow-load
 time.
 
 Note the selected-actions fields are **additive**: an action is admitted if it
-is GitHub-owned, OR published by a verified creator, OR matches
-`patterns_allowed`. So this `startup_failure` means the action matched **none**
-of the three — it is not evidence that "third-party actions are blocked" in
-general. A verified creator's action is admitted by canon's own settings and
-fails (if at all) later and loudly. See REPO_STANDARDS §4.3.
+is GitHub-owned OR matches `patterns_allowed`. Canon's template sets
+`verified_allowed: false` (FT-46), so a verified creator's action is **not**
+auto-admitted either — this `startup_failure` means the action matched neither
+github-owned nor the three patterns. See REPO_STANDARDS §4.3.
 
 **Diagnose:**
 
@@ -394,7 +393,8 @@ fails (if at all) later and loudly. See REPO_STANDARDS §4.3.
 gh api repos/<owner>/<consumer-repo>/actions/permissions
 # If allowed_actions == "selected":
 gh api repos/<owner>/<consumer-repo>/actions/permissions/selected-actions
-# patterns_allowed should include "vladm3105/aidoc-flow-ci/*"
+# patterns_allowed should include "vladm3105/*" (CI-0011 account-wide;
+# the older repo-scoped "vladm3105/aidoc-flow-ci/*" also admits the reusables)
 ```
 
 **Fix:**
@@ -403,20 +403,20 @@ gh api repos/<owner>/<consumer-repo>/actions/permissions/selected-actions
 gh api repos/<owner>/<consumer-repo>/actions/permissions/selected-actions \
   -X PUT \
   -F github_owned_allowed=true \
-  -F verified_allowed=true \
-  -f "patterns_allowed[]=vladm3105/aidoc-flow-ci/*" \
+  -F verified_allowed=false \
+  -f "patterns_allowed[]=vladm3105/*" \
   -f "patterns_allowed[]=actions/*" \
   -f "patterns_allowed[]=github/*"
 # (To preserve any other existing patterns_allowed entries, fetch them first + merge.)
 ```
 
 This payload matches `install/templates/actions-permissions.json` exactly —
-including `verified_allowed: true`. **Do not set `verified_allowed=false` here**
-(as this runbook did until 2026-07-16): it drifts the repo off the canon
-template, which `apply-standards.sh --check` and `check-standards-drift.sh` will
-then report as drift. If narrowing the fleet's supply-chain boundary to the
-three patterns is wanted, that is a canon decision to take in
-`actions-permissions.json`, not a side effect of unblocking one repo.
+including `verified_allowed: false` (FT-46 narrowed the fleet's supply-chain
+boundary to the three patterns; canon decided it in `actions-permissions.json`).
+**Do not set `verified_allowed=true` here** — it re-widens the repo to every
+GitHub-verified creator and drifts it off the canon template, which
+`apply-standards.sh --check` and `check-standards-drift.sh` will then report as
+drift.
 
 After the change, re-trigger the workflow via label cycle (add then
 remove `skip-ai-review`) — `gh run rerun` does NOT work for
@@ -432,7 +432,7 @@ is when this failure mode surfaces.
 
 **Symptom:** Consumer's `ai-review` or `composition` fires but
 fails with `startup_failure`. Run logs are unavailable; jobs array
-is empty. Allowlist (§13) already includes `vladm3105/aidoc-flow-ci/*`.
+is empty. Allowlist (§13) already admits canon via `vladm3105/*`.
 
 **Cause:** Consumer's repo-default workflow permissions are
 `read`. The reusable `ai-review.yml` declares `contents: write` +
@@ -493,6 +493,25 @@ by default (would surprise consumers who don't need it); document
 the requirement so consumers can add it when they hit this.
 
 ## 15. Stuck check — label-cycle retrigger (+ R3 force-fresh path, ci/v1.3.0+)
+
+> ⚠️ **A label cycle does NOT clear a `cancelled` or `failure` required check —
+> it makes it worse.** Settled empirically (#330):
+>
+> | Action | Effect on the head SHA |
+> |---|---|
+> | **Re-run that specific run** (`gh run rerun <id>`) | **Replaces** the check-run — the old conclusion is gone. This is what clears a stuck check. |
+> | **New push** | New head SHA, evaluated fresh. |
+> | **Label cycle** (this section) | Starts a **separate** run, which **adds a second check-run alongside** the stuck one. Both are retained and the rollup keeps the worst. |
+>
+> Measured: re-running one run in place took `suite` from check-run `89856301834`
+> (`failure`) to `89857163070` (`success`) with **one** check-run left on the SHA;
+> two separate runs on `aidoc-flow-framework` #346 left **two** `call / ai-review`
+> check-runs (`cancelled` + `success`) and a `FAILURE` rollup. During the CI-0025
+> incident one label cycle took a PR from one cancelled run to two.
+>
+> **Use this section only when the context never REPORTED** ("Expected — waiting
+> for status"), which is what it was written for. For a context that reported
+> `cancelled` or `failure`, re-run that run or push.
 
 `ai-review.yml` still listens on `pull_request_target` event types
 that include `labeled` + `unlabeled` — so a **label cycle** still
@@ -586,6 +605,11 @@ the right notice (and posts a PR comment **only** for the
 `label` case to avoid spamming label-cycles).
 
 ### When to use a label cycle
+
+> For a context that already **reported** `cancelled` or `failure`, none of the
+> rows below apply — see the warning at the top of this section. A label cycle
+> adds a second check-run alongside the stuck one rather than clearing it;
+> re-run that specific run, or push.
 
 | Scenario | Use it? |
 | --- | --- |

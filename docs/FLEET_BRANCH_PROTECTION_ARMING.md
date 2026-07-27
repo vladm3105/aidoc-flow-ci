@@ -61,12 +61,12 @@ survey below**, with one addition it predates:
   still require the phantom bare `Lint / format / security hooks`** (not
   `call / composition`) — so they merge via `--admin` with no real review gate.
   These are the pre-prod server-side BLOCKERs; they gate the *rollout*, not the
-  `ci/v2.1.0` tag (which is cut).
-- **Repin target is now `ci/v2.1.0`** (cut 2026-07-17; it fixes the
-  `composition` malformed-config bypass + the `--repin`-backwards bug). Any
-  `install.sh <repo> --repin` in this runbook should target `CI_TAG=ci/v2.1.0`.
-  A repin is version-string-only and safe; it does NOT clobber runner labels
-  (that is `--update`).
+  release tag (which is cut).
+- **Repin target is the CURRENT release tag** (`../VERSION` — do NOT hardcode an
+  old one here; this runbook drifted to `ci/v2.1.0`, ~10 releases back, FT-49). Any
+  `install.sh <repo> --repin` in this runbook should target
+  `CI_TAG=$(cat path/to/aidoc-flow-ci/VERSION)`. A repin is version-string-only and
+  safe; it does NOT clobber runner labels (that is `--update`).
 
 ## Current fleet state (survey 2026-07-12, read-only — reconfirmed 2026-07-17)
 

@@ -104,10 +104,10 @@ custom names.
 
 ## 2. Reference image — `aidoc-flow-runner:latest`
 
-> **External adopters — this is aidoc-flow-operations infrastructure.**
-> The `aidoc-flow-runner:latest` image and `scripts/ci-runner/` build live in
-> `aidoc-flow-operations`. External adopters can reproduce the generic labels
-> on their own pool. They have two paths:
+> **External adopters — the reference implementation is in this repo.**
+> The runner templates (image spec, single-use supervisor, provisioning
+> script) live at [`../install/templates/runner/`](../install/templates/runner/),
+> versioned with the `ci/vX.Y.Z` tags. Two paths:
 >
 > 1. **Use `ubuntu-latest` (recommended default for EXTERNAL adopters** — the
 >    aidoc-flow *workspace* default is self-hosted for private repos, see
@@ -115,49 +115,61 @@ custom names.
 >    dependency-free HTTP adapter is included by the reusable workflow, so no
 >    vendor CLI is needed. The runner must reach the configured LiteLLM proxy;
 >    see [`REVIEWER_APP_ONBOARDING.md`](REVIEWER_APP_ONBOARDING.md).
-> 2. **Build your own self-hosted image** only if you need self-hosted
->    (e.g., private repos with no GitHub-hosted minutes). Use the
->    operations `Dockerfile` below as a **template** — it shows exactly
->    what to bake in (see the table) — build + register your own pool with
->    the canonical `ci-runner` + `single-use` labels, and point caller
->    `runner_labels_*` inputs at that pool.
+> 2. **Copy the canon templates** if you need self-hosted (e.g., private
+>    repos with no GitHub-hosted minutes): copy
+>    [`../install/templates/runner/`](../install/templates/runner/) to your
+>    runner host, run `TARGET_REPO=owner/repo bash provision-runner.sh`, and
+>    point caller `runner_labels_*` inputs at the resulting
+>    `ci-runner` + `single-use` pool.
 
-The reference self-hosted runner image lives in
-[`aidoc-flow-operations/scripts/ci-runner/`](https://github.com/vladm3105/aidoc-flow-operations/tree/main/scripts/ci-runner)
-(`Dockerfile` + `build-image.sh`). It builds atop
-[`ghcr.io/actions/actions-runner:latest`](https://github.com/actions/runner)
-with the following baked in:
+The reference self-hosted runner image spec lives at
+[`../install/templates/runner/`](../install/templates/runner/)
+(`Dockerfile` + `build-image.sh`). It builds atop a **digest-pinned**
+[`ghcr.io/actions/actions-runner`](https://github.com/actions/runner) base
+(see the [`Dockerfile`](../install/templates/runner/Dockerfile) for the
+current pin — base-digest bumps land in canon and flow to consumers via
+re-pin) with the following baked in:
 
 | Tool | Why |
 |---|---|
 | `gh` CLI | Required by `ai-review` + `composition` workflows for `gh api` calls; **historical foot-gun** (PR #101 on operations spent ~2h debugging a "network failure" that was actually `gh: not found` in the runner image) |
+| `libatomic1` | Node-backed lint tools installed at job time (markdownlint-cli2) crash without it — second shipped instance of the same image-drift class (business #63) |
+| `ripgrep` | fast search for AI-review / doc-maintainer job scripts |
 | `python3` | Runs the dependency-free LiteLLM adapter |
 | `gh`, `jq`, `curl`, `git` | Standard CLI utilities the workflows assume |
 
-The image is rebuilt and re-tagged when those tools need an update.
-Operations' ephemeral runner supervisor pulls
-`aidoc-flow-runner:latest` per container spawn (no long-running
-warm pool — each PR run gets a fresh ephemeral container).
+The image spec is versioned here and re-tagged with the `ci/vX.Y.Z`
+releases when those tools need an update — image and workflows can no
+longer drift apart silently. The ephemeral runner supervisor
+(`run-ephemeral.sh`, same directory) runs `aidoc-flow-runner:latest`
+per container spawn (no long-running warm pool — each job gets a fresh
+ephemeral container).
 
 ## 3. Registering a self-hosted runner with the right labels
 
-### 3.1 Org-level registration (recommended)
+### 3.1 Repo-level registration (primary — aidoc-flow's model)
 
-Register self-hosted runners at the **organization level** so all
-repos in the org can use them. This is the cleanest path for a
-multi-repo workspace like aidoc-flow.
+`vladm3105` is a **personal account, not a GitHub organization**, so **org-level
+runner registration is not available** — every repo is registered individually
+(PLAN-009 records this: there is no org to inherit runners from). Register a runner
+**per repo**:
 
-1. Settings → Actions → Runners → New runner (org level)
+1. Settings → Actions → Runners → New self-hosted runner (on the consumer repo)
 2. Follow GitHub's install instructions on the runner host
 3. **Add both `ci-runner` and `single-use`** during JIT registration.
 4. The GitHub-provided `self-hosted` label remains; the complete selector is
    `[self-hosted, ci-runner, single-use]`.
 
-### 3.2 Repo-level registration (fallback)
+Each private consumer repo needs its own runner instance — the supervisor spins a
+fresh single-use container per job, so multiple repo instances coexist on one host.
 
-If org-level isn't available, register per-repo. Same label rules
-apply. Less convenient (each new consumer repo needs its own runner
-registration) but acceptable for small workspaces.
+### 3.2 Org-level registration (only under a GitHub org — not the current setup)
+
+If the workspace is ever moved under a GitHub **organization**, register runners at
+the org level so all repos share them — the cleanest path for a true multi-repo org.
+The steps mirror §3.1 (New runner at org level; same `[self-hosted, ci-runner,
+single-use]` labels). **Not available on the current personal-account setup**, so
+§3.1 is the path today.
 
 ### 3.3 Verifying the label
 
@@ -208,8 +220,9 @@ compete for the one runner.
 `ci-runner@iplanic-1 … ci-runner@iplanic-N`), sized to the **peak concurrent
 job count of a single PR (~6–8)**. GitHub distributes queued jobs round-robin
 across the matching runners. Reference supervisor + systemd template:
-[operations `scripts/ci-runner/`](https://github.com/vladm3105/aidoc-flow-operations/tree/main/scripts/ci-runner)
-(`run-ephemeral.sh`, `ci-runner@.service`). Never relieve the bottleneck by
+[`../install/templates/runner/`](../install/templates/runner/)
+(`run-ephemeral.sh`, `ci-runner@.service` — install via
+`provision-runner.sh`). Never relieve the bottleneck by
 moving private-repo jobs to `ubuntu-latest`.
 
 ### 5a. Public repos on the ephemeral self-hosted pool — the AI-flows run fully self-hosted (safe); the lint flows do NOT
@@ -258,8 +271,8 @@ or AWS-Fargate self-registered):
 1. **Register the runner pool** with the custom label
    (e.g., `runner-azure`). Must match `[a-zA-Z0-9_-]+` (no colons).
 2. **Bake the standard tools** into the image (`python3`, `gh`, `jq`, `curl`,
-   and `git`) and provide a route to LiteLLM. Use [operations'
-   `scripts/ci-runner/Dockerfile`](https://github.com/vladm3105/aidoc-flow-operations/blob/main/scripts/ci-runner/Dockerfile)
+   `git`, and `libatomic1`) and provide a route to LiteLLM. Use the canon
+   [`../install/templates/runner/Dockerfile`](../install/templates/runner/Dockerfile)
    as the reference.
 3. **Update [`../LABELS.md`](../LABELS.md) §2 table** to add the
    new label row with its capability description.
@@ -271,11 +284,16 @@ input to the new label.
 
 ## 7. Where the runner work lives
 
-- **Reference image build:**
-  [`aidoc-flow-operations/scripts/ci-runner/`](https://github.com/vladm3105/aidoc-flow-operations/tree/main/scripts/ci-runner)
-- **Ephemeral supervisor:** operations' `scripts/ci-runner/run-ephemeral.sh`
-  (out of scope for `aidoc-flow-ci` — consumer-side infra)
+- **Reference image spec + build:**
+  [`../install/templates/runner/`](../install/templates/runner/)
+  (`Dockerfile`, `build-image.sh`) — canon, versioned with `ci/vX.Y.Z`
+- **Ephemeral supervisor + provisioning:**
+  [`../install/templates/runner/`](../install/templates/runner/)
+  (`run-ephemeral.sh`, `ci-runner@.service`, `provision-runner.sh`) — canon
+  templates; deployed host state (env files, enabled units, built images,
+  registrations) stays operator-side
 - **Network monitor:** operations' `scripts/ci-runner/network-monitor.sh`
-  (host-side debugging for the api.github.com flake class)
+  (host-side debugging for the api.github.com flake class — operator
+  tooling, deliberately not templatized)
 - **Activation log:** operations' `docs/AI_REVIEW_ACTIVATION_LOG.md`
   records the runner-image rebuilds when CLI updates are needed

@@ -4,7 +4,875 @@ Live cross-session resume point for the workspace CI + governance-workflow
 canon library. Read at session start; refresh at milestones and before
 context compaction.
 
-## Current state (2026-07-19)
+## Current state (2026-07-26)
+
+> ## 🔴 THE RELEASE IS ONE FOUNDER-EXECUTED STEP FROM DONE
+>
+> `ci/v2.15.0` is **prepped and merged but NOT TAGGED**. `VERSION` on `main`
+> reads `ci/v2.15.0`; the tag does not exist. Nothing reaches a consumer until
+> it is cut.
+>
+> **The SHA to use is whatever `main` HEAD is when you run this** — the tag is
+> cut from HEAD, so that is the tree that ships. Get it with
+> `git -C <repo> rev-parse main`. Do NOT copy a SHA out of this file: it was
+> `3a4a3eaec8a72f3b52d875a49c82f4c1e7bcf30f` at the prep merge (PR #326, merged
+> with `--admin` per the documented FT-21 chicken-and-egg — founder authorized
+> 2026-07-26) and has already moved once since. A stale SHA here would validate a
+> tree that is not the one being tagged, which is the same silent-falsification
+> class as CI-0024.
+>
+> Only files `install.sh` actually fetches affect the dry-run, so a HEAD that
+> differs from the prep merely by governance edits gives an identical result —
+> but check rather than assume:
+> `git diff --name-only 3a4a3ea main -- install/`.
+>
+> **What is owed: the 🔴 FT-30 cold-start dry-run.** `install/install.sh`
+> changed (FT-57 + CI-0023), so `release.sh tag` will REFUSE without
+> `--dry-run-verified`. It is a write-to-another-repo action; the AI does not
+> run it in-session.
+>
+> ```bash
+> # 1. founder, against a throwaway repo that ALREADY EXISTS on GitHub
+> #    (install.sh clones it; it will not create it for you):
+> export CI_TAG=$(git -C /opt/data/aidoc-flow/aidoc-flow-ci rev-parse main)
+> bash <(curl -fsSL "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/install.sh") \
+>   <owner>/<throwaway-repo>
+>
+> # 2. then, back here:
+> bash scripts/release.sh tag ci/v2.15.0 --dry-run-verified
+> ```
+>
+> **`export CI_TAG=<that SHA>` is the load-bearing line.** Without it the
+> dry-run resolves `CI_TAG` from `VERSION`/the fallback and fetches templates
+> from the PREVIOUS release — validating the pre-fix files, not the ones about
+> to ship.
+>
+> Expect: the run reaches "creating canonical labels" and the final next-steps
+> block; the **backup line** prints (`==> backup: no pre-existing CI/governance
+> surfaces (fresh repo)` on an empty target — FT-57 is new, so if NEITHER backup
+> line appears the hook did not run and the gate has FAILED); next-steps names
+> the backup dir + restore command; runner-pool probe and LiteLLM-HTTP note both
+> print; no `FAIL`, no `404`. Tear down the throwaway repo after.
+>
+> **Known blind spot, stated deliberately:** a fresh repo has no dangling
+> symlinks, so this dry-run will NOT exercise CI-0023. That case is covered by
+> `tests/test_install.sh` (114 assertions, incl. a mutation case). What the
+> dry-run proves is that bootstrap completes end-to-end with the new
+> fail-closed backup step in front of every writer.
+>
+> ### What shipped into this release since the last handoff
+>
+> Two defects found by the pre-cut review itself, both fixed before the tag:
+>
+> - **CI-0023** (PR #324) — `install.sh`'s FT-57 mandatory backup was wrong on
+>   broken symlinks in BOTH directions: the `.github/` arm's bare `cp -p`
+>   dereferences, so a dangling link aborted the fail-closed backup and made
+>   `install.sh` unusable in EVERY mode incl. `--repin`; the root-list arm's
+>   `[ -e ]` also dereferences, so the same shape was silently DROPPED —
+>   fail-OPEN. Never released (FT-57 is in no tag). §21.
+> - **CI-0024** (PRs #324 + #325) — `sync-version-refs.sh` rewrote install
+>   references by shape, so `MIGRATION_v2.0.0.md`'s Rollback command (which
+>   exists to pin BACK to `ci/v1.x`) was rewritten FORWARD at every cut.
+>   **16 published tags carry it — `ci/v2.1.0` through `ci/v2.14.0`.** Ignore
+>   markers + validator + a pinned-`TARGETS` guard now exist, and the docs are
+>   corrected. §22. **The `ci/v2.15.0` prep was the first cut in 17 that left
+>   that command alone** — verified: `MIGRATION_v2.0.0.md` is absent from the
+>   prep diff.
+>
+> ### Since the release was prepped — the issue sweep (2026-07-26)
+>
+> All three open issues reviewed and fixed; **they ship in `ci/v2.15.0`** because
+> the tag was not yet cut when they merged.
+>
+> | Issue | Fix | PR |
+> |---|---|---|
+> | #322 | `ai-review` cancelled itself — its own review submission cancelled the run that posted it, stranding a `cancelled` required check on the live head SHA. Required on 3 tiers, so those PRs were `--admin`-only. **CI-0025**, §23. | #332 |
+> | #318 | The asset docs described a `sparse-checkout` delivery removed at `ci/v1.1.5`, contradicting §20. | #333 |
+> | #323 | The `sync-version-refs` pre-commit hook skipped 8 of its 14 targets locally. | #334 |
+>
+> **#322 took five review passes** (past the OPS-0066 cap of 3, each escalated
+> and authorised — see PR #332). Only the FIRST found a code defect: the initial
+> fix was a denylist that still cancelled on `reopened` / `ready_for_review` /
+> `converted_to_draft`. Every later pass found *prose* defects — a false safety
+> property asserted four times (one as a canon rule, disproved by mutation), an
+> annotation describing an `exit 1` the code does not perform, a GHES version
+> bound refuted by its own citation. The last pass recommended **cutting** rather
+> than correcting, and the cut version is what shipped.
+>
+> **The volume of explanatory prose was itself the defect surface** — each
+> correction had been an added paragraph explaining why a neighbouring claim was
+> wrong, until the `concurrency:` block was ~68 lines of comment above a one-line
+> expression. Prefer one scoped statement plus pointers. (Note: PR #332 squashed
+> using the PR body, so main's commit message says "five cycles" and carries no
+> record of the cut; this entry is that record.)
+>
+> ### Open, filed by that sweep — none blocks the tag
+>
+> | Issue | What |
+> |---|---|
+> | #329 | The same CI-0025 defect in `audit-trail` (`call / verify`) and the lint family. **Caller-template-side**, so it needs a re-install not a re-pin — hence a separate release. |
+> | ~~#330~~ | **RESOLVED** — settled by measurement: an in-place re-run *replaces* a check-run, a separate run *adds* one alongside. §15 corrected (a label cycle adds, so it cannot clear a cancelled context); §23.1 scoped to separate runs. |
+> | #331 | `ai-review`'s FT-43 guard writes a permanent non-success on the live head SHA — the §23 defect class, in the file §23 was added to. |
+>
+> Upstream, filed per CI-0020 §18: framework #341 is **CLOSED** (2026-07-26);
+> interlog [#71](https://github.com/vladm3105/aidoc-flow-interlog/issues/71)
+> remains open. Both were **inert** regardless — every `trust_config_repo`
+> override in the workspace is commented out, so all consumers read operations'
+> `version: 2` config.
+>
+> ### Semver
+>
+> **MINOR**, re-confirmed against the diff after CI-0020..0024 landed: no
+> `workflow_call` input added, removed or retyped since `ci/v2.14.0`; no schema
+> change; CI-0021 inert with its repo var unset; CI-0022 adds no input, secret
+> or permission. The one permission reduction is caller-side trimming of a grant
+> the callee already capped — intersected away, so a no-op.
+
+## Previous state (2026-07-25)
+
+> **TL;DR (2026-07-25).** **Seven findings from the `aidoc-flow-framework`
+> `ci/v2.14.0` migration are FIXED on branch `fix/canon-findings-v2-migration`**
+> (commit `e6c6fb2`), filed as `CI-0014`..`CI-0019`. Source report:
+> `../framework/tmp/CANON-FINDINGS_ci-canon-v2-migration.md`. Each was reproduced
+> against canon source or live state before fixing. Suite green (16 suites, 843
+> assertions).
+>
+> **Two of these were live faults, not detection gaps:**
+>
+> - **CI-0014** — the trust config is a **single shared source** while each
+>   consumer pins its own reusable, and every read was `jq '.field // "default"'`.
+>   The v1→v2 cutover (2026-07-16) therefore silently routed **seven repos** on
+>   `ci/v1.9.5` to the codex engine, which none has a key for: a fail-closed
+>   review gate that could not pass for ~9 days, merges via `--admin`, and an
+>   error naming neither cause nor owner (framework's HANDOFF recorded it as a
+>   lapsed key — a misdiagnosis that survived sessions). Fixed forward-only:
+>   both jobs now assert `version == 2` and fail loud. **No `ci/v1.x` backport**
+>   (founder direction 2026-07-25) — the six un-migrated repos stay latent until
+>   they re-pin, which is the actual remedy.
+> - **CI-0015** — `docs-sync` could not post its dry-run comment on **any**
+>   consumer: the callee capped `pull-requests: read`, and a reusable's token is
+>   the caller∩callee intersection. Green only because the step is gated on
+>   `proposed != 0` and had never fired.
+>
+> **⚠️ CONSUMER ACTION on the next release:** `docs-sync` callers must grant
+> `pull-requests: write`. `--repin` does NOT fix it (it rewrites `uses:` lines
+> only). Callers generated before that release grant `read` and stay broken.
+>
+> **ISSUE SWEEP COMPLETE (2026-07-25).** All eight open issues triaged; six
+> closed, two open by design.
+>
+> | Issue | Disposition |
+> |---|---|
+> | #305-#309 | CLOSED — the framework migration findings, fixed by #312 (CI-0014..CI-0019) |
+> | #310 | CLOSED — cross-repo defects filed upstream, #314 (**CI-0020**, `REPO_STANDARDS` §18) |
+> | #311 | CLOSED — infrastructure break-glass, #316 (**CI-0021**, §19) |
+> | #315 | CLOSED — reviewer-input honesty, #319 (**CI-0022**, §20) |
+> | #81 | CLOSED — its v2 form was #315; closed by the same PR |
+> | #318 | **OPEN** — NEW, the asset docs still describe v1 sparse-checkout |
+>
+> **⚠️ CI-0021 is OPT-IN and currently UNARMED everywhere.** It activates only
+> when a repo sets `vars.CI0021_BREAKGLASS_APPROVERS`. **Read `REPO_STANDARDS`
+> §19.3 before arming:** condition 3 (separation of duties) checks the git
+> author/committer identity, NOT the pusher — GitHub exposes no pusher field and
+> those values are written by whoever ran `git commit`. Without
+> `required_signatures` it stops an accident, not a determined actor. Two
+> adversarial review cycles each found a real bypass in this feature before it
+> shipped; both are fixed and regression-tested, but the residual is real.
+>
+> **CI-0022 SHIPPED (2026-07-25) — PR #319 (`d20b882`), closing #315 AND #81.**
+> The `ai-review` rubric told the model it had a working tree; the job has had
+> **no checkout since before ci/v1.9.5** (IPLAN-0024), and the v2 reviewer is a
+> single-shot completion with no tools. An unexecutable instruction is not
+> skipped by a model — it is answered anyway, which is a better generator of
+> confabulation than the truncation #81 originally blamed. The rubric now
+> enumerates its exact inputs, `ai-review.yml` passes a **repo-root inventory**
+> (one `gh api` call at the PR base commit) so the doc-coverage precondition is
+> decidable, and both inventories fail soft to the literal `UNAVAILABLE` that
+> the rubric branches on. `REPO_STANDARDS` §20 generalises it to any prompt
+> canon ships.
+>
+> **The review is the part worth carrying forward.** Six OPS-0065 agents found
+> **1 critical + 5 medium** — and the critical was *this fix re-creating its own
+> defect*: the first draft filtered the inventory to `type == "file"`, so every
+> root **directory** was absent from a list the new dead-link rule reads as
+> authoritative for absence (`docs/…` would be flagged dead because `docs` was
+> filtered out). One finding came from attacking the test harness rather than
+> the code: it stubbed `gh`'s return value but never its **arguments**, so three
+> separate live mutations — dropping the directory marking, inverting the
+> base-sha guard, collapsing the retry loop — all stayed green. **A stub that
+> controls only what a command returns tests nothing about how it was called.**
+>
+> **➡️ NEXT — and #318 is the next canon DEFECT, not the next ACTION.** The
+> release cut is still outstanding: `VERSION` is `ci/v2.14.0`, no `ci/v2.15.0`
+> tag exists, and CI-0020, CI-0021 and CI-0022 now all sit under `## Unreleased`
+> from four merged PRs (#312, #314, #316, #319). **None of them reach any
+> consumer until that tag is cut** — consumers pin `@ci/vX.Y.Z`. The founder's
+> MINOR call (below) still stands and predates CI-0020..0022; confirm it covers
+> them, then cut. **#318** is the queued defect: `ai-review/README.md` +
+> `docs/ai-review-assets.md` still describe the v1 `actions/checkout` +
+> sparse-checkout asset delivery, which now contradicts §20.3's "no checkout"
+> head-on. Two doc surfaces, one PR — deferred out of #319 only by the OPS-0061
+> three-surface cap.
+---
+> **MERGED** as PR #312 (squash, `bc28e80`, 2026-07-25 EST). Suite green at merge
+> (14 suites, 801 assertions); all six required checks passed.
+>
+> **NEXT: cut `ci/v2.15.0`.** Semver settled by the founder 2026-07-25 —
+> **MINOR**, because the CI-0014 assertion enforces what the published v2 schema
+> always required (`version: {const: 2}`), canon's template has always shipped
+> it, the live operations config has it, and no in-workspace consumer is
+> affected. The only break is a hypothetical external adopter with a hand-rolled
+> config lacking `version`. Canon carries **no hardcoded next-tag reference**, so
+> the release needs no text edits beyond `VERSION` + the changelog heading.
+>
+> ⚠️ **Consumer note for the release:** `docs-sync` consumers installed from
+> `ci/v2.11.0` onward need **only a re-pin** (the missing half was always the
+> callee); only pre-`v2.11.0` or hand-edited callers must also be raised to
+> `pull-requests: write`. Procedure: `docs/UPDATE_GUIDE.md`.
+> The six repos still on `ci/v1.9.5` remain the outstanding fleet item; migrating
+> them is deferred to the founder.
+>
+> **Previously — `ci/v2.14.0` is SHIPPED** — tag on `f15b88d`, Release
+> marked Latest, suite fully green. It carries: the **8 missing canonical labels**
+> created on canon (incl. `skip-audit-trail`, the escape hatch for the now-required
+> `call / verify`); **FT-53** — `standards-drift` compares `patterns_allowed` with
+> symmetric glob subsumption; and **CI-0011 applied to canon**, plus the
+> `apply-standards.sh --apply --tier product` landmine disarmed (it would have hung
+> every canon PR and clobbered FT-52).
+>
+> **⚠️ Consumer impact to sequence:** CI-0011 narrowed the canon template and **no
+> consumer has applied it yet**, so once a consumer re-pins to `ci/v2.14.0`,
+> `standards-drift` reports `patterns_allowed` MISSING until its settings are
+> applied. `strict` defaults to `false`, so this is a warning, not a failure — but
+> any adoption gate passing `strict: true` would newly fail. Apply the settings
+> alongside the re-pin and it is a non-event.
+>
+> **DEFERRED to the next release cycle:** FT-54, FT-55, FT-56 and PLAN-020 (see
+> below) — detection gaps, not active faults; nothing half-built.
+>
+> **Previously — `ci/v2.13.0` was SHIPPED** — tag on `dc0e40a`,
+> Release marked Latest, suite fully green. It carries three things:
+> **(1) CI-0011 / FT-46 RESOLVED** — the verified marketplace is dropped
+> (`verified_allowed: false`) and `patterns_allowed` narrowed to the owner's own
+> account `vladm3105/*`; these are **template values until applied per-repo**, so
+> nothing changed on any live repo when it merged.
+> **(2) FT-52 EXECUTED** — canon self-governance is live (details below).
+> **(3) The FT-30 cold-start gate is now CONDITIONAL** — `release.sh tag` demands
+> `--dry-run-verified` only when the release changes the installer bootstrap write
+> path (42 paths, manifest-derived incl. `visibility_variants`), and auto-waives
+> otherwise. Two defects were found by *executing* the release rather than reading
+> it: the surface missed 9 `visibility_variants`-only templates (blind to private
+> adopters), and the gate fired on the prep's own self-pin bump — which would have
+> made it fire on every release, i.e. ceremonial again. Both fixed + mutation-tested
+> (`test_release` 27→65).
+>
+> **⚠️ Release-flow change every future cut must know:** since FT-52 protected
+> `main`, a prep PR shows **BLOCKED, not merely red** — 4 of the 5 required contexts
+> come from self-pinned callers that `startup_failure` and are therefore **never
+> reported**. `enforce_admins: false` exists precisely so
+> `gh pr merge <N> --squash --delete-branch --admin` still works. See
+> RELEASE_CHECKLIST "Tag + release".
+>
+> **`ci/v2.12.0` (2026-07-23)** carried PLAN-019's AI-executable work — FT-39…45,
+> 47, 48, 49, 50, 51 plus the §4 content-currency — and its cold-start dry-run
+> passed GREEN at the prep-merge SHA (env-pinned `CI_TAG`, no 404/FAIL, 18 canon
+> labels, marker-v2 pre-commit fragment).
+> **FT-52 is EXECUTED (2026-07-24) — canon now governs itself.** Part A: immutable
+> `ci/v*` tag ruleset `19687369` (active, no bypass actors — create allowed;
+> delete and force-move both rejected, verified by execution). Part B: `main`
+> protected with
+> canon's own 5-check set (`suite`, `call / verify`, `call / markdownlint`,
+> `call / Lint / format / security hooks`, `call / gitleaks`), 0 required reviews,
+> `enforce_admins: false`, `required_signatures: false` — AI auto-merge and the
+> FT-21 `--admin` prep path both still work. `ai-review`/`composition` deliberately
+> NOT required (canon doesn't self-run them; requiring them would hang every PR).
+> Residue: the inert throwaway tag `ci/v0.0.1-ruletest` is still on the remote
+> (removing it needs a deliberate ruleset disable→delete→re-enable).
+> **FT-46 / CI-0011 are now RESOLVED (2026-07-24)** — founder decided: **drop the
+> verified marketplace, admit only the owner's own account**. `verified_allowed:
+> false` + `patterns_allowed` broadened to `vladm3105/*`; docs, wizard preflight,
+> and contract assertions synced. Rides the **next** tag after `ci/v2.12.0` (it is
+> under a fresh `## Unreleased`). 🔴 leftover: applying `actions-permissions.json`
+> to canon + each consumer is a founder settings write (RELEASE_CHECKLIST item).
+>
+> **Post-release (done this session):** the pre-tag push left `main`'s `self-*`
+> callers `startup_failure` (0s) + `tests` red on the FT-21 latest-tag assertion
+> (`VERSION ci/v2.12.0 != latest published tag ci/v2.11.0`) — both are the designed
+> mid-release-cut red and NOT retryable; this HANDOFF push re-triggers them green
+> now the tag resolves.
+>
+> **CI-0011 settings are APPLIED TO CANON (2026-07-24).** Canon's live
+> `verified_allowed` is now `false`, `patterns_allowed` is
+> `["vladm3105/*","actions/*","github/*"]`, and `can_approve_pull_request_reviews`
+> is `false`. The `access` section is skipped on canon (PUBLIC → 422). **Never run
+> `apply-standards.sh --apply --tier product` on canon** — it also PUTs
+> `branch-protection-product.json`, which requires `ai-review`/`composition` canon
+> does not self-run, hanging every PR and clobbering FT-52. Use the per-section
+> `gh api` PUTs, or `--skip-branch-protection`.
+>
+> **Canon labels completed (2026-07-24):** all 18 canonical labels now exist on
+> canon. `skip-audit-trail` was the load-bearing one — it is the documented escape
+> hatch for `call / verify`, which FT-52 had just made a REQUIRED check, so the
+> override was unusable. Canon label drift is now 0. **FT-54 filed (OPEN, needs a
+> founder call):** canon's weekly `standards-drift-self` runs `--tier product`, but
+> FT-52 deliberately gave canon its own branch-protection profile — so it reports
+> two permanent warnings forever. Options + a recommendation are in
+> `plans/FRAMEWORK-TODO.md`.
+>
+> **DEFERRED to the next release cycle (founder, 2026-07-24): FT-54, FT-55, FT-56
+> and PLAN-020.** All three are **detection** gaps, not active faults — canon's
+> `ci/v*` ruleset is live and correct, and every FT-56 instance that prompted them
+> is already remediated (CI-0011 applied to canon, all 18 labels created). PLAN-020
+> is plan-only: no `--rulesets` code exists, so nothing is half-built. It is marked
+> DRAFT/not-ready with one open scheduling decision, and the citation gate will
+> correctly refuse to call it ready until that is answered — **do not begin
+> implementing it while it reads not-ready.** Recommendations for both open
+> questions are recorded in the FT-54 entry and PLAN-020's Pass 4.
+>
+> **Remaining 🔴 founder items** (none block the shipped tag): **(1)** apply
+> `actions-permissions.json` to **each CONSUMER** (canon is done).
+> **Scan each target's `uses:` FIRST**; `web-site` (`Azure/static-web-apps-deploy`)
+> and `knowledge-rag` (`codecov/codecov-action`) are admitted TODAY only by
+> `verified_allowed: true` and would break — both are EXCLUDED, see
+> RELEASE_CHECKLIST. **(2)** arm `feedback-desk`'s gates (PLAN-019 Part B /
+> PLAN-009 Phase 0 — secrets + runner pool). Open framework item: **FT-53**
+> (`standards-drift` never compares `patterns_allowed`, now the whole non-GitHub
+> boundary). Non-🔴 leftover: cosmetic 4-doc
+> markdown-`+` prose (markdownlint-clean, low priority). Pre-existing dependabot PRs
+> #221–228 are separate (FT-24), untouched. Detailed per-FT history + review findings
+> follow below.
+
+- **G1 (PLAN-019 Workstream A) COMPLETE (2026-07-23) — all 4 tag-cut blockers
+  merged, each its own PR with OPS-0065 pre-push dispatch.** **FT-39** (install.sh
+  fetch validation + `--update` no-TTY consent — PR #269, squash `1066d2b`;
+  OPS-0065 cycle-1 folded a MAJOR `<!--` false-reject of `pull_request_template.md`
+  plus a docs count fix, cycle-2 re-review CONFIRMED); **FT-40** (FT-28 SHA-peel
+  guard now driven not re-implemented — `resolver` 62→70, `if false;` mutation goes
+  red — PR #270, squash `6bab677`); **FT-41** (markdown-lint blocking-default now
+  asserted — `contract` 271→272, default-flip goes red — PR #271, squash `ef72517`);
+  **FT-42** (`ai-review` least-privilege secrets — reusable declares its 8 secrets,
+  caller passes an explicit map instead of `inherit`; additive, two-way completeness
+  test, `contract` 272→275; security-auditor verdict READY — additive-safety
+  confirmed against GitHub reusable-workflow docs — PR #272, squash `d70782e`).
+- **➡️ NEXT (AI-executable): G3 + G4 — the remaining flow-ci tasks (FT-43…52,
+  EXCEPT FT-46 which was DEFERRED on founder decision CI-0011 [DECIDED 2026-07-24;
+  FT-46 landed] — see its
+  entry below; it rides a LATER tag, not `ci/v2.12.0`).**
+  The rest all ride the same `ci/v2.12.0` tag (additive surfaces), and several touch
+  `install.sh` + the templates the cold-start dry-run exercises (FT-47, FT-50,
+  FT-43) — so they land on `main` FIRST. G3 (ship-with-tag): ✅ **FT-43** (label/draft
+  can supersede a RED ai-review — fail-closed-when-unarmed via a driven guard +
+  unarmed job-`if:` clause + concurrency exclusion + draft triggers; `contract`
+  275→283, 4 mutations red — PR #275 MERGED `3066b3a`; security-auditor READY on a
+  full truth table), ✅ **FT-44** (pre-commit refresh reports a kept-but-changed
+  canon hook via a `SKIPPED_HOOKS` NOTE + fixed a latent `pipefail` abort;
+  `precommit-refresh` 18→24 — PR #276 MERGED `cfa3e56`), ✅ **FT-45**
+  (`required-context-map.py` validates the job-key half; `required-contexts` 21→23
+  — docs PR #277 `1d46658` + code-recovery PR #278 `c802833`; #277 dropped the code
+  to a staging race with the review sub-agents, #278 landed it), ⏸️ **FT-46
+  DEFERRED** (its `verified_allowed: true→false` flip IS the OPEN founder decision
+  **CI-0011** — keep vs. drop the verified-marketplace allowlist; PLAN-019's FT-46
+  spec never referenced CI-0011, so it was NOT shipped. Founder chose "defer"
+  2026-07-23. Implementation is complete + reviewed, held in `git stash`
+  (`ft46-HELD-pending-CI-0011...`) on `fix/ci-ft46-verified-allowed`; rides a later
+  tag once CI-0011 is decided. **[SUPERSEDED 2026-07-24: CI-0011 is now DECIDED —
+  verified marketplace dropped, `patterns_allowed` = `vladm3105/*`; FT-46 landed.
+  See the TL;DR + DECISIONS.md CI-0011.]**),
+  ✅ **FT-47** (CI now exercises the ruamel.yaml merge backend, not only PyYAML —
+  the gap that let FT-44's ruamel `__ne__` bug pass CI; `contract` 283→284 — PR
+  #279 MERGED `33e4bf9`), ✅ **FT-48** (`release.sh prep` gains the on-main + fetch +
+  up-to-date guards `tag` has; `release` 21→27, both-guard mutations red — PR #280 MERGED `c8eee7d`).
+  **G3 CODE/TEST items (FT-43/44/45/47/48) done; FT-46 DEFERRED (CI-0011).** Still
+  open in G3: the **Workstream-C doc-currency items** (PLAN-019 §4, un-numbered —
+  `architecture.md` secret-scan rows + "11 shared workflows" header;
+  `REPO_STANDARDS.md:1368` stale `@ci/v2.0.0` pin; the 4-doc markdown-autofix
+  wrapped-`+` corruption; `README.md` EXERCISER row). ✅ **FT-49** done
+  (`FLEET_BRANCH_PROTECTION_ARMING.md` stale `ci/v2.1.0` + `REPO_STANDARDS.md:1368`
+  stale `@ci/v2.0.0` → version-neutral — PR #281 MERGED `6652357`). ✅ **§4
+  content-currency** (architecture.md 3 tool-description rows corrected — they said
+  `gacts/gitleaks`/`*-action`, actually binaries; header count-neutral; README
+  EXERCISER row added — PR #282 MERGED `60dc097`). Only the cosmetic 4-doc markdown-autofix
+  wrapped-`+` prose remains in §4 (markdownlint-clean, low priority). **G3 is now
+  substantively complete** (FT-46 deferred). **G4:** ✅ FT-50 (macOS/bash4
+  portability — portable `sed -i.bak` ×3 + `BASH_VERSINFO` guard + README fix;
+  `scripts` 27→29 — PR #283 MERGED `0dbf01a`), ✅ FT-51 (runner docs: per-repo
+  registration is primary, org-level scoped to a real GitHub org — PR #284 MERGED
+  `268a54d`), ✅ FT-52 runbook prepared (🔴 canon branch-protection + immutable
+  `ci/v*` tag ruleset — `plans/ROLLOUT_ft52-canon-self-governance.md`; execution is
+  founder-only; the runbook flags that product-tier protection would HANG canon and
+  uses canon's own check set — PR #285 MERGED `5029ad6`)
+  **[SUPERSEDED 2026-07-24: FT-52 is now EXECUTED — both parts LIVE; see TL;DR.]**.
+- **➡️ PLAN-019 AI-EXECUTABLE WORK IS COMPLETE.** All FTs are landed or handed off:
+  FT-39…45, 47, 48, 49, 50, 51 merged; FT-52 runbook prepared (🔴 founder)
+  **[SUPERSEDED 2026-07-24: EXECUTED — ruleset + branch protection live]**;
+  **FT-46 was DEFERRED** on founder decision **CI-0011** (held in stash) —
+  [DECIDED 2026-07-24, FT-46 landed; see TL;DR]. The
+  only remaining §4 item is the cosmetic 4-doc markdown-`+` prose (low priority).
+  **REMAINING TO SHIP `ci/v2.12.0` — all 🔴 founder / gated:** (1) decide CI-0011
+  (then FT-46 rides a later tag or lands); (2) run the **G2 cold-start dry-run**
+  pinned to the FINAL pre-tag `main` SHA (`git rev-parse origin/main`, NOT the G1
+  checkpoint) per `plans/ROLLOUT_plan019-feedback-desk-coldstart.md`; (3) `release.sh
+  prep ci/v2.12.0` → merge → tag. FT-52 (Part A tag ruleset especially) can run any
+  time. **[ALL SUPERSEDED 2026-07-24: `ci/v2.12.0` SHIPPED, CI-0011 DECIDED, FT-52
+  EXECUTED — see TL;DR.]**
+  **PROCESS NOTE (FT-45 incident):** review sub-agents run `git stash`/`git add` on
+  the shared tree, which can unstage code between `git add` and `git commit`. ALWAYS
+  `git add -A` + diff-vs-reviewed AFTER agents finish, before committing.
+- **G2 — the 🔴 founder cold-start dry-run — is the LAST flow-ci step, not the
+  next one.** It must validate the exact tree that becomes the tag, so it runs only
+  after G1 **+ G3 + G4** are all merged, pinned to the **final pre-tag `main` SHA**
+  (`git rev-parse origin/main`), NOT the G1 checkpoint `d70782e` (G3/G4 change the
+  installer + templates it exercises). `plans/ROLLOUT_plan019-feedback-desk-coldstart.md`
+  is reframed accordingly (⏳ NOT YET; pin = final SHA). Sequence:
+  **G3+G4 land → G2 dry-run GREEN → prep PR → tag `ci/v2.12.0` → fleet rollout.**
+  Do NOT cut the tag before G2 runs GREEN. Umbrella/HANDOFF NEXT bullet below stays
+  superseded by this line.
+- **PRE-PROD REVIEW of the `ci/v2.11.0..main` candidate → BLOCKER; PLAN-019
+  authored + READY to close it. DO NOT cut `ci/v2.12.0` yet.** A 5-lens
+  `ci-preprod-review` (security / correctness / docs / portability / governance)
+  ran on the release candidate. HANDOFF's "PLAN-018 A/C/B/D complete" verified
+  **substantially true** (FT ledger, CHANGELOG `## Unreleased` complete 1:1,
+  FT-32 mechanism converges across all 8 siblings) — but "plan complete" ≠ "tag
+  can be cut," and it cannot right now. Findings (each verified against source;
+  2 agent claims downgraded on verification):
+  - **G1 tag-cut blockers:** FT-39 `fetch_template` has no `test -s`/shape check
+    and `--update` infers non-interactive from a missing TTY → a 200-empty fetch
+    can 0-byte the fleet's gates *and* silently freeze FT-32 refresh (fails open);
+    FT-40 the FT-28 SHA-peel guard is untested (mutation `if false;` → resolver
+    suite still 62/0 — the test re-implements `verify()` instead of driving the
+    shipped step); FT-41 markdown-lint's blocking default is unasserted (mutation
+    `true→false` → contract suite still 271/0); FT-42 `ai-review`'s
+    `secrets: inherit` is **structurally forced** (the reusable's `workflow_call`
+    declares NO `secrets:` block, so callers can't pass a map) — the largest
+    standing secret-trust risk, ~15-line fix.
+  - **🔴 FT-30 cold-start dry-run NOT satisfied for this candidate** — the only
+    recorded run was `CI_TAG=4984c35` (the v2.11.0 SHA), before the D1 refresh
+    logic + marker-version change existed; `install.sh`, manifest, and the
+    fragment all changed since. `release.sh tag` refuses without it.
+  - **Other verified:** label/draft event can supersede a RED `ai-review`
+    (FT-43 — armed `composition` still blocks today, so not a live both-checks
+    hole *while armed*); FT-44 FT-32 silently under-delivers a *modified* hook;
+    FT-45 `required-context-map.py` drops the job-id half; canon `main` has NO
+    branch protection + NO tag ruleset while its own template names it product-
+    tier (S1); `verified_allowed: true` wider than §4.3 + canon's live
+    `can_approve_pull_request_reviews: true` vs template `false` (FT-27 unapplied);
+    `FLEET_BRANCH_PROTECTION_ARMING.md:66` imperatively repins to `ci/v2.1.0`
+    (10 releases back); GNU-only `sed -i` + unguarded `mapfile` on adopter macOS.
+  - **Strong positives (do not regress):** action supply chain exemplary (all
+    SHA-pinned, allowlist-clean, binaries checksummed); zero shell injection;
+    autofix separation-of-duties; public-repo fork-safety holds.
+- **`plans/PLAN-019_preprod-review-closure.md` — READY** (verified-planning: 3
+  passes, 2 independent, zero load-bearing findings; gate green, 48 citations).
+  Pass 2 caught FT-43's fix re-opening its own bypass (a step-level skip
+  concluding SUCCESS supersedes a standing `request_changes`) → folded to
+  fail-closed-when-unarmed per the FT-29 `exit 1` model. Four gates (by the BAR
+  each clears, not execution order): **G1** tag-cut blockers (FT-39/40/41/42),
+  **G2** the 🔴 dry-run (gates the `git tag`), **G3** ship-with-tag (FT-43…48),
+  **G4** before-rollout (FT-49…52: portability, canon self-governance,
+  governance-currency). **Execution order** (all G3/G4 EXCEPT the deferred FT-46
+  ride the same tag, and some change the installer/templates the dry-run
+  exercises): G1 → G3 → G4 → **G2 dry-run
+  LAST** → tag → rollout (see the NEXT lines at the top of this section). Semver
+  **MINOR → `ci/v2.12.0`**.
+- **`plans/ROLLOUT_plan019-feedback-desk-coldstart.md` — ⏳ NOT YET (🔴
+  founder-executed; runs LAST, after G3+G4 — see the NEXT lines at the top of this
+  section).** feedback-desk verified a genuine cold start (no workflows /
+  pre-commit / canon ref) and **PRIVATE** with `APP_REVIEWER_1_BOT_ID` UNSET, so the
+  runbook splits **Part A** (installer cold-start = the FT-30 tag gate,
+  visibility-independent) from **Part B** (arm gates green = self-hosted pool +
+  per-repo LiteLLM secrets + App; PLAN-009 Phase-0 🔴, NOT a tag gate). The one
+  load-bearing line: `export CI_TAG="$(git rev-parse origin/main)"` (the final
+  pre-tag SHA once G3+G4 are merged) or it validates the pre-fix templates.
+- **NEXT:** ✅ G1 (Workstream A) DONE. The remaining flow-ci work is **G3 + G4
+  (FT-43…52)** — AI-executable, one FT per PR — which land FIRST. **Then** G2 (the
+  🔴 founder cold-start dry-run, pinned to the final pre-tag `main` SHA) runs as the
+  LAST validation → prep PR → tag `ci/v2.12.0` → fleet rollout. PLAN-019 files are
+  committed (PR #268 + the four G1 blocker PRs #269–#272).
+- **PLAN-018 COMPLETE — all four workstreams (A, C, B, D).** Workstream D closed
+  it out:
+  - **D1 / FT-32 (#265)** — the canon pre-commit fragment is refreshable in
+    already-adopted consumers. The `CANON:` marker is now **versioned**
+    (`# CANON: aidoc-flow-ci pre_push_check vN`, canon at **v2**); bootstrap
+    re-merges a consumer whose `vN` lags, then stamps canon's so the next run
+    no-ops. Before this an adopted consumer was frozen forever (bootstrap no-op'd
+    on the marker, `--update` excludes the file, `--apply` writes no content), so
+    `manifest.json`'s "re-run install.sh to refresh those" was **false** for it.
+    **Additions only** — a `rev` bump, or a new hook id inside a repo the consumer
+    already declares, is reported and left unapplied; a partial merge still stamps
+    `vN` (required to converge) and now says the named lines stay unapplied.
+    `tests/test_precommit_refresh.sh` is new and covers the DECISION, which had
+    no coverage at all: a review mutated the compare back to always-no-op —
+    restoring the exact fleet-wide freeze — and the whole suite stayed green.
+  - **D2 (#266)** — `docs/UPDATE_GUIDE.md` gains the body-adoption reconciliation
+    procedure (`--repin` is the default; `--update` replaces all 16
+    `safe_to_replace` bodies and discards per-repo `runner_labels_*`/
+    `permissions:`/triggers, failing on the *next* PR rather than at update time)
+    and the drift-report-as-rollout-worklist section. Also corrected the
+    `ci/v2.0.0` migration step 4, which recommended `--repin` **then**
+    `--update` — the FT-9 hazard, sitting in the guide as a recommendation.
+
+- **NEXT: the fleet rollout is unblocked** (CI-0013's "drift report becomes the
+  rollout worklist" now has a mechanism behind it). Start from
+  `docs/UPDATE_GUIDE.md` § "Reading the drift report as the rollout worklist".
+  Note **FT-38**: `operations`, `framework`, `iplanic`, `iplan-runner` declare
+  `pre-commit-hooks` at a mutable `rev: v5.0.0` that the refresh **cannot** move
+  to canon's SHA pin — named per-repo decisions in the worklist, not delivered.
+  Simulated refresh across all 7 siblings: missing canon lines 19→6 (operations),
+  18→1 (framework, iplanic), 5→0 (interlog, engramory, iplan-standard), 1→1
+  (iplan-runner).
+
+- **Still deferred from B** (by priority, not size): FT-4 (cosmetic CHANGELOG
+  history), FT-6 (trust-config inputs), and the **ai-review `secrets: inherit` →
+  explicit-map** conversion (needs `secrets:` declarations on the reusable + its
+  own security review). Also open: FT-33, FT-35, FT-36, FT-37.
+
+- **PLAN-018 Workstream B COMPLETE (FT-10 verified-resolved, last item).** All
+  canon-internal defects closed: FT-26 codeql pin (#259), FT-27 least-privilege
+  (#260), FT-28 SHA-peel (#261), FT-29 zero-review window (#262), FT-25 adopter
+  gaps (#263), + FT-14/FT-10 verified already-resolved (2 stale ledger entries
+  the verify-before-fixing triage caught). **Deferred within B (by priority, not
+  size):** FT-4 (cosmetic CHANGELOG history), FT-6 (trust-config inputs), and the
+  **ai-review `secrets: inherit` → explicit-map** conversion (needs adding
+  `secrets:` declarations to the reusable + its own security review — the one
+  FT-27 piece that isn't caller-only). **PLAN-018 status: Workstreams A + C + B
+  done; D (rollout readiness) not started; fleet rollout gated on FT-32 per CI-0013.**
+
+- **PLAN-018 Workstream B / PR B5 (FT-25 adopter gaps ×4) OPEN.** Wizard scaffolds
+  the labeler config starter; preflight surveys all 18 labels + branches on
+  allowed_actions (no masked 409); verify short-circuits on the pre-merge adoption
+  PR; AI_CI_DEPLOYMENT names the -private variants. test_contract guards all four.
+  **Only FT-10 (runner-self docs) remains in Workstream B** — then B is complete.
+
+- **PLAN-018 Workstream B / PR B4 (FT-29 zero-review window) OPEN — closes the
+  security cluster.** ai-review's skip-notice `label` branch now fails closed when
+  `vars.APP_REVIEWER_1_BOT_ID` is unset (composition inert), so skip-ai-review +
+  inert composition can no longer merge with zero review. Option (1) — catches
+  every arming path. Remaining B: FT-25 (adopter gaps ×4), FT-10 (runner-self docs).
+
+- **PLAN-018 Workstream B / PR B3 (FT-28 ai-review SHA peel) OPEN.** Both resolvers
+  (review + autofix) peel the claimed tag via the commits API and hard-fail if the
+  pinned SHA ≠ the tag's commit — so `@<fork-sha> # ci/vX.Y.Z` can't execute
+  unmerged code while reading as the released tag. Inert for shipped consumers
+  (tag-only pin). test_resolver guards it. Remaining B: FT-29 (skip-ai-review+INERT
+  window), FT-25 (adopter gaps), FT-10 (runner-self docs).
+
+- **PLAN-018 Workstream B / PR B2 (FT-27 least-privilege) OPEN.** AI-flow callers
+  converted off blanket `secrets: inherit`: composition drops the block (only
+  GITHUB_TOKEN); doc-maintainer/docs-sync/auto-merge get explicit maps of their
+  declared secrets. `can_approve_pull_request_reviews` defaulted false. test_contract
+  guards all. **ai-review keeps inherit** (reusable declares no secrets) — its
+  conversion is a tracked follow-up (needs reusable secret declarations + security
+  review). Remaining B: FT-28 (ai-review SHA peel), FT-29 (skip-ai-review+INERT
+  window), FT-25 (adopter gaps), FT-10 (runner-self docs).
+
+- **PLAN-018 Workstream B STARTED — PR B1 (FT-26 codeql pin + FT-14 triage) OPEN.**
+  codeql autobuild repinned tag-object→peeled-commit (matches init/analyze);
+  test_lint asserts the three codeql pins agree (teeth). GHAS-for-private
+  documented. FT-14 (yamllint hook vs CI) verified ALREADY RESOLVED (root
+  .yamllint.yaml added 2026-07-17) — no fix, marked in ledger. Remaining B:
+  FT-27 (over-grant secrets/can-approve), FT-28 (ai-review SHA peel), FT-29
+  (skip-ai-review+INERT-composition window), FT-25 (adopter gaps ×4), FT-10
+  (runner-self docs). Verifying each is still live before fixing (FT-14 was stale).
+
+- **PLAN-018 Workstream C COMPLETE — PR C5 (`scripts/release.sh`, FT-21) OPEN, last item.**
+  release.sh encodes prep→merge→dry-run→tag with guards on all three v2.9.0
+  failure modes (tag-before-prep-merge; tag-without-🔴-dry-run; VERSION-tree
+  mismatch); `test_release.sh` drives the rejections; RELEASE_CHECKLIST points at
+  it. With C5, Workstream C's verification surface is done: exerciser inventory +
+  guard (C1), zero-hook detector (C2), required-context validator (C3), pre-commit
+  - markdown self-callers (C4a/b), release tool (C5). Canon self-runs 5/16
+  reusables and its "no exerciser / tribal-knowledge" gaps are closed. **Remaining
+  PLAN-018: Workstream B** (canon-internal defect closure) + Workstream D (rollout
+  readiness); the fleet rollout stays gated on FT-32 per CI-0013.
+
+- **PLAN-018 Workstream C / PR C4b (markdown-lint self-caller, FT-34) OPEN.**
+  Canon now carries a root `.markdownlint.json` (= shipped template + `MD004:dash`)
+  and runs `self-markdown-lint.yml` **blocking**; canon self-runs 5 of 16
+  reusables (was 4). Canon's docs brought to full conformance: 347 findings →
+  304 auto-fixed + 43 manual (code-fence langs, table `|` escapes, wrapped
+  issue-refs read as H1). Shipped template gained `MD004:dash` (consumer-facing:
+  conventional `-` bullets). The "174 MD013" premise was wrong — canon's standard
+  has MD013 off; work was structural. FT-34 closed. **Remaining C: C5 —
+  `scripts/release.sh` (FT-21).** That completes Workstream C.
+
+- **PLAN-018 Workstream C / PR C4a (pre-commit self-caller, FT-36) OPEN.**
+  `.github/workflows/self-pre-commit.yml` — canon now runs its own pre-commit
+  reusable on every PR (public → ubuntu-latest, pinned to the released tag),
+  self-running 4 of 16 reusables (was 3). Dogfooding immediately caught
+  `VERSION` missing a trailing newline (end-of-file-fixer); fixed + release
+  checklist updated. FT-36 closed; inventory row flipped. Remaining C: **C4b**
+  markdown-lint self-caller (FT-34 — needs a canon `.markdownlint.json` + the
+  174-pre-existing-findings decision, its own PR), then **C5** release.sh (FT-21).
+
+- **PLAN-018 Workstream C / PR C3 (required-context validator, FT-18) OPEN.**
+  `install/required-context-map.py` derives context→producing-caller for every
+  tier's required contexts (context → reusable job → caller template → manifest
+  consumer path; no hardcoded table). Wizard preflight §6 diffs it against the
+  repo's installed workflows → per-tier "arming would hang: `call / X` needs
+  `<caller>` (not installed)" (the F2 hang, pre-arming). `test_required_contexts.sh`
+  (21) asserts the canon invariant (every required context has a producer) + the
+  audit-trail chain + teeth. FT-18 closed for the validator; inventory row +
+  gap closed. Remaining C: C4 (FT-36/FT-34 self-callers), C5 (FT-21 release.sh).
+
+- **PLAN-018 Workstream C / PR C2 (zero-hook detector, FT-31) OPEN.**
+  `install/check-precommit-hooks.sh` — general form of F3; exits 1 when a
+  `.pre-commit-config.yaml` selects zero hooks at the stage the reusable runs.
+  Wired operator-side into install.sh (fetched, advisory), the wizard preflight
+  (🔴), and the release checklist — NEVER the gating path (would flip a
+  consumer's green check red). `test_precommit_stage.sh` drives it (9 assertions);
+  inventory row added + FT-31 gap closed. Remaining C: C3 (FT-18, rebases on C2 —
+  both touch the wizard), C4 (FT-36/FT-34 self-callers), C5 (FT-21 release.sh).
+
+- **PLAN-018 Workstream C STARTED — PR C1 (exerciser inventory) OPEN.** Post-`ci/v2.11.0`,
+  Workstream C is the verification surface that makes the fixes stay fixed.
+  Founder descope (2026-07-22): `aidoc-flow-ci` is a **library**, so the
+  ai-review/doc-maintainer self-callers (which need a self-hosted pool) are OUT —
+  `test_resolver.sh` covers the resolver offline. C1 ships
+  `docs/EXERCISER_INVENTORY.md` + `test_exerciser_inventory.sh` (every manifest
+  surface / reusable / script must have a row; unexercised rows must name an FT).
+  Remaining C PRs: C2 zero-hook detector (FT-31), C3 required-context validator
+  (FT-18), C4 pre-commit + markdown self-callers (FT-36/FT-34), C5
+  `scripts/release.sh` (FT-21). Then Workstream B.
+
+- **`ci/v2.11.0` SHIPPED (2026-07-22) — PLAN-018 Workstream A.** Tag on
+  `4984c35`, release published + marked Latest. The 🔴 founder FT-30 cold-start
+  dry-run passed GREEN on BOTH visibilities against throwaway repos, pinned to
+  the merge SHA (`CI_TAG=4984c35`): install.sh completed through all 18 labels
+  with no FAIL/404, `composition-{private,public}.yml` and `pre-commit.yml` both
+  resolved (F1/F2 live-verified), the fragment installed (F3), and the F4
+  runner-pool probe + LiteLLM note printed without aborting the script. Prep PR
+  #251 was expected-red pre-tag (FT-21 chicken-and-egg: version-sync + 11
+  self-pinned callers referencing a tag that didn't exist yet) and merged
+  `--admin` on unprotected main; the tag turned it green. **Single-repo release —
+  no consumer re-pinned.** NOTE: startup_failure self-caller runs are
+  non-retryable (FT-21 v2.9.0 lesson), so the post-release HANDOFF push is what
+  re-triggers them green.
+
+- **PLAN-018 Workstream A COMPLETE — all three cold-start blockers fixed on `main`
+  (PR-A #247 F1, PR-B #248 F2/F3, PR-C #249 F4/F6/F7).** The `ci/v2.11.0` cut is now
+  gated ONLY on the 🔴 founder-executed cold-start dry-run (FT-30, now a
+  RELEASE_CHECKLIST pre-tag item) — its runbook MUST `export CI_TAG=<merge-sha>`
+  or it validates the pre-fix templates. Canon still cannot self-exercise a cold
+  start, so nothing on `main` proves the fixes live; the dry-run is that proof.
+  Next up: cut `ci/v2.11.0` (prep PR → tag → release), then Workstreams C
+  (verification surface / detectors) and B (canon-internal defects) per §8 — C
+  before B. FT-32 gates the rollout PHASE, not the v2.11.0 cut.
+
+- **PLAN-018 Workstream A / PR-C MERGED (#249, F4 + F6 + F7 + F5 + FT-30) — operator-facing
+  correctness.** F7: `deploy-ci-wizard.sh`
+  silently scaffolded callers pinned 14 releases back (`|| echo 'ci/v1.9.5'` FIRES
+  under `set -e` on an unreadable VERSION) — now fails loud, and
+  `test_version_sync.sh` executes the shipped resolution to prove it. F4:
+  `install.sh` next-steps gain a visibility-independent runner-pool probe and the
+  `litellm_allow_insecure_http` note (output only — it does NOT uncomment the flag,
+  which `--update` would re-comment → red gate). F6: the wizard's markdown-lint
+  report-only injection was public-only; moved out of the `[ ! -f variant ]` branch
+  (scoped to markdown-lint) so both visibilities match, template untouched to avoid
+  the `business`/`iplanic`/`interlog` graduated-gate downgrade. F5: the docs-sync
+  `pull-requests: write` fix ships with the tag (no code). FT-30: the 🔴
+  founder-executed cold-start dry-run is now a release-checklist pre-tag item, with
+  the `CI_TAG=<merge-sha>` requirement called out. **After PR-C merges, A is
+  complete and the `ci/v2.11.0` cut is gated only on the FT-30 dry-run.**
+
+- **PLAN-018 Workstream A / PR-B MERGED (#248, F2 + F3) — the two remaining cold-start
+  blockers.** F2: `pre-commit` joins the bootstrap set **unconditionally** (its
+  check is required on every tier that has required checks, and is the bootstrap
+  tier's only one; without a producer, armed protection pins every PR on
+  "Expected — Waiting for status to be reported"). F3: the canon fragment ships
+  commit-stage hooks (`check-yaml`, `end-of-file-fixer`, `trailing-whitespace` at
+  `pre-commit-hooks` v6.0.0) so the required check inspects something — its only
+  hook was `pre-push`-staged, and the reusable's stage-less run selected **zero**
+  hooks and exited 0. Merge now de-dups by repo URL (a consumer on a different
+  `rev` was structurally unequal → duplicate `repos:` entry). Wave-0 self-adopted
+  by hand (the `CANON:` marker makes the merge no-op here) — which immediately
+  found trailing-whitespace / missing-newline defects in 4 of canon's own files.
+  **Known and accepted:** already-adopted consumers cannot receive the new hooks
+  (FT-32), so they flip to `DRIFT` — expected signal per CI-0013, and a report,
+  not a gate. Remaining in A: **PR-C** (F4/F6/F7 + the release-checklist
+  cold-start dry-run).
+
+- **PLAN-018 Workstream A / PR-A MERGED (#247, F1 + regression cover) — the
+  cold-start 404 is fixed on `main`, and canon is still NOT ready to onboard a
+  new repo.**
+  `install.sh` now names each bootstrap caller template explicitly (three naming
+  shapes, `docs/REPO_STANDARDS.md` §16.9); `tests/test_install.sh` (49 assertions)
+  extracts and *evaluates* the caller block under both visibilities and
+  cross-checks it against `manifest.json` **in both directions** — resolved
+  template names *and* the installed caller set (`auto_install: true`). Teeth
+  verified against eight seeded mutations plus one negative, and the PR-B change
+  (add the `pre-commit` stanza + flip its `auto_install`) verified to pass only
+  when both halves land together. **Two pre-push review cycles broke the test,
+  not the fix** — `install.sh` came through both clean. Cycle 1: deleting the
+  whole `composition` stanza passed with zero failures (the shape of the
+  still-open F2), plus substring-masked containment, a greedy match hiding a
+  derived argument behind a second call on one line, and an unbounded block on a
+  lost end marker. Cycle 2, on the fold itself: a backslash-wrapped call outside
+  the markers re-opened containment in a form ordinary line-wrapping produces,
+  and the new `set -euo pipefail` fidelity was defeated by calling the evaluator
+  in an `if` condition — the same `-e`-suppression trap `install.sh` documents
+  for `update_mode`. **Still open before an
+  onboard:** F2 + F3 (PR-B), F4/F6/F7 + the release-checklist dry-run (PR-C), and
+  the 🔴 founder-executed cold-start dry-run that gates the `ci/v2.11.0` cut —
+  its runbook must export `CI_TAG=<merge-sha>`, or it validates the pre-fix
+  templates. **The fix is unverified live**: canon is already adopted and cannot
+  self-exercise a cold start, which is precisely why F1 survived nine releases.
+
+- 🔴 **The cold-start path was broken for 9 releases (F1 — now fixed by PR-A,
+  above; retained for the reasoning).** Pre-prod review (5 lenses) scoped to
+  onboarding `feedback-desk` found the documented one-liner **died on its first
+  template fetch**: `install/install.sh:462` built `workflows/ai-review-${VISIBILITY}.yml`,
+  but PLAN-013 deleted those variants at the `ci/v2.2.0` release commit —
+  verified live, `ai-review-private.yml` → **404**, `ai-review.yml` → 200. The
+  `|| exit 1` killed the run before config.json, CODEOWNERS, CLAUDE.md,
+  `pre_push_check.sh`, the pre-commit merge, and all 18 labels. Every fleet
+  consumer adopted **before** v2.2.0, which is why no one hit it. Two more
+  blockers survive the run: the bootstrap set omits the `pre-commit` caller that
+  emits `call / Lint / format / security hooks` (required on every tier but
+  umbrella), and the canon pre-commit fragment's only hook is `pre-push`-staged,
+  so the reusable's stage-less run selects **zero** hooks and exits 0 — a
+  required check that inspects nothing, on every fresh adopter. Full ranked
+  verdict + 6 lower findings: **FT-25 … FT-31**.
+
+- **GOAL SET (founder, 2026-07-22) — `DECISIONS.md` CI-0013: complete
+  `aidoc-flow-ci` FIRST, roll the canon over to the other repos LATER.** Two
+  consequences decided with it: (1) **pre-rollout consumer drift is expected,
+  correct signal**, not damage — when canon adds a required surface, adopted
+  repos report DRIFT under `apply-standards.sh --check`, and that report becomes
+  the rollout worklist; canon does NOT weaken a check to keep the stale fleet
+  green. (2) The surviving prohibition is narrower: **no silent weakening of a
+  live gate** (a canon change must never flip a consumer's graduated blocking
+  gate to report-only via `--update`).
+
+- **PLAN-018 RE-SCOPED and READY — `plans/PLAN-018_canon-completeness.md`
+  (renamed from `…_cold-start-onboarding-fixes.md`).** Gate green: **52
+  citations, 7 review passes** (Passes 5-6 are two independent passes on the
+  re-scoped whole, returning 6 and 3 load-bearing; Pass 6 found only stale-wording
+  defects and no design errors). Four workstreams: **A** the three cold-start blockers
+  (unchanged, carries the 9/7/5-finding review history from Passes 1-3); **B**
+  seven canon-internal defects pulled back from the FT ledger; **C** the
+  verification surface — the systemic fix, sequenced AHEAD of B because it
+  contains the general form of two A blockers (FT-18 ⊃ F2, FT-31 ⊃ F3); **D**
+  rollout-readiness docs. Fleet-state (FT-5/11/12/13) and runner-infra
+  (FT-16/19/20) are explicitly out, with a rationale table.
+  **Both former founder items are CLOSED:** OI-1 by CI-0013 (ship the full
+  pre-commit fragment); OI-2 by specification — it was never a fork, the runbook
+  must export `CI_TAG=<merge-sha>` or it validates the pre-fix templates.
+
+- ⚠️ **Author error corrected — I told the founder the rollout migration path is
+  "FT-9-broken today". It is not: FT-9 is RESOLVED (`ci/v1.9.0`, PLAN-006 W2),
+  `--repin` is the safe version-only path.** The accurate residual concern is
+  narrower and now sits in the plan's contract item 8: rolling *completed* canon
+  out is **body adoption** via `--update`, which by design wholesale-replaces
+  every `safe_to_replace` caller, so the rollout needs a documented
+  reconciliation procedure (Workstream D) — not a bug fix. Caught by the
+  FT-ledger inventory contradicting the claim; CI-0013 was corrected pre-commit.
+
+- **Three review findings worth carrying forward as method, not just content:**
+  (1) I reported the wizard's `|| echo` VERSION fallback as dead code — it is
+  **not**; `set -euo pipefail` makes it fire, and the real defect is that an
+  unreadable `VERSION` silently scaffolds callers pinned **14 releases back**.
+  Two readings (a review lens and my own) missed it because both *read* the `||`
+  and neither *ran* it. (2) The first F6 fix would have silently downgraded three
+  live private repos — `business`/`iplanic`/`interlog` deliberately carry
+  `fail-on-findings: true`, and the caller is `safe_to_replace`, so the next
+  `--update` would have switched graduated blocking gates back off; the fix moved
+  to the wizard conditional where the defect actually lives. (3) Pass 2 caught
+  three defects the *Pass-1 fold itself* introduced — folding a review finding is
+  a code change and needs the same scrutiny as one.
+
+- **`feedback-desk` prerequisites — all 🔴, verified live via
+  `deploy-ci-wizard.sh preflight vladm3105/aidoc-flow-feedback-desk`:** no
+  `ci-runner,single-use` pool (private ⇒ every job queues forever; job
+  `timeout-minutes` starts at job *start*, so it never fires), all five secrets
+  missing, `APP_REVIEWER_1_BOT_ID` unset (⇒ composition INERT, see FT-29), only
+  GitHub's default labels. Not inherited — `vladm3105` is a personal account.
+  🟢 `allowed_actions: all` (no allowlist blocker); `default_workflow_permissions:
+  read` is fine — every caller template carries an explicit `permissions:` block.
+
+- **`ci/v2.10.0` SHIPPED (2026-07-21) — PLAN-017 / FT-15.** Tag `7398b63a4`,
+  release published + marked Latest. Prep merged first per FT-21 (its
+  `version-sync` check and the two self-pinned callers are expected-red until the
+  tag exists; `main` is unprotected so no admin bypass or force-push was needed),
+  then the tag was cut on the merge commit — **VERSION matched the tag at cut
+  time**, so no re-cut for coherence was required (the trap the v2.9.0 cut hit).
+  Post-release: full suite PASS (296 assertions), `--check-published` green.
+  **Still NOT verified live** — canon has no self-caller for these reusables, so
+  the 🔴 pilot consumer re-pin in `plans/ROLLOUT_plan017-verify.md` is what
+  actually closes FT-15. Fleet is uniformly stale as expected (PLAN-009).
+
+- **PLAN-017 (FT-15 fix) — ALL THREE PRs LANDED (`docs-sync`, `doc-maintainer`,
+  `ai-review`). Code complete; NOT yet verified live — verification runbook
+  PREPARED at `plans/ROLLOUT_plan017-verify.md` (🔴 needs a consumer re-pin).**
+  `docs-sync` (#236) and `doc-maintainer` (both sites) now resolve the canon tag
+  from the consumer's own adopted pin and hardcode the owner. PR-C (the merge gate) has no
+  `actions/checkout` by design (IPLAN-0024), so it reads the caller's workflow
+  over the API at a trusted, event-selected ref (`pull_request_target`→base,
+  `pull_request_review`→default, else default) and **discards** `workflow_ref`'s
+  own ref component. **Not yet verified live:** canon has no self-caller for these
+  reusables, so their own CI cannot exercise them — verification is the
+  `ci/v2.10.0` cut + a pilot consumer re-pin reading the `::notice::`, which is a
+  🔴 cross-repo write (ops/inbox runbook). **FT-22** tracks porting the same
+  resolver to `standards-drift.yml`, which predates the rule.
+
+- ⚠️ **FT-15 CONFIRMED LIVE — the pin does NOT control reviewer assets.** Proven
+  from production logs (no throwaway run needed: `ai-review.yml:431` already
+  notices the resolved ref every run). `operations`, pinned `@ci/v2.0.1`, logged
+  `ai-review fetching assets from vladm3105/aidoc-flow-ci@refs/heads/main` — so it
+  fetches `main`'s rubric / verdict schema / `litellm_client.py`. Verified against
+  the **tag** source (not just the log, since `pull_request_target` makes
+  `github.ref` also `main`). **Realized drift is narrow — only
+  `litellm_client.py` actually differs (+19/-1); rubric + schema are identical** —
+  but the mechanism is fully broken. Workflow *logic* is correctly pinned by
+  GitHub; only the **curl-fetched assets** float. 5 `workflow_ref` sites:
+  `ai-review` (2), `doc-maintainer` (2), `docs-sync` (1).
+  **Two NEW findings beyond the original entry:** (1) `CI_OWNER` is *also*
+  caller-derived (`cut -d/ -f1`), so **external adoption is broken today** — an
+  external org fetches `<their-org>/aidoc-flow-ci` → 404 (the owner is NOT
+  hardcoded, contrary to the prior note); (2) a hard-404 mode reachable **today** —
+  `doc-maintainer` also declares `workflow_dispatch:`, so a manual dispatch from a
+  feature branch yields `refs/heads/<branch>` → 404 → bricked gate, surfacing as an
+  INFRA-looking flake rather than a config error. **Consequence for sequencing: the release/pin story is not true as
+  shipped — do not premise the arming rollout on "the pin determines reviewer
+  behaviour."** Fix is OPEN, deliberately NOT blind-applied: one reviewed PR per
+  reusable, must hardcode the owner and derive the tag from the consumer's own
+  caller (the `standards-drift.yml` pattern). Full evidence + scope table in
+  `plans/FRAMEWORK-TODO.md` FT-15.
+
+### Previously (2026-07-20, session wrap)
+
+- **`ci/v2.9.0` SHIPPED — PLAN-016 complete.** Canon runner reference
+  implementation at `install/templates/runner/` (CI-0012); tag cut, re-cut
+  once for coherence (initial cut landed pre-#231-merge with internal
+  VERSION=v2.8.0; final tag @ `9cd2ba2`, VERIFIED: VERSION matches, template
+  pins @v2.9.0), release published. Operations vendored + re-stamped
+  (@ ci/v2.9.0, #279) and the host image REBUILT with `libatomic1` (both
+  build-image verification gates passed live). PR chain: #226 plan → #227
+  canon → ops #277 vendor → #229 FT-16..18 → #230 pre-tag fixes (5-lens
+  ci-preprod-review, SHIP-WITH-FIXES → fixed) → #231 release prep → ops
+  #279 re-stamp → #232 FT-21.
+- **Remaining founder items:** (1) `ci-runner@business` provisioning — the
+  v2 pool registration that business **PR** #63 (the verified-planning slim
+  PR — its CI lint job crashes on the legacy ci-eph runner image's missing
+  `libatomic`; re-confirmed post-rebuild) is solely blocked on (command
+  handed off);
+  (2) FT-19 container-egress risk-accept (pending, blocks nothing); (3)
+  iplanic branch-protection context rename (see the operations 2026-07-19
+  orphaned-contexts inbox runbook).
+- **Release-cut lessons → FT-21** (harden `docs/RELEASE_CHECKLIST.md` +
+  `release.sh`): merge prep BEFORE tagging; self-pin chicken-and-egg makes
+  the prep PR's first check run red until the tag exists (workflow-file-issue
+  runs are NOT rerunnable — empty-commit re-trigger is the recovery).
+- Backlog seeded from the same-day FT-16 outage arc: FT-16 fleet watchdog,
+  FT-17 post-cutover ai-review recovery, FT-18 context validator, FT-19/20
+  hardening, FT-21 release sequencing.
+
+### Previously (2026-07-20 mid-session)
+
+PLAN-016 W1–W3 execution detail — superseded by the wrap above; full record
+in CHANGELOG ci/v2.9.0 section + `plans/PLAN-016_runner-canon-templates.md`
+Review log.
+
+### Previous state (2026-07-19)
 
 **`ci/v2.8.0` is the Latest release — PLAN-015 (pre-prod review fix closure) is
 SHIPPED.** A 5-lens pre-prod review of the canon returned "workflows ready,
@@ -24,8 +892,8 @@ rollout not"; PLAN-015 closed both blockers + the M/L follow-ups, cut as
 
 **Remaining PLAN-015 work is entirely 🔴 founder-gated + prepared:**
 `plans/ROLLOUT_plan015-arming.md` (per-repo re-pin to `ci/v2.8.0` + install
-`standards-drift` + arm branch protection + verify) and the CI-0011
-`verified_allowed` decision. **FT-15** (audit ai-review/doc-maintainer/docs-sync
+`standards-drift` + arm branch protection + verify). The CI-0011
+`verified_allowed` decision is RESOLVED (2026-07-24). **FT-15** (audit ai-review/doc-maintainer/docs-sync
 for the same latent `workflow_ref`-is-the-caller asset-fetch issue PLAN-015 B2
 found + fixed in `standards-drift`) is OPEN in `plans/FRAMEWORK-TODO.md` — now
 **elevated to a trust-blocker**: it must be confirmed before trusting the pin
@@ -45,7 +913,7 @@ FT-15 first. Company-standard ratification is a 🔴 operations (OPS-NNNN) call.
 
 ---
 
-_History — `ci/v2.7.0`:_ **PLAN-014 (own-security-scanner suite,
+*History — `ci/v2.7.0`:* **PLAN-014 (own-security-scanner suite,
 "osv/trivy/semgrep, all in, report-only first") is IMPLEMENTED through Phase 4.
 Three report-only scanners + a deterministic autofix preview now ship on the
 uniform-protected + fork-guarded model (PLAN-013), each SHA/version-pinned with
@@ -309,11 +1177,12 @@ suite (`tests/`, PR #143), W5 Dependabot prune (#137), W2 guardrails
   (see CHANGELOG "functional doc-maintainer …") — reconcile W3 docs-sync-live
   against it before provisioning the App.
 
-_Recent (2026-07-11):_ **PLAN-006 W4 content-check population — COMPLETE across all active repos.**
+*Recent (2026-07-11):* **PLAN-006 W4 content-check population — COMPLETE across all active repos.**
 Two releases fixed the canon (`ci/v1.9.4` binary-install for links+markdown-lint;
 `ci/v1.9.5` markdown-lint `fail-on-findings` toggle + `.lychee.toml`
 `include_fragments` invalid-key fix), then populated the fleet. Final state
 audited 2026-07-11 (see `docs/WORKFLOWS.md` §2):
+
 - **links** ✅ every active repo (lychee musl binary). operations + framework
   ship a `.lychee.toml` scoping out cross-repo `../sibling/` links (resolve only
   in the local workspace, not single-repo CI) + framework's `platforms/**`+
@@ -331,6 +1200,7 @@ audited 2026-07-11 (see `docs/WORKFLOWS.md` §2):
 
 **Graduations status (history — 2026-07-12; W4 arming still founder-gated per
 current state above):**
+
 1. **markdown-lint report-only → blocking — DONE 2026-07-12** (all 6 consumers
    merged; the "259 residual/repo + `--fix`" framing was superseded by relaxing
    the canon `.markdownlint.json` per the founder decision). Only the
@@ -339,7 +1209,7 @@ current state above):**
    App + `AIDOC_FLOW_BOT_ID`/`KEY` secrets per repo (only ci + operations have
    it); or fold into the now-functional `doc-maintainer.yml` supersession.
 
-_History (v1.9.4):_ **`ci/v1.9.4` SHIPPED (PLAN-006 W4 — content-check canon fix).** While
+*History (v1.9.4):* **`ci/v1.9.4` SHIPPED (PLAN-006 W4 — content-check canon fix).** While
 populating the missing content-check workflows, discovered the same
 allowed-actions defect that broke `secret-scan` also blocked **`links`** and
 **`markdown-lint`**: both wrapped third-party marketplace actions
@@ -353,6 +1223,7 @@ strict cli2-0.23 rule, 348 hits/repo), and adds REPO_STANDARDS §4.3
 review: security READY, correctness clean, docs 4 findings folded.
 
 **W4 accurate fleet tally (canon workflows on 8 repos, real repo names):**
+
 - **labeler 8/8** ✅ (interlog #54 merged last; ci self-adopted).
 - **secret-scan 8/8 effective** ✅ (6 via `secret-scan.yml`; business + interlog
   covered by their own standalone `security.yml` gitleaks — confirmed clean 0
@@ -363,12 +1234,12 @@ review: security READY, correctness clean, docs 4 findings folded.
   (canon relaxed + per-repo cleanup; see current-state above); links populated;
   docs-sync deployed dry-run (live-mode still 🔴 App). FT-11.
 
-_History (v1.9.0 → v1.9.3):_ **`ci/v1.9.0`** (PLAN-006 W2 — FT-9 fix + self-hosted policy). The
+*History (v1.9.0 → v1.9.3):* **`ci/v1.9.0`** (PLAN-006 W2 — FT-9 fix + self-hosted policy). The
 v1.8.1 consumer-sync sweep (via `install.sh --update`) clobbered the private
 callers' runner topology — the `-private.yml` templates shipped a `runner-self`
 **placeholder** that resolves to no registered runner, so every required check
-queued forever and bricked the gate (FT-9). Caught by ai-review on operations
-#244; remediated surgically across all 4 private repos. **All 4 private repos
+queued forever and bricked the gate (FT-9). Caught by ai-review on operations #244; remediated surgically across all 4 private repos. **All 4 private repos
+
 (operations/business/iplanic/interlog) are now on `@ci/v1.8.1` + self-hosted
 `ci-ephemeral`, ai-review proven green on operations/business/iplanic** (interlog
 confirms on next PR). v1.9.0 prevents recurrence: `-private.yml` templates now
@@ -379,11 +1250,11 @@ version-only pin bump (never `--update` for a re-pin). Founder policy codified:
 lightweight callers + stale-pin sync (interlog audit-trail v1.6.0); W4 populate
 per-repo canon gaps; W5 public loose ends (iplan-runner #76, engramory).
 
-_History (2026-07-10):_ **PLAN-004 + PLAN-005 SHIPPED. Releases: `ci/v1.7.0`
+*History (2026-07-10):* **PLAN-004 + PLAN-005 SHIPPED. Releases: `ci/v1.7.0`
 (PLAN-004 elevation), `ci/v1.7.1` (caller permissions), `ci/v1.8.0` (PLAN-005
 A1/C/D/E/F/G), `ci/v1.8.1` (PLAN-005 PR-A part 2 / D2).** PLAN-005 7/7 complete.
 
-_History:_ **`ci/v1.7.1` PATCH** — PLAN-005 PR-B / B2: the `ai-review` caller
+*History:* **`ci/v1.7.1` PATCH** — PLAN-005 PR-B / B2: the `ai-review` caller
 templates shipped with no `permissions:` block → `startup_failure` on consumers
 under the canon `read` default (the pipeline never ran). Fixed by adding the
 caller `permissions:` block to both variants. Consumers re-pin `@ci/v1.7.1` or
@@ -412,6 +1283,7 @@ so it's substantively fine, but it bypassed the PR record. Left on main (revert+
 redo would just churn history for an identical correct commit) — founder may
 redo via PR if the record matters.
 **Remaining:**
+
 - **PR-A part 2** (D2 HEAD-relative skip carry-forward — product-code
   approve-then-inject) — needs a LIVE §15 label-cycle smoke test (plan Step 7) on
   a scratch PR; §15 tension resolved in design (§15 keeps the approval AT HEAD).
@@ -497,6 +1369,15 @@ enforcement, PR-U1/U2/U3/U4, 2026-07-08).
 
 ## Next-session start-here
 
+0. **🔴 CUT `ci/v2.15.0` — this outranks everything below.** `VERSION` on `main`
+   says `ci/v2.15.0`; the tag does not exist, so CI-0014..CI-0024 + FT-57 reach
+   **no consumer**. The only thing owed is the founder-executed FT-30 cold-start
+   dry-run, then `release.sh tag ci/v2.15.0 --dry-run-verified`. Full command
+   block, the prep-merge SHA to export as `CI_TAG`, and the pass criteria are in
+   **`## Current state (2026-07-26)`** at the top of this file. Do not start the
+   items below until the tag is cut — several of them re-pin consumers, which is
+   pointless against an unpublished tag.
+
 1. **PLAN-007 production-hardening — W1/W2/W3(markdown-lint)/W5 DONE; the two
    remaining items are BOTH 🔴 founder-gated:**
    - **W4 — arm the gates as required checks** (`docs/FLEET_BRANCH_PROTECTION_ARMING.md`).
@@ -513,16 +1394,28 @@ enforcement, PR-U1/U2/U3/U4, 2026-07-08).
 3. `docs/REPO_STANDARDS.md` is the durable canon consumers follow. For PLAN-003
    rollout work, read `docs/PLAYBOOK_governance-canon-rollout.md` then defer to
    operations `docs/CROSS_REPO_PLAYBOOKS.md` §T-D.
-4. _History:_ PLAN-004 SHIPPED (A–E merged + `ci/v1.7.0` 2026-07-10); PLAN-006 W4
+4. *History:* PLAN-004 SHIPPED (A–E merged + `ci/v1.7.0` 2026-07-10); PLAN-006 W4
    content-check population COMPLETE (2026-07-11).
 
 ## Recent decisions
 
-See `DECISIONS.md` for the full CI-NNNN record. Latest:
+See `DECISIONS.md` for the full CI-NNNN record — **it is authoritative and
+current through CI-0024.** The excerpt below is a convenience list that has
+repeatedly fallen behind (it sat at CI-0011 while CI-0012..CI-0024 landed, which
+contradicted the top of this very file). Treat a gap here as staleness in the
+excerpt, never as evidence a decision does not exist.
 
-- **CI-0011** (OPEN — founder) — `verified_allowed` supply-chain boundary:
-  keep (verified marketplace admitted fleet-wide) vs drop (three-pattern only).
-  Filed by PLAN-015 M1; resolve before treating the boundary as settled.
+**Since this list was last curated:** CI-0012..CI-0019 (the framework
+`ci/v2.14.0` migration findings), **CI-0020** (cross-repo defects filed upstream,
+§18), **CI-0021** (opt-in infrastructure break-glass, §19), **CI-0022** (a prompt
+states the model's real inputs, §20), **CI-0023** (a fail-closed guard fails on
+faults, not on a consumer's tree shape, §21), **CI-0024** (a mechanical rewriter
+must not rewrite illustrative examples, §22).
+
+- **CI-0011** (DECIDED 2026-07-24 — founder) — `verified_allowed` supply-chain
+  boundary: **dropped** the verified marketplace; `patterns_allowed` narrowed to the
+  owner's own account `vladm3105/*` (+ GitHub-owned). Filed by PLAN-015 M1.
+  🔴 leftover: applying the template to canon + consumers is a settings write.
 - **CI-0010** (2026-07-18) — own security-scanner suite (osv/trivy/semgrep):
   binaries not marketplace actions, report-only-first, opt-in (`ci/v2.4.0`–`v2.7.0`).
 - **CI-0009** (2026-07-17) — ai-review autofix: dedicated write-App, default-off,
@@ -547,8 +1440,7 @@ See `DECISIONS.md` for the full CI-NNNN record. Latest:
 Recent merges: `feat/unified-litellm-agents` (#154 — LiteLLM unification for
 `ci/v2.0.0`); PLAN-007 W1/W2/W3/W5 (test suite + guardrails + markdown-lint
 graduation + Dependabot prune); PLAN-006 W4 content-check population.
-Earlier: PLAN-003 PR-V1/V2/V4 (#73/#74/#75) + canon follow-ups; PLAN-004
-#82-#99; PLAN-005 #108-#114.
+Earlier: PLAN-003 PR-V1/V2/V4 (#73/#74/#75) + canon follow-ups; PLAN-004 #82-#99; PLAN-005 #108-#114.
 
 ---
 
