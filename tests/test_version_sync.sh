@@ -117,4 +117,174 @@ assert_absent "$miss_res" "OK:" "missing VERSION scaffolds NO tag"
 empty_res="$(wiz_probe '   ')"
 assert_contains "$empty_res" "rc=2" "whitespace-only VERSION exits 2 (no unresolvable @ pin)"
 
+# ---------------------------------------------------------------------------
+# 3. CI-0024 — sync-version-refs.sh must NOT rewrite illustrative/historical
+#    install commands.
+#
+# The script's substitutions match install-reference SHAPE, not
+# current-vs-historical. Its header noted that this was safe only while no target
+# carried an illustrative old-tag install command, and said to mark such a line
+# to exclude it. That was TRUE when written (a0fc68c, 2026-07-09: TARGETS held
+# two READMEs). It stopped being true on 2026-07-17, when 1a027da (#175) added
+# docs/MIGRATION_v2.0.0.md — which carries two such commands — to TARGETS. The
+# prescribed exclusion was never implemented, so nothing failed. The Rollback
+# command is meant to pin a consumer BACK to ci/v1.x; from that commit on, every
+# release cut rewrote it FORWARD, publishing an instruction that did the opposite
+# of its stated intent.
+#
+# These drive the SHIPPED functions, extracted from the real script rather than
+# paraphrased, so deleting the negated address range or the validator goes red.
+# ---------------------------------------------------------------------------
+echo
+echo "== sync-version-refs ignore markers (CI-0024) =="
+
+SVR="$ROOT/scripts/sync-version-refs.sh"
+_extract_fn() { awk -v fn="$1" '$0 ~ ("^" fn "\\(\\) \\{") {p=1} p{print} p && /^\}$/{exit}' "$SVR"; }
+
+svr_probe_dir="$(mktemp -d)"
+{
+  echo 'set -uo pipefail'
+  grep -E '^IGNORE_(START|END)=' "$SVR"
+  echo 'TAG="ci/v9.9.9"'
+  _extract_fn validate_ignore_markers
+  _extract_fn sed_program
+  echo 'if [ "${1:-}" = "--validate" ]; then validate_ignore_markers "$2"; exit $?; fi'
+  echo 'sed -E -f <(sed_program) "$1"'
+} > "$svr_probe_dir/probe.sh"
+
+# Extraction guards — an empty body would make every case below "pass" for the
+# wrong reason (the failure mode tests/test_contract.sh was itself caught by).
+_svr_val_lines="$(_extract_fn validate_ignore_markers | wc -l | tr -d ' ')"
+_svr_sed_lines="$(_extract_fn sed_program | wc -l | tr -d ' ')"
+assert_ok "[ '${_svr_val_lines:-0}' -ge 5 ]" "validate_ignore_markers extracted ($_svr_val_lines lines)"
+assert_ok "[ '${_svr_sed_lines:-0}' -ge 6 ]" "sed_program extracted ($_svr_sed_lines lines)"
+assert_ok "grep -qE '^IGNORE_START=' '$SVR'" "IGNORE_START marker is defined in the shipped script"
+
+# --- rewriting honours the markers -----------------------------------------
+cat > "$svr_probe_dir/doc.md" <<'FIXTURE'
+Install the current release:
+
+```bash
+CI_TAG=ci/v1.0.0 bash install.sh <owner/repo> --repin
+```
+
+<!-- sync-version-refs:ignore-start -->
+To roll a consumer BACK to the last v1 tag:
+
+```bash
+CI_TAG=ci/v1.9.5 bash install.sh <owner/repo> --repin
+```
+
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v1.9.5
+<!-- sync-version-refs:ignore-end -->
+
+And back to current:
+
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v1.0.0
+FIXTURE
+
+svr_out="$(bash "$svr_probe_dir/probe.sh" "$svr_probe_dir/doc.md" 2>&1)"
+
+assert_contains "$svr_out" 'CI_TAG=ci/v9.9.9 bash install.sh' \
+  "a CI_TAG= line OUTSIDE an ignore span is still rewritten (positive control)"
+assert_contains "$svr_out" 'ai-review.yml@ci/v9.9.9' \
+  "a uses:@tag line AFTER ignore-end is rewritten — the span closes"
+assert_contains "$svr_out" 'CI_TAG=ci/v1.9.5 bash install.sh' \
+  "the historical rollback CI_TAG= INSIDE the span is preserved (CI-0024)"
+assert_contains "$svr_out" 'ai-review.yml@ci/v1.9.5' \
+  "a historical uses:@tag INSIDE the span is preserved"
+assert_contains "$svr_out" 'sync-version-refs:ignore-start' \
+  "the markers themselves survive the rewrite"
+
+# Mutation check: strip the negated address ranges and the guarded lines WOULD
+# be rewritten. This proves the assertions above bind to the ranges rather than
+# passing because the fixture never matched in the first place.
+mutant="$svr_probe_dir/mutant.sh"
+sed 's|/${IGNORE_START}/,/${IGNORE_END}/!||g' "$svr_probe_dir/probe.sh" > "$mutant"
+assert_ok "! grep -q 'IGNORE_START}/,' '$mutant'" "mutant actually stripped the address ranges"
+mut_out="$(bash "$mutant" "$svr_probe_dir/doc.md" 2>&1 || true)"
+assert_contains "$mut_out" 'CI_TAG=ci/v9.9.9 bash install.sh <owner/repo> --repin' \
+  "mutant rewrites the OUTSIDE line too — mutation harness is live"
+assert_absent "$mut_out" 'CI_TAG=ci/v1.9.5' \
+  "mutant DOES clobber the historical rollback command — this is the CI-0024 bug, reproduced"
+
+# --- validator: malformed markers are a HARD error -------------------------
+svr_validate() { printf '%s' "$1" > "$svr_probe_dir/v.md"; bash "$svr_probe_dir/probe.sh" --validate "$svr_probe_dir/v.md" 2>&1; printf 'rc=%s' "$?"; }
+
+ok_res="$(svr_validate 'a
+<!-- sync-version-refs:ignore-start -->
+b
+<!-- sync-version-refs:ignore-end -->
+c')"
+assert_contains "$ok_res" "rc=0" "balanced markers validate clean"
+
+unterm_res="$(svr_validate 'a
+<!-- sync-version-refs:ignore-start -->
+b')"
+assert_contains "$unterm_res" "rc=1" "an unterminated ignore-start is a hard error"
+assert_contains "$unterm_res" "unterminated" "the unterminated error names the failure"
+assert_contains "$unterm_res" ":2:" "the unterminated error names the LINE the span opened at"
+
+stray_res="$(svr_validate 'a
+<!-- sync-version-refs:ignore-end -->')"
+assert_contains "$stray_res" "rc=1" "an ignore-end with no start is a hard error"
+
+nested_res="$(svr_validate '<!-- sync-version-refs:ignore-start -->
+<!-- sync-version-refs:ignore-start -->
+<!-- sync-version-refs:ignore-end -->')"
+assert_contains "$nested_res" "rc=1" "a nested ignore-start is a hard error"
+
+oneline_res="$(svr_validate 'x <!-- sync-version-refs:ignore-start --> y <!-- sync-version-refs:ignore-end --> z')"
+assert_contains "$oneline_res" "rc=1" "both markers on one line is a hard error (grep -c would miscount)"
+
+rm -rf "$svr_probe_dir"
+
+# --- the trigger that actually fired must fail a test, not a comment ---------
+# CI-0024's real lesson: the caveat named a future trigger ("a target gains an
+# illustrative install command") but only PROSE guarded it, so 1a027da (#175)
+# tripped it silently by adding docs/MIGRATION_v2.0.0.md to TARGETS. §22.2 now
+# legislates that such a trigger is enforced mechanically — this is that
+# enforcement, and without it this change would violate the rule it ships.
+#
+# The list is pinned. Adding a target fails HERE, with instructions, so whoever
+# adds the next one is forced to answer the question #175 was never asked.
+# `{p=1;next}` on the opening line would skip an entry written on the SAME line
+# as `TARGETS=(` — a silent bypass of this very guard. Strip the `TARGETS=(`
+# prefix instead and keep the remainder of that line in scope.
+_svr_targets="$(awk '/^TARGETS=\(/{p=1;sub(/^TARGETS=\(/,"")} p&&/^\)/{exit} p' "$SVR" \
+  | sed -E 's/^[[:space:]]*#.*$//; s/^[[:space:]]*"([^"]+)".*$/\1/' | grep -v '^$' | sort)"
+assert_ok "[ -n '$_svr_targets' ]" "TARGETS list extracted from the shipped script"
+read -r -d '' _svr_expected <<'EXPECTED' || true
+docs/AI_CI_DEPLOYMENT.md
+docs/BRANCH_PROTECTION.md
+docs/MIGRATION_v2.0.0.md
+docs/PLAYBOOK_governance-canon-rollout.md
+docs/REVIEWER_APP_ONBOARDING.md
+docs/UPDATE_GUIDE.md
+docs/architecture.md
+docs/multi-project-guide.md
+docs/overrides.md
+docs/security.md
+install/README.md
+install/install.sh
+install/templates/config.json.template
+README.md
+EXPECTED
+_svr_expected="$(printf '%s\n' "$_svr_expected" | sort)"
+if [ "$_svr_targets" = "$_svr_expected" ]; then
+  _g "sync-version-refs TARGETS matches the reviewed set (CI-0024 trigger guard)"
+else
+  _r "sync-version-refs TARGETS changed. This is the CI-0024 trigger: a file
+       entering TARGETS has EVERY install reference rewritten to VERSION at each
+       release cut. Before updating this list, open the file and check for
+       ILLUSTRATIVE or HISTORICAL install commands — a rollback command, a
+       'repin to @ci/vX.Y.Z' step from a past migration. Wrap each in
+       <!-- sync-version-refs:ignore-start --> / <!-- ...ignore-end --> or it
+       will be silently falsified. Check too for any LITERAL occurrence of those
+       marker strings in prose or fenced examples — once the file is a target
+       they parse as real spans, and an unbalanced or same-line pair is a hard
+       exit 2. Diff:
+$(diff <(printf '%s\n' "$_svr_expected") <(printf '%s\n' "$_svr_targets") | sed 's/^/       /')"
+fi
+
 suite_summary "version-sync"

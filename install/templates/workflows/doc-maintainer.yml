@@ -63,17 +63,29 @@ on:
 
 permissions:
   actions: write
-  contents: write
+  # `read`, not `write` (CI-0015): every write this flow performs — the branch
+  # push and the PR create — goes through the doc-maintainer App's BOT_TOKEN, not
+  # GITHUB_TOKEN, and both callee jobs declare `contents: read`. Because the
+  # effective token is the caller∩callee intersection, `contents: write` here was
+  # unusable by construction: a dead grant that read as a capability the flow had.
+  # Surfaced by the caller/callee parity contract test.
+  contents: read
   issues: write
   pull-requests: write
 
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v2.12.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v2.15.0
     with:
       runner_labels: '["self-hosted", "ci-runner", "single-use"]'
       model: ai-doc-maintainer
-      # Private HTTP proxies require explicit opt-in:
+      # HTTP proxies require explicit opt-in. Required by the URL SCHEME, NOT by
+      # repo visibility — if LITELLM_BASE_URL starts `http://`, uncomment this,
+      # public repo or not. On the shared self-hosted pool the proxy is the
+      # Docker bridge gateway (http://172.17.0.1:4001/v1 — plain HTTP), so this
+      # applies there too. NB: LITELLM_BASE_URL must NOT be 127.0.0.1/localhost;
+      # jobs run inside a container, so loopback is the container itself.
+      # (CI-0017.)
       # litellm_allow_insecure_http: true
       merge_sha: ${{ inputs.head_sha || '' }}
     # Explicit map (FT-27 least-privilege) — exactly the secrets the reusable declares.

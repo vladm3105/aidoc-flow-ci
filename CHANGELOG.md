@@ -5,6 +5,836 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Docs — `ai-review`'s FT-43 guard rests on a premise #330 disproved (#331)
+
+- The guard's comment and `::error::` say a fresh SUCCESS would **supersede** a
+  prior `request_changes` at the same HEAD. #330 settled that it cannot: a later
+  SUCCESS from a *separate* run does not replace an earlier conclusion — both are
+  retained and the rollup keeps the worst.
+- It is also not preventing an unearned green. Without it the job falls through to
+  the R3 step, whose unarmed branch `exit 0`s and proceeds to a **full review**.
+  The guard stands between a label event and a real review, not a free pass.
+- What it does cost: on an unarmed repo its `exit 1` writes a **permanent**
+  non-success required context on the live head SHA for any non-`skip-ai-review`
+  label or draft event — the §23 defect class, from the guard meant to prevent a
+  bypass.
+- **The premise is corrected in the comment; the guard is retained.** Removing it
+  changes fail-closed behaviour on a required context and gets its own change with
+  a security review — analysis recorded on #331. Its error message's remedies
+  (arm the App, or push) are both still correct.
+- No behaviour change.
+
+### Fixed — a human label write or a PR reopen could cancel a required check (#329)
+
+- The CI-0025 fix covered `ai-review`, whose `cancel-in-progress` lives in the
+  **reusable**. The same defect was live in eight **caller templates**, where the
+  flag lives instead: `audit-trail`, `pre-commit`, `secret-scan` and
+  `markdown-lint`, each in its public and private variant.
+- §23.1's mechanism does not care who emits the event. `audit-trail`'s callers
+  subscribe to `labeled`/`unlabeled` **deliberately** — it is the documented
+  `skip-audit-trail` escape hatch — so canon's own instructions could cancel an
+  in-flight `call / verify` at the live head SHA and leave the PR `--admin`-only.
+  The others reach it via `reopened`, which fires at the current head.
+- All eight now carry a fail-safe allowlist: cancel on `push`,
+  `workflow_dispatch`, or a `pull_request`/`pull_request_target` whose action is
+  `opened`/`synchronize` — nothing else. Written with `==` so an unavailable
+  `github` context yields false and cancels nothing; a `!=` denylist would cancel
+  everything in that degraded state.
+- **Canon self-adopts too** (§16.6 Wave 0): its own five required-context callers
+  — `audit-trail`, `self-pre-commit`, `self-markdown-lint`, `self-secret-scan`,
+  `tests` — get the same allowlist. The first draft fixed only the templates
+  consumers receive and left canon's own `main` exposed, which is the
+  lesson-not-swept failure §23.3 names.
+- **Narrowed, not proven closed.** GitHub cancels a *pending* run when a newer one
+  queues in the same group, independently of `cancel-in-progress` — so two
+  non-code-changing events arriving while a run is in flight may still strand a
+  cancelled context. Unverified, and it applies to a flat `false` equally.
+- `labeler`, `links` and `codeql` are deliberately untouched — they are required
+  contexts on no tier, and a cancelled non-required context blocks nothing.
+- New contract test evaluates the shipped expression for every subscribed
+  `(event, action)` pair on each of the eight, plus the empty-context case.
+  Mutation-verified: reverting one template to `true`, or to a `!=` form, goes red.
+- ⚠️ **CONSUMER ACTION — a re-pin is NOT enough.** These are caller templates, so
+  `--repin` (which rewrites `uses:` lines only) will not deliver them. Re-install
+  the affected callers:
+  `CI_TAG=<tag> bash install/install.sh <owner/repo> --update --non-interactive`
+  (without a TTY, `--update` alone defaults to KEEP and delivers nothing — the
+  FT-39 guard), then re-apply any local `runner_labels_*` / `permissions:`
+  customisations.
+
+### Fixed — canon asserted two opposite models of required-check semantics (#330)
+
+- `REPO_STANDARDS` §23.1 said a later SUCCESS never replaces an earlier
+  non-success on the same head SHA. `troubleshooting` §15 recommended a label
+  cycle to clear a stuck check, which only works if it does. Both shipped in
+  `ci/v2.15.0`, §15 carrying a warning that the question was unresolved.
+- **Settled.** The mechanism is a re-run *attempt* vs. an independent run — `gh
+  run rerun` reuses the same workflow-run id, while a label add/remove is a
+  distinct trigger and so produces a distinct check-run. That architectural
+  distinction is what carries the conclusion; both sides were then confirmed
+  directly. An **in-place re-run** replaces the check-run: the
+  `suite` context on `fdebb05` went from check-run `89856301834` (`failure`) to
+  `89857163070` (`success`) with **one** check-run left on the SHA. A **separate
+  run adds one alongside**: `aidoc-flow-framework` #346 carries **two**
+  `call / ai-review` check-runs (`cancelled` + `success`) and a `FAILURE` rollup.
+- So §23.1 is correct **for separate runs**, and §15 was wrong: a label cycle
+  starts a separate run, so it adds a context rather than clearing one — during
+  the CI-0025 incident one cycle took a PR from one cancelled run to two.
+- §15 is now scoped to contexts that never **reported** ("Expected — waiting for
+  status"), with a table giving the correct remedy for a `cancelled`/`failure`
+  context: re-run that run, or push.
+- Docs only.
+
+## ci/v2.15.0 — 2026-07-26
+
+> **Consumer notes — read before re-pinning.**
+>
+> 1. **`docs-sync` callers.** Consumers installed from `ci/v2.11.0` onward need
+>    only a re-pin; older or hand-edited callers must also grant
+>    `pull-requests: write`. `--repin` will NOT fix it — it rewrites `uses:`
+>    lines only. See CI-0015 below.
+> 2. **Expected new `standards-drift` warnings (CI-0011).** After re-pinning you
+>    will see `actions.selected.verified_allowed` and
+>    `actions.selected.patterns_allowed: MISSING`. **Nothing is broken** — those
+>    are template values applied per-repo, and your live pattern is *narrower*
+>    than canon's. `strict` defaults to `false`, so it warns and exits 0. Apply
+>    the settings alongside the re-pin to clear them; see the last entry in this
+>    release and `docs/UPDATE_GUIDE.md`.
+> 3. **Self-hosted trust config.** If you point `trust_config_repo` at your own
+>    repo, verify it has `"version": 2` AND `litellm.model` before re-pinning.
+>    CI-0014 makes both jobs assert this instead of silently defaulting; the
+>    **`ai-review` job fails the gate**, while the `trust` job only warns —
+>    deliberately, because failing *it* would SKIP `ai-review`, and a skipped
+>    required check reports green.
+
+### Fixed — `ai-review` cancelled itself, blocking every PR on three tiers (CI-0025)
+
+- The caller subscribes to `pull_request_review: [submitted]` and the reviewer
+  **submits reviews** — on the approval path, and again for the IPLAN-0029
+  non-counting comment-state review that fires composition's gov-lock branch. The
+  concurrency predicate exempted only `labeled`/`unlabeled`, and `submitted` is
+  neither, so the review-triggered run cancelled **the run that had just posted
+  that review**, on the same head SHA.
+- A cancelled required check is **not** success and the rollup stays `FAILURE`
+  (scope and the open platform question: `REPO_STANDARDS` §23.1 and #330). `call / ai-review` is required on the **ops, product and governance**
+  tiers, so those PRs could only merge with `--admin`.
+- **Nothing reported it.** `gh pr checks` showed the green run; `gh pr merge` said
+  only "the base branch policy prohibits the merge", naming no check; the
+  cancelled duplicate was visible only through the GraphQL `isRequired`
+  projection. The documented `skip-ai-review` label-cycle recovery made it worse,
+  starting further runs that cancelled one another.
+- **The fix is an allowlist**, not another exemption:
+  `github.event_name == 'pull_request_target' && contains(fromJSON('["opened","synchronize"]'), github.event.action)`.
+  The first draft was a denylist and **did not close the defect** — the caller
+  subscribes to eight `(event, action)` pairs, and exempting only the known
+  self-emitted ones still cancelled on `reopened`, `ready_for_review` and
+  `converted_to_draft`, which FT-43 added to the caller after the predicate was
+  written.
+- **Cost, stated accurately:** letting the review-triggered run finish is cheap
+  only on an **armed** repo. R3's unarmed guard runs before the review skip (it
+  closes the ci/v2.0.1 bypass), so an unarmed repo runs a **full** review on every
+  review event; and the `trust` job runs in full either way, taking one serial
+  runner slot.
+- **The lesson already existed in canon.** `composition.yml` states it at its own
+  `concurrency:` block and uses a flat `cancel-in-progress: false`. `ai-review`
+  cannot go that far — its runs are expensive, so a real push must still supersede
+  one. FT-43 fixed the label half and did not generalise.
+- ⚠️ **`ai-review` is the only workflow fixed here, not the only one exposed.** The
+  mechanism does not care who emits the event: any required context whose caller
+  subscribes to a non-code-changing action while `cancel-in-progress: true` is in
+  force has the same defect. **Note where that flag lives**, because it decides
+  the release boundary: `ai-review` is the only one that sets it in the
+  **reusable**, which is why this fix reaches consumers by a re-pin alone. For
+  `audit-trail` and the lint family the reusables carry no `concurrency:` block
+  at all — the flag is in the **caller templates**, so fixing them requires
+  consumers to re-install workflow files. Bundling them here would falsify this
+  entry's own "no consumer action beyond re-pinning". The other known instances are `audit-trail`
+  (`call / verify`) and the lint family (`call / Lint / format / security hooks`);
+  audit-trail's `labeled` trigger is deliberate, for the documented
+  `skip-audit-trail` escape hatch, so canon's own instructions fire it by a human
+  label write. Filed as #329 rather than expanded into this release.
+- **Narrowed decisively, not proven closed.** GitHub cancels a *pending* run when a
+  newer one queues in the same group, regardless of `cancel-in-progress` — so one
+  in-flight run plus two exempt events can still yield a cancelled context, and
+  the gate supplies one of those events itself. (What remains unverified is only
+  whether an evicted-while-pending run has already materialised its check-run.) The deterministic every-PR case is
+  gone; this residual applies to a flat `cancel-in-progress: false` too.
+- The FT-43 contract test asserted the predicate by **grepping its literal text**,
+  so it stayed green while this case was absent. It now **evaluates** the shipped
+  expression and **derives its cases from the caller template's own `types:`**, so
+  adding a trigger fails the suite until it is classified. Mutation-verified
+  against the original predicate, the failed first draft, and a fail-unsafe
+  variant — all three go red.
+- Codified as `docs/REPO_STANDARDS.md` §23 and `DECISIONS.md` CI-0025.
+- ⚠️ **One caveat for hand-edited callers:** the allowlist is keyed on
+  `pull_request_target`, which is what the shipped template uses. A caller
+  hand-edited to `pull_request` will now never cancel, so pushes stop superseding
+  an in-flight review — it fails safe, but wastes runs. Move such a caller back to
+  `pull_request_target`, which this gate needs for its base-repo secrets anyway.
+- **Consumer action: none beyond re-pinning.** No input, secret, permission or
+  required-context change. A PR whose head SHA already carries a cancelled context
+  needs one new push — or a re-run of that specific cancelled run, which
+  replaces its conclusion in place — to clear it.
+
+### Fixed — the `sync-version-refs` pre-commit hook skipped 8 of its 14 targets locally (#323)
+
+- The hook was scoped by a `files:` regex listing 6 of the 14 static `TARGETS`
+  entries. It had drifted behind `TARGETS` and skipped, among others,
+  `docs/MIGRATION_v2.0.0.md` — **the file CI-0024 is about** — so a commit
+  touching only that file never fired the hook locally and the author first
+  learned at PR time.
+- The regex was never load-bearing for correctness: the hook is
+  `pass_filenames: false`, so the script always checks every target regardless of
+  what a commit touched. The regex only decided *whether* the hook ran. It was a
+  second list to keep in step with `TARGETS`, i.e. pure drift surface — so it is
+  replaced with `always_run: true` rather than widened.
+- **CI was never affected** — `pre-commit.yml` runs `pre-commit run --all-files`.
+  This closes a local-feedback gap; §22 is updated to say the old-tag case fails
+  both the local hook and CI, which is now true at `git commit` time as well.
+- Regression test asserts the hook stays `always_run` with no `files:` filter;
+  mutation-verified (restoring a filter goes red).
+- Config + docs only; no workflow behaviour change.
+
+### Docs — the ai-review asset docs described a delivery mechanism removed at `ci/v1.1.5` (#318)
+
+- `ai-review/README.md` said the reusable "checks out `aidoc-flow-ci` … via
+  sparse-checkout", and `docs/ai-review-assets.md` carried a worked
+  `actions/checkout` + `sparse-checkout` YAML example. IPLAN-0024 replaced that
+  with a `curl` fetch at `ci/v1.1.5`; the `ai-review` job has **no
+  `actions/checkout` at all** (verified: zero checkout steps in that job — the two
+  in the file belong to `trust` and `autofix`).
+- Not merely stale. `docs/REPO_STANDARDS.md` §20, added days earlier by CI-0022,
+  codifies "the reviewer is a single-shot completion with **no checkout**" as
+  canon — so a reader following the cross-reference from the asset README landed
+  in a direct contradiction with canon, with nothing marking which was current.
+- Both files now describe the real mechanism: resolve the caller's own
+  `uses: …@ci/vX.Y.Z` pin, then `curl` each asset from
+  `raw.githubusercontent.com` into `reviewer-assets/ai-review/`, with a fetch
+  failure reported as an **infrastructure** error and never as a verdict.
+- Dropped the "(98 lines)" count on `review-prompt.md` — it was already wrong
+  before CI-0022 and is the kind of claim that keeps going wrong.
+- Docs only; no workflow, input, secret or permission change.
+
+### Fixed — a dangling symlink under `.github/` bricked `install.sh` entirely (CI-0023)
+
+- FT-57's mandatory pre-write backup is deliberately fail-CLOSED. Its
+  enumeration (`find -L .github ! -type d`) yields a **dangling symlink** — the
+  stat fails, so `find` returns the link itself — and the copy was a bare
+  `cp -p`, which **dereferences** and therefore fails on it. One broken link
+  anywhere under `.github/` became `exit 1`.
+- A consumer carrying one could not run `install.sh` **in any mode**, including
+  the documented `--repin` upgrade path. Nothing was wrong with that repo and
+  the backup was not impossible: a dangling link is copyable *as a link*. The
+  adjacent comment already claimed broken symlinks were handled, so the code
+  read as correct.
+- A resolvable symlink is still captured by **content** (what a restore wants);
+  only a dangling one is copied as the link. Collapsing the branch to a blanket
+  `cp -P` would be a different defect in the same place, so the suite asserts
+  both directions.
+- Caught **before the tag was published**, so no released version carries it —
+  the regression was introduced by FT-57 inside this same unreleased window. It
+  sits on the FT-30 cold-start bootstrap write path, where the throwaway-repo
+  dry-run would not have surfaced it: a fresh repo has no dangling links.
+- **The sweep found the same shape wrong in a second arm, the other way round.**
+  The root-list loop gated on `[ -e "$r" ]`, which dereferences — so a dangling
+  symlink at a root path was **silently dropped**: rc=0, "success", that surface
+  absent from the snapshot while `install.sh` could still overwrite it.
+  Fail-OPEN, strictly worse than the abort, and it announced nothing.
+- A symlink **loop** remains a fault (`find -L` cannot traverse it, so
+  completeness cannot be proven) but now names itself: the old message blamed an
+  "unreadable subdirectory?", sending the operator to `chmod` for a cycle no
+  `chmod` can fix.
+- **Residual, stated not papered over:** `[ ! -e ]` is false for `EACCES` as well
+  as `ENOENT`, so a resolvable link whose target sits behind an unsearchable
+  directory is backed up as a link rather than by content — reachable only on the
+  root-list arm; the `.github/` arm hard-aborts first.
+- `tests/test_install.sh` 101→114, driving the `MANDATORY-BACKUP` block
+  extracted from `install.sh` itself, including a mutation case — restoring the
+  bare `cp -p` must make the dangling-link fixture abort.
+- Codified as `docs/REPO_STANDARDS.md` §21 and `DECISIONS.md` CI-0023.
+- **No consumer action.** No input, secret or permission change.
+
+### Added — a mechanism to exempt illustrative install references from version sync (CI-0024)
+
+- `scripts/sync-version-refs.sh` propagates `VERSION` into install references by
+  matching their **shape** (raw-URL / `uses:…@tag` / `CI_TAG=`). Shape says "this
+  is an install reference"; it does not say "this one should be current."
+- `docs/MIGRATION_v2.0.0.md` is a target and carries two `CI_TAG=` commands that
+  must **not** track `VERSION` — its §5 "repin to `@ci/v2.0.0`" step and, far
+  worse, its **Rollback** section, whose command exists to pin a consumer *back*
+  to `ci/v1.x`. Both were rewritten to the new tag at every cut, so the published
+  rollback instruction re-pinned **forward**: an operator following it during an
+  incident would do the exact opposite of what the heading promised.
+- The script's header had already **named this risk and prescribed the remedy**
+  ("if a historical install command is *ever added* to a target, mark that line
+  to exclude it") — and that caveat was **accurate when written**: at `a0fc68c`
+  (2026-07-09) `TARGETS` held two READMEs and `MIGRATION_v2.0.0.md` did not
+  exist. The trigger fired on 2026-07-17 in `1a027da` (#175), which added the doc
+  to `TARGETS`; the rollback command read `ci/v1.9.5` until then and has tracked
+  the release tag ever since — and note the event was the inverse of the one
+  anticipated: not an example added to a target, but a file already containing
+  two being added to `TARGETS`. The defect is that the prescribed remedy was
+  **described but never implemented**, so there was nothing for #175 to fail
+  against — a caveat naming a future trigger cannot stop the commit that trips it
+  months later.
+- The mechanism now exists: wrap illustrative or historical spans in
+  `<!-- sync-version-refs:ignore-start -->` / `<!-- sync-version-refs:ignore-end -->`.
+  Both `--check` and the rewrite honour it. **Unbalanced markers are a hard
+  error** naming file and line — an unterminated start would otherwise freeze the
+  rest of a file silently, turning the guard into the drift it prevents.
+- Each substitution now carries its own negated address range instead of sharing
+  a `{ … }` block, because a bare `}` — as measured here — truncated the
+  function-extraction `awk` the tests use to drive the shipped code.
+- `tests/test_version_sync.sh` 9→29, driving `sed_program` and
+  `validate_ignore_markers` extracted from the script — both directions, all four
+  malformed-marker cases, and a mutation case proving that stripping the address
+  ranges clobbers the historical rollback command.
+- **The trigger is now mechanical, not prose.** `tests/test_version_sync.sh`
+  pins the **explicit** `TARGETS` array: adding a file to it fails the suite with
+  instructions to check the new target for illustrative install commands first —
+  the exact event #175 tripped silently. The two glob arms are not pinned; a
+  caller template's pin should track `VERSION`.
+- **`--check`'s failure message now names both remedies.** An illustrative
+  old-tag command in an existing target *does* trip the check — but the message
+  said only "run `scripts/sync-version-refs.sh` to fix", which is precisely the
+  action that falsifies it. A guard that fires and then misdirects is barely
+  better than none.
+- **What is genuinely unguarded, said plainly:** an illustrative command pinned
+  to the *current* tag when written. It is textually identical to a live
+  reference, so nothing can tell them apart, and it drifts at the next cut. Only
+  the markers cover that case.
+- Codified as `docs/REPO_STANDARDS.md` §22 and `DECISIONS.md` CI-0024.
+- **The falsified commands are corrected in this release** (issue #321): the
+  Rollback command is back to `ci/v1.9.5` and the §5 step to `ci/v2.0.0`, both
+  wrapped in ignore markers. Verified end-to-end — bumping `VERSION` to
+  `ci/v2.15.0` and running the rewriter now leaves both untouched, where the same
+  bump on the previous tree re-falsified them.
+- **No consumer action.**
+
+### Fixed — the ai-review rubric described inputs the reviewer never had (CI-0022)
+
+- `ai-review/review-prompt.md` instructed the model that "the changed files are
+  in the current directory", that "the working tree is the base branch", and to
+  "VERIFY by listing the file". The `ai-review` job has **no `actions/checkout`**
+  by design (IPLAN-0024) — true at `ci/v1.9.5` as well as every `ci/v2.x` — and
+  the v2 reviewer is a single-shot completion with no tools. An unexecutable
+  instruction is not skipped by a model: it is **answered anyway**.
+- Two rules were affected in defined ways. The doc-coverage precondition ("does
+  this consumer have `CHANGELOG.md` at its root?") was unanswerable from a
+  changed-file inventory, which lists only touched paths — so it either silently
+  disabled itself on every consumer or fired on a guess. The dead-relative-link
+  check had the same shape for any target outside the diff.
+- **The rubric now opens by enumerating its exact inputs** and states the
+  operative consequence: a finding that cannot be grounded in them is not
+  emitted, not softened into a suspicion, and never described as having been
+  checked. Silence is the required output when evidence is absent.
+- **`ai-review.yml` passes a third input block — a repo-root file inventory**
+  (every entry at the repository root at the PR's base commit, directories
+  marked with a trailing slash, one `gh api` call), which makes the
+  doc-coverage precondition genuinely decidable instead of scoped away. It
+  lists directories too: a files-only listing would make every root directory
+  absent from a list the rubric reads as authoritative for absence, which is
+  the same defect in a new place.
+- The inventory **fails soft** to the literal marker `UNAVAILABLE` on an API
+  failure, an empty body, or a listing at the contents API's 1000-entry cap
+  (which truncates with no flag). The rubric branches on that marker and treats
+  the dependent rules as inapplicable — an unavailable input can only suppress a
+  blocking finding, never manufacture one.
+- The dead-link rule is narrowed to the three decidable cases (a target that
+  names a root entry directly — no interior `/` — a target this PR deletes or
+  renames, and a reference internal to the diff) and instructs silence for the
+  rest. Two block-rule bullets that needed inputs the reviewer never gets are
+  narrowed the same way: a locked-decision contradiction is flaggable only when
+  the diff shows the decision text, and the model-identifier rule only when a
+  commit message appears inside the diff. Quantitative claims are scoped to
+  counts recountable from the diff text.
+- **The changed-file inventory now carries the same honesty.** Its listing is
+  fetched fail-soft (the governance floor locks on an incomplete one, but the
+  job continues), so it could reach the reviewer labelled `(complete)` when it
+  was truncated — and the rubric's new precondition keys on it. It is now
+  reported as `UNAVAILABLE` unless provably complete, and the rubric falls back
+  to the diff's own `diff --git` headers, which are equally complete.
+- **All three input blocks are now fenced** (`<untrusted_changed_files>`,
+  `<untrusted_root_inventory>`, `<untrusted_diff>`) and labelled untrusted. Paths
+  are attacker-influenced and git permits a newline in a path, so an unfenced
+  list sat in the prompt's highest-authority position as free text.
+- **A degraded input set is disclosed in the verdict comment.** A review with a
+  missing input is by construction the one that goes green, and nobody reads the
+  log of a green check; an unevaluated rule was indistinguishable from a passed
+  one.
+- `tests/test_contract.sh` +31 assertions, 11 of them **driving** the shipped
+  root-inventory block through nine stubbed `gh` scenarios — including one that
+  runs the block's own `-q` filter through real `jq` against a contents-API
+  payload, one that records the API arguments, and one that fails twice before
+  succeeding. The rest assert same-name same-order parity between the prompt
+  assembly and the rubric's "Your inputs" section, and the `UNAVAILABLE` marker
+  contract across both files. Verified by mutation: deleting the fallback, the
+  cap, or the assembly's inventory line goes red — and so does dropping
+  directories from the filter, inverting the base-sha guard, or collapsing the
+  retry loop, none of which an earlier version of these tests caught.
+- **No consumer action.** No input, secret, permission or required-context
+  change; the extra API call needs repo-contents read, which the job's existing
+  `contents: write` already includes. The behaviour change is confined to the
+  reviewer's verdicts and its PR comment.
+- Codified as `docs/REPO_STANDARDS.md` §20 (a general prompt-construction rule,
+  since `fix-prompt.md` is subject to the same failure) and `DECISIONS.md`
+  CI-0022. Closes #315; closes #81, whose v1 symptom this generalises.
+
+### Added — infrastructure break-glass: an outage no longer requires `--admin` (CI-0021)
+
+- A reviewer **outage** previously left no non-`--admin` path to merge anything —
+  including the PR that would fix the reviewer. `--admin` bypasses **every**
+  required check, so an outage trained operators to disable the whole gate. That
+  is how CI-0014 stayed hidden for ~9 days.
+- `composition` now discharges the ai-review gate — **and only that gate** — on
+  **three** conditions: `ai:review-infra-error` is set; an `APPROVED` review
+  exists at the **current head SHA** from a non-Bot login in
+  `vars.CI0021_BREAKGLASS_APPROVERS`; and that approver **authored or pushed no
+  commit at HEAD**.
+- **Opt-in.** With `vars.CI0021_BREAKGLASS_APPROVERS` unset (the default) the
+  break-glass does not exist and behaviour is unchanged. It is a repo variable,
+  not a caller input, so the repo being gated cannot choose its own overriders.
+- The separation-of-duties condition is the one GitHub does not provide: it
+  forbids the PR *author* from approving but says nothing about whoever *pushed*
+  the commits, and canon's tiers set `required_approving_review_count: 0`. An
+  earlier draft omitted it and was a single-account merge bypass; caught in
+  adversarial review before shipping.
+- Latest review per user wins **across pages** (`--slurp`; `gh --paginate`
+  otherwise applies `--jq` per page, making the aggregation inert on exactly the
+  long PRs it targets). Only state-changing reviews participate, so a later
+  `COMMENTED` does not disqualify an approver.
+- Fail-closed if the reviews or commit authorship cannot be fetched, if any
+  commit at HEAD has **no GitHub account** linked to its author/committer email
+  (treating that as "no author" re-opened the bypass), or if the commit listing
+  is truncated by the API's 250-commit cap.
+- **Documented residual:** condition 3 checks the git author/committer identity,
+  not the pusher — GitHub exposes no pusher field, and those values are written
+  by whoever ran `git commit`. Without `required_signatures` it stops an accident
+  and a careless actor, not a determined one.
+- Cannot drive auto-merge: `auto-merge-ai-prs.yml` independently requires
+  `ai:review-passed`, mutually exclusive with `ai:review-infra-error`.
+- Codified as `docs/REPO_STANDARDS.md` §19; 18 assertions, nine driving the
+  shipped block itself via markers.
+
+### Added — canon rule: cross-repo defects are filed upstream (CI-0020)
+
+- A defect surfaced in one repo but **owned by another** now gets a GitHub issue
+  on the owning repo, not just a line in the finding repo's `HANDOFF.md` /
+  `DECISIONS.md` / `plans/`. **The test is ownership, not severity**, and a local
+  workaround does not discharge it.
+- Motivated by CI-0014: the consumer that found it recorded a wrong root cause
+  locally, that misdiagnosis survived multiple sessions, and six other consumers
+  sat on the same latent defect — because nothing in a per-repo `HANDOFF.md`
+  reaches canon, and canon is where the fix lived.
+- Codified as `docs/REPO_STANDARDS.md` §18 (with the required contents of a filed
+  issue) and as a `## GitHub operations` subsection in
+  `install/templates/CLAUDE.md.template`, so adopters inherit it.
+- Wave 0 self-adoption: this repo's `CLAUDE.md` carries it too, including the
+  inbound direction — canon is the owner for defects filed against it.
+- Also records the **`--body -` trap**: `gh issue create --body -` publishes a
+  literal `-` while exiting 0 and printing a URL. Issues #305-#309 were all
+  published empty that way. The rule requires reading the artifact back
+  (`gh issue view <N> --json body --jq '.body | length'`).
+- Process rule, no CI enforcement and no workflow behaviour change.
+
+### Fixed — a v1 consumer silently mis-routed once the shared trust config went v2 (CI-0014)
+
+- The trust config is a **single shared source** (`trust_config_repo`, default
+  `vladm3105/aidoc-flow-operations@main`) while each consumer pins its **own**
+  `ci/vX.Y.Z` reusable. Every read of it was `jq -r '.field // "default"'`, so a
+  schema the reusable did not understand produced a **default instead of an
+  error**.
+- `ci/v2.0.0` replaced `reviewer` with `litellm.model`. When operations cut over
+  on 2026-07-16, `reviewer` vanished for every consumer — including the seven
+  still on `ci/v1.9.5`, whose `'.reviewer // "codex"'` then silently selected the
+  codex engine. None holds `OPENAI_API_KEY`, so **all seven had a fail-closed AI
+  review gate that could not pass for ~9 days**; merges in that window went via
+  `--admin`. The surfaced error (`no parseable verdict — fail-closed`) named
+  neither the cause, the trigger (a schema change in *another repo*), nor the
+  owner — one consumer recorded a lapsed reviewer credential as the cause and
+  carried that misdiagnosis across sessions.
+- Now: both jobs that fetch the config **assert `version == 2` before reading any
+  field**, and fail with an error naming the config source, the version found,
+  the version expected, and the remedy. The `litellm.model` read drops its
+  `// "ai-reviewer"` fallback — the v2 schema already declares
+  `version: {const: 2}` and requires `litellm.model`, so the assertion enforces a
+  contract the schema stated but no code checked.
+- **Not backported to `ci/v1.x`** (founder direction, 2026-07-25). A v1 reusable
+  has no LiteLLM client, so failing loud there would name the cause without
+  restoring the gate; migrating those consumers to v2 is the remedy. The six
+  un-migrated repos remain latent until they re-pin.
+- Codified as `docs/REPO_STANDARDS.md` §4.2b.
+
+### Fixed — `docs-sync` could not post its dry-run comment on ANY consumer (CI-0015)
+
+- The callee capped `pull-requests: read` at workflow level with no job override,
+  while its `sync` job runs `gh pr comment`. A reusable's token is the
+  **intersection** of caller and callee permissions, so **no caller could grant
+  `write`** — the step died on `GraphQL: Resource not accessible by integration
+  (addComment)` under `set -euo pipefail`.
+- It went unnoticed for the workflow's entire life because the step is gated on
+  `proposed != 0` and had never fired; the check reported green until a merge
+  finally produced a proposal.
+- **`docs-sync.yml` now declares `pull-requests: write`.**
+- **The missing half was always the callee.** The shipped caller template has
+  granted `pull-requests: write` since `ci/v2.11.0`, so a consumer installed
+  from `ci/v2.11.0` onward needs **only a re-pin** — no caller edit. ⚠️ Only a
+  caller installed before `ci/v2.11.0` and never re-installed, or hand-edited
+  down to `read`, must also be raised; `--repin` will not do it, since it
+  rewrites `uses:` lines only.
+- The caller template's comment previously stated the rule half-correctly ("a
+  callee cannot grant its own permissions — the caller must"), which led at
+  least one consumer to raise only its caller and wait for an upstream half that
+  was not coming; it now states the intersection in both directions.
+- New contract test asserts caller∩callee permission parity across **all**
+  caller templates, so the next instance of this class fails a test instead of
+  shipping. It immediately found one: the `doc-maintainer` caller granted
+  `contents: write` that the callee caps at `read` — every write in that flow
+  goes through the App `BOT_TOKEN`, so the grant was unusable by construction.
+  Trimmed to `contents: read` (least privilege; no behaviour change).
+- Codified as §4.2c.
+
+### Fixed — `secret-scan` documented a different scan than it ran (CI-0016)
+
+- Header comment said `gitleaks dir` (working tree); the code runs `gitleaks git`
+  (full commit history) since `ci/v2.0.0`. Neither `MIGRATION_v2.0.0.md` nor the
+  `v2.0.0` changelog mentioned the scope change.
+- A consumer validating locally per the guide ran `dir`, saw **0 findings**,
+  pushed, and CI found **33** — all in pre-migration history at paths absent from
+  `HEAD` — forcing a second allowlisting round.
+- The scope expansion is an **improvement and stands**; only the documentation
+  was wrong. Corrected at the header, and `MIGRATION_v2.0.0.md` gains a §7
+  directing local validation to `gitleaks git .` and explaining anchored
+  allowlists for unreachable history.
+- Codified as §4.3d.
+
+### Fixed — `litellm_allow_insecure_http` was scoped by repo visibility (CI-0017)
+
+- PLAN-009 assigned the flag to the private trio only, assuming public consumers
+  reach the proxy over HTTPS. `aidoc-flow-framework` is **public** and reaches
+  the same host-local proxy over `http://`, so it needed the flag too.
+- The rule is now stated by **URL scheme**: any consumer whose `LITELLM_BASE_URL`
+  begins `http://` needs it, regardless of visibility. Since PLAN-013 routes the
+  whole AI flow to the shared self-hosted pool — where the proxy is the
+  plain-HTTP Docker bridge — public repos are the common case. Corrected in
+  `CLAUDE.md`, `REPO_STANDARDS.md` §4.0b, both reusables' input descriptions, and
+  both caller templates.
+- The `LITELLM_BASE_URL` bridge-vs-loopback gotcha is promoted from a
+  parenthetical to a callout. `litellm_client.py` now **names** the cause when a
+  connection fails from loopback inside a container, instead of surfacing a bare
+  `proxy request failed after 3 attempts: URLError` — this URL works when tested
+  from the host and fails only in CI, which is what made it expensive.
+
+### Fixed — `standards-drift` passed green while verifying almost nothing (CI-0018)
+
+- `repo-settings` compared canon against fields **absent** from the `gh api
+  repos/` response, emitting `canon=false actual=null` — presenting *unreadable*
+  state as a drift finding, while the adjacent `actions.*` arm correctly said
+  "cannot check". Absent admin-only fields now route through `warn_uncheckable`
+  and name both the missing token scope and which fields were unreadable.
+- Under the default `GITHUB_TOKEN` only **1 of 4** control families (`labels`)
+  was genuinely verified, and the job still concluded `success`. Runs now end
+  with a **coverage summary** — `verified N/4 control families`, naming the
+  unverified ones and stating that green does not mean they match canon.
+- `--strict` already failed on uncheckable; unchanged, and now covered by tests.
+- **"Verified" is all-or-nothing per family.** A first cut marked a family
+  verified on partial progress, so a run could print "cannot check repo-settings"
+  and "verified 4/4" together. `actions` now derives its mark from a
+  `FETCH_ERRORS` snapshot, so an arm added later cannot forget to withhold it.
+- **Response shape is validated before any key is probed.** `jq -e` exits 0 on
+  EMPTY input for any filter, so a 0-exit-but-empty `gh api` body previously read
+  as fully present and printed `canon=X actual=` for every key. The shared
+  `json_readable` helper tests `[ -s ]` first and is applied to the
+  branch-protection, repo-settings and labels arms alike.
+- Coverage is emitted on early bail-outs too (missing `gh`/`jq`, bad `--tier`) —
+  those were the runs that verified least while exiting 0.
+- The summary separates "could not be read" from "unverified for another reason",
+  so a real finding is never described as unread.
+- Fixed alongside: `DEFAULT_BRANCH=$(gh api … || echo main)` concatenated `gh`'s
+  error body (written to stdout) with `main`, sending every branch-protection
+  query to a garbage path.
+- 25 new assertions, including a positive control proving readable drift is still
+  detected and counted, plus reproductions of each defect above.
+- Codified as §4.2d.
+
+### Changed — PLAN-009 targets `Latest`, and its Edit F body matches its banner (CI-0019)
+
+- Phase 2 **Edit F** said to move only the review job to the pool and keep the
+  trust job on `ubuntu-latest` — the pre-PLAN-013 shape, contradicting the plan's
+  own superseded-target banner and **under-sizing the pool by half**. It now sets
+  both `runner_labels_routine` and `runner_labels_review`, with the fork-safety
+  boundary stated inline.
+- The fleet target said `ci/v2.8.0`, six minors stale; following it literally
+  meant an immediate second re-pin. Targets are now resolved as **`Latest` at
+  execution time**, with a pointer to release notes for caller-body changes
+  `--repin` cannot apply.
+
+### Added — `install.sh` takes a mandatory backup before touching a consumer (FT-57)
+
+- A consumer may carry its own customized, established flows. `install.sh` mutates
+  files in the consumer clone from **three** separate paths — `fetch_template`'s
+  `curl -o`, the `--update` replace's `cp`+`mv`, and `--repin`'s `sed -i` — and
+  none of them took a backup. The only `.bak` in the file was the transient FT-50
+  portability artifact, created and deleted in the same breath.
+- Now: an **unconditional** snapshot immediately after the clone and before any
+  writer. One hook rather than three, because a per-writer hook has to be
+  remembered by whoever adds the fourth. Not gated on mode, `--non-interactive`, or
+  a TTY — "we only meant to add files" is precisely the assumption under which the
+  FT-9 `--update` clobber happened.
+- Scope is all of `.github/` — **including the consumer's own workflows, which this
+  script never writes.** A backup that covers only what we intend to touch is
+  worthless when the bug is touching something we did not. Plus the root-level
+  configs. Deliberately **not** derived from `manifest.json`, so it cannot silently
+  stop covering a surface the manifest drops.
+- Sited in `WORK_DIR`, not beside the script: install.sh is documented as runnable
+  piped (`bash <(curl …) --update`), where `$0` is not a real path. `WORK_DIR` is
+  never auto-cleaned, so the backup outlives the run. **Fails closed** — if the
+  snapshot cannot be taken, nothing is written.
+- The next-steps output now names the backup directory and the one-line restore
+  command.
+- Enumeration is **NUL-delimited**. The first implementation used an unquoted
+  `for p in $(find …)`, which review proved wrong twice over on real fixtures: a
+  filename containing a space split into two nonexistent paths and made the
+  installer refuse to run **in every mode** on that repo; and a filename containing
+  a glob metacharacter (`notes[1].md`) was expanded onto a *sibling*, so the
+  bracket file was never backed up, the sibling was copied twice, and the run
+  reported success — fail-**open**, the one outcome a mandatory backup must never
+  produce.
+- `find`'s own exit status is checked. A partial traversal (an unreadable
+  subdirectory) still prints what it could read and exits non-zero; swallowing that
+  reported a successful backup quietly missing files.
+- `find -L … ! -type d` so a **symlinked** `.github`, or a symlinked caller inside
+  it, is followed rather than yielding nothing — that was a clean bypass of a
+  supposedly mandatory backup.
+- Scope corrected: `scripts/pre_push_check.sh` is a manifest path outside
+  `.github/` that `--update` can replace interactively, and it was **not** covered.
+  A test now cross-checks the backup scope against `manifest.json`, so a future
+  manifest path outside the scope fails the suite instead of an adopter's repo.
+- `tests/test_install.sh` 75→101, driving the block extracted from `install.sh`
+  itself (not a copy): the consumer's own workflow is captured, unrelated files are
+  not, every root-list entry is covered, space/glob/symlink fixtures, a fresh repo
+  reports cleanly, an unenumerable `.github` and a failed copy each fail closed, and
+  the **call site is executed** rather than grepped for its error message — the
+  earlier version passed even when the backup never ran at all.
+  Removing the fail-closed call site goes red.
+
+**What already held**, and is why this was narrower than it first looked: writes
+are manifest-scoped so a consumer's own workflow is never written; no wildcard
+write or delete over `.github/workflows/`; `--repin`'s sed only rewrites
+`uses: vladm3105/aidoc-flow-ci/…` lines; bootstrap preserves existing files; 12
+sensitive paths are `safe_to_replace: false`; and install.sh **never commits or
+pushes**. Git was already the de-facto backup — this makes the guarantee
+inspectable instead of inferred, and symmetric with `apply-standards.sh`, which
+has always backed up settings before mutating them.
+
+### Docs — warn that re-pinning to `ci/v2.14.0`+ produces expected CI-0011 drift
+
+- `ci/v2.13.0` narrowed the canon `actions-permissions.json` (`verified_allowed:
+  false`, `patterns_allowed` → `vladm3105/*`), but those are **template values
+  applied per-repo**. A consumer that re-pins without applying them now sees two
+  `standards-drift` warnings — `actions.selected.verified_allowed` and
+  `actions.selected.patterns_allowed: MISSING`. Undocumented, that reads as a
+  regression introduced by the re-pin.
+- Documented in the two places an operator actually hits it:
+  `docs/UPDATE_GUIDE.md` (the re-pin path) and `docs/AI_CI_DEPLOYMENT.md` §5
+  gotchas, with the exact drift text quoted from a live run.
+- Both state the part that prevents a false alarm: **nothing is broken.** The
+  repo's live pattern is *narrower* than canon's, so every canon reusable it calls
+  is still admitted; the "BLOCKED at run-init" wording applies only to a
+  hypothetical action under another `vladm3105/` repo. `strict` defaults to
+  `false`, so it warns and exits 0 (verified) — only a gate passing `strict: true`
+  would newly fail.
+- Both carry the fix (apply the settings alongside the re-pin), the mandatory
+  `uses:` pre-scan, and the `web-site` / `knowledge-rag` do-not-apply exclusions.
+
+## ci/v2.14.0 — 2026-07-24
+
+### Fixed — canon was missing 8 of its own 18 canonical labels
+
+- Surfaced by the FT-53 drift work. One is **load-bearing and had just become so**:
+  `skip-audit-trail` is the documented escape hatch for `call / verify`, which FT-52
+  made a **required** check hours earlier — and `audit-trail-check.yml` literally
+  instructs the operator to *"Apply the 'skip-audit-trail' label to this PR"*. The
+  label did not exist, so on a required check the documented override was
+  unusable and `--admin` was the only way past.
+- The other seven are inert on canon (`agents`/`config`/`governance`/`plans` are
+  labeler categories — canon has no labeler caller and no `.github/labeler.yml`; the
+  three `ai:*` belong to `ai-review`, which canon does not self-run per FT-23). All
+  eight were created anyway from `labels.json`, with canonical colour and
+  description: canon dogfoods its own canon, unused labels are inert, and a
+  drift-clean baseline means future label drift is signal rather than noise.
+- Canon label drift is now **0**; the only remaining drift is the two deliberate
+  FT-52 branch-protection lines, filed as **FT-54** because a weekly cron reporting
+  two permanent warnings is how a real signal gets trained away.
+
+### Added — `standards-drift` now compares `patterns_allowed` (FT-53)
+
+- Since CI-0011 set `verified_allowed: false`, `patterns_allowed` is the **only**
+  non-GitHub-owned admission — the field that actually decides whether an action
+  runs — and it was the one field the drift checker never compared. An operator
+  editing a consumer's allowlist in the Settings UI produced **zero** drift, in
+  strict mode included.
+- `sync/check-standards-drift.sh` now compares it as a **set** (the API returns
+  arbitrary order, so a string compare would report drift on ordering alone) and
+  reports the two failure directions separately, because they mean opposite things:
+  **MISSING** (canon has, repo lacks) is an availability fault — a matching action
+  is blocked at run-init with a silent `startup_failure`, no logs; **EXTRA** (repo
+  has, canon lacks) is a supply-chain fault — the deployed boundary is wider than
+  the one CI-0011 decided.
+- It compares against the canon template at the **consumer's own pinned tag**, so a
+  repo on an older pin is not flagged for a pattern that tag never shipped.
+- MISSING accounts for **glob subsumption**, which a literal set-difference gets
+  wrong: entries are globs and GitHub wildcards span `/`, so `vladm3105/*` fully
+  covers `vladm3105/aidoc-flow-ci/*`. Without this, the in-flight CI-0011 rollout —
+  a consumer whose settings are widened while it is still pinned at ≤`ci/v2.12.0` —
+  would report a **false** MISSING asserting a `startup_failure` that cannot occur,
+  and would hard-fail `--strict`. Subsumption is applied **symmetrically**: a live
+  pattern already inside a canon pattern widens nothing, so calling it EXTRA
+  ("wider than canon") is equally false. Caught by running the checker against a
+  real consumer: `engramory` reported `vladm3105/aidoc-flow-ci/*` as a
+  supply-chain widening when it is strictly narrower than canon's `vladm3105/*`.
+  A repo genuinely **narrower** than canon still reports MISSING, and a genuinely
+  foreign owner still reports EXTRA.
+- An unreadable `selected-actions` body (or a non-array `patterns_allowed`) routes
+  to `warn_uncheckable` instead of inventing a full missing-pattern list — "I could
+  not read the response" and "3 patterns are missing" are different operator actions.
+- `tests/test_scripts.sh` 29→50, including a reordered-but-identical set (with a
+  positive control, so the assertion cannot pass merely by the feature not
+  existing), both subsumption directions, the strict gate, and the drift tally.
+  Fixtures are derived from the template rather than frozen as literals, so adding
+  a 4th canon pattern does not fail a test about ordering. Mutations confirmed red:
+  comparison removed, order-sensitive compare, MISSING/EXTRA collapsed, **the drift
+  increments removed** (previously green — the strict gate was unpinned), and
+  **subsumption removed**.
+- Verified live against canon: **0 actions-related drift** after the CI-0011 apply.
+- `docs/REPO_STANDARDS.md` §4.3: the "guarantee is template-scoped" gap paragraph
+  is replaced by what the two layers now actually cover.
+
+### Changed — CI-0011 settings APPLIED to canon; the suggested apply command was a landmine
+
+- Canon's own live Actions settings now match `actions-permissions.json`:
+  `verified_allowed: true→false`, `patterns_allowed →
+  ["vladm3105/*","actions/*","github/*"]`, `can_approve_pull_request_reviews:
+  true→false`. `default_workflow_permissions` was already `read`. The `access`
+  section is **skipped on canon** — it is PUBLIC and GitHub 422s that endpoint,
+  exactly as the template's `_conditional` note says.
+- Verified safe before applying, not after: no canon workflow references a
+  verified-creator action; the `docs-sync` reusable only `gh pr comment`s (it never
+  creates a PR); and canon has **no** `self-doc-maintainer` caller — so nothing
+  depended on create-and-approve.
+- **RELEASE_CHECKLIST corrected.** It told the operator to run
+  `apply-standards.sh --apply --tier product` on canon. That also PUTs
+  `branch-protection-product.json`, which requires `call / ai-review` +
+  `call / composition` — reusables canon does not self-run — so it would hang every
+  canon PR (the F2 hang the FT-52 runbook exists to prevent) *and* clobber the
+  FT-52 protection applied hours earlier. The item now gives the per-section `gh
+  api` form and points at `--skip-branch-protection`.
+
+## ci/v2.13.0 — 2026-07-24
+
+### Fixed — the cold-start gate must ignore the release's own pin bump
+
+- Caught by running the real cut: `release.sh tag ci/v2.13.0` **refused**, listing
+  27 templates. Every one of them differed only by the `@ci/v2.12.0` → `@ci/v2.13.0`
+  self-pin that `prep` had just written. Since every release's prep rewrites that
+  pin in every shipped template, the gate would have fired on **every** release —
+  restoring the exact rubber stamp this release removes.
+- The comparison now normalises `ci/vX.Y.Z` strings away before deciding: a file
+  whose only difference is the pin bump is not material. It is a `git show`-based
+  content compare, not a name-only diff, so a template **deleted** between the two
+  revisions still counts — that is F1 itself, and it is now covered by a test.
+- `tests/test_release.sh` 58→65: pin-bump-only (waive), pin bump **plus** a real
+  edit (fire), and a deleted shipped template (fire). Mutating the normalisation in
+  either direction goes red — too aggressive kills 19 assertions, absent kills 2.
+
+### Fixed — `release.sh prep` next-steps text matched neither new reality
+
+- It still told the operator "main is unprotected; use --admin" (FT-52 protected it
+  on 2026-07-24) and presented the FT-30 dry-run + `--dry-run-verified` as
+  unconditional (they are not, as of this same release). It now explains why the
+  prep PR shows **BLOCKED** rather than merely red — 4 of the 5 required contexts
+  come from self-pinned callers that `startup_failure` and are never reported — and
+  points at `tag` without the flag, letting the conditional gate decide.
+
+### Changed — the FT-30 cold-start gate is now CONDITIONAL, not ceremonial
+
+- `release.sh tag` demanded `--dry-run-verified` on **every** cut, including
+  releases that touch nothing the installer executes. A dry-run of unchanged
+  installer code proves nothing, so the flag had become a rubber stamp — and a
+  rubber-stamped gate is one people learn to pass reflexively.
+- The gate is now decided from the diff, scoped to the installer **bootstrap write
+  path** — the path whose breakage *aborts* a cold start, which is what F1 was.
+  `tag` derives it from `install/templates/manifest.json` (both `template` **and
+  every `visibility_variants` value**) plus `install.sh`, `check-precommit-hooks.sh`,
+  `labels.json` and the pre-commit fragment — 42 paths today, and a newly-shipped
+  template is covered with no edit here. Nothing changed since the previous tag →
+  `FT-30 cold-start gate AUTO-WAIVED` (with an audit line naming what it compared).
+  Anything changed → refuses, **lists the files**, and demands the flag.
+  `--dry-run-verified` is always accepted, so running the dry-run anyway is never
+  wrong. The advisory standards-verify assets (`check-standards-drift.sh` and what
+  it fetches) are deliberately out of scope — `install.sh` captures that step's rc
+  instead of exiting, so a fault there degrades the report, not the install.
+- **Fails closed** by construction: no previous `ci/v*` tag, or an unreadable
+  manifest, and the flag is required. The manifest read deliberately does not
+  degrade — swallowing that error would silently shrink the surface and auto-waive
+  a release that *did* change a shipped template, which is the exact class of miss
+  FT-30 exists to catch.
+- `previous_tag()` now filters to exact `ci/vX.Y.Z`: `sort -V` ranks
+  `ci/v2.13.0-rc.1` **above** `ci/v2.13.0`, so an unfiltered glob could let a
+  pre-release (or a stray tag) become `prev` and mis-scope the diff.
+- A template path containing whitespace or a glob character is now refused: the
+  pathspecs are word-split, so such a path would be silently dropped from the diff
+  and under-report the surface.
+- `release.sh tag` with no version now prints usage instead of dying on `set -u`
+  (`local version="${1:-}"`), and every usage string shows `[--dry-run-verified]`
+  as optional — the dispatcher's string, the only one a user actually sees, still
+  claimed it was mandatory.
+- `tests/test_release.sh` 27→58: a dedicated fixture gives each case its own diff
+  window and drives waive, require, flag-override, no-previous-tag, unreadable
+  manifest, manifest-schema-drift, pre-release-tag scoping, and an unsplittable
+  template path — plus **each surface half independently**. Seven mutations
+  confirmed red, including four that earlier iterations of this change did NOT
+  catch: dropping `install.sh` from the surface, deleting the whole explicit half,
+  ignoring `visibility_variants` (which silently excluded 9 templates, 2 of them
+  cold-start fetches — the gate was blind to private adopters, i.e. most of the
+  fleet), and reverting the `previous_tag` filter.
+- `docs/RELEASE_CHECKLIST.md`: the 🔴 item documents the conditional behaviour and
+  which files are deliberately off-surface; the stale
+  `docs/router-config.schema.json` reference is corrected to the real schema paths.
+
+### Docs — prep PRs are BLOCKED under the new branch protection (FT-52 follow-on)
+
+- Since FT-52 protected `main`, **4 of the 5 required contexts come from
+  self-pinned callers**. A prep PR bumps those pins to a tag that does not exist
+  yet, so those workflows `startup_failure` and their contexts are **never
+  reported** — the PR is `BLOCKED` ("waiting for status to be reported"), not
+  merely red, and `suite` is additionally red on the FT-21 latest-tag assertion.
+  `enforce_admins: false` exists precisely so `--admin` still merges it.
+  RELEASE_CHECKLIST now says so at the point of use.
+
+### Security — canon now governs itself: immutable `ci/v*` tags + protected `main` (PLAN-019 FT-52)
+
+- **Immutable `ci/v*` tag ruleset APPLIED** (ruleset `19687369`, `enforcement:
+  active`, `bypass_actors: []`). The whole fleet pins canon by **mutable tag**, so
+  a deleted or force-moved `ci/vX.Y.Z` would reach every consumer on its next run
+  with nothing to stop it. `deletion` + `non_fast_forward` are now blocked on
+  `refs/tags/ci/v*`; tag **creation** stays allowed so the release flow is intact.
+  Verified by execution: create ALLOWED, delete REJECTED, force-move REJECTED.
+- **Branch protection APPLIED to `main`** using canon's own produced check set —
+  `suite`, `call / verify`, `call / markdownlint`,
+  `call / Lint / format / security hooks`, `call / gitleaks`. `ai-review` and
+  `composition` are deliberately NOT required: canon does not self-run them (FT-23),
+  so requiring them would hang every canon PR.
+- Compatibility preserved by design: `required_approving_review_count: 0` (the AI
+  auto-merge flow keeps working), `enforce_admins: false` (the FT-21 release-prep
+  PR is expected-red on its self-pins until the tag exists, and still needs an
+  `--admin` merge), `required_signatures: false` (canon commits are AI-authored and
+  unsigned — requiring signatures would break every merge, the umbrella's problem).
+  Force-push and branch deletion are blocked.
+- Side effect, intended: `call / verify` becoming **required** hard-enforces the
+  OPS-0069 audit-trail phrase on every canon PR (previously advisory here), and
+  `call / markdownlint` becomes merge-blocking (canon is green on it today).
+
 ### Changed — supply-chain allowlist narrowed to GitHub-owned + own account (CI-0011 / PLAN-019 FT-46)
 
 - **CI-0011 RESOLVED (founder, 2026-07-24): drop the verified marketplace; admit

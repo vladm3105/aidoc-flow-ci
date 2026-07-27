@@ -269,6 +269,21 @@ re-applies the template body and clobbers `runner_labels`/permissions/triggers
 
 Every one of these cost real debugging time. They are load-bearing.
 
+0. **⚠️ CI-0011: re-pinning to `ci/v2.14.0`+ produces expected `standards-drift`
+   warnings until the repo's Actions settings are applied.** `ci/v2.13.0` narrowed
+   the canon template (`verified_allowed: false`, `patterns_allowed` →
+   `vladm3105/*`). Those are **template values, applied per-repo** — so a consumer
+   that re-pins without applying them reports
+   `actions.selected.verified_allowed` and `actions.selected.patterns_allowed:
+   MISSING`. **Nothing is broken**: the repo's live pattern is *narrower* than
+   canon's, so every canon reusable it calls is still admitted; the "BLOCKED at
+   run-init" wording applies only to a hypothetical action under another
+   `vladm3105/` repo. `strict` defaults to `false`, so it **warns and exits 0** —
+   only a gate passing `strict: true` would newly fail. Apply the settings
+   alongside the re-pin and it is a non-event. **Scan the target's `uses:` first**,
+   and never blanket-apply: `web-site` and `knowledge-rag` call verified-creator
+   actions admitted today only by `verified_allowed: true`. Full procedure:
+   `docs/UPDATE_GUIDE.md`; decision: `DECISIONS.md` CI-0011.
 1. **Private repos = self-hosted ONLY.** Never `ubuntu-latest` on a private
    repo. `runner-self` is a placeholder, not a registered label — a caller left
    on it queues forever.

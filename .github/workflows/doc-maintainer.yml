@@ -41,7 +41,7 @@
 #       - cron: '7,37 * * * *'   # off-peak reconciler (per IPLAN-0025 D9)
 #   jobs:
 #     call:
-#       uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v2.12.0
+#       uses: vladm3105/aidoc-flow-ci/.github/workflows/doc-maintainer.yml@ci/v2.15.0
 #       secrets: inherit
 
 name: doc-maintainer
@@ -62,7 +62,7 @@ on:
         type: string
         default: 'ai-doc-maintainer'
       litellm_allow_insecure_http:
-        description: 'Explicitly allow an HTTP LiteLLM URL (private networks only).'
+        description: 'Explicitly allow an http:// LiteLLM URL on a controlled private network. Required by the URL SCHEME, not by repo visibility — public repos on the shared self-hosted pool reach the proxy over the plain-HTTP Docker bridge and need this too (CI-0017).'
         type: boolean
         default: false
       runner_labels:

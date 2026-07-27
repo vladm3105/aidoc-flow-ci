@@ -54,9 +54,24 @@ concurrency:
 jobs:
   composition:
     # Run on workflow_run events unconditionally (they only fire from the ai-review workflow completing —
-    # exactly when composition should re-evaluate). On label events, run only for `skip-ai-review` (other
-    # label writes shouldn't re-trigger). Non-label events (pull_request_review, etc.) always run.
-    if: ${{ github.event_name == 'workflow_run' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'skip-ai-review' }}
+    # exactly when composition should re-evaluate). On label events, run only for the two labels that can
+    # CHANGE this check's outcome — `skip-ai-review` (carry-forward) and `ai:review-infra-error` (the
+    # CI-0021 break-glass); other label writes shouldn't re-trigger. Non-label events always run.
+    #
+    # NOTE on the two label clauses: they are DEFENSIVE, not the live path. The shipped caller templates
+    # (composition-{public,private}.yml) subscribe only to `pull_request_review` + `workflow_run` — the
+    # `pull_request_target` trigger carrying `labeled`/`unlabeled` was dropped in IPLAN-0026 Phase 2
+    # (ci/v1.3.0). So `github.event.action` is never `labeled` here today, and these clauses only matter
+    # for a consumer that adds a label trigger of its own.
+    #
+    # What actually re-evaluates composition after a label write is INDIRECT: the ai-review caller DOES
+    # trigger on `labeled`/`unlabeled`, and composition's `workflow_run: workflows: ["ai-review"]` then
+    # re-fires. Worth knowing, because it means a consumer that trims ai-review's label triggers silently
+    # loses re-evaluation-on-label with nothing detecting it.
+    #
+    # In practice the CI-0021 break-glass does not depend on either path: the human approval is the last
+    # action in the sequence, and `pull_request_review` re-fires composition directly.
+    if: ${{ github.event_name == 'workflow_run' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'skip-ai-review' || github.event.label.name == 'ai:review-infra-error' }}
     # Private repo → ci-runner/single-use self-hosted (this account has no GitHub-hosted minutes, OPS-0049);
     # public repo → GitHub-hosted. Lightweight: only `gh api` calls, no checkout of PR code.
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
@@ -73,6 +88,12 @@ jobs:
           PR: ${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.workflow_run.pull_requests[0].head.sha }}
           EXPECTED_ID: ${{ vars.APP_REVIEWER_1_BOT_ID }}
+          # CI-0021 break-glass approver allowlist (opt-in). Whitespace/comma-separated
+          # logins permitted to discharge an ai-review OUTAGE. UNSET => the break-glass
+          # does not exist and behaviour is exactly as before. A repo VARIABLE (not an
+          # input) because it must be admin-writable only — a caller-supplied input
+          # would let the repo being gated choose its own overriders.
+          BREAKGLASS_APPROVERS: ${{ vars.CI0021_BREAKGLASS_APPROVERS }}
           IS_FORK: ${{ github.event.pull_request.head.repo.fork || github.event.workflow_run.pull_requests[0].head.repo.fork }}
           # AUTHOR: only the pull_request_review event carries the full PR object here. The workflow_run
           # payload's abbreviated pull_requests[] does NOT include `.user`, and `workflow_run.actor` is the
@@ -288,5 +309,173 @@ jobs:
             echo "composition satisfied — reviewer App ($EXPECTED_ID) APPROVED at head $HEAD_SHA."
             exit 0
           fi
-          echo "::error::no counting reviewer-App approval (bot id $EXPECTED_ID) at head $HEAD_SHA — blocking merge until the App approves the current head."
+
+          # >>> CI0021-INFRA-BREAKGLASS >>>
+          # INFRASTRUCTURE BREAK-GLASS (CI-0021, issue #311). OPT-IN.
+          #
+          # THE PROBLEM. `call / ai-review` is required on every non-bootstrap tier, and
+          # `skip-ai-review` is deliberately ADVISORY — it carries a PRIOR App approval
+          # across trivial pushes and refuses when the App has never approved. Correct as
+          # a default, but during a reviewer OUTAGE it leaves no non-`--admin` path to
+          # merge anything, including the PR that would fix the reviewer. `--admin`
+          # bypasses EVERY required check, not just the broken one, so an outage trains
+          # operators to disable the whole gate. That is how CI-0014 stayed hidden for
+          # ~9 days.
+          #
+          # THE EXCHANGE. Canon already separates INFRASTRUCTURE failure from verdict
+          # (`ai:review-infra-error`, PLAN-011 F4). This lets that reach composition: the
+          # ai-review gate — and ONLY that gate — may be discharged by a named human
+          # approving at HEAD, instead of by bypassing all five checks.
+          #
+          # OPT-IN, because this is a security-relevant change to a required gate and a
+          # consumer must choose it deliberately. `vars.CI0021_BREAKGLASS_APPROVERS` is a
+          # whitespace/comma-separated login allowlist. UNSET (the default) => the
+          # break-glass does not exist and behaviour is exactly as before. Repo variables
+          # are admin-writable only, which is what makes the allowlist an authorization
+          # boundary rather than a suggestion (same pattern as APP_REVIEWER_1_BOT_ID).
+          #
+          # THREE INDEPENDENT CONDITIONS, ALL REQUIRED:
+          #   1. `ai:review-infra-error` is set          -> SIGNAL: the reviewer is down,
+          #      not dissenting. Anyone with write access can add a label, so this is
+          #      never authorization on its own.
+          #   2. An APPROVED review at THIS head SHA from a non-Bot login on the
+          #      allowlist -> AUTHORIZATION.
+          #   3. That approver did NOT author or push any commit at HEAD -> SEPARATION OF
+          #      DUTIES. This one is load-bearing and is NOT provided by GitHub: GitHub
+          #      forbids the PR AUTHOR from approving, but says nothing about whoever
+          #      PUSHED the commits. A collaborator can push to another user's PR branch
+          #      and then legitimately approve it. Canon's tier templates set
+          #      `required_approving_review_count: 0` and
+          #      `require_last_push_approval: false`, so composition is the only gate on
+          #      the diff on ops/product/bootstrap — without this check a single account
+          #      could push code and self-clear it.
+          BG_ALLOW="${BREAKGLASS_APPROVERS:-}"
+          INFRA=""
+          for n in 1 2 3; do
+            INFRA=$(gh api "repos/$GH_REPO/pulls/$PR" \
+              --jq '[.labels[].name] | index("ai:review-infra-error") | if . != null then "1" else "" end' 2>/dev/null) && break
+            [ "$n" -lt 3 ] && sleep $((n*3))
+          done
+          if [ -n "$INFRA" ] && [ -z "$BG_ALLOW" ]; then
+            echo "::warning::ai:review-infra-error is set, but the CI-0021 break-glass is NOT configured on this repo (vars.CI0021_BREAKGLASS_APPROVERS is unset), so it cannot apply. To enable it, set that variable to the logins permitted to discharge an ai-review OUTAGE; until then the only override is \`--admin\`, which bypasses every required check."
+          fi
+          if [ -n "$INFRA" ] && [ -n "$BG_ALLOW" ]; then
+            # LATEST review per user wins. The reviews API returns every submission as its
+            # own object retaining its own state, so an APPROVED later retracted by a
+            # REQUEST_CHANGES at the SAME sha would otherwise still match. Group by login,
+            # take the last, and only then test for APPROVED.
+            # `--slurp` is LOAD-BEARING: without it `gh --paginate` applies `--jq` to EACH
+            # PAGE separately, so an aggregating filter like group_by|map(last) computes
+            # latest-per-user WITHIN a 30-review page instead of across the PR — exactly
+            # the property this query exists to establish. A long-lived PR easily exceeds
+            # one page (the App submits a review per push), so an APPROVED on page N and
+            # its same-SHA retraction on page N+1 would still qualify.
+            #
+            # Only state-CHANGING reviews take part in "latest wins": GitHub treats
+            # COMMENTED as non-state-changing, so without this filter an approver who
+            # later leaves a plain comment would silently stop qualifying.
+            hids=""; hfetched=; rev_err=$(mktemp)
+            for n in 1 2 3 4 5; do
+              if hids=$(gh api "repos/$GH_REPO/pulls/$PR/reviews" --paginate --slurp \
+                    -q "add | [.[] | select(.commit_id == \"$HEAD_SHA\" and .user.type != \"Bot\" and (.state == \"APPROVED\" or .state == \"CHANGES_REQUESTED\" or .state == \"DISMISSED\"))] | group_by(.user.login) | map(last) | .[] | select(.state == \"APPROVED\") | .user.login" 2>"$rev_err"); then
+                hfetched=1; break
+              fi
+              # Surface the real cause (the sibling App-approval loop learned this the hard
+              # way: a hardcoded reason once hid a `gh missing from the runner image` bug).
+              echo "::warning::break-glass reviews fetch attempt $n failed: $(head -3 "$rev_err" 2>/dev/null | tr '\n' ' ' | head -c 240)"
+              [ "$n" -lt 5 ] && sleep $((n*3))
+            done
+            rm -f "$rev_err"
+            # Fail-closed: an unfetchable review list must never read as "a human approved".
+            if [ -z "$hfetched" ]; then
+              echo "::error::ai:review-infra-error is set but the PR reviews could not be fetched — INFRASTRUCTURE, not a verdict. Fail-closed (blocking); re-run this check."
+              exit 1
+            fi
+            # SEPARATION OF DUTIES — commit authorship at HEAD.
+            #
+            # SCOPE, STATED HONESTLY: this checks the git AUTHOR and COMMITTER identities
+            # recorded in the commits, NOT the pusher. GitHub's REST API exposes no pusher
+            # field (it exists only on the push webhook / audit log). Author and committer
+            # are written by whoever ran `git commit`, so a determined actor can set them
+            # to anything. See REPO_STANDARDS §19.3 for what this does and does not buy;
+            # it is not a substitute for `required_signatures`.
+            #
+            # `// empty` would be a HOLE, not a safe default: when a commit's email matches
+            # no GitHub account BOTH login fields are null, and dropping those commits would
+            # silently exempt exactly the actor this test exists to catch (one `git -c
+            # user.email=x@invalid commit` away). Unattributable => unverifiable => blocked.
+            cauth=""; cfetched=; cjson=$(mktemp); c_err=$(mktemp)
+            for n in 1 2 3 4 5; do
+              if gh api "repos/$GH_REPO/pulls/$PR/commits" --paginate --slurp > "$cjson" 2>"$c_err"; then
+                cfetched=1; break
+              fi
+              echo "::warning::break-glass commits fetch attempt $n failed: $(head -3 "$c_err" 2>/dev/null | tr '\n' ' ' | head -c 240)"
+              [ "$n" -lt 5 ] && sleep $((n*3))
+            done
+            rm -f "$c_err"
+            if [ -z "$cfetched" ] || ! [ -s "$cjson" ]; then
+              echo "::error::ai:review-infra-error is set but the PR commit authorship could not be fetched — INFRASTRUCTURE, not a verdict. Separation of duties cannot be established, so the break-glass fails closed (blocking); re-run this check."
+              rm -f "$cjson"; exit 1
+            fi
+            # COMPLETENESS. `GET /pulls/{n}/commits` caps at 250 and still exits 0, so a
+            # long PR would silently hide authors past the cap. Same fail-closed shape the
+            # governance floor uses for an incomplete changed-file listing.
+            NCOMMITS=$(jq '[.[][]] | length' "$cjson" 2>/dev/null || echo "")
+            EXPECTED_COMMITS=""
+            for n in 1 2 3; do
+              EXPECTED_COMMITS=$(gh api "repos/$GH_REPO/pulls/$PR" --jq '.commits' 2>/dev/null) && break
+              [ "$n" -lt 3 ] && sleep $((n*3))
+            done
+            case "${NCOMMITS:-x}${EXPECTED_COMMITS:-x}" in *x*) NCOMMITS=""; esac
+            if [ -z "$NCOMMITS" ] || [ "$NCOMMITS" -lt "$EXPECTED_COMMITS" ]; then
+              echo "::error::ai:review-infra-error is set but the commit listing for this PR is INCOMPLETE (${NCOMMITS:-unreadable} of ${EXPECTED_COMMITS:-unknown}; the API caps at 250). Separation of duties cannot be established over commits it cannot see, so the break-glass fails closed."
+              rm -f "$cjson"; exit 1
+            fi
+            # `!unattributed` cannot collide with a real login (GitHub logins are
+            # alphanumeric + hyphen), so it is a safe sentinel for "no linked account".
+            cauth=$(jq -r '[.[][]] | .[] | (.author.login // "!UNATTRIBUTED"), (.committer.login // "!UNATTRIBUTED")' "$cjson" 2>/dev/null)
+            rm -f "$cjson"
+
+            # Normalize the allowlist: commas or whitespace, case-insensitive (GitHub
+            # logins are case-insensitive, so a case mismatch must not silently deny).
+            # Accept commas AND any whitespace: the GitHub repo-variable UI is a
+            # multi-line textarea, so a newline- or CRLF-separated list is the likely
+            # input. Handling only commas would reject a plainly-listed login and
+            # disable the break-glass during the exact outage it exists for.
+            allow_lc=$(printf '%s' "$BG_ALLOW" | tr ',\r\n\t' '    ' | tr '[:upper:]' '[:lower:]')
+            auth_lc=$(printf '%s\n' "$cauth" | tr '[:upper:]' '[:lower:]' | grep . || true)
+            # An unattributable commit means SoD cannot be established for ANY approver.
+            if printf '%s\n' "$auth_lc" | grep -qxF '!unattributed'; then
+              echo "::error::a commit at head $HEAD_SHA has no GitHub account linked to its author or committer email, so separation of duties cannot be established for any approver — the break-glass fails closed. Re-push with a commit email linked to a GitHub account (or enable required_signatures on this repo)."
+              exit 1
+            fi
+            QUALIFIED=""; REJECTED=""
+            # Iterate by WORD-SPLITTING, deliberately: a GitHub login cannot contain
+            # whitespace, and a `while read <<EOF` heredoc here would be UNRUNNABLE by the
+            # marker-extraction test — a heredoc consumes the same stdin the block is piped
+            # on. Keeping the block driveable is what makes the tests exercise the shipped
+            # shell instead of a copy of it.
+            for who in $hids; do
+              who_lc=$(printf '%s' "$who" | tr '[:upper:]' '[:lower:]')
+              case " $allow_lc " in *" $who_lc "*) ;; *) REJECTED="${REJECTED}${REJECTED:+, }${who} (not on the approver allowlist)"; continue ;; esac
+              if printf '%s\n' "$auth_lc" | grep -qxF "$who_lc"; then
+                REJECTED="${REJECTED}${REJECTED:+, }${who} (authored or pushed a commit at this head — separation of duties)"
+                continue
+              fi
+              QUALIFIED="${QUALIFIED}${QUALIFIED:+, }${who}"
+            done
+            if [ -n "$QUALIFIED" ]; then
+              echo "::warning::composition passed via the CI-0021 INFRASTRUCTURE BREAK-GLASS. Approved at head $HEAD_SHA by: ${QUALIFIED}. The reviewer App did NOT approve. This discharges the ai-review gate ONLY — every other required check still applied. It is not a substitute for review: the named approver owns this merge. Remove ai:review-infra-error once the reviewer is healthy so the App-approval requirement resumes."
+              exit 0
+            fi
+            if [ -n "$REJECTED" ]; then
+              echo "::error::ai:review-infra-error is set, but no approval at head $HEAD_SHA qualifies for the break-glass. Rejected: ${REJECTED}. The label signals the outage; an allowlisted human who did not write the code authorizes the merge."
+            else
+              echo "::error::ai:review-infra-error is set, but there is no non-Bot approval at head $HEAD_SHA. The break-glass requires BOTH the label AND an allowlisted human approval at this head. The label alone is not authorization."
+            fi
+            exit 1
+          fi
+          # <<< CI0021-INFRA-BREAKGLASS <<<
+
+          echo "::error::no counting reviewer-App approval (bot id $EXPECTED_ID) at head $HEAD_SHA — blocking merge until the App approves the current head. If the reviewer is DOWN (not requesting changes), the supported path is the CI-0021 infra break-glass — 'ai:review-infra-error' plus a human approval at this head — NOT 'gh pr merge --admin', which bypasses every required check."
           exit 1

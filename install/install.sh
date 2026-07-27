@@ -23,8 +23,8 @@
 #                                 [--codeowner <handle>] [--canon-*-url <url>]
 #   Re-pin (version-only tag bump; preserves all customization — use this for a
 #   re-pin, NEVER --update which re-applies the template body; FT-9):
-#   CI_TAG=ci/v2.12.0 bash install.sh <owner/repo> --repin
-#   CI_TAG=ci/v2.12.0 bash install.sh <owner/repo> --visibility private
+#   CI_TAG=ci/v2.15.0 bash install.sh <owner/repo> --repin
+#   CI_TAG=ci/v2.15.0 bash install.sh <owner/repo> --visibility private
 #   Verify server-side standards (no install; exits non-zero on genuine drift —
 #   PLAN-015 B2; needs an admin-scoped gh token to check branch protection):
 #   bash install.sh <owner/repo> --verify-standards --tier <governance|product|ops|umbrella|bootstrap>
@@ -150,7 +150,7 @@ done
 # and the hardcoded fallback is authoritative — that is expected and correct.
 # The startup log below names the winning source so a stale CI_TAG env var in
 # a consumer's CI caller silently overriding VERSION is diagnosable.
-CI_TAG_FALLBACK="ci/v2.12.0"
+CI_TAG_FALLBACK="ci/v2.15.0"
 if [ -n "${CI_TAG:-}" ]; then
   CI_TAG_SOURCE="CI_TAG env"
 else
@@ -282,6 +282,154 @@ fi
 WORK_DIR="${WORK_DIR:-$PWD/aidoc-flow-ci-bootstrap-$$}"
 gh repo clone "$TARGET_REPO" "$WORK_DIR/consumer" -- --depth 1
 cd "$WORK_DIR/consumer"
+
+# >>> MANDATORY-BACKUP >>>  (extracted verbatim by tests/test_install.sh — keep
+# these markers; the test drives THIS code rather than a copy of it.)
+# FT-57: snapshot every pre-existing governance/CI surface BEFORE the first
+# write. Three separate code paths mutate files in this clone — fetch_template's
+# `curl -o`, the --update replace's `cp`+`mv`, and --repin's `sed -i` — so a
+# per-writer hook would have to be remembered by whoever adds the fourth. One
+# snapshot here cannot be bypassed by a later write path.
+#
+# UNCONDITIONAL by design: not gated on mode, --non-interactive, a TTY, or
+# whether the run intends to replace anything. A consumer may carry an
+# established, customized flow, and "we only meant to add files" is exactly the
+# assumption under which the FT-9 --update clobber happened.
+#
+# Scope: all of .github/ (so the consumer's OWN workflows are captured too —
+# this script never writes them, but a backup that only covers what we intend to
+# touch is worthless when the bug is touching something we did not intend), plus
+# the root-level configs the manifest can target. Deliberately NOT derived from
+# manifest.json: a backup that drifts with the manifest would silently stop
+# covering a surface the manifest dropped.
+#
+# Sited in WORK_DIR rather than beside the script: install.sh is documented as
+# runnable piped (`bash <(curl …) --update`), where $0 is not a real path.
+# WORK_DIR is deliberately never auto-cleaned, so the backup outlives the run.
+BACKUP_DIR="$WORK_DIR/backup"
+backup_existing_surfaces() {
+  local n=0 p d list rc=0
+  local -a files=()
+  mkdir -p "$BACKUP_DIR" || return 1
+
+  # NUL-delimited enumeration. A word-split `for p in $(find …)` list is wrong
+  # twice over, and both were live defects here before this was fixed:
+  #   "bug report.md"  -> split into two nonexistent paths; cp fails; the whole
+  #                       installer becomes unusable on that repo, in every mode.
+  #   "notes[1].md"    -> glob-expanded onto a SIBLING file; the bracket file is
+  #                       never backed up, the sibling is copied twice, the count
+  #                       reports success. Fail-OPEN, which is the one outcome a
+  #                       mandatory backup must never produce.
+  # Do not reintroduce an unquoted command substitution here.
+  #
+  # `find -L` so a symlinked .github (or a symlinked caller inside it) is
+  # followed rather than silently yielding nothing — that was a clean bypass of a
+  # MANDATORY backup. `! -type d` is the right predicate under -L: it keeps
+  # regular files, symlinks-to-files (followed) and broken symlinks, while
+  # excluding directories AND the symlinked-directory root itself (which `cp -p`
+  # cannot copy). A resolvable symlink is captured by CONTENT, which is what a
+  # restore wants; a BROKEN one has no content to capture and is copied as the
+  # LINK instead (see the cp branch below) — `cp -p` dereferences, so a bare
+  # `cp -p` on a dangling link fails and, being fail-closed, aborted the whole
+  # installer in EVERY mode on any consumer that had one. (CI-0023.)
+  list="$(mktemp)" || return 1
+  if [ -d .github ]; then
+    # find's own status is checked: a partial traversal (unreadable subdir) still
+    # prints what it could read and exits non-zero. Swallowing that would report
+    # a successful backup that is quietly missing files.
+    # stderr is kept, not discarded: the two causes need different remedies and
+    # the message alone cannot tell them apart. An unreadable subdirectory is a
+    # permissions problem; a symlink LOOP (`ln -s a b; ln -s b a`) makes `find -L`
+    # exit non-zero having enumerated nothing, and the old text blamed
+    # permissions for it — sending the operator to `chmod` for a cycle no chmod
+    # can fix. A loop is a genuine FAULT and still aborts (unlike a dangling
+    # link, which is a shape and is handled below): `find -L` cannot traverse it,
+    # so we cannot prove the snapshot is complete, and a mandatory backup that
+    # cannot prove completeness must not proceed. (CI-0023.)
+    # LC_ALL=C is load-bearing, not hygiene: the branch below keys on find's
+    # ELOOP strerror text, which is TRANSLATED under a non-English locale. Without
+    # it the grep misses, control falls to the permissions branch, and the run
+    # reprints the exact misdiagnosis this block exists to remove — on an operator
+    # whose locale we never see in CI, so no test would catch it.
+    local find_err; find_err="$(mktemp)" || { rm -f "$list"; return 1; }
+    if ! LC_ALL=C find -L .github ! -type d -print0 > "$list" 2>"$find_err"; then
+      echo "  FAIL  could not enumerate .github — refusing to write" >&2
+      if grep -qi 'too many levels of symbolic links' "$find_err"; then
+        echo "        cause: a symlink LOOP under .github/ — find cannot traverse it." >&2
+        echo "        Break the cycle, then re-run. (chmod will not help.)" >&2
+      else
+        echo "        cause: likely an unreadable subdirectory — check permissions." >&2
+      fi
+      sed 's/^/        /' "$find_err" >&2
+      rm -f "$list" "$find_err"
+      return 1
+    fi
+    rm -f "$find_err"
+    while IFS= read -r -d '' p; do files+=("$p"); done < "$list"
+  fi
+  rm -f "$list"
+
+  # Non-.github surfaces install.sh can write. Kept as an explicit list rather
+  # than derived from manifest.json: a manifest-derived scope would silently
+  # stop covering a surface the manifest drops. tests/test_install.sh
+  # cross-checks this list AGAINST the manifest, so a manifest ADDITION outside
+  # .github/ fails the suite instead of going unbacked.
+  # `-e` alone is WRONG here: it dereferences, so a DANGLING symlink at one of
+  # these paths tests false and is skipped — silently. The path still exists as
+  # a link, install.sh can still overwrite it, and the run reports success with
+  # that surface absent from the snapshot. That is fail-OPEN, the one outcome a
+  # mandatory backup must never produce, and it is the same broken-symlink blind
+  # spot as the `cp -p` defect below — this list simply lost it one step earlier,
+  # at enumeration rather than at copy. `|| [ -L … ]` admits the link, and the
+  # copy loop's fault-vs-shape branch then handles it. (CI-0023.)
+  local r
+  for r in .markdownlint.json .lychee.toml .yamllint.yaml .yamllint.yml \
+           .pre-commit-config.yaml .gitignore .gitattributes CLAUDE.md \
+           scripts/pre_push_check.sh; do
+    { [ -e "$r" ] || [ -L "$r" ]; } && files+=("$r")
+  done
+
+  for p in ${files[0]+"${files[@]}"}; do
+    d="$(dirname "$p")"
+    mkdir -p "$BACKUP_DIR/$d" || rc=1
+    # A dangling symlink is enumerated by `find -L … ! -type d` (the stat fails,
+    # so find yields the link itself) but has no content for `cp -p` to
+    # dereference. Copy the LINK verbatim instead (`-Pp`: no-dereference AND
+    # preserve, since bare `-P` would not carry the link's own timestamps) — that
+    # is the only faithful backup of it, and it keeps the mandatory snapshot
+    # fail-CLOSED for real errors rather than aborting on a broken link the
+    # consumer merely happens to carry. Do NOT collapse this to a plain `cp -P`
+    # for every path: a resolvable symlink must still be captured by content.
+    #
+    # RESIDUAL, stated rather than papered over: `-e` reports false for EACCES as
+    # well as ENOENT, so a resolvable link whose target sits behind an
+    # unsearchable directory is classified here as dangling and backed up as a
+    # link rather than by content. It is not silently lost, and the case needs
+    # the installer to be run by someone who cannot traverse the consumer's own
+    # tree — but it is a real gap, not a handled case.
+    #
+    # Reachable only via the ROOT-LIST arm. On the `.github/` arm `find -L`
+    # stats the link first, gets EACCES, and the run hard-aborts above — so that
+    # arm never reaches this branch and is stricter than this comment implies.
+    # (CI-0023.)
+    if [ -L "$p" ] && [ ! -e "$p" ]; then
+      cp -Pp "$p" "$BACKUP_DIR/$p" || rc=1
+    else
+      cp -p "$p" "$BACKUP_DIR/$p" || rc=1
+    fi
+    [ "$rc" -eq 0 ] || { echo "  FAIL  could not back up $p — refusing to write" >&2; return 1; }
+    n=$((n + 1))
+  done
+
+  if [ "$n" -eq 0 ]; then
+    echo "==> backup: no pre-existing CI/governance surfaces (fresh repo)"
+  else
+    echo "==> backed up $n pre-existing file(s) -> $BACKUP_DIR"
+  fi
+}
+# Fail CLOSED: if the snapshot cannot be taken, do not write.
+backup_existing_surfaces || { echo "install: refusing to modify $TARGET_REPO without a backup" >&2; exit 1; }
+# <<< MANDATORY-BACKUP <<<
 
 # Bootstrap creates the canon dirs; --update only touches files the consumer
 # already has, so it must NOT litter empty dirs into the clone.
@@ -1078,6 +1226,9 @@ fi
 echo ""
 echo "==> done. Next steps (founder) — SECRETS BEFORE THE PR, or the first PR's ai-review gate fails:"
 echo "    1. Inspect bootstrapped files: cd $WORK_DIR/consumer && git diff"
+echo "       Pre-write backup of everything that already existed (FT-57):"
+echo "         $BACKUP_DIR"
+echo "       Restore one file:  cp \"$BACKUP_DIR/<path>\" $WORK_DIR/consumer/<path>"
 # PLAN-018 F4 — runner-pool probe, visibility-INDEPENDENT. The ai-review
 # template is visibility-uniform (PLAN-013) and pins the self-hosted pool for
 # PUBLIC repos too, so a public adopter with no pool gets permanently-queued

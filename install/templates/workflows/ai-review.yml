@@ -52,14 +52,20 @@ permissions:
   issues: write          # gh api label create/apply paths
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.12.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/ai-review.yml@ci/v2.15.0
     with:
       # Model selection is CONFIG-DRIVEN: the reusable reads `litellm.model`
       # from the trusted .github/ai-review/config.json. Uncomment to override:
       # model: ai-reviewer
       runner_labels_routine: '["self-hosted", "ci-runner", "single-use"]'
       runner_labels_review: '["self-hosted", "ci-runner", "single-use"]'
-      # Private HTTP proxies require explicit opt-in:
+      # HTTP proxies require explicit opt-in. Required by the URL SCHEME, NOT by
+      # repo visibility — if LITELLM_BASE_URL starts `http://`, uncomment this,
+      # public repo or not. On the shared self-hosted pool the proxy is the
+      # Docker bridge gateway (http://172.17.0.1:4001/v1 — plain HTTP), so this
+      # applies there too. NB: LITELLM_BASE_URL must NOT be 127.0.0.1/localhost;
+      # jobs run inside a container, so loopback is the container itself.
+      # (CI-0017.)
       # litellm_allow_insecure_http: true
       # External adopters: point the trust config at YOUR ops/config repo
       # (holds `.github/ai-review/config.json`). Defaults to
