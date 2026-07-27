@@ -398,9 +398,23 @@ jobs:
       # → `composition` is INERT → concluding a fresh SUCCESS would SUPERSEDE a prior
       # `request_changes` at this HEAD with ZERO enforced review.
       #
-      # That premise is FALSE — a later SUCCESS does not replace an earlier
-      # conclusion from a separate run (§23.1). The guard is retained but is being
-      # re-derived under §23; tracked as #331.
+      # THAT PREMISE IS FALSE, settled in #330: a later SUCCESS from a SEPARATE run
+      # does not replace an earlier conclusion on the same head SHA — both are
+      # retained and the rollup keeps the worst. So a fresh green cannot supersede
+      # anything, and this guard prevents no bypass.
+      #
+      # It is also not preventing an unearned green. Without it, a label/draft event
+      # falls through to the R3 step below, whose unarmed branch `exit 0`s and
+      # proceeds to a FULL review. The one sub-case that does not reach R3 — a PR
+      # already carrying `skip-ai-review` while a DIFFERENT label is toggled —
+      # reaches the FT-29 guard on the skip step instead, which also `exit 1`s
+      # while unarmed. Neither route yields a free pass. What the guard actually does on an unarmed repo is write
+      # a permanent FAILURE on the live head SHA for any label/draft event, which
+      # under §23.1 is itself the §23 defect class.
+      #
+      # Removing it is therefore a gate-behaviour change and is deliberately NOT
+      # bundled here — tracked as #331 with this analysis. Retained meanwhile: the
+      # error message's remedies (arm the App, or push) are both correct.
       - name: FT-43 fail-closed (no superseding green on a label/draft event while unarmed)
         if: ${{ (github.event.pull_request.draft == true) || ((github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'skip-ai-review') }}
         env:
