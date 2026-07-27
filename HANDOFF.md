@@ -6,71 +6,65 @@ context compaction.
 
 ## Current state (2026-07-27)
 
-> ## ci/v2.15.0 IS TAGGED — ci/v2.16.0 is ready except one founder step
+> ## ci/v2.16.0 IS CUT — nothing is pending
 >
-> `ci/v2.15.0` is **cut, pushed and marked Latest** (`fdebb05`). `main` is
-> `12ec474`, fully green, **0 open issues, 0 open PRs**.
+> `ci/v2.16.0` is tagged on `5a60bae`, pushed, and marked **Latest**. `main` is
+> the same commit, `VERSION` reads `ci/v2.16.0`, `## Unreleased` is empty, and
+> there are **0 open issues and 0 open PRs**. The suite is green — `version-sync`
+> went 28/1 → 29/0 when the tag appeared, which is the FT-21 chicken-and-egg
+> clearing as designed.
 >
-> ### 🔴 What blocks `ci/v2.16.0` — the FT-30 cold-start dry-run
+> **Nothing is owed. Pick up new work.**
 >
-> **9 manifest-shipped caller templates changed** since `ci/v2.15.0`
-> (`ai-review`, `audit-trail-{public,private}`, `markdown-lint{,-private}`,
-> `pre-commit{,-private}`, `secret-scan{,-private}`), so `release.sh tag` will
-> **refuse** without `--dry-run-verified`. Founder-executed; the AI does not run
-> it in-session.
+> ### ⚠️ What consumers must do to adopt ci/v2.16.0
 >
-> ```bash
-> # 1. founder, against a throwaway repo that ALREADY EXISTS on GitHub:
-> export CI_TAG=$(git -C /opt/data/aidoc-flow/aidoc-flow-ci rev-parse main)
-> bash <(curl -fsSL "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/install.sh") \
->   <owner>/<throwaway-repo>
+> Two real actions. A plain `--repin` is **not** sufficient:
 >
-> # 2. then, in-session: release.sh prep ci/v2.16.0 -> merge (--admin, FT-21) -> tag
-> ```
->
-> Derive `CI_TAG` from `main` HEAD at run time — do NOT copy a SHA out of this
-> file. Pass criteria are unchanged from the v2.15.0 cut (see git history of this
-> section, or `docs/RELEASE_CHECKLIST.md`).
->
-> ### Everything else is verified ready
->
-> | Pre-tag item | State |
+> | | |
 > |---|---|
-> | Schemas | ✅ both parse |
-> | Test suite | ✅ PASS |
-> | `sync-version-refs --check` | ✅ clean |
-> | Zero-hook detector | ✅ exit 0 |
-> | Runtime floors documented **in-tree** | ✅ the new checklist item, satisfied by #343 |
-> | OPS-0065 review | ✅ every merged PR carried one |
-> | **Semver** | **MINOR** — zero `workflow_call` input/secret changes since `ci/v2.15.0` |
+> | **Actions Runner >= 2.327.1** | The reusables call node24 actions. Below the floor, jobs die on the runtime in `ai-review`'s FIRST job with an error not expected to name the action or the floor. Check: `gh api repos/<owner>/<repo>/actions/runners --jq '.runners[].version'`. GitHub-hosted (`ubuntu-latest`) is unaffected. See `docs/runners.md` §2 and `docs/troubleshooting.md` §19. |
+> | **`--update --non-interactive`, NOT `--repin`** | The CI-0025 caller-side fix (#329) lives in **caller templates**; `--repin` rewrites `uses:` lines only and cannot deliver it. Re-apply local `runner_labels_*` / `permissions:` afterwards. Without a TTY, `--update` alone defaults to KEEP (FT-39) and delivers nothing. |
 >
-> ### What ci/v2.16.0 will contain (5 `## Unreleased` entries)
+> Fleet is **not** re-pinned yet — `sync/check-pin-currency.sh --fleet` is the
+> post-release step, and no consumer has adopted `ci/v2.16.0`.
 >
-> | Item | Consumer action |
+> ### What ci/v2.16.0 contains
+>
+> | Entry | Why it matters |
 > |---|---|
-> | **CI-0025 + #329** — `ai-review` cancelled itself; same defect in 8 caller templates + canon's own 5. Required contexts were being stranded `cancelled`, making PRs `--admin`-only. | ⚠️ **`--update --non-interactive`**, NOT `--repin` — these are caller templates |
-> | **node24 bumps** — checkout 7.0.1 (18 sites), setup-python/node 7, download-artifact 8, codeql 4.37.3 | ⚠️ **Actions Runner >= 2.327.1** |
-> | **#330** — §23.1 vs §15 asserted opposite required-check semantics; settled by measurement | none |
-> | **#331** — removed `ai-review`'s FT-43 guard: it wrote a permanent non-success and guarded nothing | none (strictly fewer stuck PRs) |
-> | **#342** — the runner floor documented where operators look | none |
+> | **CI-0025 + #329** — `ai-review` cancelled itself; the same defect in 8 caller templates and canon's own 5 | A required context was left `cancelled` at the live head SHA, so PRs were `--admin`-only. Plausibly the source of the standing "every PR needs `--admin`" folklore. |
+> | **#331** — removed `ai-review`'s FT-43 fail-closed step | It wrote a **permanent** non-success on unarmed repos and guarded nothing; FT-29 is the guard that actually holds that line |
+> | **#330** — §23.1 vs `troubleshooting` §15 asserted opposite required-check semantics | Settled by measurement: an in-place re-run **replaces** a check-run, a separate run **adds** one alongside. §15's label-cycle recovery was making stuck checks worse. |
+> | **#342** — the >= 2.327.1 runner floor documented where operators look | It applied since the early `ci/v1.x` series and was recorded nowhere |
+> | **node24 dependabot bumps** | checkout 7.0.1 (18 sites), setup-python/node 7, download-artifact 8, codeql 4.37.3 |
+> | **`scripts/ft30-dry-run.sh`** | The 🔴 release gate is no longer judged by eye |
 >
-> ### Canon added this session
+> ### Canon added across the v2.15.0 + v2.16.0 window
 >
-> **This session:** §23.4 (a gate must not re-enter itself) and CI-0026.
-> **Shipped in `ci/v2.15.0`, not this session:** §21 (fault-vs-shape), §22
-> (mechanical rewriters), §23 (only a code-changing event may cancel), and
-> CI-0023 through CI-0025.
+> §21 (fault-vs-shape, swept across every arm of a guard), §22 (a mechanical
+> rewriter must not rewrite illustrative examples), §23 (only a code-changing
+> event may cancel an in-flight run of a required gate) and §23.4 (a gate must not
+> re-enter itself); `DECISIONS.md` CI-0023 through CI-0026.
+>
+> ### Known gap, filed nowhere yet
+>
+> `scripts/ft30-dry-run.sh` asserts the run **completed**, not that it installed
+> the **right set**. A bootstrap that silently dropped `ai-review.yml` would still
+> pass all 11 criteria. Worth tightening to assert the expected bootstrap file set
+> (the literal `fetch_template` args in `install.sh`) before the next cut.
 >
 > ### Two process lessons worth keeping
 >
-> 1. **Prose volume was the defect surface.** #322 took five review passes; only
->    the FIRST found a code defect. The rest corrected claims written *about* the
->    fix. The last of them recommended cutting rather than correcting. Prefer one
->    scoped statement plus pointers.
-> 2. **`pre_push_check.sh` matches a PHRASE, not the work.** Writing
->    "Multi-agent self-review per OPS-0065: skipped" passes the gate while
->    declaring the opposite. It happened twice; both times running the review for
->    real found something.
+> 1. **Prose volume is a defect surface.** #322 took five review passes; only the
+>    FIRST found a code defect. Every later pass corrected claims written *about*
+>    the fix, until the last recommended **cutting** rather than correcting.
+>    Prefer one scoped statement plus pointers.
+> 2. **`pre_push_check.sh` matches a PHRASE, not the work.** A commit body reading
+>    "Multi-agent self-review per OPS-0065: skipped" satisfies the gate while
+>    declaring the opposite. It happened repeatedly in one session — each time
+>    caught and amended before push, so git carries no trace of it, which is
+>    itself the point: the gate cannot distinguish the phrase from the work. Each
+>    time the review was then actually run, it found something real.
 
 ## Previous state (2026-07-25)
 
@@ -1313,13 +1307,12 @@ enforcement, PR-U1/U2/U3/U4, 2026-07-08).
 
 ## Next-session start-here
 
-0. **🔴 CUT `ci/v2.16.0` — this outranks everything below.** `ci/v2.15.0` is
-   tagged and Latest; **`ci/v2.16.0` is not cut**, so five `## Unreleased`
-   entries reach no consumer — including the CI-0025 self-cancel fix and its
-   caller-side half (#329). The only blocker is the founder-executed FT-30
-   cold-start dry-run (9 manifest-shipped templates changed). Command block and
-   the full readiness table are in **`## Current state (2026-07-27)`** at the top
-   of this file.
+0. **No release is pending.** `ci/v2.16.0` is cut and Latest; `## Unreleased` is
+   empty; 0 open issues, 0 open PRs. The post-release step that remains is
+   optional and consumer-side: re-pin the fleet
+   (`sync/check-pin-currency.sh --fleet`), noting adoption needs
+   `--update --non-interactive` rather than `--repin` — see
+   `## Current state (2026-07-27)`.
 
 1. **PLAN-007 production-hardening — W1/W2/W3(markdown-lint)/W5 DONE; the two
    remaining items are BOTH 🔴 founder-gated:**
