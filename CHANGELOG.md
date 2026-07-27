@@ -5,6 +5,31 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — the reusables now run node24 actions; self-hosted runners need >= 2.327.1
+
+- Dependabot bumps merged: `actions/checkout` 4.2.2 → **7.0.1** (18 call sites),
+  `actions/setup-python` 6.3.0 → **7.0.0**, `actions/setup-node` 6.4.0 → **7.0.0**,
+  `actions/download-artifact` 4.3.0 → **8.0.1**, `github/codeql-action` → v4.37.3,
+  and the `actions-runner` base image digest in
+  `install/templates/runner/Dockerfile`. All SHA-pinned, all inside the CI-0011
+  `actions/*` + `github/*` allowlist.
+- ⚠️ **These majors run on `node24`, which requires Actions Runner >= 2.327.1.**
+  They live in the **reusables consumers call**, so a consumer whose self-hosted
+  runner is older will see jobs fail on the runtime, not on their code. Verified
+  before merging: the workspace pool reports 2.335.1 / 2.336.0, and public repos
+  use `ubuntu-latest`, which is always current. Check your own pool with
+  `gh api repos/<owner>/<repo>/actions/runners --jq '.runners[].version'` before
+  re-pinning.
+- `download-artifact` v8 also flips **digest-mismatch from warn to error**. The
+  artifact backend is unchanged since v4, so the surviving `upload-artifact@v4.6.2`
+  in the same workflow still pairs correctly; only a genuinely corrupt download
+  now fails instead of warning.
+- **The runner image bump does not update live runners.** The image is built per
+  host with no registry push, so `install/templates/runner/Dockerfile` changing
+  means each host must rebuild before the new base takes effect.
+- These merged as ordinary dependabot PRs and therefore carried no changelog
+  entry of their own; this records what they changed.
+
 ### Docs — `ai-review`'s FT-43 guard rests on a premise #330 disproved (#331)
 
 - The guard's comment and `::error::` say a fresh SUCCESS would **supersede** a
