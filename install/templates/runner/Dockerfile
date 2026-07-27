@@ -24,7 +24,7 @@
 # the supply chain on this repo + the official actions-runner image + the
 # official cli.github.com apt repo + Ubuntu apt.
 
-FROM ghcr.io/actions/actions-runner@sha256:08c30b0a7105f64bddfc485d2487a22aa03932a791402393352fdf674bda2c29
+FROM ghcr.io/actions/actions-runner@sha256:0cfdcc701ce933c6d243c6b0b2da767366dc9f2e99961d4c3754b0b78084cdda
 
 # The actions-runner image runs as the unprivileged `runner` user. Install as
 # root, then drop back. apt-get + gpg manipulation needs root.
