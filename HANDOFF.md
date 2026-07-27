@@ -4,129 +4,73 @@ Live cross-session resume point for the workspace CI + governance-workflow
 canon library. Read at session start; refresh at milestones and before
 context compaction.
 
-## Current state (2026-07-26)
+## Current state (2026-07-27)
 
-> ## 🔴 THE RELEASE IS ONE FOUNDER-EXECUTED STEP FROM DONE
+> ## ci/v2.15.0 IS TAGGED — ci/v2.16.0 is ready except one founder step
 >
-> `ci/v2.15.0` is **prepped and merged but NOT TAGGED**. `VERSION` on `main`
-> reads `ci/v2.15.0`; the tag does not exist. Nothing reaches a consumer until
-> it is cut.
+> `ci/v2.15.0` is **cut, pushed and marked Latest** (`fdebb05`). `main` is
+> `12ec474`, fully green, **0 open issues, 0 open PRs**.
 >
-> **The SHA to use is whatever `main` HEAD is when you run this** — the tag is
-> cut from HEAD, so that is the tree that ships. Get it with
-> `git -C <repo> rev-parse main`. Do NOT copy a SHA out of this file: it was
-> `3a4a3eaec8a72f3b52d875a49c82f4c1e7bcf30f` at the prep merge (PR #326, merged
-> with `--admin` per the documented FT-21 chicken-and-egg — founder authorized
-> 2026-07-26) and has already moved once since. A stale SHA here would validate a
-> tree that is not the one being tagged, which is the same silent-falsification
-> class as CI-0024.
+> ### 🔴 What blocks `ci/v2.16.0` — the FT-30 cold-start dry-run
 >
-> Only files `install.sh` actually fetches affect the dry-run, so a HEAD that
-> differs from the prep merely by governance edits gives an identical result —
-> but check rather than assume:
-> `git diff --name-only 3a4a3ea main -- install/`.
->
-> **What is owed: the 🔴 FT-30 cold-start dry-run.** `install/install.sh`
-> changed (FT-57 + CI-0023), so `release.sh tag` will REFUSE without
-> `--dry-run-verified`. It is a write-to-another-repo action; the AI does not
-> run it in-session.
+> **9 manifest-shipped caller templates changed** since `ci/v2.15.0`
+> (`ai-review`, `audit-trail-{public,private}`, `markdown-lint{,-private}`,
+> `pre-commit{,-private}`, `secret-scan{,-private}`), so `release.sh tag` will
+> **refuse** without `--dry-run-verified`. Founder-executed; the AI does not run
+> it in-session.
 >
 > ```bash
-> # 1. founder, against a throwaway repo that ALREADY EXISTS on GitHub
-> #    (install.sh clones it; it will not create it for you):
+> # 1. founder, against a throwaway repo that ALREADY EXISTS on GitHub:
 > export CI_TAG=$(git -C /opt/data/aidoc-flow/aidoc-flow-ci rev-parse main)
 > bash <(curl -fsSL "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/install.sh") \
 >   <owner>/<throwaway-repo>
 >
-> # 2. then, back here:
-> bash scripts/release.sh tag ci/v2.15.0 --dry-run-verified
+> # 2. then, in-session: release.sh prep ci/v2.16.0 -> merge (--admin, FT-21) -> tag
 > ```
 >
-> **`export CI_TAG=<that SHA>` is the load-bearing line.** Without it the
-> dry-run resolves `CI_TAG` from `VERSION`/the fallback and fetches templates
-> from the PREVIOUS release — validating the pre-fix files, not the ones about
-> to ship.
+> Derive `CI_TAG` from `main` HEAD at run time — do NOT copy a SHA out of this
+> file. Pass criteria are unchanged from the v2.15.0 cut (see git history of this
+> section, or `docs/RELEASE_CHECKLIST.md`).
 >
-> Expect: the run reaches "creating canonical labels" and the final next-steps
-> block; the **backup line** prints (`==> backup: no pre-existing CI/governance
-> surfaces (fresh repo)` on an empty target — FT-57 is new, so if NEITHER backup
-> line appears the hook did not run and the gate has FAILED); next-steps names
-> the backup dir + restore command; runner-pool probe and LiteLLM-HTTP note both
-> print; no `FAIL`, no `404`. Tear down the throwaway repo after.
+> ### Everything else is verified ready
 >
-> **Known blind spot, stated deliberately:** a fresh repo has no dangling
-> symlinks, so this dry-run will NOT exercise CI-0023. That case is covered by
-> `tests/test_install.sh` (114 assertions, incl. a mutation case). What the
-> dry-run proves is that bootstrap completes end-to-end with the new
-> fail-closed backup step in front of every writer.
->
-> ### What shipped into this release since the last handoff
->
-> Two defects found by the pre-cut review itself, both fixed before the tag:
->
-> - **CI-0023** (PR #324) — `install.sh`'s FT-57 mandatory backup was wrong on
->   broken symlinks in BOTH directions: the `.github/` arm's bare `cp -p`
->   dereferences, so a dangling link aborted the fail-closed backup and made
->   `install.sh` unusable in EVERY mode incl. `--repin`; the root-list arm's
->   `[ -e ]` also dereferences, so the same shape was silently DROPPED —
->   fail-OPEN. Never released (FT-57 is in no tag). §21.
-> - **CI-0024** (PRs #324 + #325) — `sync-version-refs.sh` rewrote install
->   references by shape, so `MIGRATION_v2.0.0.md`'s Rollback command (which
->   exists to pin BACK to `ci/v1.x`) was rewritten FORWARD at every cut.
->   **16 published tags carry it — `ci/v2.1.0` through `ci/v2.14.0`.** Ignore
->   markers + validator + a pinned-`TARGETS` guard now exist, and the docs are
->   corrected. §22. **The `ci/v2.15.0` prep was the first cut in 17 that left
->   that command alone** — verified: `MIGRATION_v2.0.0.md` is absent from the
->   prep diff.
->
-> ### Since the release was prepped — the issue sweep (2026-07-26)
->
-> All three open issues reviewed and fixed; **they ship in `ci/v2.15.0`** because
-> the tag was not yet cut when they merged.
->
-> | Issue | Fix | PR |
-> |---|---|---|
-> | #322 | `ai-review` cancelled itself — its own review submission cancelled the run that posted it, stranding a `cancelled` required check on the live head SHA. Required on 3 tiers, so those PRs were `--admin`-only. **CI-0025**, §23. | #332 |
-> | #318 | The asset docs described a `sparse-checkout` delivery removed at `ci/v1.1.5`, contradicting §20. | #333 |
-> | #323 | The `sync-version-refs` pre-commit hook skipped 8 of its 14 targets locally. | #334 |
->
-> **#322 took five review passes** (past the OPS-0066 cap of 3, each escalated
-> and authorised — see PR #332). Only the FIRST found a code defect: the initial
-> fix was a denylist that still cancelled on `reopened` / `ready_for_review` /
-> `converted_to_draft`. Every later pass found *prose* defects — a false safety
-> property asserted four times (one as a canon rule, disproved by mutation), an
-> annotation describing an `exit 1` the code does not perform, a GHES version
-> bound refuted by its own citation. The last pass recommended **cutting** rather
-> than correcting, and the cut version is what shipped.
->
-> **The volume of explanatory prose was itself the defect surface** — each
-> correction had been an added paragraph explaining why a neighbouring claim was
-> wrong, until the `concurrency:` block was ~68 lines of comment above a one-line
-> expression. Prefer one scoped statement plus pointers. (Note: PR #332 squashed
-> using the PR body, so main's commit message says "five cycles" and carries no
-> record of the cut; this entry is that record.)
->
-> ### Open, filed by that sweep — none blocks the tag
->
-> | Issue | What |
+> | Pre-tag item | State |
 > |---|---|
-> | #329 | The same CI-0025 defect in `audit-trail` (`call / verify`) and the lint family. **Caller-template-side**, so it needs a re-install not a re-pin — hence a separate release. |
-> | ~~#330~~ | **RESOLVED** — settled by measurement: an in-place re-run *replaces* a check-run, a separate run *adds* one alongside. §15 corrected (a label cycle adds, so it cannot clear a cancelled context); §23.1 scoped to separate runs. |
-> | #331 | `ai-review`'s FT-43 guard writes a permanent non-success on the live head SHA — the §23 defect class, in the file §23 was added to. |
+> | Schemas | ✅ both parse |
+> | Test suite | ✅ PASS |
+> | `sync-version-refs --check` | ✅ clean |
+> | Zero-hook detector | ✅ exit 0 |
+> | Runtime floors documented **in-tree** | ✅ the new checklist item, satisfied by #343 |
+> | OPS-0065 review | ✅ every merged PR carried one |
+> | **Semver** | **MINOR** — zero `workflow_call` input/secret changes since `ci/v2.15.0` |
 >
-> Upstream, filed per CI-0020 §18: framework #341 is **CLOSED** (2026-07-26);
-> interlog [#71](https://github.com/vladm3105/aidoc-flow-interlog/issues/71)
-> remains open. Both were **inert** regardless — every `trust_config_repo`
-> override in the workspace is commented out, so all consumers read operations'
-> `version: 2` config.
+> ### What ci/v2.16.0 will contain (5 `## Unreleased` entries)
 >
-> ### Semver
+> | Item | Consumer action |
+> |---|---|
+> | **CI-0025 + #329** — `ai-review` cancelled itself; same defect in 8 caller templates + canon's own 5. Required contexts were being stranded `cancelled`, making PRs `--admin`-only. | ⚠️ **`--update --non-interactive`**, NOT `--repin` — these are caller templates |
+> | **node24 bumps** — checkout 7.0.1 (18 sites), setup-python/node 7, download-artifact 8, codeql 4.37.3 | ⚠️ **Actions Runner >= 2.327.1** |
+> | **#330** — §23.1 vs §15 asserted opposite required-check semantics; settled by measurement | none |
+> | **#331** — removed `ai-review`'s FT-43 guard: it wrote a permanent non-success and guarded nothing | none (strictly fewer stuck PRs) |
+> | **#342** — the runner floor documented where operators look | none |
 >
-> **MINOR**, re-confirmed against the diff after CI-0020..0024 landed: no
-> `workflow_call` input added, removed or retyped since `ci/v2.14.0`; no schema
-> change; CI-0021 inert with its repo var unset; CI-0022 adds no input, secret
-> or permission. The one permission reduction is caller-side trimming of a grant
-> the callee already capped — intersected away, so a no-op.
+> ### Canon added this session
+>
+> **This session:** §23.4 (a gate must not re-enter itself) and CI-0026.
+> **Shipped in `ci/v2.15.0`, not this session:** §21 (fault-vs-shape), §22
+> (mechanical rewriters), §23 (only a code-changing event may cancel), and
+> CI-0023 through CI-0025.
+>
+> ### Two process lessons worth keeping
+>
+> 1. **Prose volume was the defect surface.** #322 took five review passes; only
+>    the FIRST found a code defect. The rest corrected claims written *about* the
+>    fix. The last of them recommended cutting rather than correcting. Prefer one
+>    scoped statement plus pointers.
+> 2. **`pre_push_check.sh` matches a PHRASE, not the work.** Writing
+>    "Multi-agent self-review per OPS-0065: skipped" passes the gate while
+>    declaring the opposite. It happened twice; both times running the review for
+>    real found something.
 
 ## Previous state (2026-07-25)
 
@@ -1369,14 +1313,13 @@ enforcement, PR-U1/U2/U3/U4, 2026-07-08).
 
 ## Next-session start-here
 
-0. **🔴 CUT `ci/v2.15.0` — this outranks everything below.** `VERSION` on `main`
-   says `ci/v2.15.0`; the tag does not exist, so CI-0014..CI-0024 + FT-57 reach
-   **no consumer**. The only thing owed is the founder-executed FT-30 cold-start
-   dry-run, then `release.sh tag ci/v2.15.0 --dry-run-verified`. Full command
-   block, the prep-merge SHA to export as `CI_TAG`, and the pass criteria are in
-   **`## Current state (2026-07-26)`** at the top of this file. Do not start the
-   items below until the tag is cut — several of them re-pin consumers, which is
-   pointless against an unpublished tag.
+0. **🔴 CUT `ci/v2.16.0` — this outranks everything below.** `ci/v2.15.0` is
+   tagged and Latest; **`ci/v2.16.0` is not cut**, so five `## Unreleased`
+   entries reach no consumer — including the CI-0025 self-cancel fix and its
+   caller-side half (#329). The only blocker is the founder-executed FT-30
+   cold-start dry-run (9 manifest-shipped templates changed). Command block and
+   the full readiness table are in **`## Current state (2026-07-27)`** at the top
+   of this file.
 
 1. **PLAN-007 production-hardening — W1/W2/W3(markdown-lint)/W5 DONE; the two
    remaining items are BOTH 🔴 founder-gated:**
@@ -1400,7 +1343,7 @@ enforcement, PR-U1/U2/U3/U4, 2026-07-08).
 ## Recent decisions
 
 See `DECISIONS.md` for the full CI-NNNN record — **it is authoritative and
-current through CI-0024.** The excerpt below is a convenience list that has
+current through CI-0026.** The excerpt below is a convenience list that has
 repeatedly fallen behind (it sat at CI-0011 while CI-0012..CI-0024 landed, which
 contradicted the top of this very file). Treat a gap here as staleness in the
 excerpt, never as evidence a decision does not exist.
@@ -1410,7 +1353,9 @@ excerpt, never as evidence a decision does not exist.
 §18), **CI-0021** (opt-in infrastructure break-glass, §19), **CI-0022** (a prompt
 states the model's real inputs, §20), **CI-0023** (a fail-closed guard fails on
 faults, not on a consumer's tree shape, §21), **CI-0024** (a mechanical rewriter
-must not rewrite illustrative examples, §22).
+must not rewrite illustrative examples, §22), **CI-0025** (only a code-changing
+event may cancel an in-flight run of a required gate, §23), **CI-0026** (a
+fail-closed guard that cannot fail open is only a cost, §23.4).
 
 - **CI-0011** (DECIDED 2026-07-24 — founder) — `verified_allowed` supply-chain
   boundary: **dropped** the verified marketplace; `patterns_allowed` narrowed to the
