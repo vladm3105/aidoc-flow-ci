@@ -40,6 +40,6 @@ concurrency:
           && contains(fromJSON('["opened","synchronize"]'), github.event.action)) }}
 jobs:
   call:
-    uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v2.15.0
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/markdown-lint.yml@ci/v2.16.0
     permissions:
       contents: read

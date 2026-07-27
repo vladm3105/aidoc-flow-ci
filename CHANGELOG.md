@@ -5,6 +5,8 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+## ci/v2.16.0 — 2026-07-27
+
 ### Added — `scripts/ft30-dry-run.sh`, so the 🔴 release gate is not judged by eye
 
 - The FT-30 cold-start dry-run is founder-executed and its pass criteria lived
