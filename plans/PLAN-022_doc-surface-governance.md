@@ -132,12 +132,47 @@ describe reality — not the target state.** Its backlog row claims the surface 
 *"Not adopted … no separate TODO.md needed for a small canon repo"* while
 `plans/FRAMEWORK-TODO.md` holds 1,896 lines. The replacement:
 
-> | TODO / backlog | **`plans/` per-initiative plans + GitHub issues** — capture and publish coincide here; this repo's open issues **are** its backlog, regardless of who filed them. **A finding that fails the promotion bar stays in the worked `plans/` entry, not in the tracker.** Read the tracker with `--state all --limit 200`: `gh issue list` defaults to `--limit 30` and silently truncates. ⚠️ **`plans/FRAMEWORK-TODO.md` still exists and holds open entries** — a legacy queue whose retirement is tracked separately; until it is retired, both surfaces are live. |
+> | TODO / backlog | `plans/` (per-initiative plans + GitHub issues — this repo's open issues **are** its backlog, whoever filed them; a finding below the promotion bar stays in the worked `plans/` entry, not in the tracker. Read the tracker with `gh issue list --state all --limit 200` — the `--limit 30` default truncates silently.) |
+> | Legacy FT queue (being retired) | `plans/FRAMEWORK-TODO.md` (still holds open entries; until its retirement lands, both surfaces are live) |
 
-**This is the load-bearing detail of the narrowing.** Shipping the row *without*
-the last clause would assert "GitHub issues are the backlog" while a 1,896-line
+One row, not two, because on this repo **capture and publish coincide**: the
+declared backlog is the tracker itself, so there is no separate capture surface
+to name. That is the contract's own wording for ci
+(`docs/AGENT_FEEDBACK_INTAKE.md:73` in operations), and it is why the row reads
+`plans/` **plus** issues rather than splitting them the way a cross-repo filing
+does.
+
+**This is the load-bearing detail of the narrowing.** Shipping a row that omits
+the legacy queue would assert "GitHub issues are the backlog" while a 1,896-line
 queue sits in `plans/` — recreating, inverted, the exact false declaration being
 fixed. A governance table describes what **is**.
+
+**The two-row shape is forced by canon's own parser.**
+`install/parse-governance-table.py` reads a row's whole path cell as a path.
+`extract_path` strips exactly two annotation forms — a trailing `§N`/`#anchor`
+(`:172`) and a parenthesized annotation (`:180`) — and nothing else, so an
+em-dash annotation stays in the string and is looked up on disk. Measured on
+this repo: the prose row this plan carried through Pass 5 took the check from
+`errors: []` to `path-not-found` on the entire cell.
+
+The second row also puts the legacy queue under **existence-verification**:
+`check_cell` runs on every non-informational row (`:349`) *before* the
+required-vs-additional branch (`:361`), so deleting `plans/FRAMEWORK-TODO.md`
+without removing its row makes the parser report `path-not-found`.
+
+**That is a property of the parser, not of CI — do not read it as a guardrail.**
+Nothing in `.github/workflows/` invokes `install/apply-standards.sh`, and
+`standards-drift-self.yml` runs `sync/check-standards-drift.sh`, which never
+reaches `governance_check`. The check has no automated reader on canon or on any
+consumer; wiring one is filed as
+[#355](https://github.com/vladm3105/aidoc-flow-ci/issues/355). Until that lands
+the retirement must run the check by hand, and this row is a prose ⚠️ that
+*can* be checked — not one that *is*.
+
+**Executing this section:** after editing `CLAUDE.md`, run
+`python3 install/parse-governance-table.py CLAUDE.md --repo-root .` from this
+repo's root and confirm `errors: []`. That run is the only verification the row
+gets.
 
 ---
 
@@ -216,7 +251,7 @@ today — it does not, and will not until the migration lands.
 | # | Claim | Symbol | Citation |
 | --- | --- | --- | --- |
 | 1 | The governance table declares the backlog not adopted — while the queue file exists | `TODO / backlog \| Not adopted` | CLAUDE.md:73 |
-| 2 | The queue file that contradicts it | `# FRAMEWORK-TODO — ` | plans/FRAMEWORK-TODO.md:1 |
+| 2 | The queue file that contradicts it | `# FRAMEWORK-TODO —` | plans/FRAMEWORK-TODO.md:1 |
 | 3 | Canon's own changelog uses the UNBRACKETED anchor — the fleet outlier | `## Unreleased` | CHANGELOG.md:6 |
 | 4 | `apply.py` has one edit mode: whole-file regeneration | `Return the COMPLETE replacement file` | scripts/doc-maintainer/apply.py:66 |
 | 5 | ...and refuses any source over 200 KB | `if len(original.encode()) > 200_000:` | scripts/doc-maintainer/apply.py:59 |
@@ -226,14 +261,18 @@ today — it does not, and will not until the migration lands.
 | 9 | The five-part body contract that attaches to the outbound act | `Issue body contract` | docs/AGENT_FEEDBACK_INTAKE.md:159 |
 | 10 | Close asymmetry — the reporter never closes another repo's issue | `never close another repo's issue` | docs/AGENT_FEEDBACK_INTAKE.md:204 |
 | 11 | `source` vs `target` vocabulary — provenance vs ownership | `Vocabulary` | docs/AGENT_FEEDBACK_INTAKE.md:229 |
-| 12 | The below-bar clause this plan defers to the migration | `stays in the worked ` | docs/AGENT_FEEDBACK_INTAKE.md:88 |
+| 12 | The below-bar clause this plan defers to the migration | `stays in the worked` | docs/AGENT_FEEDBACK_INTAKE.md:88 |
 | 13 | ...and the capture-surface row naming `plans/` as half the surface | `capture and publish coincide here (TODO file declined)` | docs/AGENT_FEEDBACK_INTAKE.md:73 |
 | 14 | What the OPS-0076 carve-out permits | `What the autonomy-tier carve-out permits (OPS-0076)` | docs/AGENT_FEEDBACK_INTAKE.md:277 |
 | 15 | The decision granting it | `## OPS-0076` | ops/DECISIONS.md:2921 |
 | 16 | The skill's scope table declares ci's surface as plans + GitHub issues | `capture and publish coincide` | skills/submit-feedback/SKILL.md:39 |
+| 17 | The parser strips a PARENTHESIZED annotation from a path cell — one of the two forms it strips, the other being a trailing `§N`/`#anchor` at `:172`; an em-dash annotation is stripped by neither, which is why §3's row is parenthesized | `paren_idx = cell.find(" (")` | install/parse-governance-table.py:180 |
+| 18 | ...and rejects a cell holding two comma-separated backticked paths, which the §3 annotation must therefore avoid | `MULTI_VALUE_RE = re.compile` | install/parse-governance-table.py:83 |
+| 19 | Every non-informational row is existence-checked BEFORE the required-vs-additional branch — which is what puts §3's second row under verification | `verified, extracted, err = check_cell` | install/parse-governance-table.py:349 |
+| 20 | The governance check's only call site — reached solely by a hand-run of `apply-standards.sh`, never by CI (#355) | `governance_check` | install/apply-standards.sh:433 |
 
-*Rows 1-7 resolve against this repo; 8-15 against `/opt/data/aidoc-flow/operations`;
-16 against `/home/ya/.claude`.*
+*Rows 1-7 and 17-20 resolve against this repo; 8-15 against
+`/opt/data/aidoc-flow/operations`; 16 against `/home/ya/.claude`.*
 
 *Not in the ledger because the path collides with this repo's own file and the
 gate would resolve it to the wrong source: the `gh issue list` 30-item default,
@@ -292,3 +331,79 @@ subtraction plus the two additions above; re-reviewing subtracted text would not
 be a use of the cap.
 
 **Result:** ready — no findings outstanding against the retained scope.
+
+### Pass 6 — 2026-07-31 — execution pre-flight: §3's row was unexecutable
+
+One finding, found by running the check the row has to pass rather than by
+reading it. §3 quoted a prose row; `install/parse-governance-table.py` reads a
+row's entire path cell as a path, and strips only a trailing `§N`/`#anchor` or a
+parenthesized annotation. Measured against this repo's `CLAUDE.md`: baseline
+`errors: []`, with the quoted row `path-not-found` naming the whole cell. The
+change that corrects the table for being false would have made canon's own
+governance parser report an error on canon's own repo.
+
+Folded: §3 now carries the two-row shape that measures clean, and the ledger
+gains rows 17-18 citing the two parser behaviours that constrain it. The
+retained model sections (§1, §2, §4, §5) are untouched — the defect was in how
+the record is *written*, not in what it says.
+
+**A note for whoever edits this repo's `CLAUDE.md` governance table:** the row
+is machine-parsed. Write the path cell as a backticked path followed by a
+parenthesized annotation, and run
+`python3 install/parse-governance-table.py CLAUDE.md --repo-root .` from this
+repo's root before pushing. A prose cell parses as a path and fails. The same
+hazard exists in every workspace repo's table, but the command is repo-local —
+elsewhere the parser has to be fetched, which is why `apply-standards.sh:356`
+curls it.
+
+### Pass 7 — 2026-07-31 — re-verification of the Pass 6 fold
+
+Pass 6's fold is verified the same way the finding was found: §3's replacement
+row was spliced into a scratch copy of this repo's `CLAUDE.md` and parsed.
+`errors: []`; the required `TODO` row resolves to `plans/` (verified), and the
+additional row resolves to `plans/FRAMEWORK-TODO.md` (verified). The annotation
+carries no comma-separated backticked pair, so `MULTI_VALUE_RE` does not trip.
+
+No other section was touched by the fold, so nothing else needs re-review.
+
+**Result:** ready — no findings outstanding.
+
+### Pass 8 — 2026-07-31 — independent ×2 on the Pass 6/7 edit
+
+`code-reviewer` returned **FAIL** on four findings, `documentation-specialist`
+**PASS** on three. Every one of them landed on text Passes 6 and 7 had *added* —
+none on the model sections. All seven are folded. The two structural ones were
+re-derived here before folding rather than taken on report:
+
+1. **The self-policing claim asserted a guardrail that does not run.** Pass 6
+   wrote that deleting the legacy queue "turns the check red". The *parser*
+   reports `path-not-found` — but `governance_check` has one call site
+   (`install/apply-standards.sh:433`), nothing in `.github/workflows/` invokes
+   `apply-standards.sh`, and `standards-drift-self.yml` runs
+   `sync/check-standards-drift.sh`, which never reaches it. Confirmed by grep
+   over both trees. This is the workspace's own "an absence is the easiest
+   defect to assert" trap, inverted into asserting a *presence*. §3 now
+   distinguishes the parser's behaviour from CI's, and the missing wiring is
+   filed as [#355](https://github.com/vladm3105/aidoc-flow-ci/issues/355).
+2. **"a *required* row's path cell" contradicted the conclusion drawn from it.**
+   `check_cell` runs on every non-informational row (`:349`) *before* the
+   required-vs-additional branch (`:361`) — which is exactly why the additional
+   row is verified at all. Fixed in §3 and Pass 6; ledger row 19 cites it.
+3. `extract_path` strips **two** annotation forms, not one — the `§N`/`#anchor`
+   strip at `:172` runs before the paren strip at `:180`. Row 17 and both prose
+   copies corrected.
+4. §3 carried no instruction to run the parser; the command existed only inside
+   a review-log entry, which is a record, not a step. §3 now ends with it.
+5. The rationale for one row rather than a capture/publish split had been
+   dropped from the operative row text, reachable only by following a ledger
+   citation into a sibling repo. Restored as prose in §3.
+6. Pass 6's note addressed "anywhere in this workspace" while giving a
+   repo-local command. Scoped, with the reason the portable form differs.
+7. "the stronger form" was an evaluative comparative; replaced by the concrete
+   property it was standing in for.
+
+Each fold is verified by the same command that produced the finding —
+`errors: []` on the spliced table, and the greps in item 1 re-run against both
+trees.
+
+**Result:** ready — no findings outstanding.

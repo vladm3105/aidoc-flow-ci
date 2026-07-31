@@ -130,7 +130,7 @@ root causes, and §5 addresses them differently.
 
 ## 3. The decision boundary — narrower than it first appears
 
-#353's suggested fix (record and continue) looks like it collides with
+Issue #353's suggested fix (record and continue) looks like it collides with
 IPLAN-0025 **D12** ("failure modes are LOUD, never silent", naming
 *plan-validation rejection*). Reading D12 in context narrows it:
 
@@ -557,8 +557,8 @@ warnings, §3's countability correction, §4 PR-A's `null` guard, §4 PR-D's D-2
 | 6 | A correct `set +e` block — inside a step opening `set -euo pipefail` (:135), NOT one of the six `set -uo` steps | `set +e` | .github/workflows/doc-maintainer.yml:142 |
 | 7 | Second correct `set +e` block, likewise inside a `set -euo pipefail` step (:233) | `grc=$?` | .github/workflows/doc-maintainer.yml:246 |
 | 8 | A comment asserting `set -uo pipefail` means "no -e" — the wrong model that produced #352 | `set -uo pipefail` (no -e) would otherwise swallow the planner | .github/workflows/doc-maintainer.yml:370 |
-| 9 | The same wrong assertion, second occurrence | `not be swallowed by ` | .github/workflows/doc-maintainer.yml:395 |
-| 10 | The `||` gate exists to emit the `::error::` D12 requires — bare `-e` fails the step without it | `failing LOUD per IPLAN-0025 D12 / Risk 12` | .github/workflows/doc-maintainer.yml:382 |
+| 9 | The same wrong assertion, second occurrence | `not be swallowed by` | .github/workflows/doc-maintainer.yml:395 |
+| 10 | The `\|\|` gate exists to emit the `::error::` D12 requires — bare `-e` fails the step without it | `failing LOUD per IPLAN-0025 D12 / Risk 12` | .github/workflows/doc-maintainer.yml:382 |
 | 11 | Step 9's early exit precedes `$PATCH` creation | `dry-run: no PR found for merge` | .github/workflows/doc-maintainer.yml:410 |
 | 12 | ...and Step 9 swallows the API fault that would cause it | `--jq '.[0].number' 2>/dev/null` | .github/workflows/doc-maintainer.yml:408 |
 | 13 | `$PATCH` is assigned after that early exit and outside the extractable loop | `PATCH=.doc-maintainer-proposed.patch` | .github/workflows/doc-maintainer.yml:417 |
