@@ -1,6 +1,6 @@
 # PLAN-022 — doc-surface governance: three surfaces, three edit shapes
 
-**Status:** **NOT READY** — two independent passes returned 12 and 9 load-bearing findings. Pass 3's findings 1-4 are folded; 5-9 are recorded and unresolved. A founder call (§3.4) gates the filing set. **Do not file, and do not delete the TODO file, while this reads NOT READY.**
+**Status:** **NOT READY — review cap reached (OPS-0066).** Three independent passes returned 12, 9 and 7 load-bearing findings; the trend did not converge. **§3.0 is a 🔴 blocker: the entry-routing rule is not decidable from the data**, and §3.1's partition was derived under it. One founder decision (§3.0) unblocks the rest. **Do not file any issue and do not delete the TODO file while this reads NOT READY.**
 **Scope:** Retire `plans/FRAMEWORK-TODO.md`; correct the governance table it
 contradicts; specify the per-surface edit-mode taxonomy that PLAN-021's
 `apply.py` work inherits.
@@ -8,6 +8,17 @@ contradicts; specify the per-surface edit-mode taxonomy that PLAN-021's
 Phase 2 is MINOR when it lands.
 **Decision record:** `CI-0028` (new)
 
+> ⚠️ **The citation gate reports `ok` on this plan and that green is FALSE.**
+> `check_plan.py`'s readiness regex includes `(?:result|status):\s*\**\s*ready`
+> and matches **anywhere in the final Pass entry** — including a quotation of
+> *another* plan's status. Pass 4 below quotes ``PLAN-007`` as `Status: ready`,
+> and that alone flips the gate green on a plan whose own header says NOT READY.
+> Trust the **Status** line at the top of this file, never the gate's exit code.
+> Upstream defect in the global `verified-planning` skill
+> (`~/.claude/skills/verified-planning/check_plan.py`, the `ZERO_FINDINGS_RE`
+> block) — 🟡, needs a human to file it against the config repo, which is not one
+> of the ten workspace repos the OPS-0076 carve-out covers.
+>
 > **Gate invocation** (root order is load-bearing; see the ledger's closing note):
 >
 > ```sh
@@ -129,111 +140,133 @@ Phase 0 pool registration, already 🔴-gated on the founder". All four are
 ## 3. Migration — 57 entries triaged
 
 `plans/FRAMEWORK-TODO.md` holds **57 `FT-NN` entries in 1,896 lines**. Each was
-cross-referenced against `CHANGELOG.md` and `HANDOFF.md` for closure evidence.
+cross-referenced against `CHANGELOG.md` and `HANDOFF.md`, then the ambiguous ones
+were read in full.
 
-| Disposition | Count | Action |
+### 3.0 🔴 BLOCKER — the routing rule is not decidable from the data
+
+An earlier revision declared this "SETTLED": *an entry stays in a plan only if
+that plan is `READY` or `EXECUTING`.* Three review passes each found one more
+plan that rule had not been applied to, so on the third I stopped hand-picking
+and **swept every file in `plans/`**. The sweep falsifies the rule:
+
+```sh
+for f in plans/*.md; do
+  fts=$(grep -oE '\bFT-[0-9]+\b' "$f" | sort -u -V | tr '\n' ' ')
+  [ -z "$fts" ] && continue
+  st=$(grep -m1 -iE '^\*\*Status:?\*\*|^> Status:' "$f")
+  printf '%-46s %-40s %s\n' "$(basename $f .md)" "${st:-<none>}" "$fts"
+done
+```
+
+**17 files mention `FT-NN`.** Two problems, either of which alone sinks the rule:
+
+1. **Mention ≠ ownership, and no mechanical test separates them.** `PLAN-018`
+   mentions **27** FTs and `PLAN-019` mentions **24** — they are the plans that
+   pulled entries into workstreams, so most mentions are history. But `PLAN-019`
+   is `READY` and mentions FT-33, FT-35 and FT-37, all of which this plan routes
+   to the tracker; `PLAN-007` is `ready` and mentions FT-5, FT-6, FT-11, FT-12.
+   Deciding whether each is *owned* or merely *cited* requires reading 17 files
+   entry by entry — judgement, not a rule.
+2. **The status vocabulary is 8-way and 5 files have no status line at all.**
+   Observed: `active` · `ready` · `READY` · `EXECUTING` · `COMPLETE` ·
+   `IMPLEMENTED (code)` · `DEFERRED` · `DRAFT — NOT READY` — plus
+   `PREPARED, NOT EXECUTED` in the ROLLOUT runbooks and **no status line** in
+   five, including three that carry executable "close FT-NN" instructions.
+   §3.0's three-value rule has no mapping for most of what `plans/` says.
+
+**Recommended replacement — file every open entry, and let plans reference the
+issue.** Drop the below-bar/queue-only routing entirely for this migration:
+
+- It is **decidable**: is the entry open? then it is an issue.
+- It matches the model already agreed — *a repo's open issues are its TODO*.
+- **It is not duplication**, because the issue becomes the single state-holder
+  and a plan that also covers the work links to it. What the contract forbids is
+  the tracker becoming *a second copy of the backlog*; here it becomes the
+  **only** copy, which is the point of the migration.
+- It dissolves five separate findings at once: FT-11/FT-12 (PLAN-007), FT-13
+  (`ROLLOUT_plan015-arming`), FT-54/55 (PLAN-020), FT-56's third part, and the
+  verbatim-body-vs-residual collision.
+
+**This needs a founder decision** — it reverses the contract's queue-only clause
+for this one migration, on the grounds that the clause presumes a queue file that
+is being deleted. Until it is answered, **§3.1's partition below is not
+executable**: its 15/2/2/3 split was derived under the falsified rule.
+
+### 3.1 The partition
+
+| Disposition | Count | Entries |
 |---|---:|---|
-| **Resolved / shipped** | **36** | Drop — git is the archive |
-| **Open, ci-owned → file here** | **11** | FT-4,5,6,16,17,19,20,24,33,35,57 |
-| **Open, ci-owned → stays in its plan (below the bar)** | **5** | FT-18, 37, 54, 55, 56 — already-planned; see §2 |
-| **Open, cross-repo** | **4** | FT-11,12,13,38 |
-| **Neither — comment on an existing issue** | **1** | FT-23 → a comment on #352, not a new issue (§3.2) |
+| **Resolved → drop** (git is the archive) | **35** | — |
+| **Open, ci-owned → file here** | **15** | FT-4, 5, 6, 11, 16, 17, 19, 20, 24, 31, 33, 35, 54, 55, 57 |
+| **Stays in an EXECUTING plan** (PLAN-009) | **2** | FT-18, FT-37 |
+| **Absorbed — no new issue** | **2** | FT-23 → comment on #352 · FT-56 → 56a into FT-5's issue, 56b as a comment on #351 |
+| **Open, cross-repo** | **3** | FT-12, FT-13, FT-38 → **11 issues** (§3.2) |
 
-Three corrections against the first triage, each of which would have cost
-something real:
+35 + 15 + 2 + 2 + 3 = **57**, each entry exactly once.
 
-- **FT-57 and FT-18 were bucketed "resolved" and would have been deleted.** Both
-  state an open residual in their own text — FT-57 ends *"**Status:** fix landed;
-  the `--update` refusal is OPEN"*, a pending **founder decision** on the same
-  destructive `--update` path FT-9 once bricked the fleet with; FT-18's remaining
-  scope *"stays open and 🔴 founder-manual"*.
-- **FT-16, FT-19 and FT-20 were assigned to `operations` and are ci-owned.** The
-  *incident* was on operations' runner host, but every fix surface they name is a
-  file in **this** repo (`install/templates/runner/{run-ephemeral,provision-runner}.sh`,
-  `README.md`, `docs/runners.md`). The contract's test is where the fix lives.
-  Filing them on operations would have misdirected three issues, two of them 🔴
-  with a founder interrupt, while deleting the ci-owned record in the same wave.
-- **FT-23 is founder-descoped, not open.** A 2026-07-22 scope decision descoped
-  the `ai-review`/`doc-maintainer`/`composition` self-callers ("**descoped**, not
-  deferred"); what remained (FT-36, FT-34, the inventory) is closed. Filing it
-  would reopen a closed founder decision.
+**Four entries were rescued from the drop bucket across three review passes** —
+each states an open residual inside an entry whose header reads closed:
 
-**The argument for retiring it is real but I first stated it backwards.** The
-per-entry markers are mostly *good* — FT-25, 26, 28, 29, 31, 32, 34 and 36 all
-carry an explicit `Status: CLOSED`, several with dated corrections. What is stale
-is the single `## Open` heading every entry sits under, which says "open" about
-57 entries of which 36 are closed. The genuinely unreliable direction is the one
-the first triage missed: **partially**-resolved entries whose fix landed while a
-residual stayed open (FT-57, FT-18). A file needs a second manual write to close
-an entry; an issue closes on the merge that fixes it, and cannot be partially
-closed without saying so.
+| FT | Header says | Residual |
+|---|---|---|
+| 57 | fix landed | *"the `--update` refusal is OPEN"* — a pending **founder decision** on the destructive `--update` path FT-9 once bricked the fleet with |
+| 18 | validator shipped | remaining scope *"stays open and 🔴 founder-manual"* → PLAN-009 |
+| 31 | `Status: CLOSED` | runs **operator-side only**; *"a consumer's own hook-less config can still produce a vacuous pass"* on a **required** check. *"**Needs:** a real signal"* |
+| 11 | — | the `markdown-lint` half is **DONE across all canon consumers**; only 🔴 founder `docs-sync` App provisioning remains, so filing it as written would re-file completed work |
 
-### 3.1 Cross-repo targets — ⚠️ NOT SETTLED, do not file from this section
+**The argument for retiring the file, stated correctly.** The per-entry markers
+are mostly good — eight carry an explicit `Status: CLOSED`. What is stale is the
+single `## Open` heading all 57 sit under. The genuinely unreliable direction is
+**partial** resolution: a file needs a second manual write to close an entry and
+has no way to say "closed except for this", so a landed fix and an open residual
+share one header. Three entries are also stale in the *opposite* direction —
+marked open, actually closed (FT-15, FT-30, FT-27's residual). An issue closes on
+the merge that fixes it, and a residual is a separate issue.
 
-**This table is the executor-facing surface and it is the plan's weakest part.**
-An earlier revision corrected §3's prose to move FT-16/19/20 to ci-owned and
-FT-37 into its plan, and **left this table routing all four to `operations`** —
-i.e. the corrected finding survived in the one place someone would act on. It is
-now reduced to the four §3 declares, but three of those four are themselves
-unresolved:
+### 3.2 Cross-repo — one issue per (repo, defect), 11 in total
 
-| FT | Subject | Target | Tier | State |
-|---|---|---|---|---|
-| 13 | private-repo `standards-drift`: `business` + `interlog` have **no caller at all**; iplanic pins an unresolvable annotated tag; every private run on record has failed | **unsettled** — 3 findings, ≥3 repos | 🔴 | ⚠️ also PLAN-010 scope (§3.4); the entry forbids direct cross-repo edits and routes via the ops runbook — reconcile with OPS-0076 before filing |
-| 38 | four fleet repos pin `pre-commit-hooks` at a mutable rev the refresh cannot move | framework · iplanic · **`vladm3105/iplan-runner`** · operations — **4 issues, not 1** | 🔴 (cross-repo coordination) | ready to file once bodies are written |
-| 11 | graduate `markdown-lint` / `docs-sync` per repo | — | — | ⚠️ **mostly closed** — the `markdown-lint` graduation is DONE across all canon consumers (PLAN-007 W3, six merged PRs); the only remainder is arming, "which is FT-12", plus a 🔴 founder `docs-sync` App provisioning. **Do not file as written.** |
-| 12 | fleet branch-protection arming anomalies | **not operations** | — | ⚠️ its sub-items are branch-protection settings on framework / business / iplanic, remediated via *this repo's* arming runbook; one iplan-runner item is already RESOLVED. Fails the plan's own ownership test the same way FT-16/19/20 did. |
+Measured, not transcribed. `iplan-runner`'s slug is **`vladm3105/iplan-runner`**,
+not `aidoc-flow-*`.
 
-**Consequence: the cross-repo wave is 4 entries and an unknown number of issues,
-not "4 issues".** Only FT-38 is ready, and it is four filings. FT-13, FT-11 and
-FT-12 each need a measurement pass before anyone writes a body — FT-13 carries
-its own warning that it *"has now been wrong three times."*
+| Defect | Repos | Issues |
+|---|---|---:|
+| **FT-12a** phantom required-context (a required check armed with no producer) | framework · business · iplanic | 3 |
+| **FT-12b** `call / composition` armed but not emitting | interlog | 1 |
+| **FT-13a** **no `standards-drift.yml` caller at all** — no drift and no pin-currency signal from any source | business · interlog | 2 |
+| **FT-13b** caller pins an unresolvable annotated tag | iplanic | 1 |
+| **FT-38** `pre-commit-hooks` pinned at a mutable `rev:` the refresh cannot move | framework · iplanic · iplan-runner · operations | 4 |
 
-### 3.4 The already-planned exclusion is applied inconsistently
+*FT-12's iplan-runner sub-item is already **RESOLVED** (iplan-runner #88) and is
+not filed.*
 
-§2 routes FT-54/55/56/37 to their plans as *already-planned*. **FT-5 and FT-13
-are equally declared** — FT-5 says "it belongs with the PLAN-010 adoption-model
-work, not a drive-by" and is a numbered PLAN-010 deliverable; FT-13 says it "is
-the scope of the adoption-model plan" and appears twice in PLAN-010. PLAN-010 is
-`DRAFT — NOT READY, DO NOT EXECUTE`, which is the same state as PLAN-020 — the
-stated reason FT-54/55/56 were pulled.
+**Tier: 🔴.** FT-38 spans four repos and *cross-repo coordination* is an explicit
+🔴 trigger; escalation is fail-safe. FT-12/FT-13 touch branch protection and a
+required gate. All interrupt the founder in-session by contract.
 
-**So the rule must be stated and applied uniformly**, because it decides 2 of the
-filings. Either "declared in any plan, ready or not → stays in the plan" (pulls
-FT-5 and FT-13 out of the filing set) or "only a *ready* plan holds an entry"
-(pushes FT-54/55/56 back in). **Founder call; do not file FT-5 or FT-13 until it
-is made.**
+**FT-13's own routing line and OPS-0076 do not conflict.** The entry says
+consumer-side callers *"go through the ops/inbox runbook, never a direct edit
+from a canon session"* — it forbids **editing** another repo. OPS-0076 permits
+**filing an issue**, which is not an edit. Filing is in scope; fixing is not.
 
-**And a below-bar entry needs a destination, which no PR currently provides.**
-"Stays in its plan" is not a no-op when the file holding it is being deleted:
-**FT-54's three options, its revised recommendation and its dated CORRECTION
-exist only in the TODO file**, and PLAN-020 explicitly declines to decide FT-54
-("**Not** deciding FT-54") — its only FT-54 task is to correct that paragraph
-*inside the file this plan deletes*. PLAN-009 mentions neither FT-18 nor FT-37.
-**PR-2 must write each below-bar entry into its destination plan, or the
-deletion destroys it.**
+**Re-measure before writing any body.** FT-13 carries its own warning that it
+*"has now been wrong three times; do not add a fourth without measuring."*
 
-### 3.2 Three entries that must not become new issues as first triaged
+### 3.2a Two entries that are absorbed, not filed
 
-- **FT-56 is TWO defects, and the first framing was wrong** — its own text says
-  so. **56a (blindness):** the drift job grants only `contents: read` and
-  `administration` is not a grantable scope, so the highest-value comparisons
-  403 into `warn_uncheckable` and verify nothing. **56b (unconsumed signal):** a
-  `::warning::` nobody reads. Only **56b** matches open issue **#351**. So: comment
-  56b's evidence onto #351, and **file 56a separately** — it is a permissions
-  defect of FT-5's class, and "one issue per defect" applies. *(But see §2 — FT-56
-  is PLAN-020 scope, so confirm the bar before filing 56a rather than
-  transcribing it.)*
-- **FT-23 is founder-descoped**, not open (§3). If the intent is to record
-  PLAN-021 #352's root cause, that is a **comment on #352** — not a new issue that
-  reopens a closed scope decision.
-- **FT-13 is three findings, only one of which is iplanic's.** Its verified facts
-  are (1) `business` and `interlog` carry **no `standards-drift.yml` at all**, so
-  they get no drift or pin-currency signal from any source; (2) iplanic pins an
-  unresolvable annotated tag; (3) every private run on record has failed. Filing
-  one issue on iplanic drops (1) and (3). The entry also carries its own warning
-  that it *"has now been wrong three times; do not add a fourth without
-  measuring"* — **re-measure before filing, do not transcribe.**
+- **FT-23 is founder-descoped** (2026-07-22: the AI self-callers are *"descoped,
+  not deferred"*; what remained — FT-36, FT-34, the inventory — is closed).
+  Filing it would reopen a closed scope decision. Its value is as PLAN-021 #352's
+  root cause → **a comment on #352**.
+- **FT-56 splits, and neither half is a new issue.** **56a** (the drift job grants
+  only `contents: read`, `administration` is not a grantable `GITHUB_TOKEN` scope,
+  so the branch-protection and actions-permissions reads 403 into
+  `warn_uncheckable`) **cites FT-5 as its own mechanism — it *is* FT-5**, so it
+  goes into FT-5's issue body as the "why instances 1 and 2 went unnoticed"
+  evidence, not a duplicate issue. **56b** (the signal is emitted and never read)
+  is #351's §1 — **a comment on #351**, whose body I read to confirm: its five
+  sections are all about the verdict's reachability, and **none** covers 56a's
+  permissions defect.
 
 ### 3.3 Filing discipline
 
@@ -336,62 +369,55 @@ auto-maintenance there. With the anchored-insert mode that demotion becomes a
 
 ---
 
-## 7. PR sequence
+## 7. Execution sequence
 
-**Deleting the file strands live inbound references — it is not a one-file
-change.** `FRAMEWORK-TODO` appears **55 times across 20 files** in this repo. The
-ones that cannot be left alone:
+### 7.1 What gets written where
 
-- `.github/workflows/standards-drift-self.yml` — a **live workflow comment**
-  telling the reader to go read the file for FT-13.
-- `HANDOFF.md` — 7 references, including one pointing at the file for FT-54's
-  options. §6 defers the handoff rewrite, so PR-1 would ship a handoff citing a
-  deleted file.
-- **`PLAN-020` is DEFERRED but live, and its Phase 1 tasks are literally "file
-  FT-55 and FT-56 in `plans/FRAMEWORK-TODO.md`" and "correct FT-54's Effect
-  paragraph."** An earlier draft of this plan never mentioned PLAN-020 at all.
-  Retiring the file **changes PLAN-020's instructions**, so PLAN-020 must be
-  updated in the same wave or it becomes unexecutable.
-- Claim-ledger rows in merged plans citing the file by `path:line` (PLAN-010,
-  PLAN-017, PLAN-020). No automated gate breaks today — this repo does not wire
-  `check_plan.py` into pre-commit, and none of the 55 references is a markdown
-  link so the link checker stays green — but re-running the gate on those plans
-  will fail.
+**26 creates + 2 comments** — 15 ci issues, 11 cross-repo issues (§3.2), and
+comments on #352 (FT-23) and #351 (FT-56b).
 
-**So PR-1 exceeds the OPS-0061 three-surface cap and must split:**
+**Each issue body reproduces its entry verbatim**, not a five-part summary. The
+entries carry analysis that summarising destroys — FT-54's three options and its
+dated CORRECTION, FT-13's three-corrections caution, FT-24's named Dependabot PR
+list. **Any `plans/FRAMEWORK-TODO.md:NNN` citation inside a body is pinned to the
+pre-deletion blob SHA**, or every filed issue cites a path that will not exist on
+`main` the next day.
 
-1. **File the issues** (no repo change) — see the count below.
+**Two entries need re-measuring before a body is written**, because both assert
+live fleet state that has moved before: **FT-13** (its own warning) and **FT-24**
+(a 2026-07-21 triage naming six specific Dependabot PRs as open).
+
+### 7.2 Deleting the file is not a one-file change
+
+`FRAMEWORK-TODO` has **49 external references across 18 files** (excluding this
+plan and the file itself). They split three ways:
+
+| Class | Files | Treatment |
+|---|---|---|
+| **`CHANGELOG.md`** | 1 | **Do not touch.** These are historical entries, and §1 of this plan says a changelog is never rewritten. A reference to a file that existed when the entry was written is *correct history*. Editing them would violate the rule this plan exists to establish. |
+| **Live, executable** | `.github/workflows/standards-drift-self.yml` (a comment telling the reader to go read the file) · **`PLAN-020`** (DEFERRED but live, whose **Phase 1 tasks instruct a session to file entries *into* this file**) · `docs/FLEET_BRANCH_PROTECTION_ARMING.md` (an **instruction to write into** it) · `docs/WORKFLOWS.md` · `docs/BRANCH_PROTECTION.md` · `HANDOFF.md` (7 pointers) | Must be updated — a live instruction to write into a deleted file is the same defect class as the workflow comment |
+| **Merged plans' claim ledgers** | PLAN-003, 005, 007, 008, 010, 015, 017, 018, 019, ROLLOUT ×2 | **Leave.** They are history, no automated gate reads them (this repo does not wire `check_plan.py` into pre-commit, and none is a markdown link so the link checker stays green). **Several are already stale** — PLAN-020's ledger cites `:869` for FT-5, now at `:987` — so the gate fails on them *today*; say so, or the deletion gets blamed for a pre-existing condition. |
+
+### 7.3 The PRs
+
+The OPS-0061 ≤3-doc-surface cap forces three:
+
+1. **File the issues** (no repo change) — §7.1.
 2. **PR-1** — delete `plans/FRAMEWORK-TODO.md`; correct the `CLAUDE.md`
-   governance row; `DECISIONS.md` CI-0028.
-3. **PR-2** — the inbound references: the `standards-drift-self.yml` comment,
-   `PLAN-020`'s Phase 1 tasks, and the HANDOFF's 7 pointers (which the handoff
-   regeneration can absorb).
+   governance row; `DECISIONS.md` CI-0028. **Exactly 3 surfaces, zero headroom.**
+   This repo's own precedent counts a CHANGELOG entry both ways; **this plan
+   settles it as a 4th surface**, so the changelog entry rides PR-2 rather than
+   silently busting the cap.
+3. **PR-2** — the live inbound references + the CHANGELOG entry. That is 6
+   surfaces, so **PR-2 itself splits**: (a) `standards-drift-self.yml` +
+   `PLAN-020`'s Phase 1 tasks + CHANGELOG; (b) the three adopter docs; (c) the
+   HANDOFF pointers, which the handoff regeneration absorbs (§6).
 
-**Count, corrected:** 11 ci issues + 4 cross-repo entries + 2 comments (#351 for
-FT-56b, #352 for FT-23). **FT-38 is four issues, not one** — an issue is filed on
-one repo, and framework, iplanic, iplan-runner and operations each own their own
-`rev:` line. So 11 + 3 + 4 = **18 creates and 2 comments**, not "19 issues".
-
-**Durability is a property of the issue bodies, not of the ordering.** Filing
-before deleting only preserves the entries if the bodies carry them:
-
-- **Each issue body reproduces its entry verbatim**, not a five-part summary. The
-  entries carry analysis that summarising destroys — FT-13's three-corrections
-  caution, FT-54's option matrix and its dated CORRECTION.
-- **Any `plans/FRAMEWORK-TODO.md:NNN` citation inside an issue body is pinned to
-  the pre-deletion blob SHA**, or every filed issue cites a path that will not
-  exist on `main` the next day.
-- **Say what reverts.** If PR-1 stalls after filing, the repo holds 18 new issues
-  *and* the 1,896-line file — exactly the two-surface drift this plan exists to
-  remove. Revert = close the new issues with a pointer, or land PR-1.
-
-**Two tier corrections:** FT-38 spans four repos, and *cross-repo coordination*
-is an explicit **🔴** trigger — §3.1 marks it 🟡 and escalation is fail-safe.
-FT-37's own entry marks its surface 🔴 against §3.1's 🟡.
-
-**Slug trap:** `iplan-runner`'s slug is **`vladm3105/iplan-runner`**, not
-`aidoc-flow-*`. FT-38 is the one filing that hits it. It fails loudly, so it
-costs a retry rather than a wrong write.
+**Ordering and what reverts.** File first, so the entries are durable before the
+file goes. If PR-1 stalls after filing, the repo holds 26 new issues **and** the
+1,896-line file — exactly the two-surface drift this plan removes. **Revert =
+close the new issues with a pointer to the file, or land PR-1.** Do not leave it
+half-done across a session boundary.
 
 **Phase 2** — the anchored-insert mode, after PLAN-021 lands.
 
@@ -425,6 +451,14 @@ costs a retry rather than a wrong write.
 | 22 | FT-13 carries its own warning against transcribing it unmeasured | `wrong three times` | plans/FRAMEWORK-TODO.md:1351 |
 | 23 | The 400-line ceiling already bounds INSERTIONS — so pure-insertion alone is weaker | `max(i2 - i1, j2 - j1)` | scripts/doc-maintainer/apply.py:91 |
 | 24 | A live workflow comment points readers at the file this plan deletes | `Tracked as FT-13 in plans/FRAMEWORK-TODO.md` | .github/workflows/standards-drift-self.yml:73 |
+| 25 | PLAN-009 is EXECUTING, so it holds FT-18 and FT-37 under §3.0's rule | `Status: EXECUTING` | plans/PLAN-009_fleet-v2-cutover.md:29 |
+| 26 | PLAN-010 is not executable, so it releases FT-5 and FT-13 to the tracker | `NOT READY, DO NOT EXECUTE` | plans/PLAN-010_adoption-model.md:8 |
+| 27 | PLAN-020 is not executable, so it releases FT-54/55/56 | `DEFERRED to the next release cycle` | plans/PLAN-020_canon-self-adoption-and-ruleset-canon.md:3 |
+| 28 | FT-31 is a partial resolution — closed header, open residual on a required check | `**Needs:** a real signal` | plans/FRAMEWORK-TODO.md:723 |
+| 29 | FT-11's markdown-lint half is already done fleet-wide, so filing it as written re-files completed work | `DONE across all canon consumers` | plans/FRAMEWORK-TODO.md:1262 |
+| 30 | FT-12's iplan-runner sub-item is already resolved and is not filed | `iplan-runner canon adoption — RESOLVED` | plans/FRAMEWORK-TODO.md:1301 |
+| 31 | FT-56's 56a cites FT-5 as its own mechanism — so it is not a separate defect | `not a grantable ` | plans/FRAMEWORK-TODO.md:179 |
+| 32 | FT-13 forbids cross-repo EDITS, which OPS-0076's filing carve-out does not contradict | `never a direct edit from a canon session` | plans/FRAMEWORK-TODO.md:1389 |
 
 *Cited paths resolve: rows 1-7 against this repo; 8-14 against
 `/opt/data/aidoc-flow/operations`; 15 likewise; 16 against `/home/ya/.claude`.*
@@ -571,3 +605,51 @@ including three entries whose markers are stale in the *opposite* direction
 and NOT yet resolved. **NOT READY** — see §3.4 for the founder call that gates
 the filing set, and §3.1 for the three cross-repo entries needing a measurement
 pass before any body is written.
+
+### Pass 4 — 2026-07-31 — independent (`verified-planning-reviewer`, fresh context) — **NOT READY; this was the 3rd independent pass, so the OPS-0066 cap is reached**
+
+Seven load-bearing findings. Three change what gets filed, one changes what gets
+deleted. Rather than fold them one at a time — which is what the previous two
+passes did, each finding one more plan the rule had not been applied to — I ran
+the sweep the rule always needed and **falsified the rule itself** (§3.0).
+
+1. **`PLAN-007` is `Status: ready` and declares FT-11 (W3) and FT-12 (W4).** Under
+   §3.0's own rule it holds both, so 1 ci issue and 4 cross-repo issues — **3 of
+   them 🔴 founder interrupts** — should not be filed.
+2. **`ROLLOUT_plan015-arming` is `PREPARED, NOT EXECUTED` and declares FT-13**,
+   removing 3 more cross-repo filings. §3.0's vocabulary has no mapping for that
+   status, nor for `active` / `IMPLEMENTED` / no-status-line.
+3. **Two live founder runbooks were misclassified as "merged plans — leave"** —
+   `ROLLOUT_plan017-verify` and `ROLLOUT_plan015-arming` each contain an
+   executable instruction to *close an entry in the file being deleted*, the same
+   defect class as the PLAN-020 instance already caught.
+4. **§2 still stated the pre-rewrite disposition** for FT-54/55/56 — §3 was
+   rewritten around it and §2 was not.
+5. **FT-56 is three parts, not two.** Its coverage-holes paragraph
+   (`can_approve_pull_request_reviews` shipped but never compared; label
+   colour/description written but never compared) is neither 56a nor 56b, has no
+   destination, and would be deleted with the file.
+6. **The header gated execution on §3.4, which no longer exists** after §3's
+   rewrite folded it into §3.0 — so the plan forbade its own execution with an
+   undischargeable condition.
+7. **§7.1's verbatim-body rule collides with §3.1's FT-11 caveat** — "reproduce
+   the entry verbatim" against "filing it as written re-files completed work",
+   with no rule reconciling them.
+
+**The reviewer's drop-35 hunt came back clean** — every residual in the drop
+bucket has a surviving home, and the partition sums and covers FT-1..FT-57 exactly
+once. So the *triage* is sound; the *routing* is not.
+
+Non-blocking, recorded not folded: §3.1 says "four entries rescued from the drop
+bucket" (three were — FT-11 was rescued from the file bucket); §5 calls PLAN-021
+"in flight" when it reads NOT READY; §6 parks an item in a NOT-READY plan, which
+§3.0 says cannot hold one; §7.3 says "three PRs" then splits into four; PR-1's
+deliberate no-CHANGELOG ships against an `ai-review` rubric that raises a blocking
+finding for exactly that; FT-13 names `operations` among the broken callers while
+§3.2 files only three repos; and the "49 external references" figure is 48 by a
+line-based count — state the command or say "occurrences".
+
+**Result:** the cap is reached with load-bearing findings outstanding, so no
+fourth pass was dispatched. §3.0 is rewritten as the blocker it is; findings 1-3
+and 5 are subsumed by the recommended replacement rule; 4, 6 and 7 are folded.
+**Escalating to the founder** rather than continuing to iterate.
