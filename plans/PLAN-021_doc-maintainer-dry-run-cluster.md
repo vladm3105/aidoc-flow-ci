@@ -3,8 +3,8 @@
 **Status:** **NOT READY — stopped at the OPS-0066 review cap.** Three independent
 passes returned 10, 9 and 6 load-bearing findings; all 25 are folded, but the
 third pass's fold is **itself unreviewed** and the cap forbids a fourth pass.
-Two items need a founder call before implementation starts (§9). Do **not** begin
-implementing while this line reads NOT READY.
+One founder item remains open (§9 item 2); 353b is **decided — approved**. Do
+**not** begin implementing while this line reads NOT READY.
 **Issues:** [#352](https://github.com/vladm3105/aidoc-flow-ci/issues/352),
 [#353](https://github.com/vladm3105/aidoc-flow-ci/issues/353),
 [#354](https://github.com/vladm3105/aidoc-flow-ci/issues/354),
@@ -510,12 +510,13 @@ confirmation, the PR-D spec deviation, and the standing 30 %-deletion residual.
 
 ## 9. Open items for the founder — implementation must not start until these close
 
-1. **353b (record duplicates instead of aborting).** §3 argues the IPLAN-0025 D12
-   conflict is likely absent, since D12's only defined instance is the
-   out-of-allowlist case. **Take this decision with the SHA-deduplicated census,
-   not the run counts** — §1's warning (a) shows the "9 of 23" figure that
-   currently carries the recommendation is retry-weighted and the bucket ranking
-   is not established.
+1. ~~**353b (record duplicates instead of aborting).**~~ **DECIDED 2026-07-30 —
+   founder approved the recommendation: take both 353a and 353b.** The residual
+   caveat still stands and is *not* a blocker: §1's warning (a) shows the
+   "9 of 23" figure is retry-weighted, so **re-derive the census by distinct
+   merge SHA before quoting bucket sizes anywhere else** (release notes,
+   `CI-0027`, the issue close comments). The decision does not depend on it; the
+   published numbers do.
 2. **PR-C's cost on the live consumer.** Demoting `CHANGELOG.md` to high-risk on
    `operations` retires changelog auto-maintenance there — that flow's primary op.
    Confirm that is acceptable, or scope an alternative.
