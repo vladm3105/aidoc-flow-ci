@@ -13,8 +13,10 @@ Implemented `plans/PLAN-022_doc-surface-governance.md` in two PRs.
 
 | PR | Ground truth |
 |---|---|
-| [#356](https://github.com/vladm3105/aidoc-flow-ci/pull/356) | Landed PLAN-022 (**READY**) and PLAN-021 (**NOT READY** — a record, not an authorisation) |
+| [#356](https://github.com/vladm3105/aidoc-flow-ci/pull/356) | Landed PLAN-022 and PLAN-021 as documents |
 | [#357](https://github.com/vladm3105/aidoc-flow-ci/pull/357) | `DECISIONS.md` **CI-0028**, the corrected `CLAUDE.md` governance table, a `CHANGELOG.md` entry |
+| [#359](https://github.com/vladm3105/aidoc-flow-ci/pull/359) | This file regenerated (1,393 → ~120 lines); durable traps graduated to `CLAUDE.md` |
+| [#361](https://github.com/vladm3105/aidoc-flow-ci/pull/361) | **PLAN-021 flipped to READY** — both founder items closed, both owed measurements discharged |
 
 **CI-0028 in one line:** a changelog is permanent and takes an *anchored insert*
 under its Unreleased heading; a handoff is disposable and is *fully regenerated*,
@@ -32,10 +34,19 @@ What changed about this repo, not only about the rules:
   was prose, and prose parses as a path: it took
   `install/parse-governance-table.py` from `errors: []` to `path-not-found`.
   Write rows as `` `path` (annotation) `` and verify before pushing.
-- **Three defects were filed, not fixed** — see the next-steps list below for
-  #355 and #358; the third is
+- **Four defects were filed, not fixed** — #355 and #358 (next-steps item 4),
+  #360 (item 1), and
   [aidoc-flow-operations#291](https://github.com/vladm3105/aidoc-flow-operations/issues/291),
   the intake contract's now-incomplete "(TODO file declined)" row for this repo.
+- **A census keyed on the wrong field re-ranked PLAN-021's defects, and the
+  error reached a founder decision.** The merge `doc-maintainer` maintains
+  arrives as the `MERGE_SHA` **`workflow_dispatch` input**; `headSha` is the
+  default-branch head at dispatch time, and they diverge on every retry.
+  Grouping on `headSha` drops a merge and makes most groups heterogeneous. It
+  put PR-C at 1 of 11 when it is 3 of 12 — recorded in PLAN-021 §9 item 2 rather
+  than quietly fixed, because the decision was staked on that number. **Retries
+  are also not replays:** each re-dispatch re-invokes the planner and draws a
+  fresh plan, so one merge can fail two ways.
 - **This file went from 1,393 lines to this.** Its durable content was graduated
   to `CLAUDE.md` § "Durable traps"; its "Recent decisions" excerpt was deleted —
   it sat at CI-0011 while CI-0012..CI-0024 landed, contradicting the top of its
@@ -46,7 +57,7 @@ What changed about this repo, not only about the rules:
 | Claim | Command | Value at wrap |
 |---|---|---|
 | Released version | `git describe --tags --abbrev=0` | `ci/v2.16.0`, marked Latest |
-| Open issues | `gh issue list --state open --limit 200` | **10** — #347–#355, #358 |
+| Open issues | `gh issue list --state open --limit 200` | **11** — #347–#355, #358, #360 |
 | Open PRs | `gh pr list --state open` | 0 |
 | `## Unreleased` | `sed -n '/^## Unreleased/,/^## ci/p' CHANGELOG.md` | **non-empty** — holds CI-0028; a cut promotes it |
 | Legacy queue | `wc -l plans/FRAMEWORK-TODO.md` | 1,968 |
@@ -61,20 +72,35 @@ design, and `--repin` cannot deliver a caller-body change.
 
 ## What to do next
 
-1. **`doc-maintainer` is broken and its pilot is paused.** Four defects converge
-   on the dry-run path: [#352](https://github.com/vladm3105/aidoc-flow-ci/issues/352)
-   (the patch renderer dies on the normal case),
-   [#353](https://github.com/vladm3105/aidoc-flow-ci/issues/353) (a duplicate
-   reports as an allowlist violation, naming a path that *is* allowlisted — 9 of
-   the consumer's 23 recorded failures; the plan warns that count is
-   retry-weighted and must be re-derived by distinct merge),
-   [#354](https://github.com/vladm3105/aidoc-flow-ci/issues/354) (the 200 KB
-   refusal against a changelog that only grows), plus one still to file (the
-   planner inventory ignores `allowed_paths`).
-   `plans/PLAN-021_doc-maintainer-dry-run-cluster.md` is the plan and reads
-   **NOT READY**: it stopped at the OPS-0066 review cap with one founder item
-   open (§9 item 2), and its own status line forbids implementation. Resolve
-   that item, run the pass, then implement. `CI-0027` is reserved for it.
+1. **Implement PLAN-021 — it is READY and is the top task.** `doc-maintainer`'s
+   dry-run path cannot complete a run that has anything to say;
+   `plans/PLAN-021_doc-maintainer-dry-run-cluster.md` fixes it in five PRs and
+   both founder items are closed. **Start at PR-0** (`DECISIONS.md` CI-0027),
+   which the others cite.
+
+   Four defects, sized by **distinct merge** (§9 M2 — 23 failures are 12
+   merges): [#353](https://github.com/vladm3105/aidoc-flow-ci/issues/353) a
+   duplicate of an allowlisted path reports as an allowlist violation (4);
+   [#360](https://github.com/vladm3105/aidoc-flow-ci/issues/360) the planner
+   inventory ignores `allowed_paths` **and** the prompt never forbids proposing
+   outside it (4 — co-equal, so it lands *with* the cluster, not after);
+   [#354](https://github.com/vladm3105/aidoc-flow-ci/issues/354) the 200 KB
+   refusal against a changelog that only grows (3);
+   [#352](https://github.com/vladm3105/aidoc-flow-ci/issues/352) the patch
+   renderer dies on the normal case (1 — smallest bucket, and still the
+   graduation blocker, because it is the one that blocks *any* low-risk plan).
+
+   **Three things to carry in before writing code.** READY here means a
+   **founder release** under OPS-0066's escalation escape, not a converged
+   review — the Pass-4 fold is still independently unreviewed, so PR-by-PR
+   review carries more weight than usual. The consumer's resume condition
+   (`#352 AND #353`) is **insufficient**: `#360` must be added, or resuming
+   returns a pilot still red on a third of merges. And the 30 %-deletion
+   blast-radius residual (2 merges) is fixed by **no** PR in this cluster —
+   `CI-0027` records it as standing.
+
+   Resuming the pilot needs `kill_switch` flipped back in **framework**, a
+   cross-repo action this plan does not own (§6).
 2. **Wire the governance check**
    ([#355](https://github.com/vladm3105/aidoc-flow-ci/issues/355)). Small, and it
    closes the hole that let the governance table stay false for weeks: nothing in
