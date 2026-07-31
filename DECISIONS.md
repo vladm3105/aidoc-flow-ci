@@ -1616,6 +1616,132 @@ event/state combination yields SUCCESS without a review on an unarmed repo.
 
 ---
 
+## CI-0028: Three doc surfaces, three edit shapes — and feedback is a direction, not a class (2026-07-31)
+
+*(`CI-0027` is reserved by `plans/PLAN-021_doc-maintainer-dry-run-cluster.md`,
+which is NOT READY. The gap is deliberate; IDs are never reused.)*
+
+**Context**
+
+`doc-maintainer` writes to a repo's documents of record through one edit mode:
+`scripts/doc-maintainer/apply.py:66` demands *"Return the COMPLETE replacement
+file"*, and `:59` refuses any source over 200 KB. That treats every document
+alike. Two of the three surfaces it touches are not alike, and the mismatch has
+already produced defects in both directions:
+
+- A changelog only grows, so the 200 KB refusal makes a red run **guaranteed**
+  once the model picks it (`#354`).
+- This repo's `HANDOFF.md` is 1,393 lines carrying a "Previous state
+  (2026-07-25)" block against a ~200-line target — and on 2026-07-30 its
+  headline read *"0 open issues, 0 open PRs"* while eight issues were open. It
+  had been wrong for three days.
+- This repo's `CLAUDE.md` governance table declared the backlog surface *"Not
+  adopted"* while `plans/FRAMEWORK-TODO.md` held 1,896 lines when PLAN-022 was
+  drafted (2026-07-30) and **1,968 as this decision is written**
+  (`wc -l plans/FRAMEWORK-TODO.md`) — PR #356 added FT-58 to it. Per §2 below,
+  the command is stated so the figure can be re-derived rather than trusted.
+
+**Decision**
+
+**1. Three surfaces, three edit shapes.**
+
+| Surface | Lifespan | Correct edit | Never |
+|---|---|---|---|
+| Changelog | permanent, grows monotonically | **anchored insert** under the Unreleased heading | regenerate · reorder · prune · prepend to the file |
+| Handoff | ephemeral, rewritten each wrap | **full regeneration** | append · accrete "previous state" sections |
+| Backlog | — | the repo's open **GitHub issues** | a parallel markdown queue — except `plans/FRAMEWORK-TODO.md`, grandfathered until FT-58 retires it |
+
+"Add at the beginning" means **beneath the `## [Unreleased]` anchor**, not at
+the top of the file — a naive prepend puts entries above the H1. The primitive
+is *anchored insert*. The anchor must be configurable: seven workspace repos use
+`## [Unreleased]`, **this repo uses the unbracketed `## Unreleased`**
+(`CHANGELOG.md:6` — canon is the outlier), and `business` has no changelog at
+all by its own governance table, which is a supported state and not an error.
+**Canon normalises its own heading rather than shipping a tool whose default its
+own repo violates** — deferred, not dropped: `scripts/release.sh:207` hardcodes
+`anchor = "## Unreleased\n"` and `:209` aborts the cut if it is absent, so
+normalising the heading is canon-body work. It ships with the PLAN-021 Phase 2
+tooling that first depends on the default, not before.
+
+**2. Every volatile claim in a handoff carries the command that re-derives it.**
+Regeneration alone does not fix the stale-headline failure, because a
+carried-forward claim reads as freshly verified. `0 open issues` is
+unfalsifiable prose; the same line followed by the
+`gh issue list --state all --limit 200` that produced it is checkable in one
+paste. This converts a stale handoff from *misleading* into *obviously stale*.
+
+**3. Feedback is a direction of travel, not a class of issue.** A repo's open
+issues are its backlog regardless of who filed them: `#352`, filed by a
+framework session, and a locally-found bug both mean "ci must fix this" — same
+triage, same queue, same close-on-merge. So **no `kind:feedback` label family**;
+a classifier that drives no action is a second surface that can only drift.
+Direction has teeth in three places, none needing a taxonomy: the promotion bar
+and five-part body attach to the **outbound act** (filing on someone else's repo
+spends their attention); the **close permission** stays asymmetric (a reporter
+never closes another repo's issue); and `source:` survives as **provenance**,
+never a sort key.
+
+**Consequences**
+
+- `CLAUDE.md`'s governance table is corrected to describe **reality**: the
+  backlog row names `plans/` + GitHub issues, and a **second row declares
+  `plans/FRAMEWORK-TODO.md` as a legacy queue that is still live**. Asserting
+  "GitHub issues are the backlog" over a queue of that size would recreate the
+  same false declaration, inverted. A governance table describes what *is*.
+- That correction falsifies the workspace intake contract, which lists ci's
+  capture surface as `plans/` + GitHub issues **"(TODO file declined)"**
+  (`operations/docs/AGENT_FEEDBACK_INTAKE.md:73`). The routing it governs is
+  unaffected — the legacy queue takes no new entries — but the phrase a session
+  acts on is now incomplete. Filed as
+  `vladm3105/aidoc-flow-operations#291`.
+- The row shape is constrained by canon's own parser, not by taste.
+  `install/parse-governance-table.py` reads a row's whole path cell as a path,
+  stripping only a trailing `§N`/`#anchor` (`:172`) or a parenthesized
+  annotation (`:180`). Measured: the prose row PLAN-022 originally prescribed
+  took the parser from `errors: []` to `path-not-found`. Write governance rows
+  as `` `path` (annotation) ``.
+- **That existence-check has no automated reader.** `governance_check` is
+  reached only by a hand-run of `install/apply-standards.sh` (`:433`); nothing
+  in `.github/workflows/` invokes it. Filed as `#355`. Until it lands, the
+  governance table is enforced by whoever remembers to run the parser — which is
+  how the false backlog row survived.
+- **No migration ships with this decision.** `plans/FRAMEWORK-TODO.md` is not
+  deleted and its ~57 entries are not triaged; that work is deferred visibly as
+  `FT-58`, carrying its own open question (where a below-promotion-bar entry
+  goes once its queue file is gone). Three review passes on the superset
+  returned 12, 9 and 7 findings without converging, and 22 of the 28 landed in
+  the migration sections.
+- `apply.py`'s edit-mode taxonomy follows from §1 and is **specified, not
+  implemented**: changelog → anchored insert *plus a retained volume ceiling*;
+  handoff → whole-file regeneration, staying human-reviewed; README/docs/roadmap
+  → targeted edit, unchanged. It lands as PLAN-021 Phase 2, after PLAN-021.
+  A pure-insertion assert is **not** a straight upgrade over the existing
+  400-line ceiling: `apply.py:91` computes changed lines as a per-opcode
+  `max(i2 - i1, j2 - j1)`, so the ceiling already bounds insertions while a
+  pure-insertion assert bounds only deletions. Keep both. **The insertion
+  invariant is scoped to the maintainer path**, because legitimate
+  heading-touching changelog edits exist: `scripts/release.sh:212` rewrites the
+  Unreleased heading at every cut, and normalising canon's own heading (§1) is
+  itself a non-insertion edit. An unconditional invariant would red the release
+  path.
+- **This decision's own counterexample is still live in this repo.**
+  `HANDOFF.md:12-13` states *"`## Unreleased` is empty, and there are 0 open
+  issues and 0 open PRs"*; the tracker holds nine
+  (`gh issue list --state open --limit 200 | wc -l`) and this change makes
+  `## Unreleased` non-empty. It is not corrected here: `HANDOFF.md` would be a
+  fourth doc surface and OPS-0061 Rule 1 caps a governance PR at three. It is
+  regenerated in the wrap PR that follows this one, under §2's rule — which is
+  the first application of that rule to the document that motivated it.
+
+**Origin**
+
+`plans/PLAN-022_doc-surface-governance.md` (PR #356), narrowed from a superset
+that also carried the `FRAMEWORK-TODO` migration. Records §1 and §2 of that
+plan; §4's taxonomy is recorded here as a contract for PLAN-021 Phase 2, not as
+shipped behaviour.
+
+---
+
 <!-- Append new entries above this line; append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
 and update the superseded entry's "Consequences" section to reference

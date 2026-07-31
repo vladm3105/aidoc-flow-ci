@@ -5,6 +5,41 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Governance — CI-0028: three doc surfaces, three edit shapes (no code change)
+
+- Records the per-surface edit model as canon: a **changelog** is permanent and
+  takes an *anchored insert* under its Unreleased heading (never a prepend, never
+  a regeneration); a **handoff** is disposable and is fully regenerated, with
+  every volatile claim carrying the command that re-derives it; the **backlog**
+  is the repo's open GitHub issues. Feedback is a direction of travel, not a
+  class of issue — no `kind:*` label family.
+- Corrects this repo's `CLAUDE.md` governance table, which declared the backlog
+  surface "Not adopted" while `plans/FRAMEWORK-TODO.md` held 1,968 lines
+  (`wc -l plans/FRAMEWORK-TODO.md`, 2026-07-31). The table now names `plans/` +
+  GitHub issues, and a second row declares the legacy queue as still live
+  rather than asserting a retirement that has not happened. That correction
+  makes the workspace intake contract's "(TODO file declined)" row for this repo
+  incomplete — filed as `aidoc-flow-operations#291`.
+- Governance-table rows are machine-parsed: `install/parse-governance-table.py`
+  reads a row's whole path cell as a path, stripping only a trailing
+  `§N`/`#anchor` or a parenthesized annotation. Write them as
+  `` `path` (annotation) ``. Verify with
+  `python3 install/parse-governance-table.py CLAUDE.md --repo-root .`
+  before pushing.
+- No canon body, workflow, template or manifest surface changed; no version bump.
+  Plans: `plans/PLAN-022_doc-surface-governance.md` (PR #356). The
+  `apply.py` edit-mode taxonomy it specifies is a contract for PLAN-021 Phase 2,
+  not shipped behaviour. The `FRAMEWORK-TODO` migration is deferred as `FT-58`.
+
+### Docs — nothing is reading the governance-table check (#355, not fixed here)
+
+- `governance_check` verifies that every path a repo's `CLAUDE.md` declares
+  actually exists, and has one call site (`install/apply-standards.sh:433`).
+  Nothing in `.github/workflows/` invokes `apply-standards.sh`, and
+  `standards-drift-self.yml` runs `sync/check-standards-drift.sh`, which never
+  reaches it — so the check runs only when a human runs it. Filed as
+  [#355](https://github.com/vladm3105/aidoc-flow-ci/issues/355); not fixed here.
+
 ## ci/v2.16.0 — 2026-07-27
 
 ### Added — `scripts/ft30-dry-run.sh`, so the 🔴 release gate is not judged by eye
