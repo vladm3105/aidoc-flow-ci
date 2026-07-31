@@ -158,6 +158,10 @@ policy (founder, 2026-07-11). The canonical private label is the verbose array
   caller left on `runner-self` (or on the reusable's `ubuntu-latest` default)
   queues forever. If you see `runner-self` in an installed caller, replace it
   with the real pool array.
+- **A job with no matching runner queues forever, and `timeout-minutes` does not
+  save it** — the timeout clock starts when the job *starts*, so a job that never
+  starts never times out. The symptom is a check pinned on "Expected — Waiting
+  for status to be reported", not a failure.
 - **Never "fix" a bricked private-repo gate by falling back to `ubuntu-latest`.**
   If a private repo has no pool yet, the fix is to **register the pool**
   (`../operations/scripts/ci-runner/run-ephemeral.sh`, labels
@@ -231,9 +235,108 @@ next `ci/vX.Y.Z` tag. Discipline:
   file canon. Wave 0 (this repo) self-adopts BEFORE Wave 1+ consumers
   pull. The canon-source dogfoods its own canon.
 
+## Durable traps — do not re-derive these
+
+Facts about this repo and its toolchain, each of which cost a session at least
+once. They live here, not in `HANDOFF.md`: under CI-0028 the handoff is
+regenerated wholesale at every wrap, so anything durable parked there is
+re-summarised or silently dropped on each pass. A trap graduates here once it
+has settled — measured, reproduced, and not expected to change.
+
+### Adopting a canon release in a consumer
+
+- **`--repin` and `--update` deliver different things, and neither is the
+  general answer.** `--repin` rewrites `uses:` tag strings only, so it **cannot**
+  deliver a change that lives in a caller **body** — the CI-0025/#329
+  concurrency fix did, and a `--repin`-only adoption silently misses it.
+  `--update` replaces whole caller bodies and therefore clobbers a consumer's
+  local `runner_labels_*`, `permissions:`, `config-path:` and job splits.
+  Decide per release by asking whether the release changed caller bodies; when
+  it did, `--update --non-interactive` **then re-apply the local edits**.
+  Without a TTY, a bare `--update` defaults to KEEP (FT-39) and delivers nothing.
+- **Actions Runner `>= 2.327.1` is a hard floor.** The reusables call node24
+  actions; below the floor jobs die in `ai-review`'s *first* job with an error
+  that names neither the action nor the floor. Check with
+  `gh api repos/<owner>/<repo>/actions/runners --jq '.runners[].version'`.
+  GitHub-hosted runners are unaffected. `docs/runners.md` §2,
+  `docs/troubleshooting.md` §19.
+
+### Gates that measure the wrong thing
+
+- **`pre_push_check.sh` matches a PHRASE, not the work.** A commit body reading
+  `Multi-agent self-review per OPS-0065: skipped` satisfies the gate while
+  declaring the opposite — it is `grep -qF` on the prefix (`:211-213`). The gate
+  cannot distinguish the phrase from the work, so the discipline is yours, not
+  its. Every time the review was then actually run, it found something real.
+- **`governance_check` has no automated reader.** It verifies that every path a
+  repo's `CLAUDE.md` declares exists, has one call site
+  (`install/apply-standards.sh:433`), and nothing in `.github/workflows/`
+  invokes `apply-standards.sh` — `standards-drift-self.yml` runs
+  `sync/check-standards-drift.sh`, which never reaches it. Run it by hand:
+  `python3 install/parse-governance-table.py CLAUDE.md --repo-root .`.
+  Tracked as [#355](https://github.com/vladm3105/aidoc-flow-ci/issues/355).
+- **A governance-table row is machine-parsed, so write it as
+  `` `path` (annotation) ``.** The parser reads a row's whole path cell as a
+  path, stripping only a trailing `§N`/`#anchor` (`:172`) or a parenthesized
+  annotation (`:180`). A prose cell — including one starting `**` — parses as a
+  path and fails. Measured; see CI-0028.
+- **`scripts/ft30-dry-run.sh` asserts the bootstrap COMPLETED, not that it
+  installed the right file set.** A run that silently dropped `ai-review.yml`
+  passes every criterion. Tracked as
+  [#358](https://github.com/vladm3105/aidoc-flow-ci/issues/358).
+
+### Destructive on canon specifically
+
+- **Never run `apply-standards.sh --apply --tier product` on canon.** It PUTs
+  `branch-protection-product.json`, which requires `ai-review` and `composition`
+  — checks canon does **not** self-run — so it hangs every canon PR, and it
+  clobbers FT-52's deliberate canon-specific protection profile. Use the
+  per-section `gh api` PUTs, or `--skip-branch-protection`. The `access` section
+  is skipped on canon anyway (PUBLIC → 422).
+- **A release prep PR shows BLOCKED, not merely red, and that is by design.**
+  Since FT-52 protected `main`, 4 of the 5 required contexts come from
+  self-pinned callers that `startup_failure` and are therefore never reported —
+  the FT-21 chicken-and-egg: they reference a tag that does not exist yet.
+  `enforce_admins: false` exists precisely so
+  `gh pr merge <N> --squash --delete-branch --admin` still works. Those
+  `startup_failure` runs are **not retryable**; the post-release push is what
+  re-triggers them green. `docs/RELEASE_CHECKLIST.md` § "Tag + release".
+
+### Process
+
+- **Review sub-agents mutate the shared working tree.** They run `git stash` /
+  `git add`, which can unstage code between your `git add` and your
+  `git commit` — a fix can silently fail to land. Always `git add -A` and diff
+  against what was reviewed **after** the agents finish, before committing.
+  (Found as the FT-45 incident: PR #277 dropped its code to exactly this race,
+  and #278 had to land it separately.)
+- **Folding a review finding is a code change and needs the same scrutiny as
+  one.** A Pass-2 review has repeatedly found defects introduced by the Pass-1
+  *fold* — including a fix that re-created its own defect. Re-review the fold,
+  not just the original.
+- **A stub that controls only what a command returns tests nothing about how it
+  was called.** A harness stubbing `gh`'s return value but not its arguments let
+  three separate live mutations stay green.
+- **Prose volume is a defect surface.** #322 took five review passes; only the
+  *first* found a code defect. Every later pass corrected claims written *about*
+  the fix, until the last recommended **cutting** rather than correcting. Prefer
+  one scoped statement plus pointers to an exhaustive narrative.
+- **`DECISIONS.md` is authoritative; never keep a second copy of it.** The
+  handoff carried a "Recent decisions" excerpt that sat at CI-0011 while
+  CI-0012..CI-0024 landed, contradicting the top of its own file. Removed under
+  CI-0028. Link to `DECISIONS.md`; do not summarise it.
+
 ## Session handoff
 
 Sessions run in ephemeral containers — **only committed + pushed work
 survives**. Start each session by reading `HANDOFF.md`; refresh it at
 milestones and before any context compaction. Commit messages must
 not contain model identifiers.
+
+**`HANDOFF.md` is regenerated, not appended (CI-0028).** It is a briefing for a
+fresh session with zero context, answering two questions in order: what the last
+session did, and what to do next. Every volatile claim carries the command that
+re-derives it — a carried-forward claim otherwise reads as freshly verified,
+which is how the headline sat at "0 open issues" for three days against eight.
+Target well under ~200 lines; size is a defect, and the cause is almost always
+retained history. Git is the archive.
