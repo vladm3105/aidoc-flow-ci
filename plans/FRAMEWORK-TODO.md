@@ -8,6 +8,61 @@ when resolved.
 
 ## Open
 
+### FT-58 — retire this file: migrate the open entries to GitHub issues (🔴 one founder decision)
+
+**Found:** 2026-07-31, while narrowing PLAN-022. **Surface:** this file +
+`CLAUDE.md:73` (the governance row) + ~48 inbound references across 18 files.
+
+**Effect.** `CLAUDE.md` declares the backlog *"Not adopted … no separate TODO.md
+needed"* while this file holds 1,896 lines — a false governance declaration, and
+two live surfaces where the model (PLAN-022 §2) calls for one. The file also
+cannot express partial resolution: a landed fix and an open residual share one
+header, which is how FT-11/18/31/57 all read closed while open (now marked
+⚠️ PARTIAL).
+
+**🔴 The one decision that blocks it.** Where does an entry go that fails the
+promotion bar? The feedback contract
+(`../operations/docs/AGENT_FEEDBACK_INTAKE.md:86-89`) says it *"stays in the
+worked `plans/` entry, not in the tracker"* — but that presumes a queue file
+exists. Deleting this one forces every entry to have a destination, and the
+obvious rule ("stays in its plan if that plan is READY/EXECUTING") is **not
+decidable**: a sweep found 17 files mentioning `FT-NN` across 8 status
+vocabularies, 5 with no status line at all, and no mechanical way to separate
+ownership from historical mention.
+
+**Recommended:** drop the queue-only clause **for this migration only** and file
+every open entry. It is decidable, it matches the agreed model (a repo's open
+issues are its backlog), and it is not duplication — the issue becomes the single
+state-holder and a plan covering the same work links to it.
+
+**Fix shape, once decided:**
+
+1. Re-triage from scratch (the prior triage is in git at `25912f9`; **do not
+   reuse its buckets** — they were derived under the falsified rule). Prior
+   passes rescued four false-resolved entries; assume more.
+2. **Re-measure before writing any body** for FT-13 (its own text warns it *"has
+   now been wrong three times"*) and FT-24 (a 2026-07-21 Dependabot triage naming
+   six specific PRs).
+3. File. Bodies reproduce each entry **verbatim**, and any `path:NNN` citation is
+   pinned to the pre-deletion blob SHA.
+4. Delete the file; correct `CLAUDE.md:73` to drop the "still exists" clause
+   PLAN-022 §3 adds.
+5. **Clean the inbound references, which are not one PR.** `CHANGELOG.md`
+   references are **history — do not touch them** (PLAN-022 §1: a changelog is
+   never rewritten). Live/executable ones must be updated:
+   `.github/workflows/standards-drift-self.yml`, `PLAN-020` (its Phase 1 tasks
+   instruct a session to file entries *into* this file),
+   `docs/FLEET_BRANCH_PROTECTION_ARMING.md` (same), `docs/WORKFLOWS.md`,
+   `docs/BRANCH_PROTECTION.md`, `HANDOFF.md`, and the two `PREPARED, NOT
+   EXECUTED` runbooks `ROLLOUT_plan015-arming.md` + `ROLLOUT_plan017-verify.md`
+   (each carries a "close FT-NN in this file" instruction). Merged plans'
+   claim-ledger rows are history — leave them; several are already stale, so the
+   deletion must not be blamed for a pre-existing condition.
+
+**Related:** PLAN-022 (the model this executes against; §5 records why the
+migration was cut from it). Three independent review passes on the combined
+plan returned 12/9/7 findings — the detail is in git at `7550c1d` and `25912f9`.
+
 ### FT-52 — canon does not govern itself to the standard it ships (🔴 founder)
 
 **Found:** 2026-07-23, PLAN-019 five-lens pre-prod review (G4 self-governance, S1).
@@ -101,7 +156,13 @@ step is present (removing it goes red).
 **RESOLVED (Unreleased → `ci/v2.12.0`, PLAN-019 Workstream B / G3):** see CHANGELOG
 `## Unreleased`.
 
-### FT-57 — `install.sh` had no mandatory backup of a consumer's existing surfaces
+### FT-57 — ⚠️ **PARTIAL** — `install.sh` had no mandatory backup of a consumer's existing surfaces
+
+> **Still open:** make `--update --non-interactive` **refuse** on a file whose
+> local content differs from both canon and the previous canon body — treat
+> customization as a stop, not something to overwrite. **🔴 needs a founder
+> call** (behaviour change on the same destructive `--update` path FT-9 bricked
+> the fleet with). The backup half landed; do not read the header as closed.
 
 **Found:** 2026-07-24, founder question — "consumers may have their own customized
 established flow; the deployment script may override only flow-ci flows but MUST
@@ -699,7 +760,7 @@ existing design and keeps one code path; (b) is more explicit but adds a mode.
 Either way `manifest.json:12`'s note and `install/README.md` step 6 must be
 corrected in the same PR.
 
-### FT-31 — no mechanism to detect a required check that selected zero hooks
+### FT-31 — ⚠️ **PARTIAL** — no mechanism to detect a required check that selected zero hooks
 
 **Found:** 2026-07-21, PLAN-018 Pass-1 review (deferred out of F3).
 **Status:** CLOSED (PLAN-018 Workstream C / PR C2, 2026-07-22) —
@@ -720,6 +781,8 @@ heuristic, and it would flip any consumer using `run-stage: manual` with no
 `manual` hooks from pass to fail on re-pin. PLAN-018 F3 therefore fixes only the
 canon-shipped fragment, and its fix contract is scoped to canon-*installed*
 configs — a consumer's own hook-less config can still produce a vacuous pass.
+> ⚠️ **PARTIAL — the residual below is why this is not closed.**
+
 **Needs:** a real signal (upstream feature request, or a canon-side pre-flight
 that parses the resolved config and counts stage-matching hooks) before this can
 be closed without breaking consumers.
@@ -1241,7 +1304,12 @@ doc-fix install a second wrong nickname — fix the docs to the CI-0007 labels.
 `ci-ephemeral`/`ai-review` labels throughout (align docs to infra; preferred).
 One focused docs PR; split to keep ≤3 surfaces.
 
-### FT-11 — graduate `markdown-lint` (report-only → blocking) + `docs-sync` (dry-run → live)
+### FT-11 — ⚠️ **PARTIAL** — graduate `markdown-lint` (report-only → blocking) + `docs-sync` (dry-run → live)
+
+> **`markdown-lint` is DONE across all canon consumers** (PLAN-007 W3,
+> 2026-07-12, six merged PRs). **Only the `docs-sync` dry-run → live half
+> remains**, and it is 🔴 founder App provisioning. Filing or actioning this
+> entry as written re-files completed work.
 
 **Found:** 2026-07-11, PLAN-006 W4 population. **Status: population DONE;
 graduations remain.**
@@ -1782,7 +1850,11 @@ on (bounded label-cycle, OPS-0066-capped) instead of requiring a
 session-AI/human. Also document the rerun-vs-label-cycle trap in §15 (a
 rerun does not re-read labels).
 
-### FT-18 — deploy wizard has no required-context ↔ emitted-check-name validator; 🔴-step prep/verify is under-automated (builds the guard for FT-12's class)
+### FT-18 — ⚠️ **PARTIAL** — deploy wizard has no required-context ↔ emitted-check-name validator; 🔴-step prep/verify is under-automated (builds the guard for FT-12's class)
+
+> **The validator shipped.** The remaining scope — the broader PLAN-009 Phase 0
+> preflight (per-repo LiteLLM secrets, pool registration) — **stays open and 🔴
+> founder-manual**, and PLAN-009 is EXECUTING. Do not read the header as closed.
 
 **Status:** CLOSED for the required-context validator (PLAN-018 Workstream C /
 PR C3, 2026-07-22). `install/required-context-map.py` DERIVES, for every required
