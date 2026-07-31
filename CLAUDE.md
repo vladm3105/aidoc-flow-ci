@@ -70,7 +70,8 @@ surfaces for **this** repo:
 | Surface | Path (in this repo) |
 | --- | --- |
 | Live HANDOFF | `HANDOFF.md` |
-| TODO / backlog | Not adopted — `plans/` per-initiative plans + GitHub issues serve as the backlog; no separate TODO.md needed for a small canon repo |
+| TODO / backlog | `plans/` (per-initiative plans + GitHub issues — this repo's open issues **are** its backlog, whoever filed them; a finding below the promotion bar stays in the worked `plans/` entry, not in the tracker. Read the tracker with `gh issue list --state all --limit 200` — the `--limit 30` default truncates silently.) |
+| Legacy FT queue (being retired) | `plans/FRAMEWORK-TODO.md` (still holds open entries; until its retirement lands, both surfaces are live) |
 | Decisions log | `DECISIONS.md` |
 | Plans | `plans/` |
 | Changelog | `CHANGELOG.md` |
