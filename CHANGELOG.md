@@ -14,7 +14,9 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   BLOCKED by construction and merge only with `--admin`, which does **not**
   bypass a ruleset the way `enforce_admins: false` bypasses branch protection.
   Immutability rulesets keep no bypass; quality-gate rulesets carry the admin
-  role. Constrains PLAN-020's WEAKENED-drift rule to distinguish the two.
+  role. Constrains PLAN-020's WEAKENED-drift rule to distinguish the two. The
+  decided bypass shape was then **verified against the live API** (2026-08-03
+  probe), so it ships as written rather than as a guess.
 - **CI-0030** approves migrating the workspace to a GitHub **Organization**,
   sequenced ahead of the CD subsystems and executed under its own plan. Priced,
   not assumed: 64 canon files hardcode the owner, so it is a canon change plus a
@@ -22,7 +24,7 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   the native home for the tier and language axes, teams as CODEOWNERS (the
   constraint `composition.yml` exists to work around), and org secrets.
 - Both arise from `plans/PLAN-023_build-test-canon-and-conformance.md` (added
-  here as a **Draft, NOT READY** — two items open after four independent review
+  here as a **Draft, NOT READY** — one item open after four independent review
   passes), which specifies the build/test canon and conformance model: the first
   canon surface that would build, test and measure consumer code rather than
   gate a diff.

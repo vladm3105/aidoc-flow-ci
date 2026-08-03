@@ -8,11 +8,12 @@ A survey of the estate found the *gates* half mature (21 reusables) and the
 releases or deploys anything.** Decomposed into nine subsystems (S1–S7, X1–X2);
 this plan is **S1** (build/test) plus **X2** (the language axis later subsystems
 slot into).
-**Status:** Draft — **NOT READY, 2 items open.** A best-practices investigation
-(2026-08-03) changed two premises (§3c, §3f); all 9 Pass-4 and 7 of 10 Pass-6
-findings are folded, the last by `DECISIONS.md` **CI-0029**. Remaining (Review
-log, Pass 6): the 🔴 private-repo ruleset-enforcement test that opens PR-4, and
-extending canon's F2 no-orphan self-check to ruleset-armed contexts.
+**Status:** Draft — **NOT READY, 1 item open.** A best-practices investigation
+(2026-08-03) changed two premises (§3c, §3f); all 9 Pass-4 and 9 of 10 Pass-6
+findings are folded — the last two by `DECISIONS.md` **CI-0029** and by the
+2026-08-03 ruleset probe (§3c, §15), which confirmed the §3c premise on a private
+repo rather than leaving it asserted. Remaining: extend canon's F2 no-orphan
+self-check to ruleset-armed contexts (Review log, Pass 6).
 **Depends on:** [[PLAN-013]] uniform-protected model; [[PLAN-014]] scanner
 precedent (opt-in, report-only-first, graduate deliberately).
 **Deferred to later plans:** S3 database/service-container gate, S4 release
@@ -226,19 +227,35 @@ single `ruleset` reference in `apply-standards.sh`, `install.sh` or `sync/*.sh`
 structurally immune to the branch-protection PUT, and rulesets aggregate with
 branch protection rather than replacing it.
 
-**Availability is partly measured and partly still owed — do not over-read §15.**
-What the API evidence actually shows is that a ruleset *object* exists on this
-repo (a **tag**-target ruleset carrying `deletion` + `non_fast_forward`) and on
-the private `aidoc-flow-business` (at `enforcement: **disabled**`). Neither is a
-**branch**-target ruleset carrying a `required_status_checks` rule at
-`enforcement: active`, which is the exact shape M4 needs on four private repos.
+**Availability is measured on the exact shape M4 needs, not inferred.** An
+earlier revision rested on two weaker data points — a *tag*-target ruleset on
+canon and a **disabled** one on private `aidoc-flow-business` — neither of which
+is a branch-target `required_status_checks` rule at active enforcement. A review
+pass correctly refused that as evidence.
 
-**PR-4 opens with that test, and it is cheap:** create a throwaway branch ruleset
-on a private sibling (`conditions.ref_name.include: ["refs/heads/ruletest/*"]`,
-one `required_status_checks` rule, `enforcement: active`), confirm the POST is
-accepted and the rule bites, delete it, and record the result in §15 as a dated
-row. If it is plan-gated, M4 reverts to SHOULD on private repos and this premise
-partially retracts. **A ruleset write on a sibling is 🔴 — founder-run.**
+**Probe run 2026-08-03, founder-authorised, on the private
+`aidoc-flow-business`** (§15): a throwaway branch ruleset scoped to
+`refs/heads/ruletest/*` — matching no real branch, so inert — carrying one
+`required_status_checks` rule at `enforcement: active`, then read back and
+deleted. Result: **created, persisted intact, no downgrade.** `enforcement` came
+back `active`, the rule and its context survived, and the pre-existing ruleset
+was untouched.
+
+Three conclusions, all load-bearing:
+
+- **No plan gating.** M4 is enforceable on private repos on this account, so it
+  stays a MUST across all nine rather than reverting to SHOULD on four.
+- **CI-0029's bypass shape is valid** — `{actor_id: 5, actor_type:
+  RepositoryRole, bypass_mode: always}` was accepted verbatim and read back
+  unchanged, so the quality-gate template needs no correction.
+- **`Main Rules` at `enforcement: disabled` is a deliberate setting, not a
+  ceiling** — an active ruleset succeeded on the same repo. The ambiguity that
+  made the earlier evidence unusable is resolved.
+
+What the probe does **not** cover: it never opened a PR against a matching
+branch, so it proves the ruleset is *accepted and enforced-as-configured*, not
+the end-to-end merge-blocking behaviour. That is exercised for real when PR-4
+arms the first repo.
 
 One half **is** settled: the readability question PLAN-020 flagged as open
 ("does *not* cover `GET /rulesets`, and this plan must not assume it does").
@@ -778,6 +795,10 @@ The §3c ruleset premise rests on account state, which no file records:
 | Repo rulesets are live on canon (an active `immutable ci/v*` tag ruleset) | `gh api repos/vladm3105/aidoc-flow-ci/rulesets` |
 | Repo rulesets work on a **private** sibling — `aidoc-flow-business` has one (`Main Rules`, `enforcement: disabled`) | `gh api repos/vladm3105/aidoc-flow-business/rulesets` |
 | Fleet visibility: 4 private, 5 public | `gh api repos/vladm3105/<repo> --jq .visibility` |
+| **A branch ruleset with `required_status_checks` at `enforcement: active` is accepted on a PRIVATE repo** — created id `20305147` on `aidoc-flow-business`, read back unchanged, deleted (2026-08-03) | `gh api -X POST repos/vladm3105/aidoc-flow-business/rulesets --input -` then `GET`, then `DELETE` |
+| **`bypass_actors: [{actor_id: 5, actor_type: RepositoryRole, bypass_mode: always}]` accepted verbatim** — validates CI-0029's quality-gate shape | same probe, read-back |
+| `Main Rules` on `business` is `enforcement: disabled` **by choice, not by plan ceiling** — an active ruleset succeeded on the same repo | same probe |
+| `GET /rulesets` is **not admin-class** — returns data on `actions/checkout`, which this account does not administer | `gh api repos/actions/checkout/rulesets` |
 
 **DECIDED 2026-08-03 — `DECISIONS.md` CI-0030.** The migration is approved and
 sequenced **before** the CD subsystems (S4–S7), under its own plan; it is
@@ -1109,6 +1130,12 @@ two-stage convert); §4's linguist filter is safe from `--update` because
   parity with `enforce_admins: false` so arming M4 changes what is required
   without changing who can break glass. CI-0029 also constrains PLAN-020's
   WEAKENED-drift rule to distinguish the two classes.
+- ~~**§3c's private-repo premise was asserted beyond its evidence**~~ —
+  **CLOSED 2026-08-03 by the ruleset probe** (§3c, §15): a branch ruleset with
+  `required_status_checks` at `enforcement: active` was created on private
+  `aidoc-flow-business`, read back unchanged and deleted. No plan gating; M4
+  stays a MUST on all nine. The probe also validated CI-0029's `bypass_actors`
+  shape and resolved the `Main Rules`-is-disabled ambiguity.
 - **`ruleset-test-gate.json` will 422 on `_`-prefixed meta keys** unless PR-4
   inherits `apply_canon_stripped` or ships meta-free. Resolved by folding into
   PLAN-020's applier (item 5) — confirm when that lands.
