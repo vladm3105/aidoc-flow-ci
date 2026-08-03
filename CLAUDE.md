@@ -314,6 +314,12 @@ has settled — measured, reproduced, and not expected to change.
   one.** A Pass-2 review has repeatedly found defects introduced by the Pass-1
   *fold* — including a fix that re-created its own defect. Re-review the fold,
   not just the original.
+- **A review sub-agent will cite a convention that does not exist.** One quoted a
+  `CHANGELOG.md` rule verbatim ("Its status lives in the plan header, not here")
+  that `grep` finds nowhere in the file, to support otherwise-sound advice.
+  Folding it unchecked would have written a fabricated convention into canon
+  under the authority of a citation. **Grep the cited string before folding it**
+  — the finding can be right and its evidence invented.
 - **A stub that controls only what a command returns tests nothing about how it
   was called.** A harness stubbing `gh`'s return value but not its arguments let
   three separate live mutations stay green.
