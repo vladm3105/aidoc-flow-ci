@@ -879,7 +879,7 @@ team member either), correcting an earlier draft of this section.
 | 26 | Required status checks are a tier-static list with no language dimension | `"required_status_checks": {` | install/templates/branch-protection-product.json:5 |
 | 27 | A required check with no producing workflow never reports and pins every PR | `required check with no producing workflow does not fail; it never reports, so` | docs/REPO_STANDARDS.md:1440 |
 | 28 | Applying standards PUTs the whole tier protection template, clobbering hand-added contexts | `apply_branch_protection() {` | install/apply-standards.sh:700 |
-| 29 | Canon records that a job skipped by `if:` reports green and can supersede a standing `request_changes` | `# unarmed repo has no such gate, so a skipped-job green would SUPERSEDE a prior ` | .github/workflows/ai-review.yml:143 |
+| 29 | Canon records that a job skipped by `if:` reports green and can supersede a standing `request_changes` | `unarmed repo has no such gate, so a skipped-job green would SUPERSEDE a prior` | .github/workflows/ai-review.yml:143 |
 | 30 | The fork boundary is what scopes the untrusted-code-on-self-hosted concern | `### 4.1 Runner class by flow-class + visibility (canon)` | docs/REPO_STANDARDS.md:239 |
 | 31 | Canon's uniform precedent installs a tool at an exact pinned version | `python -m pip install --disable-pip-version-check "pre-commit==${PRE_COMMIT_VERSION}" "${extra_args[@]}"` | .github/workflows/pre-commit.yml:89 |
 | 32 | Creating a clean virtualenv on the pool is proven, and used to install a pinned tool | `python3 -m venv "$VENV"` | .github/workflows/sast-scan.yml:86 |
@@ -894,12 +894,12 @@ team member either), correcting an earlier draft of this section.
 | 41 | Canon self-adopts its own surfaces through dedicated `self-*` callers, because the in-repo file IS the reusable and needs a caller | `# self-pre-commit.yml — canon dogfoods the pre-commit gate it ships (PLAN-018 FT-36).` | .github/workflows/self-pre-commit.yml:1 |
 | 42 | GitHub does not expose the fork-PR toggles via REST, so canon cannot verify them | `echo "    fork-PR toggles: SECURITY WARNING — GitHub does not expose these via REST."` | install/apply-standards.sh:694 |
 | 43 | The installers never touch rulesets, so a ruleset is a surface no canon apply can clobber | `apply_branch_protection() {` | install/apply-standards.sh:700 |
-| 44 | Canon already ships a `.gitattributes` baseline to carry linguist overrides | `### 10.2 `.gitattributes` baseline` | docs/REPO_STANDARDS.md:929 |
+| 44 | Canon already ships a `.gitattributes` baseline to carry linguist overrides | `### 10.2` | docs/REPO_STANDARDS.md:929 |
 | 45 | Canon's own pre-commit config is a hand-maintained Wave-0 copy whose marker must be kept in step with the fragment | `# Keep the marker in step with install/templates/pre-commit-hook-block.yaml.` | .pre-commit-config.yaml:30 |
 | 46 | The pre-commit merge de-dups by repo URL, keeping the consumer's rev and reporting the collision rather than merging hook lists | `# De-dup by repo URL, NOT whole-entry structural equality (PLAN-018 F3). Canon` | install/install.sh:988 |
 | 47 | Self-callers pin the released tag by deliberate convention, so canon consumes what its consumers do | `# self-pre-commit.yml — canon dogfoods the pre-commit gate it ships (PLAN-018 FT-36).` | .github/workflows/self-pre-commit.yml:1 |
-| 48 | Whether `GET /rulesets` is admin-class was an explicitly open question this plan must not assume — now measured (§15) | `### FT-55 — the immutable `ci/v*` tag ruleset is an act, not a standard` | plans/FRAMEWORK-TODO.md:206 |
-| 49 | No canon machinery knows rulesets exist, and PLAN-020 Phase 1 already owns the fix | `**Fix:** `plans/PLAN-020_canon-self-adoption-and-ruleset-canon.md` Phase 1 — a` | plans/FRAMEWORK-TODO.md:218 |
+| 48 | Whether `GET /rulesets` is admin-class was an explicitly open question this plan must not assume — now measured (§15) | `### FT-55 — the immutable` | plans/FRAMEWORK-TODO.md:206 |
+| 49 | No canon machinery knows rulesets exist, and PLAN-020 Phase 1 already owns the fix | `Branch protection is drift-checked; the ruleset protecting the tags the fleet pins` | plans/FRAMEWORK-TODO.md:216 |
 
 ## Review log
 
