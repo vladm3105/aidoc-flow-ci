@@ -5,6 +5,33 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### PLAN-023 — both carried open items closed; the arming mechanism split out (§9d, §9e, §9f)
+
+- **§9d decided as option (a):** extend `required-context-map.py` so a
+  ruleset-armed required context cannot escape canon's F2 no-orphan self-check.
+  Specified as four changes — ruleset-template glob, bare-context resolution **by
+  check name** (`name:` if declared, else the job key, matching what the map
+  already does for reusables), `?non-call` → `?`, and the `deploy-ci-wizard.sh`
+  update that change 1 forces. Measurement reversed the section's own cost
+  argument: the `?non-call` class has **no live population** (15 rows, none bare),
+  so strict resolution is a no-op today rather than a back-compat burden.
+- **§9e's meta-strip closed unconditionally.** The old deferral ("confirm once
+  PLAN-020's applier lands") was circular — PLAN-020's applier is its Phase 3,
+  itself gated on a second repo needing rulesets, which is PLAN-023. Closed by
+  reusing the `jq walk` strip canon already ships, so the template keeps its
+  `_comment` convention.
+- **§9f is new and deliberately OPEN.** The *shape* of the ruleset arming path
+  changed answer twice under review (`apply_rulesets()` in `apply-standards.sh` →
+  standalone `arm-ruleset.sh`, whose replacement inherited most of the problems
+  that motivated the move). Rather than fold a third time into the OPS-0066
+  cycle-3 cap, its five open questions — template source, safety contract,
+  pre-arm sharing, create-vs-update, credential — are carved out. **Nothing in
+  PR-0..PR-3 depends on them.**
+- Two independent review passes found **17 load-bearing defects, all in the
+  immediately preceding fold** — the third consecutive time on this plan. Claims
+  50–79 added; §7, §7a, §8, §10, §11, §12 and §13 corrected where the closures
+  had orphaned them.
+
 ### Dependencies — `labeler` v6.2.0 → v7.0.0 (#366)
 
 - v7 is an **ESM migration and nothing else** — one upstream PR, no input

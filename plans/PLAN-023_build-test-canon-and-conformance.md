@@ -8,13 +8,21 @@ A survey of the estate found the *gates* half mature (21 reusables) and the
 releases or deploys anything.** Decomposed into nine subsystems (S1–S7, X1–X2);
 this plan is **S1** (build/test) plus **X2** (the language axis later subsystems
 slot into).
-**Status:** Draft — **NOT READY, 2 items open.** A best-practices investigation
-(2026-08-03) changed two premises (§3c, §3f). All 9 Pass-4 findings are folded;
-of Pass 6's 10, six were folded in-pass and two closed after — one by
-`DECISIONS.md` **CI-0029**, one by the 2026-08-03 ruleset probe (§3c, §15). **Two
-remain:** extend canon's F2 no-orphan self-check to ruleset-armed contexts (§9d),
-and confirm the `ruleset-test-gate.json` meta-strip once PLAN-020's applier lands
-(a conditional close, not a close).
+**Status:** Draft — **all four Pass-6 items closed. One item was split rather than
+closed: §9f.** A best-practices investigation (2026-08-03) changed two premises
+(§3c, §3f). All 9 Pass-4 findings are folded; of Pass 6's 10, six were folded
+in-pass and four are now closed — two by `DECISIONS.md` **CI-0029** and the
+2026-08-03 ruleset probe (§3c, §15), and the last two across Passes 8–10: the F2
+self-check extension is **decided as option (a)** and fully specified (§9d), and
+the `ruleset-test-gate.json` meta-strip is closed **unconditionally** rather than
+waiting on PLAN-020, whose applier is gated on this plan (§9e).
+
+**What is ready and what is not.** PR-0..PR-3 are specified. **PR-4 is half
+specified:** the conformance report and the §9d F2 extension are; the ruleset
+*arming* mechanism is not — two review passes moved its answer twice, so §9f
+carves out its five open questions rather than folding a third time into the
+OPS-0066 cap. Nothing in PR-0..PR-3 depends on §9f, and arming is a 🔴 founder
+act this plan enables rather than performs.
 **Depends on:** [[PLAN-013]] uniform-protected model; [[PLAN-014]] scanner
 precedent (opt-in, report-only-first, graduate deliberately).
 **Deferred to later plans:** S3 database/service-container gate, S4 release
@@ -267,10 +275,12 @@ pre-revision sentence naming branch-protection as M4's source is corrected.
 
 **Relationship to PLAN-020 (deferred, not dead).** PLAN-020 Phase 1 / FT-55
 already owns ruleset canon — `rulesets-canon.json` plus an opt-in `--rulesets`
-drift comparison (Claim 49). PLAN-023 must **not** ship a second template family
-and a second applier. PR-4 therefore either extends PLAN-020's template and
-applier, or PLAN-020 Phase 1 is pulled forward as this plan's dependency; PR-0
-records which. FT-55's stated defect transfers with it: a ruleset that is
+drift comparison (Claim 49). That is the **read** side, and PLAN-023 ships none
+of it. **Phase 1 ships no applier at all** — the apply path is PLAN-020 **Phase
+3**, explicitly conditional on "only if a second repo needs rulesets" (Claim 56).
+This plan is that condition, so PR-4 pulls Phase 3 forward under Phase 3's own
+constraints rather than inventing a rival: §9e. PR-0 records that split.
+FT-55's stated defect transfers with it: a ruleset that is
 disabled or deleted is detected by **nothing** today, so M4's MUST would live on
 the one server-side surface canon cannot monitor — the price of the
 non-clobberability §3c gains, and it is only paid back when `--rulesets` lands.
@@ -573,15 +583,14 @@ divergence from the reference practice.
 ## 7. Audit surface — `install/conformance-report.sh`
 
 **It is its own implementation, not an extension of either drift script.**
-(M4's audit source is the **rulesets** API, not branch protection — measured
-readable without admin, §3c. The paragraph below concerns the *settings* checker
-this report deliberately does not build on.)
 `sync/check-standards-drift.sh` is a server-side *settings* checker whose CI-0018
 accounting records the blocker directly: under the default `GITHUB_TOKEN`,
 **branch-protection and `actions.*` are unreadable**, yet the job concluded
-success (Claim 36). M4's audit source is the branch-protection API, so the report
-**must state its own coverage and require a PAT for the M4 row**, per §4.2d — a
-check states its coverage, and unreadable is never reported as passing. The
+success (Claim 36). **M4's audit source is the rulesets API, not branch
+protection** — measured readable without admin (§3c, §15), so the M4 row needs no
+PAT. The report must still **state its own coverage** per §4.2d — a check states
+its coverage, and unreadable is never reported as passing — but for the rows that
+read settings, not for M4. The
 file-level `sync/check-drift.sh` is equally unsuitable: its coverage is the
 manifest's workflow surface at the caller's pin, so a repo that never adopted
 canon — the motivating case — is structurally invisible to it.
@@ -609,10 +618,12 @@ prerequisites, and one is 🔴.
   The report uses the git-trees / contents API for detection and `gh run
   download` for evidence, so it needs no checkout of any sibling.
 - **Token: canon ships no cross-repo credential today.** Every workflow secret is
-  `GITHUB_TOKEN` except `AI_REVIEW_TOKEN`. Reading eight siblings' trees, rulesets
-  and run artifacts needs a PAT or App with `contents:read`, `actions:read` and
-  `administration:read` — a **🔴 founder prerequisite**, not a coding task, and
-  the same problem Allstar solves by being a GitHub App.
+  `GITHUB_TOKEN` except `AI_REVIEW_TOKEN`. Reading eight siblings' trees and run
+  artifacts needs a PAT or App with `contents:read` and `actions:read`; the
+  settings rows additionally need `administration:read`. **The rulesets read —
+  and therefore the M4 row — needs neither** (§7, §15). Scope the credential per
+  row rather than to the union: it is a **🔴 founder prerequisite**, not a coding
+  task, and the same problem Allstar solves by being a GitHub App.
 
 **Therefore v1 ships single-repo and `--fleet` is gated on that credential.** The
 CI caller (PR-4) runs the report against **canon itself**, which needs no extra
@@ -630,8 +641,11 @@ workflow, which is how a false governance table survived for weeks (#355).
 | `install/templates/manifest.json` | 2 entries, no `visibility_variants` (Class A), `auto_install: false` (Claim 13) |
 | `install/templates/pre-commit-hook-block.yaml` | **§2a** — add pinned `ruff` + `mypy` hooks **and bump the marker `v2` → `v3`** (Claim 37). Delivered by **bootstrap only**; `--update` excludes this file by design (Claim 38) |
 | `install/deploy-ci-wizard.sh` | `ALL_WF` (Claim 14) gains `test-python:1 test-node:1` — phase **1**, alongside `pre-commit`, since the gate needs the repo's own dependencies; phase 2 is the *content* checks and 3 the scanners. **The wizard carries a second, hand-maintained phase list in `plan()` (Claim 39) that must be updated in the same PR**, or it self-contradicts. Opt-in exactly as the PLAN-014 scanners are (Claim 16) |
-| `install/required-context-map.py` | the `USES` regex (Claim 18) should pick new callers up unchanged — **verify in PR-2, do not assume** |
-| `install/apply-standards.sh` | no change **in this plan**; ruleset arming lands via PLAN-020's applier or PR-4's extension of it (§3c) |
+| `install/required-context-map.py` | the `USES` regex (Claim 18) picks new *callers* up unchanged — **verify in PR-2, do not assume**. Separately, **PR-4 makes three substantive changes** to this file (ruleset glob, bare-context resolution by check name, `?non-call` → `?`): §9d |
+| `install/deploy-ci-wizard.sh` (second row — map consumer) | **PR-4** — iterate the map's own column-1 values instead of the branch-protection file list, and delete the `?non-call` arm, or ruleset-armed contexts are silently dropped from check 6 (§9d change 4) |
+| `install/apply-standards.sh` | **no change in this plan** — and this is now a decision, not an absence: §9e measured four reasons the ruleset applier does not belong in it |
+| `install/templates/ruleset-test-gate.json` | **PR-4** — new template family (singular `ruleset-*`, distinct from PLAN-020's `rulesets-canon.json`); keeps canon's `_comment`, stripped at apply time by the same `jq walk` (§9e) |
+| `install/arm-ruleset.sh` | **PR-4, shape UNSPECIFIED — see §9f.** Standalone arming path. Five open questions (template source, safety contract, pre-arm sharing, create-vs-update, credential) must be answered before it is written |
 | `install.sh --update` / `--repin` | manifest-driven; `--update` never introduces an unadopted surface (Claim 35) |
 | `install/templates/languages.json` | new template, read by the report |
 
@@ -646,7 +660,7 @@ graduate deliberately. No consumer is touched.
 | **PR-1** | `REPO_STANDARDS` §24 (floor, per-language rulebook, M3 per-ecosystem definition, M4a as a general rule) **+ §4.1's routing table extended for the third flow shape (§9b)** + `languages.json` + the `conformance.json` **schema** (M7) + the pre-commit fragment hooks and marker bump **and canon's own `.pre-commit-config.yaml`** (§2a) + canon's ruff/mypy clean-up + the `CLAUDE.md:17` correction (§9a) | `tests/run.sh` green; §24 + the `CLAUDE.md` fix asserted by new contract tests (§9a); canon passes its own new hooks |
 | **PR-2** | `test-python.yml` + caller template (incl. the M4a gate job) + `self-test-python.yml` + manifest + contract tests + the canon package fixture (§11) | fixture builds, installs, tests green **in canon CI** (§9c) |
 | **PR-3** | `test-node.yml` + template + `self-test-node.yml` + manifest + tests | `tests/run.sh` green |
-| **PR-4** | Deviation + `evidence:` parsing, artifact retrieval (§7), `conformance-report.sh` **+ its caller (canon-only, §7a)**, `ruleset-test-gate.json` + its `gh api` applier (§3c), §12 rows, `overrides.md` update | report runs in CI and states its coverage |
+| **PR-4** | Deviation + `evidence:` parsing, artifact retrieval (§7), `conformance-report.sh` **+ its caller (canon-only, §7a)**, `ruleset-test-gate.json`, **the `required-context-map.py` F2 extension + the wizard change it forces (§9d)**, `install/arm-ruleset.sh` (**shape unspecified — §9f gates this half**), §12 rows, `overrides.md` **+ the `REPO_STANDARDS` update its three canon-body changes require** | report runs in CI and states its coverage; criteria 8, 8a + 9 |
 
 **PR-1 is the largest and may need splitting** — canon's ten Python modules
 passing new `ruff` + `mypy` hooks under a required context (§2a) is unbounded
@@ -700,18 +714,200 @@ Worse, per §3f the armed context is the **gate job's**, which is a *bare* name
 (a reusable call emits `<job-key> / <name>`); the map classifies bare contexts
 `?non-call` and deliberately does not resolve them.
 
-Two options, and PR-4 must pick one explicitly:
+**DECIDED 2026-08-03 — option (a), extend the map.** The alternative considered
+was (b), a standalone pre-arm check inside the applier: cheaper, but a second
+implementation of an invariant canon already implements, which is how two sources
+of truth start.
 
-- **(a) Extend the map** — add ruleset templates to its glob and teach it
-  bare-context resolution. One source of truth, more work.
-- **(b) Standalone pre-arm check** in the applier — verify the producing caller
-  exists before writing the ruleset. Cheaper, but a second implementation of the
-  same invariant, which is how two sources of truth start.
+**(a) is also the cheaper option, which the earlier framing had backwards.** The
+cost attributed to it was back-compat on the `?non-call` class the map emits
+without resolving (Claim 50) and the test passes green (Claim 51) — and that
+class has **no live population**. Measured 2026-08-03:
+`python3 install/required-context-map.py .` emits 15 rows across the five
+branch-protection templates, every one `<jobid> / <name>`, every one resolving to
+a producer, and **not one `?non-call`**. So teaching the map to resolve bare
+contexts *strictly* changes no current verdict, and the test's green branch is
+**removed** rather than kept beside a strict path. §8's "the `USES` regex should pick new callers up unchanged" does
+not cover any of this — the work below is real, it is just not the work §9d
+previously priced.
 
-**Recommendation: (a).** §11's "the applier must verify the producing caller
-exists" is (b) by default, and this repo already carries the cost of that pattern
-elsewhere. Whichever is chosen, it is **not free**, and §8's "the `USES` regex
-should pick new callers up unchanged" does not cover it.
+**PR-4 makes three changes to `install/required-context-map.py` and one to its
+second consumer:**
+
+1. **Enumerate ruleset templates.** Extend the emit loop's glob (Claim 52) to
+   `install/templates/ruleset-*.json`, taking contexts from `.rules[] |
+   select(.type == "required_status_checks") |
+   .parameters.required_status_checks[].context`. Column 1 stops meaning "tier"
+   and becomes the source template's stem. The glob deliberately excludes
+   PLAN-020's `rulesets-canon.json` (plural) — a tag-immutability ruleset carries
+   no `required_status_checks` rule, so the `select()` would yield nothing
+   anyway; the naming keeps that intent explicit rather than incidental.
+2. **Resolve bare contexts — by check name, not by job key.** A bare context is a
+   repo-local caller job, so it resolves through the **same caller templates step
+   2 already parses**: the job carrying `steps:` instead of `uses:` whose **`name:`
+   — or, absent `name:`, whose key** — equals the context, mapped to a consumer
+   basename through the manifest (Claim 54). Step 1 already encodes exactly this
+   rule for reusables (Claim 61), and GitHub follows it for repo-local jobs too;
+   a key-only match would resolve nothing for any gate job that declares a
+   `name:`, turning a correctly-specified gate into a red F2 verdict. Step 2
+   today skips every job without a matching `uses:` (Claim 55), which is why the
+   gate job is invisible to it at all.
+   Build the bare-name map with `setdefault` over the already-`sorted()` glob,
+   matching the determinism rule step 1 states for the same hazard one level up
+   (Claim 74): two caller templates could each declare a repo-local job of the
+   same name, and resolving that by filesystem glob order would silently pick a
+   producer basename the target-repo check is then run against.
+   **Constraint on PR-2:** the gate job's `name:` must not contain `" / "` — the
+   map splits on that separator to decide call-vs-bare (Claim 62), and canon
+   already has a required context of that shape (`call / Lint / format / security
+   hooks`), so a gate named with a slash would be misclassified as a reusable
+   call and mis-resolved.
+3. **Fail an unresolved bare context.** `?non-call` becomes `?`, bringing bare
+   contexts inside the invariant. This flips nothing today (per the measurement
+   above) and covers the gate job from the moment PR-2 introduces it.
+   **This deliberately removes a declared class, not just a dead branch:** canon
+   loses the ability to declare a legitimately repo-local required context it
+   ships no producer for. Four comments encode that intent as *intentional*
+   (Claims 50, 51, 64, 65) and are updated in the same PR. The new rule is: canon
+   must ship a producer template for **every** required context, bare or not.
+4. **Update the wizard, which is the map's other consumer — and the one that
+   actually performs the pre-arm check.** `deploy-ci-wizard.sh` derives its
+   iteration set from `ls templates/branch-protection-*.json` and filters map rows
+   on column 1 equalling that tier (Claim 63). After change 1 a ruleset row's
+   column 1 is a ruleset stem, matching no tier, so **every ruleset-armed context
+   would be silently dropped** from check 6 — which would then report "all N
+   required-context producer(s) installed" having never looked at the ruleset.
+   That is precisely the class this section exists to close, reintroduced one
+   level up.
+   **Iterate the UNION** of the branch-protection stems, the ruleset stems, and
+   the map's own column-1 values — *not* the column-1 values alone. The existing
+   file-list iteration is deliberate and commented: it exists so `umbrella`, whose
+   template declares no required contexts (Claim 75), still gets a "no required
+   contexts" line instead of vanishing (Claim 76). Iterating column 1 alone would
+   trade the ruleset silent-drop for the umbrella silent-drop — the same defect,
+   one tier over. The wizard's `?non-call` arm (Claim 64) is deleted with the
+   test's.
+
+**`tests/test_checknames.sh` is deliberately NOT extended.** It is canon's other
+context enumerator and is also `branch-protection-*.json`-only (Claim 65), but it
+keys on the literal `call /` prefix (trailing space included) and skips everything else (Claim 77) — note
+that is narrower than the map's separator test, so it already skips
+`drift / check-standards-drift` too. It would therefore ignore this plan's bare
+gate context regardless. Recorded so the next session does not re-derive it: if a
+future ruleset ever arms a `call / X` context, that guard is blind to it.
+
+**§11's pre-arm check is only half-discharged by this.** The map answers *does
+canon ship a producer template for this context* — its inputs are canon's own
+tree (Claim 52, Claim 54). §11's risk is a property of the **target** repo: a
+ruleset requiring a context whose caller is absent or misnamed *there*. The
+wizard already implements both halves — map output for the canon half, the
+fetched `have` list for the installed half (Claim 66) — which is why change 4
+above is not optional bookkeeping. §11 is discharged by *map output ∧
+installed-caller check against the target*, not by the map alone.
+
+### 9e. The meta-strip cannot wait on PLAN-020, and does not need to
+
+Pass 6 left open that `ruleset-test-gate.json` will **422 on `_`-prefixed meta
+keys** unless PR-4 inherits `apply_canon_stripped` or ships meta-free, to be
+confirmed "once PLAN-020's applier lands".
+
+**That condition can never fire. PLAN-020's applier is its Phase 3, and Phase 3
+is gated on "only if a second repo needs rulesets" (Claim 56) — which is this
+plan.** Each plan was waiting on the other. The item is therefore closed here,
+not deferred again.
+
+**The meta-strip half closes cheaply; the applier does not, and an earlier
+revision of this section conflated the two.** The strip is a solved problem and
+was never PLAN-020's to ship: `apply_strip_meta` is a `jq walk` dropping every
+`_`-prefixed key at any depth (Claim 57), used by `apply_canon_stripped`
+(Claim 58) on the path `repo-settings` and `branch-protection` already apply by
+(Claim 59). PR-4 reuses that same `jq walk`, so **`ruleset-test-gate.json` keeps
+canon's `_comment` convention** and PLAN-020 Phase 1's either/or (meta-free
+template *or* a strip in the cited command) is answered *for the mechanism*
+rather than dodged.
+
+**The applier is NOT a section inside `apply_run`, and NOT `apply_canon_stripped`.**
+PLAN-020 Phase 3 sketched it as `apply_rulesets()` in `apply-standards.sh`; four
+facts about that script, each measured, make it the wrong home:
+
+1. **`--apply` mandates `--tier` and runs all four sections unconditionally**
+   (Claims 67, 68). Arming a ruleset would therefore also PUT branch protection
+   unless the operator remembers `--skip-branch-protection` — which on canon is
+   the documented destructive act `CLAUDE.md` § "Durable traps" forbids outright.
+   Opt-in on the *flag* does not make the *run* ruleset-only.
+2. **`apply_backup` captures labels, repo-settings and `actions.*` — no rulesets**
+   (Claim 69). Adding a write section without extending it makes the script's own
+   backup/rollback contract false for the one section that is a cross-repo write
+   with no read-side detector until PLAN-020 Phase 1 lands (§3c).
+3. **`apply_canon_stripped` fetches from `raw.githubusercontent.com` at `CI_TAG`,
+   and `--apply` refuses `CI_TAG=main`** (Claims 70, 71). The template would be
+   unusable by its own applier until a release is cut — the FT-21 chicken-and-egg
+   §9c already documents for self-callers, re-created on the write side.
+4. **The pre-arm check needs a canon tree, and this script is designed to run
+   curl-piped without one** (§9d, Claim 66). `required-context-map.py` reads
+   `.github/workflows/`, `install/templates/workflows/` and the manifest; a
+   single-file `curl` cannot supply that.
+
+Reason 3 is the weakest of the four and is stated at its true weight: the script
+ships `--allow-main-canon` as a documented override (Claim 78), so the tag
+chicken-and-egg is a one-release-cycle inconvenience of the class §9c already
+solves with its two-stage convention — not a structural blocker. Reasons 1, 2
+and 4 stand on their own.
+
+**What this closes, and what it opens.** The Pass-6 item was the *meta-strip*, and
+that is now closed unconditionally. It is not a licence to consider the applier
+designed: two review passes have moved this answer twice (`apply_rulesets()` in
+`apply-standards.sh` → standalone script), and the second answer has open
+questions of its own. **§9f carries them.** PR-0 through PR-3 do not depend on
+any of it.
+
+**PLAN-020 Phase 1 still owns the read side** — `rulesets-canon.json` and the
+`--rulesets` drift comparison. This plan ships neither. **PLAN-020 Phase 3 must
+be amended, not merely superseded in spirit:** its text still prescribes
+`apply_rulesets()` in `apply-standards.sh` (Claim 56), so a session reading
+PLAN-020 alone would implement the design §9e rejects. PR-0 records the
+supersession in `DECISIONS.md` and edits PLAN-020 Phase 3 to point here.
+
+### 9f. OPEN — the arming mechanism's shape is a design task, not an authoring one
+
+**Do not treat this as a fold-able review finding.** It has been folded twice and
+changed answer twice; the third fold would hit the OPS-0066 cap on a question
+that is genuinely a design decision about a 🔴 cross-repo write path. It is
+carved out here so the rest of the plan can proceed: **nothing in PR-0..PR-3
+depends on it**, and arming is a founder act that PR-4 enables rather than
+performs (§3c, §11).
+
+Whoever specifies `install/arm-ruleset.sh` must answer all of these; each is a
+measured gap, not a hypothetical:
+
+1. **Where does the template come from?** "Run from a canon checkout" means the
+   payload of a cross-repo write is whatever is in the working tree — mutable,
+   possibly uncommitted. That is the exposure `apply-standards.sh` refuses by
+   pinning `CI_TAG` and rejecting `main` (Claims 70, 71, 78). Fetch-at-tag with an
+   explicit local override is the shape that matches canon's posture.
+2. **What is its safety contract?** Moving out of `apply-standards.sh` escapes
+   that script's missing ruleset backup — and also discards everything it *does*
+   provide and §9e never re-owned: pre-state backup, interactive confirm, the
+   `--repo` slug validation guarding a value interpolated into `gh api
+   repos/$X/...`, `gh`/`jq`/auth preconditions, non-TTY `--yes`, and a dry-run
+   default. A cross-repo write with **no** backup is worse than the section it
+   avoided, not better.
+3. **How is the pre-arm predicate shared with the wizard?** §9d change 4 puts both
+   halves in `deploy-ci-wizard.sh`; if `arm-ruleset.sh` re-implements them, that
+   is the third copy — the "two sources of truth" outcome §9d rejected option (b)
+   to avoid. A sourceable helper consumed by both is the obvious answer; it needs
+   stating, not assuming.
+4. **Create-only or create-or-update?** The rulesets API creates by `POST` and
+   updates by `PUT .../rulesets/{id}` (§15), so a naive re-run creates a
+   **duplicate ruleset**. Converging needs PLAN-020's identity rule — target +
+   normalized ref pattern, never `name` (Claim 72) — and inherits its detail-GET
+   N+1 (Claim 73). If PR-4 is instead scoped create-only, refusing on an existing
+   match must be *implemented*, not documented (see §12 criterion 9).
+5. **Who runs it, from where, with what token?** Arming is 🔴. The plan says the
+   act is the founder's but not the credential or the host.
+
+Until these are answered, PR-4's arming half is unspecified. The conformance
+*report* (§7) — PR-4's other half — is unaffected and needs none of them.
 
 ### 9b. §4.1's routing table must learn a third flow shape
 
@@ -728,7 +924,11 @@ inconsistent with the flow this plan ships.
 - No Rust implementation (registry slot only).
 - No service containers or database tests — blocked, deferred to S3 (§11).
 - No packaging, publishing, container build or deploy (S4–S7, X1).
-- **No second ruleset template family or applier** — PLAN-020 Phase 1 owns that surface (§3c).
+- **No rival ruleset DRIFT family and no read-side comparison** — PLAN-020 Phase 1
+  owns `rulesets-canon.json` + `--rulesets` (§3c). This plan does ship one
+  ruleset *template* (`ruleset-test-gate.json`) and the *apply* path, which is
+  PLAN-020 Phase 3 pulled forward because this plan is Phase 3's stated trigger
+  (§9e) — one implementation of each surface, not a rival to either.
 - **No `lang:*` label family.** CI-0028 rejected `kind:*` on the reasoning that a
   direction of travel is not a class of issue; language is detectable and the
   existing taxonomy (Claim 20) covers it.
@@ -762,7 +962,9 @@ inconsistent with the flow this plan ships.
   requiring `call / test-python` on a repo whose caller is absent or misnamed
   pins every PR on *"Waiting for status to be reported"* exactly as the tier
   template would (Claim 27). The applier must therefore verify the producing
-  caller exists **before** arming, and PR-4 owns that check.
+  caller exists **before** arming, and PR-4 owns that check — as *map output ∧ an
+  installed-caller check against the target repo*, which the wizard already
+  implements both halves of (§9d), not a second implementation of either.
 
 ## 12. Success criteria (verifiable)
 
@@ -789,6 +991,27 @@ inconsistent with the flow this plan ships.
    property lives on the wizard/bootstrap path, not on `--update`, which never
    introduces an unadopted surface (Claim 35).
 7. No file under any sibling repo is modified.
+8. **The F2 guard covers a ruleset-armed bare context (§9d).**
+   `tests/test_required_contexts.sh` asserts, against a fixture ruleset template,
+   that (a) a bare gate context resolves to a **canon-shipped producer template**,
+   (b) the same context with that template removed reports `?` and reds the suite
+   — the teeth test the existing suite already applies to `call / gitleaks` — and
+   (c) a gate job declaring a `name:` different from its key resolves by `name:`.
+   "Installed" is not this suite's notion; it is the wizard's (criterion 8a).
+   8a. **The wizard does not silently drop rows (§9d change 4).** In
+   `tests/test_contract.sh`, where wizard behaviour is already asserted: check 6
+   **lists** the ruleset row, *and* still lists `umbrella` as "no required
+   contexts". The failure mode on both sides is a *missing* line, not a wrong
+   one, so the assertion must be on presence.
+9. **`arm-ruleset.sh` refuses to arm a context with no producer (§9f).** A test
+   drives it against a fixture where the producing caller is absent and asserts
+   it exits non-zero **without issuing the write** — asserted on the *call* via an
+   arg-recording `gh` stub, not on the return value, per `CLAUDE.md`'s stub trap.
+   This requires the script to route writes through a `GH="${GH:-gh}"`
+   indirection, as the wizard already does (Claim 79) — a constraint on §9f, not
+   an afterthought. A second run against an already-armed repo either converges
+   **or exits non-zero without issuing a POST**; "documented failure" is not a
+   passing implementation of this criterion.
 
 ## 13. Cross-references
 
@@ -796,8 +1019,11 @@ inconsistent with the flow this plan ships.
 - `plans/PLAN-013_uniform-protected-aiflows.md` — the Class A model
 - `plans/PLAN-014_security-scanning-coverage.md` — opt-in + report-only precedent; §5c
 - `plans/PLAN-020_canon-self-adoption-and-ruleset-canon.md` — Phase 1 / FT-55 owns
-  ruleset canon (`rulesets-canon.json` + `--rulesets` drift). PR-4 extends it; it
-  is DEFERRED, and `DECISIONS.md` CI-0029 constrains its WEAKENED-drift rule
+  the **read** side (`rulesets-canon.json` + `--rulesets` drift), which this plan
+  ships none of. PR-4 pulls **Phase 3** forward — this plan is Phase 3's stated
+  trigger (Claim 56) — and **supersedes its `apply_rulesets()` design** (§9e, §9f);
+  PLAN-020 Phase 3's text must be edited to point here. PLAN-020 is DEFERRED, and
+  `DECISIONS.md` CI-0029 constrains its WEAKENED-drift rule
 - **`REPO_STANDARDS` §24 is claimed by two unmerged plans** — this plan (PR-1) and
   `plans/PLAN-021_doc-maintainer-dry-run-cluster.md`. Whichever lands second takes
   §25 and must re-point the other's references. **PLAN-021 has priority** (it is
@@ -838,6 +1064,8 @@ The §3c ruleset premise rests on account state, which no file records:
 | **`bypass_actors: [{actor_id: 5, actor_type: RepositoryRole, bypass_mode: always}]` accepted verbatim** — validates CI-0029's quality-gate shape | same probe, read-back |
 | `Main Rules` on `business` is `enforcement: disabled` **by choice, not by plan ceiling** — an active ruleset succeeded on the same repo | same probe |
 | `GET /rulesets` is **not admin-class** — returns data on `actions/checkout`, which this account does not administer | `gh api repos/actions/checkout/rulesets` |
+| **The `?non-call` class has no live population** — 15 rows across the five branch-protection templates, every one `<jobid> / <name>`, every one resolving to a producer, none bare (§9d change 3 is a no-op today) | `python3 install/required-context-map.py .` |
+| A ruleset is created by `POST /repos/{owner}/{repo}/rulesets` and updated by `PUT .../rulesets/{id}` — there is no path-keyed idempotent write, so a naive re-run duplicates (§9e) | the 2026-08-03 probe row above: `POST` → `GET` → `DELETE` |
 
 **DECIDED 2026-08-03 — `DECISIONS.md` CI-0030.** The migration is approved and
 sequenced **before** the CD subsystems (S4–S7), under its own plan; it is
@@ -900,6 +1128,36 @@ team member either), correcting an earlier draft of this section.
 | 47 | Self-callers pin the released tag by deliberate convention, so canon consumes what its consumers do | `# self-pre-commit.yml — canon dogfoods the pre-commit gate it ships (PLAN-018 FT-36).` | .github/workflows/self-pre-commit.yml:1 |
 | 48 | Whether `GET /rulesets` is admin-class was an explicitly open question this plan must not assume — now measured (§15) | `### FT-55 — the immutable` | plans/FRAMEWORK-TODO.md:206 |
 | 49 | No canon machinery knows rulesets exist, and PLAN-020 Phase 1 already owns the fix | `Branch protection is drift-checked; the ruleset protecting the tags the fleet pins` | plans/FRAMEWORK-TODO.md:216 |
+| 50 | The map emits a bare context as `?non-call` without attempting to resolve it | `print("%s\t%s\t?non-call" % (tier, ctx))` | install/required-context-map.py:112 |
+| 51 | The test treats `?non-call` as a PASS, so a bare context can never trip the F2 invariant | `'?non-call') _g` | tests/test_required_contexts.sh:43 |
+| 52 | The emit loop enumerates branch-protection templates only | `install/templates/branch-protection-*.json` | install/required-context-map.py:106 |
+| 53 | The test keys its producer assertions on the context column, not column 1 | `producer_for()` | tests/test_required_contexts.sh:58 |
+| 54 | Template basename → consumer path basename is derived from the manifest | `tmpl_to_consumer = {}` | install/required-context-map.py:89 |
+| 55 | Step 2 skips every caller-template job without a matching `uses:`, so a repo-local gate job is invisible to it | `if not m:` | install/required-context-map.py:77 |
+| 56 | PLAN-020's apply path is its Phase 3, conditional on a second repo needing rulesets | `### Phase 3 — optional apply path` | plans/PLAN-020_canon-self-adoption-and-ruleset-canon.md:216 |
+| 57 | A `jq walk` strip that drops every `_`-prefixed key at any depth already exists in canon | `apply_strip_meta() {` | install/apply-standards.sh:556 |
+| 58 | A helper fetches a canon template through that strip, returning a tmpfile | `apply_canon_stripped() {` | install/apply-standards.sh:562 |
+| 59 | The repo-settings apply path already routes its payload through it | `payload=$(apply_canon_stripped "repo-settings.json")` | install/apply-standards.sh:633 |
+| 60 | The per-section apply convention is default-ON `--skip-*`, i.e. a new section applies unless opted out | `--skip-branch-protection) SKIP_BRANCH_PROTECTION=1; shift ;;` | install/apply-standards.sh:126 |
+| 61 | The map resolves a job's check name as `name:` if declared, else the job key | `nm = jb.get("name", jk) if isinstance(jb, dict) else jk` | install/required-context-map.py:57 |
+| 62 | The map decides call-vs-bare by splitting the context on `" / "` | `if " / " not in ctx:` | install/required-context-map.py:110 |
+| 63 | The wizard filters map rows on column 1 equalling a branch-protection tier, so a non-tier column-1 value is dropped | `done < <(printf '%s\n' "$mapout" \| awk -F'\t' -v tt="$t" '$1==tt{print $2"\t"$3}')` | install/deploy-ci-wizard.sh:211 |
+| 64 | The wizard carries its own `?non-call` pass arm, a second copy of the token §9d removes | `'?non-call') : ;;` | install/deploy-ci-wizard.sh:207 |
+| 65 | Canon's other context enumerator is also branch-protection-only | `for tpl in install/templates/branch-protection-*.json; do` | tests/test_checknames.sh:32 |
+| 66 | The wizard checks the *target* repo's installed callers, the half the map cannot supply | `local have; have="$($GH api "repos/$repo/contents/.github/workflows?ref=$defbr"` | install/deploy-ci-wizard.sh:156 |
+| 67 | `--apply` exits 2 without `--tier`, so no apply run is section-scoped | `"") echo "apply-standards: --apply requires --tier <governance\|product\|ops\|umbrella\|bootstrap>" >&2; exit 2 ;;` | install/apply-standards.sh:151 |
+| 68 | `apply_run` calls all four write sections unconditionally | `apply_labels` | install/apply-standards.sh:805 |
+| 69 | The backup captures labels, repo-settings, four `actions.*` endpoints and branch-protection — and no rulesets | `printf '  "branch_protection": '` | install/apply-standards.sh:770 |
+| 74 | Step 1 resolves a duplicate job name deterministically by sorted filename, not glob order | `name_to_reusable.setdefault(nm, base)` | install/required-context-map.py:58 |
+| 75 | The umbrella tier declares no required status checks, so the map emits zero rows for it | `"required_status_checks": null` | install/templates/branch-protection-umbrella.json:4 |
+| 76 | The wizard iterates template FILES, not emitted rows, specifically so a zero-context tier still reports | `# List tiers from the template FILES (not only tiers the map emitted rows` | install/deploy-ci-wizard.sh:197 |
+| 77 | `test_checknames.sh` keys on the literal `call /` prefix (trailing space included) and skips every other context | `"call / "*) job="${ctx#call / }" ;;` | tests/test_checknames.sh:40 |
+| 78 | `--apply` ships a documented override for the mutable-canon refusal | `--allow-main-canon)       ALLOW_MAIN_CANON=1; shift ;;` | install/apply-standards.sh:127 |
+| 79 | Canon's precedent for a test-overridable write path is a `GH` indirection | `GH="${GH:-gh}"` | install/deploy-ci-wizard.sh:44 |
+| 70 | Templates are fetched from `raw.githubusercontent.com` at `CI_TAG`, so an unreleased template is unreachable | `TEMPLATE_BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/templates"` | install/apply-standards.sh:208 |
+| 71 | `--apply` refuses `CI_TAG=main` without an explicit override | `apply-standards: --apply refuses CI_TAG=main (mutable canon = supply-chain risk)` | install/apply-standards.sh:204 |
+| 72 | PLAN-020 fixes ruleset identity as target + normalized ref pattern, never the name | `Names are free text and mutable` | plans/PLAN-020_canon-self-adoption-and-ruleset-canon.md:129 |
+| 73 | Rules and conditions come only from a per-ruleset detail GET, so identity matching is an N+1 | `**Fetch shape.** The list endpoint returns only` | plans/PLAN-020_canon-self-adoption-and-ruleset-canon.md:135 |
 
 ## Review log
 
@@ -979,13 +1237,16 @@ two-stage convert); §4's linguist filter is safe from `--update` because
   `aidoc-flow-business`, read back unchanged and deleted. No plan gating; M4
   stays a MUST on all nine. The probe also validated CI-0029's `bypass_actors`
   shape and resolved the `Main Rules`-is-disabled ambiguity.
-- **`ruleset-test-gate.json` will 422 on `_`-prefixed meta keys** unless PR-4
-  inherits `apply_canon_stripped` or ships meta-free. Resolved by folding into
-  PLAN-020's applier (item 5) — confirm when that lands.
-- **A ruleset-armed context escapes canon's F2 self-check.**
-  `required-context-map.py` enumerates only `branch-protection-*.json`, and the
-  gate's bare context is `?non-call`, which it deliberately does not resolve. The
-  pre-arm producer check does not come free.
+- ~~**`ruleset-test-gate.json` will 422 on `_`-prefixed meta keys**~~ —
+  **CLOSED 2026-08-03 (Pass 8, §9e).** The deferral condition was circular:
+  PLAN-020's applier is its Phase 3, itself gated on a second repo needing
+  rulesets (Claim 56) — this plan. Closed unconditionally instead, by routing
+  PR-4's `apply_rulesets()` through the strip canon already ships (Claims 57–59).
+- ~~**A ruleset-armed context escapes canon's F2 self-check.**~~ —
+  **CLOSED 2026-08-03 (Pass 8, §9d).** Decided as option (a), extend the map, and
+  specified as three changes. Measurement reversed the cost argument: the
+  `?non-call` class has no live population, so strict bare-context resolution is
+  a no-op today rather than a back-compat burden.
 
 **Pass 7 addendum — 2026-08-03, independent (OPS-0065 governance-docs class).**
 `code-reviewer` + `documentation-specialist` reviewed the CI-0029/CI-0030/CHANGELOG
@@ -1001,6 +1262,183 @@ pointer; open-item counts reconciled across three places; §9d written; Review l
 Passes 1-5 condensed (1148 → 985 lines). Deferred as low: foreign-section
 prefixing (`RS §12`), §3f/§9c ordering, Claim-ledger numbering gaps.
 
-**Result (as of this pass):** NOT READY — six folded, four open. Two of the four
-have since been closed (see the strikethroughs above); two remain, per the Status
-line. Later closures are dated inline rather than by rewriting this result.
+**Result (as of this pass):** NOT READY — six folded, four open. All four have
+since been closed (see the strikethroughs above). Later closures are dated inline
+rather than by rewriting this result.
+
+### Pass 8 - 2026-08-03 - self (closing the two carried items)
+
+No new review of the plan's body — this pass exists to close Pass 6's two
+remaining open items, both authoring work rather than decisions the founder owed.
+
+- **§9d — decided (a), extend `required-context-map.py`.** Specified as three
+  changes (ruleset glob, bare-context resolution through the caller templates
+  step 2 already parses, `?non-call` → `?`). Reading the source to specify it
+  reversed §9d's own cost argument: the `?non-call` class it treated as a
+  back-compat burden has **no live population** — 15 rows emitted, none bare —
+  so strict resolution is a no-op today. §11's pre-arm check becomes a call to
+  this map, which is what kept it from being option (b) by default.
+- **§9e — closed the meta-strip unconditionally.** The item was waiting on
+  PLAN-020's applier; that applier is PLAN-020 **Phase 3**, gated on "only if a
+  second repo needs rulesets" — this plan. Each was waiting on the other. Closed
+  by routing PR-4's `apply_rulesets()` through the existing `apply_canon_stripped`
+  (Claims 57–59), which is not PLAN-020's to ship and exists today.
+- **Two inaccuracies corrected while closing them.** §3c and §10 both said
+  PLAN-020 Phase 1 owns "the template family **and applier**"; Phase 1 owns the
+  read side only. Both now name Phase 3 explicitly for the write side.
+
+Eleven claims added (50–60), all cited to symbols read in this pass.
+
+**Result:** the two carried items are closed and the body is self-consistent, but
+this pass is **self**, not independent — so the plan is **not yet ready**. One
+independent pass over the §3c/§9d/§9e/§10/§11 diff is the remaining gate.
+
+### Pass 9 - 2026-08-03 - independent
+
+Nine load-bearing findings **against Pass 8's fold**, plus four minor — the
+repo's documented pattern (`CLAUDE.md` § "Durable traps": folding a review
+finding is a code change and needs the same scrutiny) holding for the fourth
+time on this plan. Every finding was re-verified against source before folding.
+
+**The one that changes the answer: §9e's applier had the wrong home.** Pass 8
+put `apply_rulesets()` in `apply-standards.sh` and priced it as "cheap, the strip
+already exists". Three independent findings converged on that being wrong, and a
+fourth made it unworkable: `--apply` mandates `--tier` and runs all four write
+sections unconditionally (Claims 67, 68), so arming a ruleset would drag a
+branch-protection PUT along — on canon, the destructive act `CLAUDE.md` forbids
+outright; `apply_backup` captures no rulesets (Claim 69); templates are fetched
+from a **released tag** (Claims 70, 71), so the template would be unusable by its
+own applier until a release is cut; and the §9d pre-arm check needs a whole canon
+tree, which a curl-piped script cannot supply. §9e now ships standalone
+`install/arm-ruleset.sh`, template-parameterised so PLAN-020 Phase 1 can cite it.
+
+**Folded, the rest:**
+
+1. **The wizard is the map's second consumer, and Pass 8 broke it.** §9d change 1
+   makes column 1 a ruleset stem; the wizard filters rows on column 1 equalling a
+   branch-protection tier (Claim 63), so every ruleset-armed context would be
+   dropped from check 6 while it reported "all producers installed" — the exact
+   silent-drop class this section exists to close. Pass 8's claim that column 1 is
+   "consumed only for the message" was true of the test and false of the wizard.
+   Added as change 4, with the wizard's own `?non-call` arm (Claim 64).
+2. **Bare-context resolution by job key was wrong.** GitHub emits a job's check
+   name as `name:` when declared; the map already encodes this for reusables
+   (Claim 61). A key-only match would resolve nothing for a gate job with a
+   `name:` — turning a correct gate into a red F2 verdict. Also constrained PR-2's
+   gate name to contain no `" / "` (Claim 62).
+3. **Ruleset arming is create-or-update, not an idempotent PUT.** Every other
+   applied template targets a path-keyed endpoint; rulesets are `POST` to create
+   and `PUT .../{id}` to update (§15), so a naive re-run creates a **duplicate**.
+   Identity now inherits PLAN-020's target + ref-pattern rule and its detail-GET
+   N+1 (Claims 72, 73) rather than being reinvented.
+4. **§11's pre-arm check was only half-discharged.** The map reads canon's tree;
+   §11's risk is a property of the *target* repo. Now stated as *map output ∧
+   installed-caller check against the target*, both of which the wizard already
+   implements (Claim 66).
+5. **Two unedited sections orphaned by Pass 8.** §8 still said
+   `apply-standards.sh` takes "no change in this plan" and that the map's `USES`
+   regex "should pick new callers up unchanged"; §7 still carried a sentence
+   naming branch protection as M4's audit source **and requiring a PAT for the M4
+   row**, directly contradicting the correction Pass 6 fold 4 had already made two
+   paragraphs above. Both rewritten.
+6. **§12 gained no criterion for either new deliverable** — `arm-ruleset.sh` had
+   neither a criterion nor a gate, i.e. a cross-repo write function shipping with
+   no declared verification. Criteria 8 + 9 added, 9 asserting on the *call* per
+   the repo's stub trap.
+7. Minor: §10's non-goal contradicted PR-4's own row (this plan does ship one
+   ruleset template); the §9d glob's exclusion of `rulesets-canon.json` is now
+   stated as deliberate; `test_checknames.sh` recorded as intentionally not
+   extended (Claim 65); §9e notes it answers PLAN-020 Phase 1's either/or *for the
+   mechanism*, which requires the applier be template-parameterised.
+
+Thirteen claims added (61–73); the 15-row measurement moved to §15 with its
+command, per this plan's own rule that a volatile claim carries its re-derivation.
+
+**Confirmed sound by this pass** (recorded so coverage is legible): the §9d
+measurement, re-derived independently; §9d change 1's jq path against the ruleset
+schema; the manifest half of change 2, including `visibility_variants`; that
+`tests/test_contract.sh` is inert under change 3; and **§9e's circularity
+argument** — PLAN-020 Phase 1 is read-side only and Phase 3 is gated on a second
+repo needing rulesets, so Claims 56–60 are semantically accurate.
+
+**Result:** NOT READY — nine load-bearing findings, all folded. The fold changed a
+decision (§9e's applier) and grew PR-4's scope, so it needs its own independent
+pass; this is cycle 2 of the OPS-0066 cap of 3.
+
+### Pass 10 - 2026-08-03 - independent
+
+Eight load-bearing findings **against Pass 9's fold**, plus eight minor. Third
+consecutive pass in which the previous fold was the defect source; all sixteen
+were re-verified against source before folding.
+
+**The finding that ends the loop.** Pass 9's fold moved the ruleset applier out of
+`apply-standards.sh` into a standalone `install/arm-ruleset.sh` — and Pass 10
+found the replacement inherits or newly opens most of what justified the move:
+the template source is unspecified, and "run from a canon checkout" is the
+mutable-canon exposure `apply-standards.sh` deliberately refuses (Claims 70, 71);
+the backup problem is **relocated, not solved** — the standalone script has no
+backup at all for a cross-repo write, worse than the section it avoided, and it
+also silently sheds that script's confirm, `--repo` validation, auth
+preconditions, non-TTY `--yes` and dry-run default; and it becomes a **third**
+implementation of the pre-arm check, the two-sources-of-truth outcome §9d
+rejected option (b) to avoid. Also: Pass 9's reason 3 overstated its case —
+`--allow-main-canon` exists (Claim 78), so the tag chicken-and-egg is an
+inconvenience, not a blocker.
+
+**Rather than fold a third time, §9f splits the question out.** The Pass-6 item
+was the *meta-strip*, and that is genuinely closed. The applier's *shape* is a
+design decision about a 🔴 cross-repo write path, it has changed answer twice
+under review, and the next fold would be cycle 3 — the OPS-0066 cap. §9f names
+its five open questions; nothing in PR-0..PR-3 depends on them.
+
+**Folded, the rest:**
+
+1. **The wizard fix traded one silent drop for another.** Pass 9 prescribed
+   iterating the map's column-1 values; the existing file-list iteration is
+   deliberate and commented (Claim 76) so `umbrella`, which declares no required
+   contexts (Claim 75), still reports rather than vanishing. Now the **union** of
+   both, keeping the zero-context line.
+2. **Bare-name resolution needed step 1's tie-breaking rule** (Claim 74) — two
+   caller templates could declare a same-named repo-local job, and glob-order
+   resolution would pick a producer basename the target check then runs against.
+3. **Change 3 removes a *declared* class, not a dead branch.** Four comments
+   encode repo-local required contexts as intentional; §9d now states the new
+   rule (canon ships a producer for every required context, bare or not) and
+   updates all four.
+4. **PR-4 shipped three canon-body changes with no `REPO_STANDARDS` update** — a
+   new template family, a new canonical script, and a *contract* change to the F2
+   invariant. Canon's own rule requires it and nothing automated catches the
+   omission; added to PR-4's row.
+5. **§13 still said "PR-4 extends [Phase 1]"** — it extends Phase **3**, and
+   PLAN-020 Phase 3's own text still prescribes the rejected `apply_rulesets()`
+   design, so a session reading PLAN-020 alone would implement it. PR-0 now owns
+   the supersession.
+6. **Criterion 9 demanded behaviour §9e permitted the implementation to lack** —
+   "converge or fail loudly" versus "create-only with a documented failure". The
+   escape is now closed: refuse-on-existing must be implemented, and the criterion
+   requires a `${GH:-gh}` indirection (Claim 79) so it can be asserted on the call.
+7. **Criterion 8 conflated the map's half with the wizard's** ("installed" is not
+   the map's notion) and assigned a wizard assertion to the wrong suite; split as
+   8 and 8a.
+8. Minor: Claim 69's enumeration was wrong — the backup does continue to
+   `actions_access` and branch-protection (re-cited at :770); §9d misdescribed
+   `test_checknames.sh`'s skip as separator-based when it keys on the literal
+   `call /` prefix (trailing space included) (Claim 77); §7a's PAT scope list over-scoped a 🔴 credential
+   by implying the rulesets read needs `administration:read` after §7 had just
+   established it does not; §8 gained rows for both new PR-4 surfaces.
+
+Six claims added (74–79).
+
+**Confirmed sound by this pass:** Claim 68's symbol does support its assertion;
+Claims 50–67 and 70–73 are semantically accurate; §9d change 1's glob genuinely
+excludes `rulesets-canon.json`; a standalone script violates no canon convention
+about where scripts live (`install/` already holds six canon-local tools); and
+criterion 9's "assert on the call" is achievable — the suite already has an
+arg-recording `gh` stub.
+
+**Result:** NOT READY, and **not converging by folding** — three consecutive
+passes have found the prior fold to be the defect source. §9d is closed and
+converged. §9e's meta-strip is closed. §9f is **split out, not folded**, which is
+what the OPS-0066 cap exists to force at cycle 3. The plan is ready for PR-0
+through PR-3 and half-ready for PR-4; §9f needs its own decision, not another
+review cycle.
