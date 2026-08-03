@@ -1,4 +1,4 @@
-# Starter .github/labeler.yml config for actions/labeler@v6.
+# Starter .github/labeler.yml config for actions/labeler.
 #
 # Path -> label map; the labeler workflow applies the named label
 # when a PR touches any of the matching paths. Labels MUST already

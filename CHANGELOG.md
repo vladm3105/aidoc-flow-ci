@@ -5,6 +5,20 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Dependencies — `labeler` v6.2.0 → v7.0.0 (#366)
+
+- v7 is an **ESM migration and nothing else** — one upstream PR, no input
+  changes, no config-format change. `.github/labeler.yml` stays on the v5+
+  `changed-files` / `any-glob-to-any-file` shape, so no consumer config edit is
+  needed and the starter template is unchanged in substance.
+- The node24 runner floor is unaffected: `actions/labeler` already sat on the
+  floor list at **v6+**, and v7 does not raise it.
+- Three docs named the pinned major (`README.md`, `LABELS.md`,
+  `docs/architecture.md`) and now say `@v7`. The starter config's header dropped
+  its version literal entirely — its line 14 already states the format floor
+  (v5+), which is the claim that actually constrains a consumer, and the
+  duplicate went stale on every bump.
+
 ### Dependencies — `upload-artifact` v4.6.2 → v7.0.1, and the test that blocked it (#365)
 
 - Three majors at once, none of which touch the artifact backend: **v5** is a
