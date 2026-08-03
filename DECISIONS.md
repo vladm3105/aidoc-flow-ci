@@ -1742,6 +1742,121 @@ shipped behaviour.
 
 ---
 
+## CI-0029: Ruleset `bypass_actors` is scoped by threat model, not by precedent (2026-08-03)
+
+**Context**
+
+FT-52 applied an immutable `ci/v*` **tag** ruleset to canon with **no**
+`bypass_actors`, on the reasoning that "immutability with an admin bypass is not
+immutability" (`plans/ROLLOUT_ft52-canon-self-governance.md`). PLAN-020 Phase 1
+classes a non-empty `bypass_actors` as WEAKENED drift.
+
+PLAN-023 §3c proposes arming a build/test gate as a required check via a
+**branch** ruleset, because rulesets are a separate, aggregating surface that
+`apply-standards.sh` never touches — so a language-specific required context
+placed there survives the tier-template PUT that would clobber it in branch
+protection.
+
+That raises a question the tag precedent does not answer. `enforce_admins: false`
+is the deliberate break-glass for **branch protection** and has **no effect on a
+ruleset**; repository admins are not ruleset bypass actors unless explicitly
+listed. `--admin` merge is load-bearing here: FT-21 release-prep PRs are BLOCKED
+by construction and merge only with `--admin`; CI-0021 records outage break-glass
+on the same path; the umbrella merges submodule pointers that way by design.
+Arming a ruleset with no bypass would therefore brick canon's own release
+process.
+
+**Decision**
+
+`bypass_actors` is decided **per ruleset by threat model**, and the FT-52
+precedent is explicitly **not** generalised:
+
+- **Immutability rulesets** (tag protection): **no** `bypass_actors`. The threat
+  is a force-moved tag reaching every consumer on its next run; an admin escape
+  defeats the entire control. FT-52 stands unchanged.
+- **Quality-gate rulesets** (the PLAN-023 build/test gate, and any future
+  required check of that class): `bypass_actors` includes the repository **admin**
+  role with `bypass_mode: always`, preserving parity with branch protection's
+  existing `enforce_admins: false`.
+
+**Consequences**
+
+- Arming M4 changes *what is required*, not *who can break glass* — one variable
+  at a time, which is the property wanted when introducing a required gate.
+- PLAN-020's WEAKENED-drift rule must distinguish the two classes, or it will
+  report every correctly-configured quality gate as drift. Recorded here as a
+  constraint on that plan.
+- A quality gate armed this way is **no stronger than today's branch protection**
+  against an admin. That is accepted: its purpose is to make the check *reach the
+  right repos* (the tier-static problem), not to bind admins.
+- Anyone reading the tag ruleset in isolation will infer a blanket no-bypass
+  rule. This entry exists so that inference is corrected at the source.
+
+**Origin**
+
+`plans/PLAN-023_build-test-canon-and-conformance.md` §3c + Review log Pass 6
+(finding 6, which surfaced the `--admin` interaction). Founder decision
+2026-08-03.
+
+---
+
+## CI-0030: Migrate the workspace to a GitHub Organization, ahead of the CD subsystems (2026-08-03)
+
+**Context**
+
+`vladm3105` is a personal **User** account with no organizations (verified
+2026-08-03: `gh api user --jq .type`; `gh api user/orgs` empty; custom repository
+properties return **404**, being org-only). Every workspace repo is user-owned.
+
+Three separate lines of work converged on this being the binding constraint
+rather than a preference:
+
+- **PLAN-023 X2** invents a language axis because canon has only a tier axis.
+  Org **custom properties** are the native home for both, and org-level rulesets
+  can target repos dynamically by them (`visibility:private -language:java`),
+  replacing nine per-repo rulesets with one.
+- **PLAN-023 §7a** needs cross-repo read for its conformance report and has no
+  credential; **org secrets** (or an org-installed App) is the answer that does
+  not require a standing user PAT.
+- **`ASSESSMENT_flow-ci-value-and-standard-readiness.md`** scores "bus factor ≥2"
+  and "shared infra, not per-team" 🔴 for company-standard readiness. A personal
+  account cannot structurally express either.
+
+`composition.yml` also exists **solely** because a GitHub App cannot be a
+CODEOWNER; org **teams** can be, so that machinery becomes reviewable for
+retirement rather than permanent.
+
+**Decision**
+
+Migrate to a GitHub Organization, sequenced **before** the CD subsystems
+(S4 release, S5 publish, S6 container, S7 deploy), and executed under its **own
+plan** — not as a dependency of PLAN-023, which ships fully on the current
+account.
+
+**Consequences**
+
+- **Priced, not assumed:** 64 files in canon hardcode `vladm3105` (measured
+  2026-08-03), including `docs-sync.yml` fetching from
+  `raw.githubusercontent.com/vladm3105/aidoc-flow-ci/...`, and FT-15's fix
+  deliberately hardcodes the canon owner (§4.2a). Migration is therefore a canon
+  change **plus a fleet re-pin**, not a transfer alone.
+- The cost grows with every repo, tag and consumer pin — which is the argument
+  for doing it before S4–S7 multiply the surface, not after.
+- CI-0031's opt-in default (below) is revisitable once an org-level enforcement
+  point exists; OpenSSF's opt-out guidance presumes one.
+- Requires GitHub Team or above for org-level rulesets.
+- Until it lands, PLAN-023 ships `--fleet` implemented but unwired, and M4 is
+  armed per-repo.
+
+**Origin**
+
+Best-practices investigation 2026-08-03 (GitHub org rulesets + custom
+properties; OpenSSF Allstar's org-level model), recorded in
+`plans/PLAN-023_build-test-canon-and-conformance.md` §15. Founder decision
+2026-08-03.
+
+---
+
 <!-- Append new entries above this line; append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
 and update the superseded entry's "Consequences" section to reference
