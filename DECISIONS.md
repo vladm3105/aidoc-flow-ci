@@ -1742,6 +1742,171 @@ shipped behaviour.
 
 ---
 
+## CI-0029: Ruleset `bypass_actors` is scoped by threat model, not by precedent (2026-08-03)
+
+**Context**
+
+FT-52 applied an immutable `ci/v*` **tag** ruleset to canon with **no**
+`bypass_actors`, on the reasoning that "immutability with an admin bypass is not
+immutability" (`plans/ROLLOUT_ft52-canon-self-governance.md`). PLAN-020 Phase 1
+classes a non-empty `bypass_actors` as WEAKENED drift.
+
+PLAN-023 §3c proposes arming a build/test gate as a required check via a
+**branch** ruleset, because rulesets are a separate, aggregating surface that
+`apply-standards.sh` never touches — so a language-specific required context
+placed there survives the tier-template PUT that would clobber it in branch
+protection.
+
+That raises a question the tag precedent does not answer. `enforce_admins: false`
+is the deliberate break-glass for **branch protection** and has **no effect on a
+ruleset**; repository admins are not ruleset bypass actors unless explicitly
+listed. This is not inferred — the umbrella already carries a live **active
+branch** ruleset (`gh api repos/vladm3105/aidoc-flow/rulesets/17136252`) whose
+`bypass_actors` lists RepositoryRole 2, 4 and 5 at `bypass_mode: always`, which
+is why `--admin` works there at all.
+
+`--admin` is load-bearing for **one specific, structural case**: FT-21
+release-prep PRs are BLOCKED by construction — 4 of 5 required contexts come from
+self-pinned callers that `startup_failure` against a tag that does not exist yet,
+so they are never reported — and `enforce_admins: false` exists on canon
+precisely so `gh pr merge --squash --delete-branch --admin` still works
+(`docs/RELEASE_CHECKLIST.md` § "Tag + release"). Arming a ruleset with no bypass
+would brick canon's own release process.
+
+**The tension with CI-0021 is real and is accepted rather than papered over.**
+CI-0021 decided that an *infrastructure outage* gets a targeted, default-off
+break-glass and explicitly **not** `--admin`, on the reasoning that "`--admin`
+bypasses **every** required check, not just the broken one" and "once the bypass
+is routine, nobody reads the gate." This entry grants a standing admin bypass on
+one class of ruleset, which cuts against that direction. It is justified only by
+the FT-21 case above — a *structural* impossibility, not an outage — and it is
+why the bypass is scoped to quality gates and denied to immutability rulesets.
+
+**Decision**
+
+`bypass_actors` is decided **per ruleset by threat model**, and the FT-52
+precedent is explicitly **not** generalised:
+
+- **Immutability rulesets** (tag protection): **no** `bypass_actors`. The threat
+  is a force-moved tag reaching every consumer on its next run; an admin escape
+  defeats the entire control. FT-52 stands unchanged.
+- **Quality-gate rulesets** (the PLAN-023 build/test gate, and any future
+  required check of that class): `bypass_actors` includes the repository **admin**
+  role. The exact payload, verified against the live API by the 2026-08-03 probe
+  (created on private `aidoc-flow-business`, read back unchanged, deleted):
+
+  ```json
+  "bypass_actors": [
+    { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" }
+  ]
+  ```
+
+  **This is parity with `enforce_admins: false` only where that is set — which is
+  not fleet-wide.** Measured 2026-08-03: only
+  `install/templates/branch-protection-umbrella.json` sets `false`; `-ops`,
+  `-product`, `-governance` and `-bootstrap` all set `true`, and live
+  `aidoc-flow-operations` and `iplan-runner` are `true`. On an
+  `enforce_admins: true` repo the ruleset bypass is **inert** — branch protection
+  and rulesets aggregate and the stricter wins, so the admin stays blocked. The
+  arming applier must not assume otherwise.
+
+**Consequences**
+
+- Arming M4 changes *what is required*, not *who can break glass* — one variable
+  at a time, which is the property wanted when introducing a required gate.
+- PLAN-020's WEAKENED-drift rule must distinguish the two classes, or it will
+  report every correctly-configured quality gate as drift. Recorded here as a
+  constraint on that plan.
+- A quality gate armed this way is **no stronger than today's branch protection**
+  against an admin. That is accepted: its purpose is to make the check *reach the
+  right repos* (the tier-static problem), not to bind admins.
+- Anyone reading the tag ruleset in isolation will infer a blanket no-bypass
+  rule. This entry exists so that inference is corrected at the source.
+
+**Origin**
+
+`plans/PLAN-023_build-test-canon-and-conformance.md` §3c, and the first item of
+that plan's Review log Pass 6 "Open — carried" list (`bypass_actors`
+unspecified). Note the `--admin`/ruleset interaction is reasoned here, not in the
+plan: it follows from GitHub's ruleset bypass model and is corroborated by the
+umbrella's live ruleset above; the 2026-08-03 probe validated the **bypass
+shape**, not the `--admin` merge path. Founder decision 2026-08-03.
+
+---
+
+## CI-0030: Migrate the workspace to a GitHub Organization, ahead of the CD subsystems (2026-08-03)
+
+**Context**
+
+`vladm3105` is a personal **User** account with no organizations (verified
+2026-08-03: `gh api user --jq .type`; `gh api user/orgs` empty; custom repository
+properties return **404**, being org-only). Every workspace repo is user-owned.
+
+Three separate lines of work converged on this as a **sequencing argument** —
+not a binding constraint. Nothing is blocked: PLAN-023 ships fully on the current
+account. The case is that the migration gets more expensive with every repo, tag
+and pin, and it unlocks native mechanisms this workspace is currently hand-building:
+
+- **PLAN-023 X2** invents a language axis because canon has only a tier axis.
+  Org **custom properties** are the native home for both, and org-level rulesets
+  can target repos dynamically by them (`visibility:private -language:java`),
+  replacing nine per-repo rulesets with one.
+- **PLAN-023 §7a** needs cross-repo read for its conformance report and has no
+  credential; **org secrets** (or an org-installed App) is the answer that does
+  not require a standing user PAT.
+- **`ASSESSMENT_flow-ci-value-and-standard-readiness.md`** scores "bus factor ≥2"
+  and "shared infra, not per-team" 🔴. An org addresses the **structural half** of
+  each — teams and org-owned repos for the first, org secrets and runner groups
+  for the second. It does **not** address what that assessment actually names as
+  the fixes (cut complexity or add a maintainer; provision the LiteLLM proxy,
+  runner pools and reviewer App as platform services; decouple governance;
+  resolve FT-15; prove on ≥3 teams). Those remain separate work.
+
+**What this does NOT unlock — stated because an earlier draft of this entry got
+it wrong.** `composition.yml` exists because a GitHub **App** cannot be a
+CODEOWNER, and an org does **not** fix that: Apps cannot be org team members
+either, so teams-as-CODEOWNERS applies to *humans* only. The reviewer App still
+cannot be a CODEOWNER after migration, `composition.yml` remains the sole
+identity enforcement, and it is **not** retired or made retirable by this
+decision. Removing it stays a governance change (`.github/workflows/composition.yml`).
+
+**Decision**
+
+Migrate to a GitHub Organization, sequenced **before** the CD subsystems
+(S4 release, S5 publish, S6 container, S7 deploy), and executed under its **own
+plan** — not as a dependency of PLAN-023, which ships fully on the current
+account.
+
+**Consequences**
+
+- **Priced, not assumed:** **64 non-markdown canon files** hardcode `vladm3105`
+  — `grep -rIl vladm3105 --include='*.yml' --include='*.yaml' --include='*.sh'
+  --include='*.py' --include='*.json'` (2026-08-03; the unscoped repo-wide count
+  is 114, the difference being plans and docs). Including `docs-sync.yml` fetching from
+  `raw.githubusercontent.com/vladm3105/aidoc-flow-ci/...`, and FT-15's fix
+  deliberately hardcodes the canon owner (§4.2a). Migration is therefore a canon
+  change **plus a fleet re-pin**, not a transfer alone.
+- The cost grows with every repo, tag and consumer pin — which is the argument
+  for doing it before S4–S7 multiply the surface, not after.
+- The opt-in default owed by **CI-0031** — *reserved by
+  `plans/PLAN-023_build-test-canon-and-conformance.md` PR-0, not yet written; IDs
+  are never reused* — is revisitable once an org-level enforcement point exists;
+  OpenSSF's opt-out guidance presumes one.
+- Requires GitHub Team or above for org-level rulesets **on private repos**
+  (org rulesets targeting public repos are available on Free orgs). Vendor plan
+  tiers rot — re-verify at migration time.
+- Until it lands, PLAN-023 ships `--fleet` implemented but unwired, and M4 is
+  armed per-repo.
+
+**Origin**
+
+Best-practices investigation 2026-08-03 (GitHub org rulesets + custom
+properties; OpenSSF Allstar's org-level model), recorded in
+`plans/PLAN-023_build-test-canon-and-conformance.md` §15. Founder decision
+2026-08-03.
+
+---
+
 <!-- Append new entries above this line; append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
 and update the superseded entry's "Consequences" section to reference
