@@ -7,131 +7,115 @@ command that re-derives it. Durable facts live in `CLAUDE.md` § "Durable traps"
 the decision record is `DECISIONS.md`, which is authoritative — this file never
 summarises it.
 
-## What the last session did (2026-07-31)
+## What the last session did (2026-08-03)
 
-Implemented `plans/PLAN-022_doc-surface-governance.md` in two PRs.
+Founder direction: turn this repo into the company CI/CD standard covering
+public + private repos, labelling, scanners and security. A survey found the
+**gates** half mature (21 reusables) and the **delivery** half absent — **no
+canon reusable builds, tests, packages or deploys anything.** Decomposed into
+nine subsystems; specified the first.
 
 | PR | Ground truth |
 |---|---|
-| [#356](https://github.com/vladm3105/aidoc-flow-ci/pull/356) | Landed PLAN-022 and PLAN-021 as documents |
-| [#357](https://github.com/vladm3105/aidoc-flow-ci/pull/357) | `DECISIONS.md` **CI-0028**, the corrected `CLAUDE.md` governance table, a `CHANGELOG.md` entry |
-| [#359](https://github.com/vladm3105/aidoc-flow-ci/pull/359) | This file regenerated (1,393 → ~120 lines); durable traps graduated to `CLAUDE.md` |
-| [#361](https://github.com/vladm3105/aidoc-flow-ci/pull/361) | **PLAN-021 flipped to READY** — both founder items closed, both owed measurements discharged |
+| [#367](https://github.com/vladm3105/aidoc-flow-ci/pull/367) | `plans/PLAN-023` (Draft, NOT READY), `DECISIONS.md` **CI-0029** + **CI-0030**, CHANGELOG |
 
-**CI-0028 in one line:** a changelog is permanent and takes an *anchored insert*
-under its Unreleased heading; a handoff is disposable and is *fully regenerated*,
-with every volatile claim carrying its re-deriving command; the backlog is the
-repo's open issues. Feedback is a direction of travel, not a class of issue — so
-no `kind:*` label family.
+**PLAN-023 is deliberately narrow.** `pre-commit.yml` already runs whatever hooks
+a repo declares, so lint/typecheck are reused, not reimplemented; the new
+surfaces are install → build → test → measure only. The unit of conformance is
+**evidence, not implementation** — a repo may replace the workflow entirely and
+stay conformant if it emits the same JUnit + coverage + structured evidence.
+That is what lets "each repo adds its own flows" hold without dissolving the
+standard.
 
-What changed about this repo, not only about the rules:
+Things discovered that change the picture:
 
-- **The governance table stopped being false.** It declared the backlog surface
-  *"Not adopted"* while `plans/FRAMEWORK-TODO.md` held 1,968 lines. It now names
-  `plans/` + GitHub issues, plus a second row declaring the legacy queue still
-  live — a table describes what *is*.
-- **Governance rows are machine-parsed.** The row PLAN-022 originally prescribed
-  was prose, and prose parses as a path: it took
-  `install/parse-governance-table.py` from `errors: []` to `path-not-found`.
-  Write rows as `` `path` (annotation) `` and verify before pushing.
-- **Four defects were filed, not fixed** — #355 and #358 (next-steps item 4),
-  #360 (item 1), and
-  [aidoc-flow-operations#291](https://github.com/vladm3105/aidoc-flow-operations/issues/291),
-  the intake contract's now-incomplete "(TODO file declined)" row for this repo.
-- **A census keyed on the wrong field re-ranked PLAN-021's defects, and the
-  error reached a founder decision.** The merge `doc-maintainer` maintains
-  arrives as the `MERGE_SHA` **`workflow_dispatch` input**; `headSha` is the
-  default-branch head at dispatch time, and they diverge on every retry.
-  Grouping on `headSha` drops a merge and makes most groups heterogeneous. It
-  put PR-C at 1 of 11 when it is 3 of 12 — recorded in PLAN-021 §9 item 2 rather
-  than quietly fixed, because the decision was staked on that number. **Retries
-  are also not replays:** each re-dispatch re-invokes the planner and draws a
-  fresh plan, so one merge can fail two ways.
-- **This file went from 1,393 lines to this.** Its durable content was graduated
-  to `CLAUDE.md` § "Durable traps"; its "Recent decisions" excerpt was deleted —
-  it sat at CI-0011 while CI-0012..CI-0024 landed, contradicting the top of its
-  own file.
+- **A skipped job satisfies a required check.** Canon's own `ai-review` records
+  it (`.github/workflows/ai-review.yml`, "a skipped-job green would SUPERSEDE a
+  prior `request_changes`"). So `fork-strategy: skip` on a
+  required gate is a **bypass**, not a safety setting. Floor rule M4a (an
+  always-running gate job) exists because of this, and it applies to **any**
+  canon flow that becomes a required context — not just the test gate.
+- **Rulesets are a surface canon does not touch.** Zero `ruleset` references in
+  `apply-standards.sh`, `install.sh`, `sync/*.sh`. A required check placed in a
+  repo ruleset therefore survives the branch-protection PUT that clobbers
+  hand-added contexts. Verified by probe on a private repo — no plan gating.
+  Details and the exact bypass payload: `DECISIONS.md` **CI-0029**.
+- **`GET /rulesets` is not admin-class** — returns data on `actions/checkout`.
+  This closes an open question PLAN-020 flagged as unverified.
+- **PLAN-020 Phase 1 / FT-55 already owns ruleset canon.** Do not build a second
+  template family; PLAN-023 PR-4 extends it.
+- **`enforce_admins: false` is not fleet-wide**, so a ruleset admin bypass is
+  inert on some repos — commands and measurements in PLAN-023 §15.
 
 ## Current state — re-derive, do not trust
 
 | Claim | Command | Value at wrap |
 |---|---|---|
-| Released version | `git describe --tags --abbrev=0` | `ci/v2.16.0`, marked Latest |
-| Open issues | `gh issue list --state open --limit 200` | **11** — #347–#355, #358, #360 |
-| Open PRs | `gh pr list --state open` | 0 |
-| `## Unreleased` | `sed -n '/^## Unreleased/,/^## ci/p' CHANGELOG.md` | **non-empty** — holds CI-0028; a cut promotes it |
+| Released version | `git describe --tags --abbrev=0` | `ci/v2.16.0` |
+| Open issues | `gh issue list --state open --limit 200` | **12** — #347–#355, #358, #360, #363 |
+| Open PRs | `gh pr list --state open` | **3** — all dependabot (#364, #365, #366) |
+| `## Unreleased` | `sed -n '/^## Unreleased/,/^## ci/p' CHANGELOG.md` | **non-empty** — CI-0028, CI-0029, CI-0030 |
 | Legacy queue | `wc -l plans/FRAMEWORK-TODO.md` | 1,968 |
-| Fleet pins | `bash sync/check-pin-currency.sh --fleet vladm3105/aidoc-flow-{operations,framework,iplanic,engramory,iplan-standard,interlog,business} vladm3105/iplan-runner` | **7 of 8 stale.** `framework` alone is current (16/16 at `ci/v2.16.0`); `operations` is oldest-at-`ci/v2.0.1`, the other six oldest-at-`ci/v1.9.5` |
+| Fleet pins | `bash sync/check-pin-currency.sh --fleet vladm3105/aidoc-flow-{operations,framework,iplanic,engramory,iplan-standard,interlog,business} vladm3105/iplan-runner` | **not measured this session** — the flag needs the explicit repo list; with none it audits nothing and prints `0/0` |
 
-`gh issue list` defaults to `--limit 30` and truncates silently — pass
-`--state all --limit 200` or the count above is not reproducible.
-
-**No release is pending and nothing is owed.** A cut is optional. If you take
-one, read `CLAUDE.md` § "Durable traps" first — a prep PR shows BLOCKED by
-design, and `--repin` cannot deliver a caller-body change.
+`gh issue list` defaults to `--limit 30` and truncates silently.
 
 ## What to do next
 
-1. **Implement PLAN-021 — it is READY and is the top task.** `doc-maintainer`'s
-   dry-run path cannot complete a run that has anything to say;
-   `plans/PLAN-021_doc-maintainer-dry-run-cluster.md` fixes it in five PRs and
-   both founder items are closed. **Start at PR-0** (`DECISIONS.md` CI-0027),
-   which the others cite.
+1. **Clear the three dependabot PRs.** **Two are majors — read their changelogs
+   before merging, do not batch them:** #366 `actions/labeler` 6.2.0 → 7.0.0, and
+   #365 `actions/upload-artifact` 4.6.2 → **7.0.1** (three majors, with live call
+   sites in `ai-review.yml` and `doc-maintainer.yml`). **#364 alone is routine**
+   (codeql-action group, 4.37.3 → 4.37.4).
 
-   Four defects, sized by **distinct merge** (§9 M2 — 23 failures are 12
-   merges): [#353](https://github.com/vladm3105/aidoc-flow-ci/issues/353) a
-   duplicate of an allowlisted path reports as an allowlist violation (4);
-   [#360](https://github.com/vladm3105/aidoc-flow-ci/issues/360) the planner
-   inventory ignores `allowed_paths` **and** the prompt never forbids proposing
-   outside it (4 — co-equal, so it lands *with* the cluster, not after);
-   [#354](https://github.com/vladm3105/aidoc-flow-ci/issues/354) the 200 KB
-   refusal against a changelog that only grows (3);
-   [#352](https://github.com/vladm3105/aidoc-flow-ci/issues/352) the patch
-   renderer dies on the normal case (1 — smallest bucket, and still the
-   graduation blocker, because it is the one that blocks *any* low-risk plan).
+2. **PLAN-023 is NOT READY — close its 2 items before starting PR-0.** Both are
+   authoring work, neither is a decision:
+   - **§9d** — extend canon's F2 no-orphan self-check to ruleset-armed contexts.
+     `required-context-map.py` enumerates only `branch-protection-*.json`, and
+     the gate job's context is a *bare* name it classifies `?non-call` and does
+     not resolve. §9d recommends extending the map over a standalone check.
+   - Confirm the `ruleset-test-gate.json` meta-strip once PLAN-020's applier
+     lands (a conditional close, not a close).
 
-   **Three things to carry in before writing code.** READY here means a
-   **founder release** under OPS-0066's escalation escape, not a converged
-   review — the Pass-4 fold is still independently unreviewed, so PR-by-PR
-   review carries more weight than usual. The consumer's resume condition
-   (`#352 AND #353`) is **insufficient**: `#360` must be added, or resuming
-   returns a pilot still red on a third of merges. And the 30 %-deletion
-   blast-radius residual (2 merges) is fixed by **no** PR in this cluster —
-   `CI-0027` records it as standing.
+   **Before writing PR-1, measure it:** run `ruff` + `mypy` over canon's ten
+   Python modules. PR-1 adds those hooks under a *required* lint context, and
+   the clean-up is unbounded until counted. Split PR-1 if it is large.
 
-   Resuming the pilot needs `kill_switch` flipped back in **framework**, a
-   cross-repo action this plan does not own (§6).
-2. **Wire the governance check**
-   ([#355](https://github.com/vladm3105/aidoc-flow-ci/issues/355)). Small, and it
-   closes the hole that let the governance table stay false for weeks: nothing in
-   `.github/workflows/` invokes `apply-standards.sh`, so `governance_check` runs
-   only by hand. Fix shape is in the issue — have
-   `sync/check-standards-drift.sh` reach it, warning-only per the drift contract.
-3. **FT-58 — retire `plans/FRAMEWORK-TODO.md`.** Cut from PLAN-022 (§5) because
-   its routing rule was not decidable from the data. One open decision: where a
-   below-promotion-bar entry goes once the queue file is deleted. Do **not**
-   reuse the earlier triage buckets — they were derived under a rule a `plans/`
-   sweep falsified; the raw work is in git at `25912f9`.
-4. **The other open issues:** #347 / #348 (doc accuracy — the `UPDATE_GUIDE`
-   worked example and the #329 allowlist comment), #349 (`sast-scan` cannot
-   install semgrep on the self-hosted pool — no python in the image), #350
-   (`set-litellm-secrets.sh --doc` overwrites a working URL), #351
-   (pin-currency's verdict is unreachable to consumers, and two paths in one
-   script disagree), #358 (`ft30-dry-run.sh` asserts the bootstrap completed,
-   not that it installed the right file set).
-5. **Founder-gated — do not execute as an AI (🔴):** PLAN-007 W4, arming the
-   gates as required checks across the fleet
-   (`docs/FLEET_BRANCH_PROTECTION_ARMING.md`) — the highest-value remaining step,
-   since it makes the blocking checks actually block; and W3, taking `docs-sync`
-   from dry-run to live, which needs the `aidoc-flow-bot` App or a fold into
-   `doc-maintainer.yml`.
+   **`REPO_STANDARDS` §24 is claimed by both PLAN-023 (PR-1) and PLAN-021**,
+   which is READY while PLAN-023 is not. PLAN-023 yields and renumbers — §13.
+
+   **CI-0031 is reserved** by PLAN-023 PR-0 and not yet written. IDs are never
+   reused.
+
+3. **PLAN-021 (`plans/PLAN-021_doc-maintainer-dry-run-cluster.md`) — the top
+   *executable* task; items 1-2 are ordered ahead of it only because they are
+   cheap or gate their own plan.** READY, five PRs, start at PR-0. It is a **founder release** under OPS-0066's escape, not a converged
+   review, so PR-by-PR review carries more weight than usual. The consumer's
+   resume condition (`#352 AND #353`) is **insufficient** — `#360` must be added. #354 (the 200 KB refusal against a
+   changelog that only grows) is part of this cluster.
+   Resuming the pilot needs `kill_switch` flipped in **framework** (cross-repo,
+   not owned by that plan).
+
+4. **Wire the governance check** ([#355](https://github.com/vladm3105/aidoc-flow-ci/issues/355)).
+   Small, and it closes the hole that let the governance table stay false for
+   weeks: nothing in `.github/workflows/` invokes `apply-standards.sh`.
+
+5. **The other open issues:** #363 (new — the 11-job fan-out pays a full
+   ephemeral-runner provisioning cycle per job, ~13% of wall clock on a green
+   run), #347/#348 (doc accuracy), #349 (`sast-scan` cannot install semgrep — the image HAS
+   python3; it lacks `python3-venv`/`ensurepip`, so `python3 -m venv` fails), #350, #351, #358.
+
+6. **Founder-gated 🔴 — do not execute as an AI:** arming the gates as required
+   checks across the fleet (`docs/FLEET_BRANCH_PROTECTION_ARMING.md`); taking
+   `docs-sync` from dry-run to live; and **CI-0030's org migration**, decided
+   but unscheduled — it needs its own plan. Scope and price: `DECISIONS.md`
+   CI-0030.
 
 ## Open threads
 
-- **PLAN-008 pre-prod gap closure** — 29 findings from the 5-lens review of the
-  `ci/v2.0.0` surface, grouped into 5 PRs
-  (`plans/PLAN-008_pre-prod-gap-closure.md`).
-- **PLAN-003 per-repo rollout waves** — one PR per non-paused repo. Wave status
-  lives in operations `docs/CROSS_REPO_PLAYBOOKS.md` §T-D; do not hardcode a
-  "next wave" here, it drifts. Gate: zero drift from the curl-piped
-  `apply-standards.sh --check`.
+- **PLAN-023's deferred subsystems** — S3 database/service-container gate (blocked:
+  the ephemeral runner has no Docker socket, so `services:` cannot work), S4
+  release automation, S5 publish, S6 container build, S7 deploy, X1 provenance.
+- **PLAN-008** — 29 findings from the 5-lens `ci/v2.0.0` review, grouped into 5 PRs.
+- **PLAN-003 per-repo rollout waves** — wave status lives in operations
+  `docs/CROSS_REPO_PLAYBOOKS.md` §T-D; do not hardcode a "next wave" here.
