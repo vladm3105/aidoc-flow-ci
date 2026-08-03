@@ -50,7 +50,7 @@ them but do not create them automatically.
 ### 2. Diff-class labels (8) — auto-applied by `labeler.yml`
 
 The OPS-0065 diff-class labels. The reusable `labeler.yml`
-(`actions/labeler@v6`) applies them from the file paths a PR touches,
+(`actions/labeler@v7`) applies them from the file paths a PR touches,
 per the consumer's `.github/labeler.yml`. The **canonical path→label map
 and diff-class mapping live in `docs/REPO_STANDARDS.md` §5.2** — that is
 the source of truth; the table below is the label reference.

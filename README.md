@@ -45,7 +45,7 @@ rationale.
 | `secret-scan.yml` | Secret scanning with a pinned, checksum-verified gitleaks binary. |
 | `markdown-lint.yml` | Markdown lint with pinned `markdownlint-cli2`; inline PR annotations. |
 | `links.yml` | Link checking with a pinned, checksum-verified lychee binary; blocking internal + weekly external soft-fail. |
-| `labeler.yml` | Path-based PR labeling (`actions/labeler@v6`). |
+| `labeler.yml` | Path-based PR labeling (`actions/labeler@v7`). |
 | `docs-sync.yml` | Mechanical post-merge doc fixer (deterministic version/structure propagation). |
 | `doc-maintainer.yml` | AI-driven post-merge doc-of-record maintainer (supersedes `docs-sync.yml` at `ci/v2.0.0`). |
 | `audit-trail-check.yml` | OPS-0069 audit-trail phrase gate (CI belt-and-suspenders for the local pre-push hook). Check renders as `call / verify`. |
