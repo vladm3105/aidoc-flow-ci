@@ -7,27 +7,20 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ### Governance — CI-0029 + CI-0030: ruleset bypass scoping and the org migration (no code change)
 
-- **CI-0029** settles `bypass_actors` **by threat model rather than by
-  precedent.** FT-52's tag ruleset carries no bypass because immutability with an
-  admin escape is not immutability — but generalising that to a *quality* gate
-  would brick canon's own release process, since FT-21 release-prep PRs are
-  BLOCKED by construction and merge only with `--admin`, which does **not**
-  bypass a ruleset the way `enforce_admins: false` bypasses branch protection.
-  Immutability rulesets keep no bypass; quality-gate rulesets carry the admin
-  role. Constrains PLAN-020's WEAKENED-drift rule to distinguish the two. The
-  decided bypass shape was then **verified against the live API** (2026-08-03
-  probe), so it ships as written rather than as a guess.
+- **CI-0029** scopes ruleset `bypass_actors` by **threat model, not precedent**:
+  immutability (tag) rulesets keep no bypass, quality-gate rulesets carry the
+  admin role. Generalising FT-52's no-bypass rule would have bricked canon's own
+  release process, whose prep PR is BLOCKED by construction. The bypass shape was
+  verified against the live API before being recorded. Constrains PLAN-020's
+  WEAKENED-drift rule to distinguish the two classes. See `DECISIONS.md`.
 - **CI-0030** approves migrating the workspace to a GitHub **Organization**,
-  sequenced ahead of the CD subsystems and executed under its own plan. Priced,
-  not assumed: 64 canon files hardcode the owner, so it is a canon change plus a
-  fleet re-pin. Unlocks org rulesets with dynamic targeting, custom properties as
-  the native home for the tier and language axes, teams as CODEOWNERS (the
-  constraint `composition.yml` exists to work around), and org secrets.
-- Both arise from `plans/PLAN-023_build-test-canon-and-conformance.md` (added
-  here as a **Draft, NOT READY** — one item open after four independent review
-  passes), which specifies the build/test canon and conformance model: the first
-  canon surface that would build, test and measure consumer code rather than
-  gate a diff.
+  sequenced ahead of the CD subsystems, under its own plan. Priced: 64
+  non-markdown canon files hardcode the owner, so it is a canon change plus a
+  fleet re-pin. See `DECISIONS.md` for what it does and does **not** unlock.
+- Adds `plans/PLAN-023_build-test-canon-and-conformance.md`, specifying the
+  build/test canon and conformance model — the first canon surface that would
+  build, test and measure consumer code rather than gate a diff. Its status lives
+  in the plan header, not here.
 
 ### Governance — CI-0028: three doc surfaces, three edit shapes (no code change)
 

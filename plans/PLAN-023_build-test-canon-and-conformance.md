@@ -8,12 +8,13 @@ A survey of the estate found the *gates* half mature (21 reusables) and the
 releases or deploys anything.** Decomposed into nine subsystems (S1–S7, X1–X2);
 this plan is **S1** (build/test) plus **X2** (the language axis later subsystems
 slot into).
-**Status:** Draft — **NOT READY, 1 item open.** A best-practices investigation
-(2026-08-03) changed two premises (§3c, §3f); all 9 Pass-4 and 9 of 10 Pass-6
-findings are folded — the last two by `DECISIONS.md` **CI-0029** and by the
-2026-08-03 ruleset probe (§3c, §15), which confirmed the §3c premise on a private
-repo rather than leaving it asserted. Remaining: extend canon's F2 no-orphan
-self-check to ruleset-armed contexts (Review log, Pass 6).
+**Status:** Draft — **NOT READY, 2 items open.** A best-practices investigation
+(2026-08-03) changed two premises (§3c, §3f). All 9 Pass-4 findings are folded;
+of Pass 6's 10, six were folded in-pass and two closed after — one by
+`DECISIONS.md` **CI-0029**, one by the 2026-08-03 ruleset probe (§3c, §15). **Two
+remain:** extend canon's F2 no-orphan self-check to ruleset-armed contexts (§9d),
+and confirm the `ruleset-test-gate.json` meta-strip once PLAN-020's applier lands
+(a conditional close, not a close).
 **Depends on:** [[PLAN-013]] uniform-protected model; [[PLAN-014]] scanner
 precedent (opt-in, report-only-first, graduate deliberately).
 **Deferred to later plans:** S3 database/service-container gate, S4 release
@@ -681,6 +682,37 @@ the next release cut it converts to the pinned form, joining the other four
 self-callers. §24 notes the two-stage pattern for the next canon flow that needs
 self-adoption from scratch.
 
+### 9d. A ruleset-armed context escapes canon's F2 no-orphan self-check
+
+**This is the plan's principal open item, and it has a section so it is actionable
+rather than buried in a review log.**
+
+Canon guards against F2 — a required context with no producing workflow, which
+never reports and pins every PR — by enumerating required contexts and asserting
+each has a producer. But `required-context-map.py` enumerates **only**
+`install/templates/branch-protection-*.json` (Claim 18 context), and
+`tests/test_required_contexts.sh` asserts the invariant over that output. A
+ruleset template is invisible to both, so arming M4 via §3c moves the required
+context to a surface the F2 guard cannot see — reintroducing exactly the failure
+§3c was chosen to avoid.
+
+Worse, per §3f the armed context is the **gate job's**, which is a *bare* name
+(a reusable call emits `<job-key> / <name>`); the map classifies bare contexts
+`?non-call` and deliberately does not resolve them.
+
+Two options, and PR-4 must pick one explicitly:
+
+- **(a) Extend the map** — add ruleset templates to its glob and teach it
+  bare-context resolution. One source of truth, more work.
+- **(b) Standalone pre-arm check** in the applier — verify the producing caller
+  exists before writing the ruleset. Cheaper, but a second implementation of the
+  same invariant, which is how two sources of truth start.
+
+**Recommendation: (a).** §11's "the applier must verify the producing caller
+exists" is (b) by default, and this repo already carries the cost of that pattern
+elsewhere. Whichever is chosen, it is **not free**, and §8's "the `USES` regex
+should pick new callers up unchanged" does not cover it.
+
 ### 9b. §4.1's routing table must learn a third flow shape
 
 §4.1 defines exactly **two** classes and justifies uniform self-hosted for the
@@ -763,6 +795,13 @@ inconsistent with the flow this plan ships.
 - `docs/REPO_STANDARDS.md` §4.1 (Claim 1), §4.3 (Claim 4), §12 (Claim 8), §23 (Claim 9)
 - `plans/PLAN-013_uniform-protected-aiflows.md` — the Class A model
 - `plans/PLAN-014_security-scanning-coverage.md` — opt-in + report-only precedent; §5c
+- `plans/PLAN-020_canon-self-adoption-and-ruleset-canon.md` — Phase 1 / FT-55 owns
+  ruleset canon (`rulesets-canon.json` + `--rulesets` drift). PR-4 extends it; it
+  is DEFERRED, and `DECISIONS.md` CI-0029 constrains its WEAKENED-drift rule
+- **`REPO_STANDARDS` §24 is claimed by two unmerged plans** — this plan (PR-1) and
+  `plans/PLAN-021_doc-maintainer-dry-run-cluster.md`. Whichever lands second takes
+  §25 and must re-point the other's references. **PLAN-021 has priority** (it is
+  READY; this plan is not), so PLAN-023 yields and renumbers on landing
 - `docs/overrides.md` §5 — the three override modes this plan extends
 - `plans/ASSESSMENT_flow-ci-value-and-standard-readiness.md` — why adoption, not
   canon breadth, is the binding constraint
@@ -803,19 +842,12 @@ The §3c ruleset premise rests on account state, which no file records:
 **DECIDED 2026-08-03 — `DECISIONS.md` CI-0030.** The migration is approved and
 sequenced **before** the CD subsystems (S4–S7), under its own plan; it is
 explicitly **not** a dependency of PLAN-023, which ships on the current account.
-CI-0030 prices it: 64 canon files hardcode the owner, so it is a canon change
-plus a fleet re-pin, not a transfer alone. Rationale retained below.
 
-**Strategic note.** Converting the account to a GitHub
-**Organization** would unlock org-level rulesets targeting repos dynamically
-(e.g. `visibility:private -language:java`), custom properties as a native home
-for the tier and language axes X2 invents, teams as CODEOWNERS — which is the
-constraint `composition.yml` exists to work around — and org secrets, which is
-the §7a credential problem. It also bears on the two 🔴 items in
-`ASSESSMENT_flow-ci-value-and-standard-readiness.md` ("bus factor ≥2",
-"shared infra, not per-team") that a personal account cannot structurally
-express. This is a founder decision with fleet-wide blast radius and belongs in
-`DECISIONS.md` on its own, **not** as a dependency of this plan.
+**Rationale, price, and what it does NOT unlock: `DECISIONS.md` CI-0030.**
+Not restated here — `CLAUDE.md` § "Durable traps" forbids keeping a second copy
+of a decision, because the copies drift. In particular CI-0030 records that an
+org does **not** make `composition.yml` retirable (a GitHub App cannot be an org
+team member either), correcting an earlier draft of this section.
 
 ## Claim ledger
 
@@ -871,221 +903,32 @@ express. This is a founder decision with fleet-wide blast radius and belongs in
 
 ## Review log
 
-### Pass 1 - 2026-08-03 - self
+### Pass 5 - 2026-08-03 - self (Passes 1-5 condensed)
 
-Findings folded: Claim 21 reframed (an absence cannot resolve to `path:line`);
-the false-drift trap avoided (a `grep` for `runner_labels` matched commented
-illustrative examples and read as a security drift — withdrawn after re-checking
-with comments stripped, REPO_STANDARDS §22's failure mode applied to a reader);
-scope cut from `build-*` to `test-*` once `pre-commit.yml` was found to cover
-lint/typecheck; runner class reassigned from a new Class B split to Class A.
+Superseded by the body: every finding below is either folded into the section
+named, or closed in Pass 6. Git holds the full narrative (commits on
+`docs/plan-023-build-test-canon`); it is not restated here, per the repo's
+own rule that prose volume is a defect surface.
 
-Open question carried into the independent pass: whether M2's artifact
-requirement is sufficient as the sole conformance anchor.
-
-**Result:** gate-clean, dispatching independent review.
-
-### Pass 2 - 2026-08-03 - independent
-
-Eight load-bearing findings, seven minor. **The open question was answered: no.**
-All folded:
-
-1. **M4 unimplementable** — required contexts are tier-static (Claim 26); arming
-   a language check fleet-wide triggers the F2 never-reports pin (Claim 27) and
-   `--apply` clobbers hand-adds (Claim 28). → M4 demoted to SHOULD; **S8** added
-   as a named deferred subsystem (§3c).
-2. **`fork-strategy: skip` + a required check = a bypass** — canon records that a
-   skipped job reports green (Claim 29), and no scanner is a required context, so
-   they are not precedent. → default reversed to `ubuntu-latest` (§3d),
-   **flagged for founder confirmation** as it reverses their answer.
-3. **M2 gameable** — canon already ships the counter-pattern (Claim 25). → M2
-   asserts non-vacuous evidence and the gate strips PR-supplied collection config
-   (§3a).
-4. **§2's reuse argument false for the fleet** — no workspace repo declares a
-   `mypy` hook; canon's own config declares neither (Claim 24); engramory would
-   *lose* its typecheck on migration. → §2a added; PR-1 ships pinned `ruff` +
-   `mypy` hooks in the config template; M1 covers lint + typecheck.
-5. **Filename detection wrong both ways** — `iplanic` is a false positive,
-   canon itself a false negative. → two-level detection (§4); criterion 1
-   rewritten to name both counter-examples.
-6. **M3 unmeetable fleet-wide** — no lockfile exists anywhere. → SHOULD, with a
-   per-ecosystem definition owed by §24 (§3b).
-7. **§7 anchored to the wrong script** — the drift checker cannot read
-   branch-protection under the default token (Claim 36). → own implementation,
-   explicit coverage statement, `unknown` rows, PAT required for M4.
-8. **§11's pilot contradicted criterion 7** — a pilot branch in a sibling is a
-   cross-repo write. → canon becomes its own pilot via a `tests/fixtures/`
-   package, which also repairs the Wave-0 gap.
-
-Minor, all folded: cross-repo citations moved out of the ledger into §14 so every
-ledger row resolves against one root; Claim 22 re-pointed to canon's own copy of
-`run-ephemeral.sh` (Claim 33); the miscited Claim 8 reference dropped from §5 and
-Claim 23 now referenced where it applies; criterion 6 rewritten to exercise the
-wizard scaffold path rather than `--update`, which never introduces a surface
-(Claim 35); tool-version pinning added as §5a (M5 applied to this plan's own
-reusables); §5c added to record the PR-code-on-pool extension PLAN-014 explicitly
-declined (Claim 34); wizard phase corrected from 3 (scanners) to 2 (lint); §9a
-added because PR-1's original gate could not see PR-1's content.
-
-Also folded, from founder direction received during this pass: **§1a AI-first by
-default**, and floor rule **M7** (machine-readable structured evidence at a
-declared path).
-
-**Result:** findings folded; re-dispatching for an independent Pass 3.
-
-### Pass 3 - 2026-08-03 - independent
-
-Confirmed Claims 24–36 semantically sound and the M4→S8 and §3d folds correct in
-principle. Found **nine load-bearing findings, all introduced by the Pass-2
-fold** — the "a fold is a change and needs the same scrutiny" trap, in full. All
-folded:
-
-1. **The §2a remedy edited a file that does not exist and would have reached zero
-   repos.** The surface is `pre-commit-hook-block.yaml`, a merge fragment whose
-   **marker version is the delivery mechanism** (Claim 37) — without a `v2`→`v3`
-   bump, bootstrap no-ops on every adopted repo (Claim 38), and `--update`
-   excludes the file by design. The fragment's own header documents this exact
-   freeze-forever failure (FT-32). → §2a rewritten with the real surface, the
-   marker bump, and bootstrap-only delivery.
-2. **§3a's "strip PR-supplied config" is impossible for pytest.** `conftest.py`
-   is executable test code; pytest config lives in the same `pyproject.toml` §5b
-   must read. The `sast-scan` analogy does not transfer. → strip requirement
-   deleted; non-vacuity kept; `coverage-omit`/`testpaths` added so the
-   "express it gate-side" escape has a mechanism.
-3. **No producer for criteria 3 and 4.** Canon's Wave-0 mechanism is a `self-*`
-   caller (Claim 41) and PR-2 shipped none. → `self-test-python.yml` added;
-   criterion 4 moved to a shell unit test, since a fixture PR failing canon's own
-   required gate would be unmergeable.
-4. **M2/M7 audited against artifacts §7 never retrieved**, with no schema and no
-   place to declare a path. → `evidence:` block added to §6, schema owed by PR-1,
-   retrieval owed by PR-4; §1a's "costs nothing" claim corrected.
-5. **`node.buildable_package` keyed on `name`/`version`** — true of essentially
-   every `package.json`. → keyed on not-`private` plus `main`/`exports`/`files`/
-   build script; criterion 1 gains a Node counter-example.
-6. **The `mypy` hook would be vacuous** without `additional_dependencies`, and
-   canon's own self-adoption cost (ten modules under a *required* lint context)
-   was unbudgeted. → both stated; PR-1 flagged as possibly needing a split.
-7. **`buildable_package` anchoring unspecified**, which the PR-2 fixture would
-   have flipped — making canon report buildable and failing criterion 1. →
-   `anchor: working-directory`, explicit and non-recursive.
-8. **M6's predicate was self-contradictory** (unconditional MUST plus a
-   universally-available `skip` carve-out) and M5/M6 named the wrong audit
-   target. → M6 scoped to the armed case; §3e added for mode-dependent audit
-   targets; §3d's "reports a conclusion" qualified with `action_required`
-   (Claim 42); `fork-strategy` split into an enum plus `fork-runner-labels`.
-9. **Wizard phase wrong** (lint is phase 1, not 2) and a **second hand-maintained
-   phase list** exists (Claim 39); **§4.1 defines only two flow classes** and
-   this plan ships a third. → §8 corrected; §9b added so PR-1 extends §4.1.
-
-**Result:** findings folded; re-dispatching for an independent Pass 4 — the final
-pass permitted under OPS-0066's 3-independent-pass cap.
-
-### Pass 4 - 2026-08-03 - independent
-
-**Nine load-bearing findings. NOT folded — the OPS-0066 circuit-breaker fired.**
-
-This was the third independent pass. Each of the three found defects *introduced
-by the previous fold*, so folding a fourth time without review would repeat the
-one failure mode this log has demonstrated three times running. Per OPS-0066 the
-open items are surfaced to the founder rather than silently folded.
-
-Confirmed sound and **not** to be re-opened: Claims 37, 38, 39, 41, 42; the
-marker-delivery mechanism; §9b's two-class reading of §4.1; the Mode-2 mapping;
-every §14 cross-repo row spot-checked.
-
-**Open — design-changing:**
-
-1. **PR-2/PR-3 gates cannot be met inside PR-2/PR-3.** Every existing `self-*`
-   caller pins the *released* tag by deliberate convention, and `test-python.yml`
-   exists in no tag yet — so the new self-caller `startup_failure`s and never
-   reports. This is canon's own FT-21 chicken-and-egg. Needs either
-   post-tag-cut sequencing or an explicit local `uses: ./…` departure.
-2. **PR-1 must edit a second pre-commit file nobody names** — canon's own
-   `.pre-commit-config.yaml` is a hand-maintained copy, not a bootstrap product,
-   so the marker bump does not deliver hooks to canon. PR-1's "canon passes its
-   own new hooks" gate therefore has **no producer** — the identical defect
-   Pass 3 fixed for the test gate, left live for the lint gate. Also: the merge
-   de-dups by repo URL, so canon's pinned `ruff` will **not** reach the five
-   repos that already declare `ruff` (WARN only); `mypy` does land.
-3. **`--fleet` has no data source and no token model.** Reading nine repos' file
-   trees, branch protection and run artifacts from canon's ephemeral runner needs
-   a cross-repo PAT that does not exist today (every workflow secret is
-   `GITHUB_TOKEN` bar `AI_REVIEW_TOKEN`). A 🔴 founder prerequisite PR-4 depends
-   on and no section owns.
-4. **M1 contradicts §4.** M1 says "a repo containing **buildable code**"; §4 says
-   `language_present` drives M1 coverage. The two showcase repos (`iplanic`,
-   canon) land on opposite verdicts depending on which sentence is read.
-5. **`language_present` kept the naive predicate** the two-level design existed to
-   kill — bare recursive globs, no exclusions. `operations` has exactly one stray
-   `.js` and would permanently owe a Node gate; `**/*.py` will match `.venv/`,
-   vendored trees and (after PR-2) the fixture itself.
-6. **§3e's Mode-1 row cannot audit M6** — `fork-strategy` is a *caller* input, so
-   the only M6 violation possible in Mode 1 is invisible to a scan of the pinned
-   ref.
-7. **§6 fixes no drift** — the declared/undeclared split is promised in drift
-   terms, but no PR teaches `sync/check-drift.sh` to read the file. After PR-4,
-   drift still warns forever.
-8. **`fork-runner-labels: ubuntu-latest` violates the private-runner policy.** One
-   Class A template serves both visibilities, and private repos may never use
-   GitHub-hosted (OPS-0049). The default needs a visibility-dependent answer.
-9. **§3a contradicts itself** — point 2 says collection is "never overridden";
-   point 3 and §5 add a `testpaths` input that overrides exactly that.
-
-**Open — wording:** the §2 scope table still says "extend the config template"
-(orphaned, contradicts §2a); repo counts say "nine" where canon makes ten; PR-1's
-content column never lists the `CLAUDE.md:17` fix §9a requires; `runtime-versions`
-names two different inputs in its own note; §2a's required-context citation points
-at the product-tier file when canon runs FT-52's own profile.
-
-**Result:** NOT READY — 3 independent passes exhausted, 9 load-bearing items open.
-Escalated to founder per OPS-0066.
-
-### Pass 5 - 2026-08-03 - self (post-investigation revision)
-
-Founder approved a best-practices investigation against real-world practice
-before folding. It **changed two design premises**, which is why the OPS-0066
-counter resets here rather than this being a fourth fold of the same design.
-
-**Premise change 1 — S8 dissolved (§3c).** Pass 2's diagnosis was right and its
-conclusion wrong. Repo **rulesets** are a separate, aggregating surface that the
-installers never touch (Claim 43, verified: zero `ruleset` references in
-`apply-standards.sh`, `install.sh`, `sync/*.sh`), so a required check placed
-there is immune to the branch-protection PUT. Measured live (§15): rulesets are
-active on canon and on the **private** `aidoc-flow-business`, so the mechanism
-works on both visibilities today. **M4 returns to MUST**; the deferred subsystem
-becomes a template plus a `gh api` applier in PR-4.
-
-**Premise change 2 — the bypass has a named industry fix (§3f).** The
-skipped-job-reports-green problem is GitHub-wide and well documented; the
-standard remedy is an always-running **gate job** (`if: always()` over
-`toJSON(needs)`). Added as floor rule **M4a**, stated in §24 as a general rule for
-any required canon gate. The canonical `re-actors/alls-green` implementation is
-barred by §4.3, so canon implements it inline. Note rulesets share branch
-protection's skipped-as-success semantics, so §3c does **not** subsume this.
-
-**Also adopted from the investigation:** OpenSSF **Allstar**'s `.allstar/`
-per-repo opt-out validates §6's design as standard practice rather than
-invention, and its opt-out-by-default guidance is recorded in PR-0 as a
-deliberate divergence; **linguist attributes** in the `.gitattributes` baseline
-canon already ships (Claim 44) become the native fix for §4's false positives;
-the **org-migration** question is recorded in §15 as a separate founder decision,
-explicitly not a dependency.
-
-**All 9 Pass-4 items folded:** self-caller chicken-and-egg → §9c local-ref
-two-stage pattern; canon's own `.pre-commit-config.yaml` as the second required
-edit → §2a (Claim 45) plus the `ruff` URL-de-dup limit (Claim 46); `--fleet`
-mechanism and token → §7a, v1 ships canon-only with `--fleet` gated on a 🔴
-credential; M1 re-worded to `language_present`; `language_present` filtered
-(`_exclude`, linguist, `requires_manifest`); §3e Mode-1 now reads the caller's
-`with:` block; §6's drift promise scoped honestly to the report; fork routing
-made visibility-dependent because `github-hosted` is forbidden on private repos;
-§3a's collection contradiction resolved as *override, never strip*. Wording items
-folded: the §2 scope-table orphan, repo counts (eight consumers + canon),
-`runtime-versions` naming, PR-1's `CLAUDE.md` fix now listed, and §2a's
-required-context citation corrected to FT-52's canon profile.
-
-**Result:** premises changed and all prior findings folded; dispatching a fresh
-independent review.
+- **Pass 1 - self (4).** Withdrew a false security-drift claim — a `grep` had
+  matched *commented-out* examples, REPO_STANDARDS §22's failure mode aimed at a
+  reader. Cut scope from `build-*` to `test-*` once `pre-commit.yml` was found to
+  cover lint/typecheck (§2). Reassigned the runner class from a new Class B split
+  to Class A (§5). Reframed an absence-shaped claim that could not resolve to
+  `path:line`.
+- **Pass 2 - independent (8+7).** M4 unimplementable via tier-static branch
+  protection (§3c). `fork-strategy: skip` on a required check is a **bypass**
+  (§3d). M2 gameable → non-vacuity (§3a). The reuse argument false fleet-wide —
+  no repo declares a `mypy` hook (§2a).
+- **Pass 3 - independent (9).** *Every finding a defect introduced by the Pass-2
+  fold*, including a fix that edited a file which does not exist (§2a's merge
+  fragment). Also: pytest config cannot be stripped (§3a); no `self-*` producer
+  (§9c); M7 unbudgeted (§1a).
+- **Pass 4 - independent (9).** Same pattern again on the Pass-3 folds. Triggered
+  the OPS-0066 circuit-breaker: escalated rather than folding a fourth time.
+- **Pass 5 - self.** Post-investigation revision. Two premises changed — S8
+  dissolved into repo rulesets (§3c), M4a added for the skipped-check bypass
+  (§3f) — plus all 9 Pass-4 items folded.
 
 ### Pass 6 - 2026-08-03 - independent
 
@@ -1144,5 +987,20 @@ two-stage convert); §4's linguist filter is safe from `--update` because
   gate's bare context is `?non-call`, which it deliberately does not resolve. The
   pre-arm producer check does not come free.
 
-**Result:** NOT READY. Six items folded, three open — two of which are founder
-decisions rather than authoring work.
+**Pass 7 addendum — 2026-08-03, independent (OPS-0065 governance-docs class).**
+`code-reviewer` + `documentation-specialist` reviewed the CI-0029/CI-0030/CHANGELOG
+diff, which had had no review. Both returned REVISIONS-NEEDED. Folded: a **false
+claim** that an org makes `composition.yml` retirable (Apps cannot be org team
+members either — corrected in all three files); **CI-0021 cited backwards** (its
+title is "…**not** `--admin`"; the tension is now stated rather than inverted);
+`enforce_admins: false` is **not** fleet-wide (4 of 5 templates set `true`, so
+the ruleset bypass is inert there); the ASSESSMENT's 🔴s recast as structural-half
+rather than account-caused; CI-0031 forward-reference reserved CI-0028-style; the
+64-file count now carries its command; §15's duplicate of CI-0030 cut to a
+pointer; open-item counts reconciled across three places; §9d written; Review log
+Passes 1-5 condensed (1148 → 985 lines). Deferred as low: foreign-section
+prefixing (`RS §12`), §3f/§9c ordering, Claim-ledger numbering gaps.
+
+**Result (as of this pass):** NOT READY — six folded, four open. Two of the four
+have since been closed (see the strikethroughs above); two remain, per the Status
+line. Later closures are dated inline rather than by rewriting this result.
