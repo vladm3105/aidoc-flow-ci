@@ -1,9 +1,10 @@
 # PLAN-021 — doc-maintainer: make the dry-run path executable
 
-**Status:** **READY — unblocked by the founder 2026-07-31.** Both §9 items are
-now closed (353b approved 2026-07-30; PR-C's consumer cost accepted 2026-07-31,
-**re-confirmed against the corrected census** below), and both owed measurements
-are discharged in §9. Implementation may begin.
+**Status:** **In Progress — PR-0 landed 2026-08-03.** Both §9 items closed (353b
+approved 2026-07-30; PR-C's consumer cost accepted 2026-07-31, **re-confirmed
+against the corrected census** below), and both owed measurements are discharged
+in §9. **PR-0 done** (`DECISIONS.md` CI-0027; the §3 residual filed as
+[#372](https://github.com/vladm3105/aidoc-flow-ci/issues/372)). Next: PR-A.
 
 > **How the OPS-0066 cap was resolved — read this before treating READY as
 > "fully reviewed".** Three independent passes returned 10, 9 and 6 findings;
@@ -207,8 +208,11 @@ instead of dropping the entry** — structurally the same blast-radius defect as
 taking 353b is inconsistent, and the consumer's own resume note says the
 30 %-deletion class "should be understood by then too". **Treatment: do not
 change the guard in this plan**; state the residual honestly in `CI-0027` and
-file the blast-radius question as its own issue. Do not let §1's resume condition
-be read as "this plan makes the pilot green".
+file the blast-radius question as its own issue — **done: `CI-0027` landed in
+PR-0 and the question is [#372](https://github.com/vladm3105/aidoc-flow-ci/issues/372)**,
+which also folds in the identically-shaped 400-line ceiling.
+
+Do not let §1's resume condition be read as "this plan makes the pilot green".
 
 *(Moot — 353b was approved 2026-07-30, §9 item 1. Retained because the
 consequence generalises:* had 353b been declined, 353a would still ship and the
@@ -218,8 +222,11 @@ and the pilot would stay paused.*)*
 
 **The resume condition is now insufficient as the consumer wrote it.** It names
 `#352 AND #353` only. §9 M2 shows `#360` (PR-D) accounts for **4 of 12** distinct
-failing merges on its own — so satisfying `#352 AND #353` and resuming would
-return a pilot that is still red on roughly a third of merges. **`CI-0027` must
+failing merges on its own — and satisfying `#352 AND #353` fixes only the
+duplicate bucket and the Step-9 death, so resuming would return a pilot still red
+on **8 of its 12 merges** (the 4 non-allowlisted, the 3 `CHANGELOG.md` merges
+that `#354` covers and the condition also omits, and the 2 30 %-deletion trips,
+less the one merge counted in two of those buckets). **`CI-0027` must
 record that the resume condition needs `#360`**, and the consumer's
 `.github/doc-maintainer.json` note should be updated when the cluster lands —
 otherwise this is discovered at resume time, which is exactly the failure the
@@ -236,7 +243,7 @@ independent but should land with the others so the resume is a single event.
 
 The cluster, the D12 reading, the 353b confirmation, the standing 30 %-deletion
 residual, and the PR-D spec deviation. Lands first so the others can cite it.
-One doc surface.
+**Doc surfaces:** `DECISIONS.md` · `CHANGELOG.md` · this plan's status.
 
 ### PR-A — #352: scope `-e` off around the tolerated `diff`
 
@@ -504,8 +511,8 @@ changes is what rules out MAJOR, which is a separate test from MINOR-vs-PATCH.
 ## 7. Out of scope
 
 - **The 30 %-deletion guard's blast radius** (§3) — it reds a whole run instead
-  of dropping the entry. Same class as 353b; file separately, do not weaken the
-  guard.
+  of dropping the entry. Same class as 353b; do not weaken the guard. **Filed as
+  [#372](https://github.com/vladm3105/aidoc-flow-ci/issues/372)** (PR-0).
 - **Opening a tracking issue on plan-validation rejection.** D12 requires
   `::error::` **and** a tracking issue; the implementation does the first only.
 - Config-knob for the apply size limit; section-scoped edits for append-only docs.
@@ -538,9 +545,10 @@ governance cap:
 **`DECISIONS.md` CI-0027** (PR-0) records the cluster, the D12 reading, the 353b
 confirmation, the PR-D spec deviation, and the standing 30 %-deletion residual.
 It must also record, from §9: **the corrected distinct-merge census** (the
-run-count ranking was wrong, and `#353`'s string covers two defects 4/4), **the
-founder's PR-C acceptance on the corrected 1-of-11 figure**, and **that the
-consumer's resume condition needs `#360` added** — none of which are derivable
+run-count ranking was retry-weighted; by merge the duplicate and non-allowlisted
+buckets are 4 and 4), **the founder's PR-C acceptance, re-put a third time on the
+corrected 3-of-12 figure**, and **that the consumer's resume condition needs
+`#360` added** — none of which are derivable
 from the run counts this plan was drafted against.
 
 ---
@@ -558,8 +566,8 @@ from the run counts this plan was drafted against.
    `CHANGELOG.md` to high-risk on `operations` retires changelog auto-maintenance
    there — that flow's primary op — and that is accepted.
 
-   **Put twice, and the second time was to correct an author error — record the
-   sequence, because the number is what a later reader will question.** It was
+   **Put three times, the second and third to correct an author error — record
+   the sequence, because the number is what a later reader will question.** It was
    first accepted on "3 of 23 runs". A first re-derivation reported **1 of 11**
    and called it the smallest fixable bucket; the founder re-confirmed on that.
    Independent review then showed the re-derivation was collapsed on the wrong
@@ -592,7 +600,7 @@ composition did not.**
 estimated, with a retry factor varying 1–4 rather than a uniform ~3. A merge is
 counted in a bucket if that cause appears at **least once** across its runs:
 
-| Cause | Merges | Fixed by |
+| Merges | Cause | Fixed by |
 |---:|---|---|
 | **4** | planner rejects a **duplicate** of an allowlisted path (`plans/HANDOFF.md`) | PR-B (353b) |
 | **4** | planner rejects a genuinely **non-allowlisted** path (`CLAUDE.md` ×2, `plans/PIN-CURRENCY-READER-PLAN.md`, `.github/doc-maintainer-conventions.md`) | **PR-D** (#360) |
@@ -897,7 +905,7 @@ remains independently unreviewed** — that residual is stated in the header and
 not discharged here.
 
 **Founder decisions closing §9:** 353b approved (2026-07-30); PR-C's consumer
-cost accepted (2026-07-31) — put twice, the second time against the corrected
+cost accepted (2026-07-31) — put three times, the last against the corrected
 figure below, with "ship half 2 only" and "defer PR-C" offered and declined.
 
 **Both measurements run, and M2 changed the plan:**
@@ -905,9 +913,10 @@ figure below, with "ship half 2 only" and "defer PR-C" offered and declined.
 - **M1** — `echo '[]' | jq -r '.[0].number'` emits the literal `null` (verified
   with `od -c`), so Step 9's `[ -z "$PR" ]` never fires. PR-A's guard must test
   for `null`.
-- **M2** — the census re-derived by distinct merge SHA: 23 failures are **11**
-  distinct merges, and `#353`'s error string covers **two** defects at 4 and 4.
-  Full table and reproduction in §9.
+- **M2** — the census re-derived by distinct merge SHA, keyed on the
+  `MERGE_SHA` input: 23 failures are **12** distinct merges, and the duplicate
+  and non-allowlisted buckets equalise at **4 and 4** by merge where run counts
+  read 9 and 6. Full table and reproduction in §9.
 
 **What M2 changed, stated plainly** — these are edits to the plan's content, not
 observations about it:

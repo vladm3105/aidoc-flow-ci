@@ -5,6 +5,9 @@ for the workspace CI + governance-workflow canon library.
 
 **ID prefix:** `CI-NNNN`. Never reuse a retired ID.
 
+**Entries are ordered by ID, not by date.** An ID reserved by an open plan may be
+filled in place when that plan lands; nothing already written is changed.
+
 ---
 
 ## CI-0001: Flexible-canonical approach for project governance files (2026-07-08)
@@ -1616,10 +1619,139 @@ event/state combination yields SUCCESS without a review on an unarmed repo.
 
 ---
 
+## CI-0027: The `doc-maintainer` dry-run cluster — and a census keyed on retries ranks the wrong fix (2026-08-03)
+
+*(Fills the ID slot `CI-0028` below records as reserved; that note is now
+historical and carries a forward pointer. Nothing already written was changed.
+`plans/PLAN-021_doc-maintainer-dry-run-cluster.md` is unblocked — its status
+lives in its own header, not here.)*
+
+**Context**
+
+`doc-maintainer`'s **dry-run** path cannot complete a run that has anything to
+say. Four defects converge on it, each verified against source at `ci/v2.16.0`:
+
+| Issue | Defect |
+|---|---|
+| [#352](https://github.com/vladm3105/aidoc-flow-ci/issues/352) | Step 9 renders the patch with `diff`, which exits 1 when files differ. GitHub's default shell carries `-e`, so the step dies **at** the `diff`, before the `rc=$?` written to tolerate it. |
+| [#353](https://github.com/vladm3105/aidoc-flow-ci/issues/353) | The planner tests `path in seen or not matches(path, allowed)` in one `if` and `fail()`s on either — so a duplicate reports as an allowlist violation, naming a path that *is* allowlisted. `validation.rejected` **and** `validation.allowlist_violations` are both declared and never written (`planner.py:202`). |
+| [#354](https://github.com/vladm3105/aidoc-flow-ci/issues/354) | `apply.py` refuses files over 200 KB; the install template ships `CHANGELOG.md` as a low-risk path. Changelogs only grow. |
+| [#360](https://github.com/vladm3105/aidoc-flow-ci/issues/360) | The inventory globs every `*.md` with no allowlist filter, contradicting IPLAN-0025 §2.1 step 4 — **and** the prompt never forbids proposing outside `allowed_paths`, its only prohibition being by file *type*. |
+
+The pilot (`aidoc-flow-framework`, the only `dry_run: true` consumer) has been
+paused via `kill_switch: true` since 2026-07-30. The switch is a **`maintain`-job
+property only**: the schedule-gated `reconcile` job reads no config, so
+framework's cron keeps dispatching. The accurate claim is *no LLM cost, no
+proposals, no failures* — not "no runs".
+
+**Measurement — the census is keyed on `MERGE_SHA`, and its ranking is not the
+run-count ranking.** 23 failures over the pilot's first 47 runs are **12 distinct
+merges**, not 23 defect instances: `reconcile.py` treats a non-success run as
+un-maintained and re-dispatches the SHA, with a retry factor varying 1–4.
+
+| Merges | Cause | Fixed by |
+|---:|---|---|
+| 4 | duplicate of an allowlisted path (`plans/HANDOFF.md`) | PR-B (353b) |
+| 4 | genuinely non-allowlisted path | PR-D (#360) |
+| 3 | apply refuses `CHANGELOG.md` at 200 KB | PR-C **for new adopters only**; on the pilot these migrate into the row above and are closed by D-2 |
+| 2 | apply's 30 %-deletion guard on `README.md` | **not fixed — [#372](https://github.com/vladm3105/aidoc-flow-ci/issues/372)** |
+| 1 | Step 9 dies rendering the dry-run patch | PR-A |
+
+Buckets sum to 14 over 12 merges: two merges fail two ways. By run count the
+first two read 9 and 6; **by merge they are 4 and 4**, because the duplicate
+bucket is 9 retries of only 4 merges.
+
+**Retries are not replays.** Each re-dispatch re-invokes the planner LLM and
+draws a fresh plan, so one merge can fail two different ways across its retries.
+Bucket membership at a merge is a *sample*, not a property; the aggregation used
+here is "this cause appears at least once".
+
+**Decision**
+
+Ship the cluster as PLAN-021's five PRs, on these four findings — none of them
+derivable from the failure counts the plan was drafted against.
+
+1. **PR-D is co-equal with PR-B and lands with the cluster, not after it.** The
+   run counts that ranked it fourth are retry-weighted; by merge it ties.
+
+2. **The consumer's recorded resume condition — `RESUME REQUIRES #352 AND #353`
+   — is insufficient, and `#360` belongs in it.** Satisfying it as written fixes
+   only the duplicate bucket and the Step-9 death, leaving **8 of the 12 merges
+   still red**: the 4 non-allowlisted, the 3 `CHANGELOG.md` merges (`#354` is
+   also omitted from the condition), and the 2 30 %-deletion trips, less the one
+   merge appearing in two of those buckets. The consumer's
+   `.github/doc-maintainer.json` note is to be updated when the cluster lands.
+
+3. **353b is `record-then-fail`, not `record-and-skip`.** A non-allowlisted path
+   still calls `fail()`, which raises `SystemExit(1)` *before* the plan is
+   written — so an `allowlist_violations` populated at plan construction could
+   never be non-empty, leaving the field declared-and-never-populated exactly as
+   it is today. Write the plan artifact, collect **all** violations, then exit
+   non-zero once.
+
+4. **D12 is narrower than #353's fix appears to collide with.** IPLAN-0025 D12
+   names plan-validation rejection as a LOUD failure, but its only *defined*
+   instance is the out-of-allowlist case (Risk 1, §2.1 step 6). A **duplicate**
+   path appears nowhere in IPLAN-0025. Recording a duplicate and continuing is
+   therefore most likely not an amendment to D12 at all — it is a case D12 never
+   contemplated. **353b approved by the founder 2026-07-30**, taking both 353a
+   (de-conflate into two branches, two messages, both still failing) and 353b.
+
+**Consequences**
+
+- **`record-then-fail` does not make the rejections countable, and must not be
+  justified that way.** The plan JSON is never uploaded and `Cleanup`
+  (`if: always()`) deletes it. **353a's de-conflated `::error::` line is what
+  makes P4(d) countable.**
+- **PR-C's cost on the live consumer is accepted.** Demoting `CHANGELOG.md` to
+  high-risk on `operations` retires changelog auto-maintenance there — that
+  flow's primary op. The decision was put **three** times; the middle put rested
+  on a figure (1 of 11) that was wrong in the direction making acceptance easier,
+  the true figure being 3 of 12. Sequence in PLAN-021 §9 item 2.
+- **`operations`' `allowed_paths` edit is a no-op** — its list ends with the
+  catch-all `"*.md"` and `matches()` uses `fnmatchcase`, which re-admits the
+  changelog. The effective knob is `auto_merge.low_risk_paths`.
+- **#360's spec deviation has two halves, and only the second closes the
+  bucket.** D-1 (filter the inventory through the allowlist, before the
+  `MAX_DOC_INVENTORY` slice) is genuine spec conformance. But all six offending
+  proposals were files the triggering PRs had just changed, and the planner
+  passes a `Complete changed-file list:` that is unfiltered and untruncated;
+  all six are markdown prose files and five are unambiguously documentation, so
+  the prompt's file-*type* prohibition does not reach them — while canon tells
+  the model the consumer's own "propose nothing outside the allowlist"
+  convention is *untrusted data*. D-2, the prompt imperative, is the load-bearing
+  half.
+- **D-1 must disclose its narrowing, per `REPO_STANDARDS` §20.2 rule 5** ("a
+  filtered input is a lying input", CI-0022). Filtering `Documentation
+  inventory:` silently makes the omitted files read as absent from the repo; the
+  block's label must state it is scoped to `allowed_paths`. PR-D's new §24.4
+  must be written as an extension of §20, not beside it.
+- **Standing residual — the cluster does not make the pilot green.** The two
+  30 %-deletion trips remain. The guard is correct; it reds the whole run instead
+  of dropping the entry, structurally the same blast-radius defect as 353b one
+  stage later. Deliberately out of scope and filed as
+  [#372](https://github.com/vladm3105/aidoc-flow-ci/issues/372). **Do not cite
+  PLAN-021 as closing the pilot's failure set.**
+- **PLAN-021 is a founder release, not a converged review.** Three independent
+  passes returned 10, 9 and 6 findings; all 25 are folded, but the third pass's
+  fold is itself unreviewed and OPS-0066 caps the cycle at three. The cap's own
+  escape is escalation to the founder, which is what happened. **PLAN-021 §10's
+  scoped fourth pass over that fold is still owed, and its precondition — the §9
+  founder answers — is now met.** Per-PR review does not discharge it.
+
+**Origin**
+
+PLAN-021 PR-0, from issues #352, #353, #354 and #360. The census correction and
+the M1/M2 measurements were run before any code, per PLAN-021 §9; M2 changed the
+plan's priority framing, which is why it was required first.
+
+---
+
 ## CI-0028: Three doc surfaces, three edit shapes — and feedback is a direction, not a class (2026-07-31)
 
 *(`CI-0027` is reserved by `plans/PLAN-021_doc-maintainer-dry-run-cluster.md`,
-which is NOT READY. The gap is deliberate; IDs are never reused.)*
+which is NOT READY. The gap is deliberate; IDs are never reused. **Filled
+2026-08-03 by `CI-0027` above.**)*
 
 **Context**
 
@@ -1907,7 +2039,8 @@ properties; OpenSSF Allstar's org-level model), recorded in
 
 ---
 
-<!-- Append new entries above this line; append-only. Never rewrite
+<!-- Append new entries above this line (or into a previously reserved ID
+slot — see the ordering rule at the top); append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
 and update the superseded entry's "Consequences" section to reference
 the reversal ID. -->
