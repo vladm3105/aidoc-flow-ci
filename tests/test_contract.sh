@@ -146,7 +146,20 @@ PYEOF
 )"
 assert_eq "$mdl_default" "True" "markdown-lint fail-on-findings input defaults to True (blocking gate; FT-41 — a flip to false must go red)"
 assert_absent "$(grep 'git commit' .github/workflows/doc-maintainer.yml)" '[skip ci]' "doc-maintainer bot commits do not suppress normal CI"
-assert_ok "grep -q 'actions/upload-artifact@.*# v4.6.2' .github/workflows/doc-maintainer.yml" "doc-maintainer preserves dry-run patches as an artifact"
+# Asserts the STEP, not its action version: a version literal here makes the
+# assertion a dependabot tripwire that fails on a bump which changes nothing it
+# claims to test (it did, on #365). Floating/unpinned refs are already covered
+# generically above. What must hold is that the dry-run patch is uploaded and
+# that a missing patch fails the step rather than passing silently.
+assert_ok "python3 - <<'PYEOF'
+import sys, yaml
+d = yaml.safe_load(open('.github/workflows/doc-maintainer.yml'))
+steps = [s for j in d['jobs'].values() for s in j.get('steps', [])]
+up = [s for s in steps
+      if str(s.get('uses', '')).startswith('actions/upload-artifact@')
+      and s.get('with', {}).get('path') == '.doc-maintainer-proposed.patch']
+sys.exit(0 if len(up) == 1 and up[0]['with'].get('if-no-files-found') == 'error' else 1)
+PYEOF" "doc-maintainer preserves dry-run patches as an artifact"
 assert_ok "jq -e '.auto_merge.high_risk_paths | index(\"**/DECISIONS.md\") and index(\"**/ROADMAP.md\") and index(\"**/HANDOFF.md\")' install/templates/doc-maintainer.json >/dev/null" "nested governance documents are high-risk by default"
 assert_ok "jq -e '.allowed_paths | index(\"DECISIONS.md\")' install/templates/doc-maintainer.json >/dev/null" "high-risk root decisions file is consistently allowlisted"
 assert_ok "jq -e '.version == 2 and .litellm.model == \"ai-reviewer\"' install/templates/config.json.template >/dev/null && jq -e '.properties.version.const == 2 and (.required | index(\"litellm\"))' schemas/ai-review-config-v2.schema.json >/dev/null" "AI-review config and schema share the v2 contract"

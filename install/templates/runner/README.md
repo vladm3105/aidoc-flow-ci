@@ -43,7 +43,8 @@ exposure and never attach the Docker socket.
 
 - **Actions Runner >= 2.327.1** — the reusables call node24 actions (`actions/checkout` **v5+**, `actions/setup-node` **v5+**,
 `actions/setup-python` **v6+**, `actions/labeler` **v6+**,
-`actions/create-github-app-token` **v3+**, `actions/download-artifact` **v7+**),
+`actions/create-github-app-token` **v3+**, `actions/download-artifact` **v7+**,
+`actions/upload-artifact` **v6+**),
   which will not start on an older runner. The failure is a node-runtime error in
   `ai-review`'s first job. (The exact text is runner-version dependent and has not
   been reproduced here; expect it not to name the action or the floor.) Not tied to a

@@ -5,6 +5,30 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Dependencies — `upload-artifact` v4.6.2 → v7.0.1, and the test that blocked it (#365)
+
+- Three majors at once, none of which touch the artifact backend: **v5** is a
+  Node 24 declaration, **v6** makes node24 the default runtime (`runs.using:
+  node24`), **v7** migrates the action to ESM and adds an opt-in `archive: false`
+  direct-upload mode. `archive` defaults to `true`, so the upload shape is
+  unchanged and the pairing with `download-artifact@v8` in `ai-review.yml` still
+  holds — the same reasoning that let v8 land against a v4 uploader.
+- **`actions/upload-artifact` v6+ now carries the node24 runner floor** (Actions
+  Runner >= 2.327.1). Recorded in the three places that enumerate it:
+  `docs/runners.md`, `install/templates/runner/README.md`,
+  `docs/troubleshooting.md` §19. The floor itself is unchanged — canon already
+  required it via `download-artifact` v7+ — but a pool below it now fails in
+  `doc-maintainer` as well as `ai-review`.
+- **The bump went red on a test that was not testing the bump.**
+  `tests/test_contract.sh` asserted `upload-artifact@.*# v4.6.2` under the name
+  "doc-maintainer preserves dry-run patches as an artifact" — a version literal
+  inside an assertion about step behaviour, so any bump fails it while nothing it
+  claims to cover has changed. Rewritten to assert the step: exactly one
+  `upload-artifact` step uploading `.doc-maintainer-proposed.patch` with
+  `if-no-files-found: error`. Both mutants (guard flipped to `warn`, path
+  changed) were confirmed to fail it. Floating/unpinned refs stay covered by the
+  generic no-`@main` assertion, which is where pin policy belongs.
+
 ### Governance — CI-0029 + CI-0030: ruleset bypass scoping and the org migration (no code change)
 
 - **CI-0029** scopes ruleset `bypass_actors` by **threat model, not precedent**:

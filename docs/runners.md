@@ -126,7 +126,8 @@ custom names.
 
 The reusables call **node24** actions (`actions/checkout` **v5+**, `actions/setup-node` **v5+**,
 `actions/setup-python` **v6+**, `actions/labeler` **v6+**,
-`actions/create-github-app-token` **v3+**, `actions/download-artifact` **v7+**). node24 requires **Actions
+`actions/create-github-app-token` **v3+**, `actions/download-artifact` **v7+**,
+`actions/upload-artifact` **v6+**). node24 requires **Actions
 Runner >= 2.327.1**. A pool below that fails at the **runtime**, not on your
 config, and it surfaces in `ai-review`'s FIRST job (`trust`) — so the whole gate
 looks broken rather than version-gated.
