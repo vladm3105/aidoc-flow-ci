@@ -722,7 +722,8 @@ runner version first.
 
 **Cause.** The reusables call **node24** actions (`actions/checkout` v5+,
 `setup-node` v5+, `setup-python` v6+, `labeler` v6+, `create-github-app-token`
-v3+, `download-artifact` v7+). node24 requires **Actions Runner >= 2.327.1**. An
+v3+, `download-artifact` v7+, `upload-artifact` v6+). node24 requires **Actions
+Runner >= 2.327.1**. An
 older runner cannot start the action at all.
 
 **Diagnose.**
