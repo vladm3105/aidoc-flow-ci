@@ -5,6 +5,29 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### PLAN-021 PR-0 — `DECISIONS.md` CI-0027, the `doc-maintainer` dry-run cluster
+
+- **`CI-0027` written into the ID slot `CI-0028` reserved for it.** Records the
+  four-defect cluster (#352, #353, #354, #360), the corrected per-merge census
+  (23 pilot failures are **12 distinct merges**, keyed on the `MERGE_SHA` input
+  rather than `headSha`, so PR-D is co-equal with PR-B and lands with the
+  cluster), the IPLAN-0025 D12 reading that makes 353b non-conflicting, and that
+  the consumer's `#352 AND #353` resume condition omits `#360` and would leave
+  8 of 12 merges red. See `DECISIONS.md`.
+- **`DECISIONS.md` now states its ordering rule** — entries are ordered by ID,
+  not by date, and a reserved slot may be filled in place. The header, the
+  trailer and `CI-0028`'s reservation note say so, so the next session does not
+  "correct" the insertion.
+- **The standing residual is filed rather than left implicit:**
+  [#372](https://github.com/vladm3105/aidoc-flow-ci/issues/372) — apply's
+  30 %-deletion guard reds the whole run instead of dropping the entry, the same
+  blast-radius shape as 353b one stage later, and unfixed by any PR in this
+  cluster. PLAN-021 must not be cited as making the pilot green.
+- PLAN-021 corrected where it had drifted: the Pass-5 log still reported the
+  retracted 11-merge figure, §8 still required CI-0027 to record a superseded
+  "1-of-11" acceptance, and §9's census table had its column headers swapped.
+- No code changed; no consumer action.
+
 ### PLAN-023 — both carried open items closed; the arming mechanism split out (§9d, §9e, §9f)
 
 - **§9d decided as option (a):** extend `required-context-map.py` so a
