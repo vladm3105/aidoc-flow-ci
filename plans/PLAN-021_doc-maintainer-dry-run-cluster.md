@@ -690,7 +690,7 @@ warnings, §3's countability correction, §4 PR-A's `null` guard, §4 PR-D's D-2
 | 13 | `$PATCH` is assigned after that early exit and outside the extractable loop | `PATCH=.doc-maintainer-proposed.patch` | .github/workflows/doc-maintainer.yml:417 |
 | 14 | The upload step hard-errors on a missing file and cannot see that Step 9 bailed | `if-no-files-found: error` | .github/workflows/doc-maintainer.yml:454 |
 | 15 | Step 9's `run:` body contains `${{ }}` expressions, so verbatim extraction is a bash syntax error | `RUN_URL="${{ github.server_url }}` | .github/workflows/doc-maintainer.yml:413 |
-| 16 | Step 10 already carries the correct empty-PR guard for PR-A to mirror | `cannot resolve source PR for` | .github/workflows/doc-maintainer.yml:477 |
+| 16 | Step 10's empty-PR guard — **the shape PR-A must NOT copy bare**: Step 9's `if:` has no `low_count` term, so a bare `exit 1` reds every legitimately PR-less SHA (§4 PR-A) | `cannot resolve source PR for` | .github/workflows/doc-maintainer.yml:477 |
 | 17 | The live branch uses a tested context and is unaffected | `git diff --cached --quiet` | .github/workflows/doc-maintainer.yml:501 |
 | 18 | High-risk entries never reach apply — they go to the issue body | `high_risk_set` | .github/workflows/doc-maintainer.yml:531 |
 | 19 | apply is invoked ONLY with `--tier low_risk`, which is why the pre-filter must be tier-scoped | `--tier low_risk` | .github/workflows/doc-maintainer.yml:398 |
@@ -926,8 +926,8 @@ observations about it:
    [#360](https://github.com/vladm3105/aidoc-flow-ci/issues/360) and it must land
    **with** the cluster, not after it.
 2. **The consumer's resume condition (`#352 AND #353`) is insufficient** —
-   satisfying it and resuming returns a pilot still red on a third of merges.
-   `CI-0027` must record that `#360` belongs in it.
+   satisfying it and resuming returns a pilot still red on **8 of its 12
+   merges** (§3). `CI-0027` must record that `#360` belongs in it.
 3. **Retries are not replays**, so a merge can fail two ways across its retries;
    two of the twelve do. Aggregation is "cause appears at least once".
 4. Four ledger citations drifted and were re-pinned — including row 54, which
