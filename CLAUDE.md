@@ -284,6 +284,18 @@ has settled — measured, reproduced, and not expected to change.
   installed the right file set.** A run that silently dropped `ai-review.yml`
   passes every criterion. Tracked as
   [#358](https://github.com/vladm3105/aidoc-flow-ci/issues/358).
+- **`gh run list` reports only a run's LATEST attempt — a re-run erases the red
+  from the listing.** Run `30500957909` on framework failed three attempts, the
+  third inside `Run review through LiteLLM → verdict file`, and reads in
+  `gh run list` as one unbroken `success`. Any claim turning on whether
+  something was **ever** red must come from
+  `gh api repos/<r>/actions/runs/<id>/attempts/<n>` or from the PR's label
+  events (`gh api repos/<r>/issues/<pr>/events`), which have no attempt-masking.
+  Corollary: a secret's `updated_at` is last-write-wins and can neither
+  enumerate nor date the writes of an incident. Measured 2026-08-04, after this
+  exact error produced a *correction* that was itself false — the "gate was
+  never red" retraction in PLAN-021 §7, caught in pre-push review before it
+  shipped.
 
 ### Destructive on canon specifically
 
