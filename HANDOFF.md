@@ -15,18 +15,23 @@ silently overwrite a working secret; `tests/test_litellm_secrets.sh` is new (121
 assertions) and the exerciser-inventory row that called this script "low risk;
 `accepted-no-FT`" is corrected.
 
-**A standing claim was retired as false: framework's `ai-review` is GREEN.** Three
-handoffs and `plans/PLAN-021_*.md` §7 said its gate was red and owed a founder
-key re-provision. Measured instead: the last 8 `ai-review` runs on
-`aidoc-flow-framework` all concluded **success** through 2026-08-03T00:11Z; in
-the most recent one `Run review through LiteLLM → verdict file` succeeded with
-~16 s of model latency while the infra-failure and skip steps were both
-*skipped*; `LITELLM_REVIEW_API_KEY` was last written 2026-07-30T00:04:43Z, i.e.
-**before** those green runs; and framework has 0 open PRs. **No re-provision is
-owed — do not `--overwrite` that secret.** Re-derive before believing otherwise:
-`gh run list --repo vladm3105/aidoc-flow-framework --workflow ai-review --limit 6 --json event,conclusion,createdAt`.
-The claim survived because it was the one line carrying no re-derive command.
-Corrected on #350; PLAN-021 §7 still states it and is next to fix.
+**A standing claim was corrected — it was true as history, false as live
+status.** Three handoffs and `plans/PLAN-021_*.md` §7 asserted *in the present
+tense* that framework's `ai-review` gate was red and owed a founder key
+re-provision. The incident was real and closed the same night: run
+`30500957909` failed three attempts, the third inside
+`Run review through LiteLLM → verdict file`, and PR #382 held
+`ai:review-infra-error` from 2026-07-29T23:54:22Z to 2026-07-30T00:07:43Z;
+attempt 4 passed at 00:06:42Z after the values were restored by hand.
+**Nothing has been owed since — do not `--overwrite` that secret.**
+
+Re-derive from the **attempt** history, never `gh run list`, which reports only
+a run's latest attempt and renders those three failures as one `success` — the
+error that made the first attempt at this correction *itself* false
+(`CLAUDE.md` § "Durable traps"):
+`gh api repos/vladm3105/aidoc-flow-framework/actions/runs/<id>/attempts/<n> --jq '{run_attempt,run_started_at,conclusion}'`.
+The claim survived three wraps because it was the one line carrying no re-derive
+command.
 
 ## Current state — re-derive, do not trust
 
@@ -41,11 +46,10 @@ Corrected on #350; PLAN-021 §7 still states it and is next to fix.
 
 ## What to do next
 
-1. **Correct `plans/PLAN-021_doc-maintainer-dry-run-cluster.md` §7**, which still
-   asserts framework's `ai-review` is red and blocks the resume. It is the
-   source the retired claim above propagated from, and any session reading the
-   plan will re-adopt it. Smallest task on this list; do it before §10's review
-   pass reads the same file.
+1. ~~**Correct `plans/PLAN-021_doc-maintainer-dry-run-cluster.md` §7**~~ — **DONE
+   2026-08-04**, in the same change as this handoff edit. §7 now scopes the claim
+   to the closed 2026-07-29 incident and carries an attempt-aware re-derive
+   command. Start at item 2.
 
 2. **PLAN-021 §10's scoped fourth review pass — before PR-A.** Still owed; its
    precondition ("after the founder answers §9") is met, both §9 items being

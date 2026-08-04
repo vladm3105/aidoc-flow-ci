@@ -516,9 +516,19 @@ changes is what rules out MAJOR, which is a separate test from MINOR-vs-PATCH.
 - **Opening a tracking issue on plan-validation rejection.** D12 requires
   `::error::` **and** a tracking issue; the implementation does the first only.
 - Config-knob for the apply size limit; section-scoped edits for append-only docs.
-- The other five open canon issues (#347, #348, #349, #350, #351). **#350 is more
-  urgent than this cluster in wall-clock terms** — it has framework's required
-  `ai-review` gate red — but it is unrelated and needs a founder key re-provision.
+- The other open canon issues, all unrelated to this cluster: #347, #348, #349,
+  #351. **#350 is fixed and closed** (PR #375, 2026-08-04).
+  - **Corrected 2026-08-04 — true as history, false as live status.** The gate
+    incident was real: run `30500957909` failed three attempts, attempt 3
+    (2026-07-30T00:05:39Z) in `Run review through LiteLLM → verdict file`, and
+    PR #382 held `ai:review-infra-error` from 2026-07-29T23:54:22Z to
+    2026-07-30T00:07:43Z. It was **repaired by hand the same night** — attempt 4
+    passed at 00:06:42Z. What was false is the present tense this bullet then
+    kept asserting for three handoffs: nothing has been owed since, and **do not
+    `--overwrite` that secret.** Re-derive from the **attempt** history, not
+    `gh run list` — that reports only the latest attempt, so the three failures
+    above read there as a single `success` (`CLAUDE.md` § "Durable traps"):
+    `gh api repos/vladm3105/aidoc-flow-framework/actions/runs/<id>/attempts/<n> --jq '{run_attempt,run_started_at,conclusion}'`.
 - Giving canon a `doc-maintainer` self-caller — needs a self-hosted pool +
   LiteLLM secrets + the App. A PLAN-009-shaped item.
 
