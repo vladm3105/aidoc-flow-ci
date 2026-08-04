@@ -74,8 +74,8 @@ assert_eq "$missing_wf" "0" "all reusable workflows are in the inventory"
 # ---------------------------------------------------------------------------
 # 3. Every canonical script has an inventory row. Scripts are consumer-facing
 #    (install/update/drift) or release-critical; an unlisted one is an untracked
-#    surface. set-litellm-secrets is listed (as accepted-unexercised), so this
-#    holds for all of them.
+#    surface. Every canonical script now carries a real exerciser, so this holds
+#    for all of them with no accepted-unexercised entries in that table.
 # ---------------------------------------------------------------------------
 echo ""
 echo "== every canonical script is accounted for =="
@@ -102,6 +102,10 @@ assert_eq "$missing_script" "0" "all canonical scripts are in the inventory"
 # ---------------------------------------------------------------------------
 echo ""
 echo "== shipped non-manifest template fragments are accounted for =="
+# One entry today, deliberately written as a roster: fragments are named here
+# explicitly because the manifest/reusable/script walks structurally miss them,
+# and the next one is added to this list.
+# shellcheck disable=SC2043
 for frag in install/templates/pre-commit-hook-block.yaml; do
   if in_inventory "$frag"; then _g "fragment listed: $frag"
   else _r "fragment MISSING from inventory: $frag"; fi
