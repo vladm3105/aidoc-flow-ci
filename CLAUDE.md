@@ -302,6 +302,22 @@ has settled — measured, reproduced, and not expected to change.
   `startup_failure` runs are **not retryable**; the post-release push is what
   re-triggers them green. `docs/RELEASE_CHECKLIST.md` § "Tag + release".
 
+### Bash, where the fix quietly creates the next bug
+
+Both cost a review cycle each on #375, and both were introduced by a *fix* for
+the previous cycle's finding.
+
+- **A `trap … INT` that only cleans up does NOT stop the script.** Bash runs the
+  handler and **resumes**. `trap 'rm -rf "$T"' EXIT INT TERM` therefore deletes
+  the temp dir out from under a still-running fan-out and takes away Ctrl-C.
+  Each signal handler must exit itself: `trap '…; exit 130' INT`.
+- **`timeout` at the head of a `pipefail` pipeline converts a match into a
+  miss.** `timeout 3 getent … | grep -q 127.` returns 124 when the resolver
+  answers and *then* stalls — `grep` already matched, but `pipefail` takes the
+  timeout's status. Any pipeline whose exit status is a *decision* must decide
+  on the captured OUTPUT, not on the status. Same shape as the `printf | grep -q`
+  SIGPIPE inversion in `action_for`.
+
 ### Process
 
 - **Review sub-agents mutate the shared working tree.** They run `git stash` /
