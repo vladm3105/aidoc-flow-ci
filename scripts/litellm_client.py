@@ -86,6 +86,41 @@ def loopback_hint(base_url: str) -> str:
     return ""
 
 
+def auth_hint(code: int) -> str:
+    """Name the likely cause of a rejected token instead of a bare status line.
+
+    LITELLM_API_KEY is populated from a repository secret — LITELLM_REVIEW_API_KEY
+    for ai-review, LITELLM_DOC_API_KEY for doc-maintainer — so a 401 here is a
+    secret-provisioning problem, not a code one. The bare status named neither
+    the secret nor a cause, which is what made #350 expensive: a
+    set-litellm-secrets.sh run to add the OPTIONAL doc key silently overwrote a
+    working review key, and this message was all CI had to say about it.
+    """
+    if code == 401:
+        return (
+            " — the proxy rejected the bearer token. LITELLM_API_KEY comes from a"
+            " repository secret: LITELLM_REVIEW_API_KEY (ai-review's review step),"
+            " LITELLM_FIX_API_KEY (its autofix step), or LITELLM_DOC_API_KEY"
+            " (doc-maintainer). For the review and doc keys, a recent"
+            " install/set-litellm-secrets.sh run may have overwritten the value;"
+            " that script does not manage the fix key. Re-provision the affected"
+            " secret — GitHub secrets are write-only, so the value cannot be read"
+            " back or recovered from CI. (#350.)"
+        )
+    if code == 403:
+        # Deliberately NOT the re-provision message. 403 means the token
+        # authenticated and is not authorized for this model — which is why
+        # set-litellm-secrets.sh accepts 403 when probing /models. Telling the
+        # operator to re-provision a key the provisioner just certified would
+        # send them back into the hand-re-provisioning loop #350 was about.
+        return (
+            " — the token authenticated but is not authorized for this model."
+            " Check the virtual key's model scope on the LiteLLM proxy; the secret"
+            " value itself is fine, so replacing it will not help."
+        )
+    return ""
+
+
 def endpoint(base_url: str) -> str:
     parsed = urllib.parse.urlsplit(base_url)
     allow_http = os.environ.get("LITELLM_ALLOW_INSECURE_HTTP", "").lower() == "true"
@@ -190,7 +225,7 @@ def completion(
         except urllib.error.HTTPError as exc:
             retryable = exc.code == 429 or 500 <= exc.code < 600
             if not retryable or attempt == 3:
-                fail(f"proxy returned HTTP {exc.code}")
+                fail(f"proxy returned HTTP {exc.code}{auth_hint(exc.code)}")
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError, IndexError, TypeError, ResponseShapeError) as exc:
             if attempt == 3:
                 hint = loopback_hint(base_url) if isinstance(exc, (urllib.error.URLError, TimeoutError)) else ""

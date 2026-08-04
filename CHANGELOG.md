@@ -5,6 +5,54 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — `set-litellm-secrets.sh` no longer overwrites a working secret silently (closes #350)
+
+- **An existing secret is kept unless `--overwrite` is passed.** Adding the
+  optional doc key to a provisioned repo now writes that key and nothing else.
+  This is the fix for the incident: a `--doc` run rewrote `LITELLM_BASE_URL` and
+  `LITELLM_REVIEW_API_KEY` from the operator's environment, printed ✓ for all
+  three, exited 0, and reddened a **required** `ai-review` gate on a consumer
+  until the key was re-provisioned by hand. Value equality is not checkable —
+  GitHub secrets are write-only — so the guard keys on **existence**.
+- **A loopback `LITELLM_BASE_URL` is refused** (`--allow-loopback` forces it).
+  Loopback resolves to the job container, so it passes every check runnable from
+  the host and fails only in CI (CI-0017).
+- **URL + key are probed against `<base>/models` before any repo is touched**
+  (`--skip-validate` bypasses); anything but a 200 or 403 aborts. This catches
+  the half the loopback guard cannot — a correct URL with a rejected key — and
+  neither guard subsumes the other. 403 is accepted because a scoped key may be
+  forbidden on `/models` yet valid for chat completions. The probe sends the key
+  in a header file, never on argv (PLAN-015 L3), and **`--dry-run` skips it
+  entirely** rather than transmitting a live credential to whatever host the
+  configuration names.
+- **An unreadable secret list skips the repo instead of writing blind**, with no
+  override: listing and writing secrets need the same admin scope, so a failed
+  list means the token is wrong, not that the repo is empty. `--mint` no longer
+  mints a key for a secret it would then keep.
+- **A run that skips a repo or cannot write a secret now exits non-zero**, and a
+  failed write no longer aborts the fan-out mid-fleet with no summary — it is
+  reported, the remaining repos are still attempted, and the totals always
+  print. "Printed ✓ and exited 0" is the shape of #350 itself.
+- **`--dry-run` prints the per-secret plan** (create / overwrite / keep) instead
+  of one undifferentiated line, and the run ends with `N created, N overwritten,
+  N kept, N repo(s) skipped`.
+- **`scripts/litellm_client.py`: a 401 now names the candidate secrets** —
+  `LITELLM_REVIEW_API_KEY`, `LITELLM_FIX_API_KEY`, `LITELLM_DOC_API_KEY`, since
+  the client sees only the merged `LITELLM_API_KEY` — **and the likely cause**,
+  that a recent `set-litellm-secrets.sh` run may have overwritten one (it does
+  not manage the fix key, and the hint says so). The bare `proxy returned HTTP
+  401` was what made the incident expensive to diagnose, while the `URLError`
+  path already named its cause precisely. A 403 gets a *different* hint (model scope, not re-provisioning),
+  matching the provisioner's own treatment of 403 as authenticated.
+- **`test_litellm_secrets.sh` added; the exerciser inventory row corrected.** It
+  read "no consumer surface, low risk; `accepted-no-FT`" — an operator helper
+  that writes a consumer's secrets is neither.
+- Operator action: re-provisioning a secret on purpose now needs `--overwrite`;
+  `curl` must be on PATH in shared mode too (previously `--mint` only), or pass
+  `--skip-validate`; and provisioning from a machine that cannot reach the proxy
+  now needs `--skip-validate`, since the canonical bridge URL is host-local. No
+  consumer-repo action.
+
 ### PLAN-021 PR-0 — `DECISIONS.md` CI-0027, the `doc-maintainer` dry-run cluster
 
 - **`CI-0027` written into the ID slot `CI-0028` reserved for it.** Records the

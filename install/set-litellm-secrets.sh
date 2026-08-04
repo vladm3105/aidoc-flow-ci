@@ -5,10 +5,44 @@
 #
 # SECURITY:
 #   * Never hardcodes secret VALUES — reads them from env vars.
-#   * Pipes values to `gh secret set` via STDIN (not argv), so they never appear
-#     in `ps`/the process table.
+#   * Values reach `gh secret set` on STDIN and the proxy probe via a 0600
+#     header file — never argv, so they never appear in `ps`/the process table.
 #   * GitHub stores them encrypted + write-only; they are masked in Actions logs.
 #   * Store only the SCOPED virtual key — never the LiteLLM master key.
+#
+# SAFETY (issue #350): a run to add the OPTIONAL doc key also rewrote the two
+# secrets that were already correct, from an environment holding a loopback URL.
+# All three writes printed ✓, the script exited 0, and a REQUIRED ai-review gate
+# on a consumer went red until the key was re-provisioned by hand. Hence:
+#   * An EXISTING secret is NEVER replaced without --overwrite. Adding the doc
+#     key to a provisioned repo therefore writes that key and nothing else, and
+#     needs only LITELLM_DOC_API_KEY exported.
+#   * A loopback LITELLM_BASE_URL is refused (--allow-loopback forces it): it
+#     resolves to the job CONTAINER, not the host running the proxy, so it works
+#     in every check an operator can run locally and fails only in CI (CI-0017).
+#     The check is BEST-EFFORT: it normalizes case and trailing dots, knows the
+#     integer forms of 127.0.0.1, and resolves the host when `getent` is present
+#     — but a DNS name that only sometimes answers 127.0.0.1 can still pass.
+#   * URL + key are probed against <base>/models before ANY repo is touched
+#     (--skip-validate bypasses). Anything but 200/403 aborts the run — 403 is
+#     accepted because a scoped key may be forbidden on /models yet valid for
+#     chat completions. --dry-run makes NO network call at all: the probe sends
+#     a live bearer token, and the flag exists to inspect a suspect config
+#     safely, not to transmit a credential to whatever host it names.
+#   * If the existing secret set cannot be READ, the repo is SKIPPED — always,
+#     including under --overwrite. An unreadable list is not evidence of an
+#     empty one, and listing and writing need the same admin scope, so a failed
+#     list means the token is wrong rather than the repo being empty.
+#   * Value equality is NOT checkable: GitHub secrets are write-only, so this
+#     script can see that a secret EXISTS but never whether it differs.
+#
+# EXIT STATUS: 0 only if every requested repo was fully processed. A skipped repo
+# (no access, or an unreadable secret list) or a failed write exits 1 — a run
+# that touched nothing must not look like a run that did the work. A failed write
+# does NOT abort the fan-out: it is reported, the remaining repos are still
+# attempted, and the summary always prints. Ctrl-C exits 130 (SIGTERM 143).
+#
+# REQUIRES: gh, and curl unless --skip-validate is passed (jq too, for --mint).
 #
 # TWO MODES:
 #   shared : one review key applied to every repo.
@@ -23,8 +57,12 @@
 #   bash set-litellm-secrets.sh --pilot            # engramory only (pilot first)
 #   bash set-litellm-secrets.sh                     # all 7 consumers
 #   bash set-litellm-secrets.sh --repos "vladm3105/aidoc-flow-framework vladm3105/iplan-runner"
-#   bash set-litellm-secrets.sh --dry-run          # print, change nothing
-#   bash set-litellm-secrets.sh --doc              # also set the doc-maintainer key
+#   bash set-litellm-secrets.sh --dry-run          # print the per-secret plan; no writes, no network
+#   export LITELLM_DOC_API_KEY="<key>"
+#   bash set-litellm-secrets.sh --doc              # add the doc-maintainer key (existing secrets kept)
+#   bash set-litellm-secrets.sh --overwrite        # REPLACE secrets that already exist
+#   bash set-litellm-secrets.sh --allow-loopback   # permit a loopback base URL (rarely correct)
+#   bash set-litellm-secrets.sh --skip-validate    # skip the pre-write proxy probe
 #
 #   # per-repo revocable keys (recommended once you have the master key locally):
 #   export LITELLM_MASTER_KEY="<key>"
@@ -47,18 +85,30 @@ CONSUMERS=(
   aidoc-flow-interlog
 )
 PILOT="aidoc-flow-engramory"
+BRIDGE_DEFAULT="http://172.17.0.1:4001/v1"
 
 DRY_RUN=0; MINT=0; SET_DOC=0; BUDGET=50
+OVERWRITE=0; ALLOW_LOOPBACK=0; VALIDATE=1
 REPOS=()
 while [ $# -gt 0 ]; do
   case "$1" in
-    --dry-run) DRY_RUN=1 ;;
-    --mint)    MINT=1 ;;
-    --doc)     SET_DOC=1 ;;
+    --dry-run)        DRY_RUN=1 ;;
+    --mint)           MINT=1 ;;
+    --doc)            SET_DOC=1 ;;
+    --overwrite)      OVERWRITE=1 ;;
+    --allow-loopback) ALLOW_LOOPBACK=1 ;;
+    --skip-validate)  VALIDATE=0 ;;
     --pilot)   REPOS=("$OWNER/$PILOT") ;;
-    --budget)  BUDGET="${2:?--budget needs a number}"; shift ;;
+    --budget)
+      BUDGET="${2:?--budget needs a number}"
+      # Unvalidated, this both swallowed the next flag (`--budget --mint` set
+      # BUDGET=--mint and silently ran in SHARED mode) and interpolated into the
+      # key-minting JSON body, where a crafted value can widen the minted key's
+      # model scope.
+      case "$BUDGET" in ''|*[!0-9]*) echo "ERROR: --budget needs a whole number, got: $BUDGET" >&2; exit 2 ;; esac
+      shift ;;
     --repos)   IFS=' ' read -r -a REPOS <<< "${2:?--repos needs a list}"; shift ;;
-    -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d'; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
   shift
@@ -74,57 +124,332 @@ case "$LITELLM_BASE_URL" in
   http://*)  echo "WARN: HTTP base URL — the bearer key travels in cleartext. Prefer HTTPS / a private mesh." >&2 ;;
   *) echo "ERROR: LITELLM_BASE_URL must be an http(s) URL" >&2; exit 1 ;;
 esac
+
+# Host of a URL, minus scheme, userinfo, port and any [v6] brackets.
+url_host() {
+  local u="${1#*://}"; u="${u%%/*}"; u="${u##*@}"
+  case "$u" in
+    \[*\]*) u="${u#\[}"; u="${u%%\]*}" ;;
+    *:*)    u="${u%%:*}" ;;
+  esac
+  printf '%s' "$u"
+}
+
+# Best-effort loopback detection. `case` is case-sensitive and DNS is not, and
+# 127.0.0.1 has decimal/hex/octal spellings that every resolver accepts — all of
+# LOCALHOST, localhost. and 2130706433 reached loopback while an earlier version
+# of this guard called them safe.
+is_loopback() {
+  local h="${1,,}" n                     # lower-case; drop a trailing root dot
+  h="${h%.}"
+  case "$h" in
+    localhost|localhost.localdomain|*.localhost) return 0 ;;
+    127.*|0.0.0.0) return 0 ;;
+    ::1|0:0:0:0:0:0:0:1|::|0:0:0:0:0:0:0:0) return 0 ;;
+    ::ffff:127.*|::ffff:7f00:*) return 0 ;;
+  esac
+  # Integer spellings of an IPv4 address: 2130706433, 0x7f000001 and
+  # 017700000001 are all 127.0.0.1, and every resolver accepts them. Validate
+  # the literal SHAPE first, then evaluate with an EXPLICIT base — a bash
+  # arithmetic ERROR unwinds the CALLER's `if` and skips the guard entirely
+  # without running either branch (measured with `3fa`), and its message is
+  # emitted before 2>/dev/null can suppress it. These are detected locally
+  # rather than left to the resolver because the proxy is addressed by IP
+  # literal, so the resolver below is often never consulted at all.
+  n=""
+  case "$h" in
+    0x*)     case "${h#0x}" in ''|*[!0-9a-f]*) : ;;
+               *) if [ "${#h}" -le 18 ]; then n=$(( 16#${h#0x} )); fi ;; esac ;;
+    0[0-7]*) case "${h#0}"   in *[!0-7]*) : ;;
+               *) if [ "${#h}" -le 22 ]; then n=$(( 8#${h#0} )); fi ;; esac ;;
+    ''|*[!0-9]*) : ;;
+    *)       if [ "${#h}" -le 10 ]; then n=$(( 10#$h )); fi ;;
+  esac
+  if [ -n "$n" ]; then
+    if [ "$n" -eq 0 ] || [ "$(( n >> 24 & 255 ))" = 127 ]; then return 0; fi
+  fi
+  # Last resort: ask the resolver, for a DNS name that points at loopback.
+  # Decide on the ANSWER, never on the pipeline's exit status. With `timeout` at
+  # the head of a `pipefail` pipeline, a resolver that answers 127.0.0.1 and
+  # then stalls returns 124 even though grep already matched — measured, and it
+  # turned a correct refusal into a silent accept, which is the #350 outcome.
+  if command -v getent >/dev/null 2>&1; then
+    local answers=""
+    if command -v timeout >/dev/null 2>&1; then
+      answers="$(timeout 3 getent ahosts "$h" 2>/dev/null | awk '{print $1}')" || true
+    else
+      answers="$(getent ahosts "$h" 2>/dev/null | awk '{print $1}')" || true
+    fi
+    if grep -qE '^(127\.|::1$|0\.0\.0\.0$)' <<< "$answers"; then return 0; fi
+  fi
+  return 1
+}
+
+BASE_HOST="$(url_host "$LITELLM_BASE_URL")"
+if is_loopback "$BASE_HOST"; then
+  if [ "$ALLOW_LOOPBACK" -eq 0 ]; then
+    cat >&2 <<EOF
+ERROR: LITELLM_BASE_URL points at loopback ($BASE_HOST) — refusing to write it.
+
+  CI jobs run INSIDE an ephemeral container, so loopback resolves to the
+  container itself, not the host running the proxy. This value passes every
+  check you can run from the host (both addresses answer 401 there) and fails
+  only in CI, which is what makes it expensive to diagnose. (CI-0017, #350.)
+
+  Use the Docker bridge gateway instead:  $BRIDGE_DEFAULT
+  If you really mean loopback, pass --allow-loopback.
+EOF
+    exit 1
+  fi
+  echo "WARN: loopback base URL accepted via --allow-loopback — this breaks CI unless the proxy is inside the job container." >&2
+fi
+
 # LiteLLM MANAGEMENT endpoints (/key/generate) live at the ROOT, NOT under /v1
 # (the /v1 path is the OpenAI-compat surface). Derive the root from the base URL
 # so a canonical `…/v1` base URL still mints against `…/key/generate`.
 MGMT_URL="${LITELLM_BASE_URL%/}"; MGMT_URL="${MGMT_URL%/v1}"
+MODELS_URL="${LITELLM_BASE_URL%/}/models"
 
 if [ "$MINT" -eq 1 ]; then
   command -v jq   >/dev/null || { echo "ERROR: jq required for --mint" >&2; exit 1; }
   command -v curl >/dev/null || { echo "ERROR: curl required for --mint" >&2; exit 1; }
   : "${LITELLM_MASTER_KEY:?export LITELLM_MASTER_KEY for --mint}"
+elif [ "$SET_DOC" -eq 1 ]; then
+  # Adding the doc key to a provisioned repo must not require re-exporting the
+  # review key — demanding it is what sends an operator back to the stale shell
+  # value that caused #350. It stays OPTIONAL here; `provision` refuses to write
+  # an empty value, so a repo that genuinely needs the review key CREATED still
+  # gets a named error instead of a blank secret.
+  : "${LITELLM_DOC_API_KEY:?export LITELLM_DOC_API_KEY for --doc}"
+  LITELLM_REVIEW_API_KEY="${LITELLM_REVIEW_API_KEY:-}"
 else
   : "${LITELLM_REVIEW_API_KEY:?export LITELLM_REVIEW_API_KEY (or use --mint)}"
-  if [ "$SET_DOC" -eq 1 ]; then : "${LITELLM_DOC_API_KEY:?export LITELLM_DOC_API_KEY for --doc}"; fi
 fi
 
-put() {  # put SECRET_NAME REPO   (value on stdin; never echoed)
-  gh secret set "$1" -R "$2"
-  echo "    ✓ $1"
+# One directory for every file that ever holds a bearer token, removed on ANY
+# exit. A per-function RETURN trap does not fire on SIGINT — measured: Ctrl-C
+# during the probe left a 0600 file containing the key behind indefinitely.
+SECRET_TMP="$(mktemp -d)"; chmod 700 "$SECRET_TMP"
+# A bash INT/TERM handler that only cleans up does NOT stop the script: bash
+# runs the handler and RESUMES. Trapping INT without exiting would delete
+# SECRET_TMP out from under a still-running fan-out and take away the only lever
+# an operator has once they realize a run is writing the wrong values. Each
+# signal handler therefore exits with its conventional 128+signal status.
+trap 'rm -rf "$SECRET_TMP"' EXIT
+trap 'rm -rf "$SECRET_TMP"; exit 130' INT
+trap 'rm -rf "$SECRET_TMP"; exit 143' TERM
+
+# ---- pre-write proxy probe ----
+# One request per key, before any repo is touched. It catches the half of #350
+# the loopback guard cannot: a base URL that is CORRECT with a key the proxy
+# rejects. (The converse also holds — a good key on a loopback URL answers 200
+# from the host — which is why both guards exist and neither subsumes the other.)
+probe() {  # probe VALUE_VARNAME -> prints the HTTP status, 000 if unreachable
+  # --globoff: a stray {} or [] in the URL would otherwise fan the SAME bearer
+  # token out to several hosts. --proto: no gopher/file/etc. No -L, deliberately
+  # — following a redirect would forward the Authorization header to the
+  # redirect target. Do not "helpfully" add it.
+  local hdr code; hdr="$(mktemp -p "$SECRET_TMP")"
+  printf 'Authorization: Bearer %s\n' "${!1}" > "$hdr"   # printf is a BUILTIN: no argv exposure
+  code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 --globoff \
+            --proto '=http,https' -H @"$hdr" "$MODELS_URL" 2>/dev/null)" || true
+  rm -f "$hdr"
+  case "${code:-}" in ''|000*) code="000" ;; esac
+  printf '%s' "$code"
 }
+
+validate_or_die() {  # validate_or_die VALUE_VARNAME SECRET_NAME
+  local code; code="$(probe "$1")"
+  case "$code" in
+    # 403 = authenticated but not authorized for /models; a review-scoped key
+    # can legitimately answer this and still work for chat completions.
+    200|403) echo "  ✓ probe: $2 accepted by $MODELS_URL (HTTP $code)" ;;
+    401)
+      cat >&2 <<EOF
+ERROR: the proxy REJECTS \$$1 (HTTP 401) — refusing to write it as $2.
+
+  Writing it would replace a possibly-working secret with one that cannot
+  authenticate, and the break would surface only on the next PR. Check the
+  value you exported, then re-run. (#350.)
+EOF
+      exit 1 ;;
+    000)
+      echo "ERROR: $MODELS_URL is unreachable — refusing to provision against a proxy that does not answer." >&2
+      echo "       Check LITELLM_BASE_URL, or pass --skip-validate to write anyway." >&2
+      exit 1 ;;
+    *)
+      # Fail CLOSED on anything else. 404 is the likeliest operator error the
+      # probe exists to catch — MODELS_URL appends /models, so a base URL
+      # missing or doubling /v1 lands here — and warning-then-writing would let
+      # the guard pass the exact failure it was built for.
+      echo "ERROR: probe of $MODELS_URL returned HTTP $code, which is neither success nor a" >&2
+      echo "       recognized auth answer. A 404 usually means LITELLM_BASE_URL is missing or" >&2
+      echo "       doubling its /v1 suffix. Fix it, or pass --skip-validate to write anyway." >&2
+      exit 1 ;;
+  esac
+}
+
+if [ "$VALIDATE" -eq 1 ] && [ "$DRY_RUN" -eq 1 ]; then
+  echo "  [dry-run] skipping the proxy probe — it would send a live bearer token to $MODELS_URL"
+elif [ "$VALIDATE" -eq 1 ]; then
+  command -v curl >/dev/null || { echo "ERROR: curl required for the pre-write probe (or pass --skip-validate)" >&2; exit 1; }
+  if [ "$MINT" -eq 1 ]; then
+    validate_or_die LITELLM_MASTER_KEY "the master key"
+  else
+    # Probe only the keys this run can actually write. With --doc on a
+    # provisioned repo the review key is unset and would be kept, so probing it
+    # would abort the run over a secret nobody is touching.
+    if [ -n "$LITELLM_REVIEW_API_KEY" ]; then validate_or_die LITELLM_REVIEW_API_KEY LITELLM_REVIEW_API_KEY; fi
+    if [ "$SET_DOC" -eq 1 ]; then validate_or_die LITELLM_DOC_API_KEY LITELLM_DOC_API_KEY; fi
+  fi
+fi
 
 mint() {  # mint REPO PURPOSE MODEL_ALIAS  -> prints the scoped key
   # PLAN-015 L3: the master key (mints all others) must NOT sit on the curl
   # argv, where any local process-table reader sees it — honoring this script's
-  # STDIN-only contract (header comment). Write it to a 0600 temp file with the
+  # STDIN-only contract (header comment). Write it to a temp file with the
   # `printf` BUILTIN (no argv exposure) and read it via `curl -H @file`
-  # (curl >= 7.55). RETURN trap removes the file on success OR failure.
-  local hdr; hdr="$(mktemp)"; chmod 600 "$hdr"
-  trap 'rm -f "$hdr"' RETURN
+  # (curl >= 7.55). The file lives in $SECRET_TMP, which the EXIT/INT/TERM trap
+  # removes — a per-function RETURN trap does not survive Ctrl-C, and this file
+  # holds the MASTER key.
+  local hdr rc=0; hdr="$(mktemp -p "$SECRET_TMP")"
   printf 'Authorization: Bearer %s\n' "$LITELLM_MASTER_KEY" > "$hdr"
-  curl -fsS -X POST "$MGMT_URL/key/generate" \
+  curl -fsS -X POST "$MGMT_URL/key/generate" --max-time 30 --globoff --proto '=http,https' \
     -H @"$hdr" -H "Content-Type: application/json" \
     -d "{\"models\":[\"$3\"],\"max_budget\":$BUDGET,\"metadata\":{\"purpose\":\"$2\",\"repo\":\"$1\"}}" \
-    | jq -er '.key'
+    | jq -er '.key' || rc=$?
+  rm -f "$hdr"
+  return "$rc"
 }
 
-echo "LiteLLM secret provisioning — mode=$([ "$MINT" -eq 1 ] && echo mint || echo shared)  dry_run=$DRY_RUN  repos=${#REPOS[@]}  doc=$SET_DOC"
+# ---- per-secret decision ----
+# EXISTING is the newline-separated set of secret names already on the repo.
+EXISTING=""
+CREATED=0; OVERWROTE=0; KEPT=0; SKIPPED=0; FAILED=0
+
+action_for() {  # action_for SECRET_NAME -> create | overwrite | keep
+  # A here-string, not `printf | grep`: with a pipeline, `grep -q` exits at the
+  # first match, `printf` takes SIGPIPE, and `pipefail` turns the whole thing
+  # non-zero — which would report an EXISTING secret as `create` and overwrite
+  # it without --overwrite, inverting the one invariant this script exists for.
+  if grep -qxF -- "$1" <<< "$EXISTING"; then
+    if [ "$OVERWRITE" -eq 1 ]; then printf 'overwrite'; else printf 'keep'; fi
+  else
+    printf 'create'
+  fi
+}
+
+report_keep() {
+  printf '    – %-23s (exists, kept — pass --overwrite to replace)\n' "$1"
+  KEPT=$((KEPT+1))
+}
+
+provision() {  # provision SECRET_NAME REPO VALUE_VARNAME
+  local name="$1" repo="$2" var="$3" act
+  act="$(action_for "$name")"
+  if [ "$act" = keep ]; then report_keep "$name"; return 0; fi
+  if [ -z "${!var}" ]; then
+    # Only reachable in shared --doc mode, where the review key is optional: this
+    # repo needs it CREATED and nothing was exported. Never write a blank secret.
+    printf '    ✗ %-23s (needs to be %s, but $%s is empty — export it and re-run)\n' "$name" "$act" "$var" >&2
+    FAILED=$((FAILED+1)); return 0
+  fi
+  if [ "$DRY_RUN" -eq 1 ]; then
+    printf '    [dry-run] %-23s would be %s\n' "$name" \
+      "$([ "$act" = create ] && printf 'created' || printf 'OVERWRITTEN')"
+  elif printf '%s' "${!var}" | gh secret set "$name" -R "$repo"; then
+    printf '    ✓ %-23s (%s)\n' "$name" \
+      "$([ "$act" = create ] && printf 'created' || printf 'overwritten')"
+  else
+    # Not fatal: `set -e` would abort mid-fleet with no summary, leaving the
+    # operator unable to tell which repos were written and which were never
+    # reached. Record it, keep going, and fail the run at the end.
+    printf '    ✗ %-23s (write FAILED)\n' "$name" >&2
+    FAILED=$((FAILED+1)); return 0
+  fi
+  if [ "$act" = create ]; then CREATED=$((CREATED+1)); else OVERWROTE=$((OVERWROTE+1)); fi
+}
+
+echo "LiteLLM secret provisioning — mode=$([ "$MINT" -eq 1 ] && echo mint || echo shared)  dry_run=$DRY_RUN  repos=${#REPOS[@]}  doc=$SET_DOC  overwrite=$OVERWRITE  validate=$VALIDATE"
 for repo in "${REPOS[@]}"; do
   echo "• $repo"
-  if ! gh repo view "$repo" >/dev/null 2>&1; then echo "    SKIP: no access to $repo" >&2; continue; fi
-  if [ "$DRY_RUN" -eq 1 ]; then
-    echo "    [dry-run] would set LITELLM_BASE_URL, LITELLM_REVIEW_API_KEY$([ "$SET_DOC" -eq 1 ] && echo ', LITELLM_DOC_API_KEY')$([ "$MINT" -eq 1 ] && echo ' (freshly minted)')"
-    continue
+  if ! gh repo view "$repo" >/dev/null 2>&1; then
+    echo "    SKIP: no access to $repo" >&2; SKIPPED=$((SKIPPED+1)); continue
   fi
-  printf '%s' "$LITELLM_BASE_URL" | put LITELLM_BASE_URL "$repo"
+
+  # Fail closed, with no override. Listing secret NAMES and writing them need the
+  # same admin scope, so a failed list means the token is wrong — not that the
+  # repo is empty. Writing blind here is the #350 class of bug, and --overwrite
+  # is an instruction about known-stale values, not consent to write unseen.
+  if ! EXISTING="$(gh secret list -R "$repo" --json name --jq '.[].name' 2>/dev/null)"; then
+    echo "    SKIP: cannot read the existing secrets on $repo — refusing to write blind." >&2
+    echo "          An unreadable list is not an empty one; check the token's admin scope." >&2
+    SKIPPED=$((SKIPPED+1)); continue
+  fi
+
+  provision LITELLM_BASE_URL "$repo" LITELLM_BASE_URL
   if [ "$MINT" -eq 1 ]; then
-    k="$(mint "$repo" ci-review ai-reviewer)";        printf '%s' "$k" | put LITELLM_REVIEW_API_KEY "$repo"; unset k
-    if [ "$SET_DOC" -eq 1 ]; then d="$(mint "$repo" ci-docs ai-doc-maintainer)"; printf '%s' "$d" | put LITELLM_DOC_API_KEY "$repo"; unset d; fi
+    # `provision` reads MINTED_* through ${!var} indirect expansion, which static
+    # analysis cannot follow, so the directive below silences a false "unused".
+    # (Keep "shellcheck" off the start of a comment line unless you mean a
+    # directive — a prose line beginning with it is parsed as one, and fails.)
+    # shellcheck disable=SC2034
+    # Decide BEFORE minting: a key minted for a secret we then keep is a live
+    # credential nobody ever uses.
+    if [ "$(action_for LITELLM_REVIEW_API_KEY)" = keep ]; then
+      report_keep LITELLM_REVIEW_API_KEY
+    else
+      MINTED_REVIEW="(dry-run — not minted)"
+      if [ "$DRY_RUN" -eq 0 ]; then
+        MINTED_REVIEW="$(mint "$repo" ci-review ai-reviewer)" || MINTED_REVIEW=""
+      fi
+      if [ -n "$MINTED_REVIEW" ]; then
+        provision LITELLM_REVIEW_API_KEY "$repo" MINTED_REVIEW
+      else
+        # Covers a hard mint failure AND a proxy answering {"key":""} — `jq -er`
+        # exits 0 on an empty string, so a successful mint is not proof of a key.
+        printf '    ✗ %-23s (mint produced no key)\n' LITELLM_REVIEW_API_KEY >&2
+        FAILED=$((FAILED+1))
+      fi
+      unset MINTED_REVIEW
+    fi
+    # shellcheck disable=SC2034  # MINTED_DOC is read via ${!var} in `provision`
+    if [ "$SET_DOC" -eq 1 ]; then
+      if [ "$(action_for LITELLM_DOC_API_KEY)" = keep ]; then
+        report_keep LITELLM_DOC_API_KEY
+      else
+        MINTED_DOC="(dry-run — not minted)"
+        if [ "$DRY_RUN" -eq 0 ]; then
+          MINTED_DOC="$(mint "$repo" ci-docs ai-doc-maintainer)" || MINTED_DOC=""
+        fi
+        if [ -n "$MINTED_DOC" ]; then
+          provision LITELLM_DOC_API_KEY "$repo" MINTED_DOC
+        else
+          printf '    ✗ %-23s (mint produced no key)\n' LITELLM_DOC_API_KEY >&2
+          FAILED=$((FAILED+1))
+        fi
+        unset MINTED_DOC
+      fi
+    fi
   else
-    printf '%s' "$LITELLM_REVIEW_API_KEY" | put LITELLM_REVIEW_API_KEY "$repo"
-    if [ "$SET_DOC" -eq 1 ]; then printf '%s' "$LITELLM_DOC_API_KEY" | put LITELLM_DOC_API_KEY "$repo"; fi
+    provision LITELLM_REVIEW_API_KEY "$repo" LITELLM_REVIEW_API_KEY
+    if [ "$SET_DOC" -eq 1 ]; then provision LITELLM_DOC_API_KEY "$repo" LITELLM_DOC_API_KEY; fi
   fi
 done
 
-echo "Done. Verify (names only, values are write-only):"
+printf 'Done%s. %d created, %d overwritten, %d kept, %d repo(s) skipped.\n' \
+  "$([ "$DRY_RUN" -eq 1 ] && printf ' (dry-run — nothing written)')" \
+  "$CREATED" "$OVERWROTE" "$KEPT" "$SKIPPED"
+if [ "$KEPT" -gt 0 ]; then
+  echo "  $KEPT secret(s) already existed and were left alone. Re-run with --overwrite to replace them."
+fi
+echo "Verify (names only, values are write-only):"
 echo "  for r in ${REPOS[*]}; do echo \"== \$r\"; gh secret list -R \"\$r\" | grep -i litellm; done"
+
+# A run that reached no repo, or skipped one, must not exit 0 — "printed ✓ and
+# exited 0" is the shape of #350 itself, and a wrapper reading $? cannot tell a
+# full fan-out from one that touched nothing.
+if [ "$FAILED" -gt 0 ] || [ "$SKIPPED" -gt 0 ]; then
+  echo "ERROR: $SKIPPED repo(s) skipped, $FAILED secret(s) not written — this run did NOT do what was asked." >&2
+  exit 1
+fi

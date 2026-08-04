@@ -107,6 +107,44 @@ assert seen['payload']['response_format'] == {'type':'json_object'}
 assert 0 < seen['timeout'] <= 10
 PY" "adapter sends the expected authenticated chat-completions request"
 
+# #350: a bare 'proxy returned HTTP 401' named neither the secret nor a cause,
+# while the URLError path already named its cause precisely. The asymmetry is
+# what made the incident expensive to diagnose, so the 401 path is asserted to
+# name the secret it cannot read back.
+assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
+import importlib.util, io, os, sys, urllib.error
+import contextlib
+spec = importlib.util.spec_from_file_location('litellm_client', sys.argv[1])
+module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+def raise_401(request, timeout):
+    raise urllib.error.HTTPError(request.full_url, 401, 'Unauthorized', {}, None)
+module.open_no_redirect = raise_401
+os.environ['LITELLM_BASE_URL'] = 'https://proxy.example/v1'
+os.environ['LITELLM_API_KEY'] = 'test-key'
+err = io.StringIO()
+with contextlib.redirect_stderr(err):
+    try:
+        module.completion('review', model='ai-reviewer', json_mode=False, timeout=30)
+        raise AssertionError('a 401 must not be swallowed')
+    except SystemExit:
+        pass
+msg = err.getvalue()
+assert 'HTTP 401' in msg, msg
+assert 'LITELLM_REVIEW_API_KEY' in msg, msg
+assert 'set-litellm-secrets.sh' in msg, msg
+# A retryable status keeps the bare form — the hint is for auth failures only.
+assert module.auth_hint(429) == '' and module.auth_hint(500) == ''
+assert module.auth_hint(200) == '' and module.auth_hint(404) == ''
+# 403 must NOT tell the operator to re-provision: it means the token
+# authenticated but is not authorized for this model, which is exactly why
+# install/set-litellm-secrets.sh ACCEPTS 403 when probing /models. Sending them
+# to re-provision a key the provisioner just certified is the loop #350 was.
+h403 = module.auth_hint(403)
+assert h403 != '', 'a 403 still deserves a hint'
+assert 'not authorized' in h403, h403
+assert 're-provision' not in h403.lower(), h403
+PY" "a 401 names the secret to re-provision; a 403 says the opposite"
+
 assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
 import importlib.util, json, os, sys
 spec = importlib.util.spec_from_file_location('litellm_client', sys.argv[1])
