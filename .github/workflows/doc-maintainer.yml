@@ -366,12 +366,13 @@ jobs:
           set -uo pipefail
           # planner.py exits non-zero on hard errors (allowlist violation,
           # LLM outage after retries, invalid config schema) → workflow must
-          # fail LOUD per D12 / Risk 12. Explicit gate is required because
-          # `set -uo pipefail` (no -e) would otherwise swallow the planner
-          # non-zero exit + fall through to jq lines (which would then fail
-          # on missing plan JSON, emit error to stderr, but produce empty
-          # low_count/high_count outputs → downstream `if:` conditions would
-          # evaluate against "" not "0" → live-mode steps would fire).
+          # fail LOUD per D12 / Risk 12. `set -uo pipefail` does NOT clear the
+          # -e inherited from GitHub's implicit default shell (`bash -e {0}` —
+          # this workflow sets no `shell:` and no `defaults:`), so a planner
+          # non-zero exit already fails the step. The explicit gate is what
+          # makes it fail with an `::error::` annotation rather than with a bare
+          # `Process completed with exit code 1`, and that annotation is the
+          # substance of D12 (REPO_STANDARDS §24.1). Not redundancy — do not delete.
           python3 .doc-maintainer-scripts/planner.py \
             --merge-sha "$MERGE_SHA" \
             --gh-repo "$GH_REPO" \
@@ -391,8 +392,11 @@ jobs:
         if: ${{ steps.cfg.outputs.skip != 'true' && steps.plan.outputs.low_count != '0' }}
         run: |
           set -uo pipefail
-          # Same fail-LOUD discipline as the planner: apply.py exit 1 must
-          # not be swallowed by `set -uo pipefail` (no -e).
+          # Same fail-LOUD discipline as the planner: `set -uo pipefail` does
+          # not clear the inherited -e, so apply.py's exit 1 already fails the
+          # step — the explicit gate is what makes it fail with an `::error::`
+          # annotation rather than with a bare `Process completed with exit
+          # code 1` (REPO_STANDARDS §24.1). Not redundancy — do not delete.
           python3 .doc-maintainer-scripts/apply.py \
             --plan .doc-maintainer-plan.json \
             --tier low_risk \
@@ -405,22 +409,42 @@ jobs:
         if: ${{ steps.cfg.outputs.skip != 'true' && steps.cfg.outputs.dry_run == 'true' }}
         run: |
           set -uo pipefail
-          PR=$(gh api "repos/$GH_REPO/commits/$MERGE_SHA/pulls" --jq '.[0].number' 2>/dev/null || echo "")
-          if [ -z "$PR" ]; then
+          # Read the PR the planner already resolved (Step 11 reads the same
+          # field) rather than re-querying the API — the old `gh api … || echo ""`
+          # emptied $PR on any gh fault and reported it as "no PR found", exit 0.
+          # >>> CI0027-PR-RESOLVE >>> (extracted + DRIVEN by tests/test_scripts.sh — #352)
+          # An unreadable or malformed plan makes jq exit non-zero and trips here.
+          PR=$(jq -r '.pr_number' .doc-maintainer-plan.json) \
+            || { echo "::error::dry-run: could not read .pr_number from .doc-maintainer-plan.json"; exit 1; }
+          # Empty is NOT the no-PR signal: jq yields it only from a truncated or
+          # otherwise empty plan, which is a fault and must be LOUD. A genuinely
+          # PR-less merge is `"pr_number": null`, which jq -r renders as the
+          # literal string `null` — that is the only case that exits 0.
+          [ -n "$PR" ] || { echo "::error::dry-run: .pr_number is empty in .doc-maintainer-plan.json"; exit 1; }
+          if [ "$PR" = null ]; then
             echo "::notice::dry-run: no PR found for merge $MERGE_SHA; skipping comment"
             exit 0
           fi
+          # <<< CI0027-PR-RESOLVE <<<
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           LOW_COUNT="${{ steps.plan.outputs.low_count }}"
           HIGH_COUNT="${{ steps.plan.outputs.high_count }}"
           BODY=$(mktemp)
           PATCH=.doc-maintainer-proposed.patch
           : > "$PATCH"
+          # >>> CI0027-DRYRUN-PATCH >>> (extracted + DRIVEN by tests/test_scripts.sh — #352)
           while IFS= read -r path; do
+            # `diff` exits 1 whenever the files differ — the normal case for a
+            # proposed edit. -e is inherited from GitHub's implicit default
+            # shell and `set -uo pipefail` above does not clear it, so the
+            # tolerated exit must be scoped off (REPO_STANDARDS §24.1).
+            set +e
             diff -u --label "a/$path" --label "b/$path" "$path" ".doc-maintainer-proposed/${path}.proposed" >> "$PATCH"
             rc=$?
+            set -e
             [ "$rc" -le 1 ] || { echo "::error::could not render dry-run patch for $path"; exit "$rc"; }
           done < <(jq -r '.low_risk_set[].path' .doc-maintainer-plan.json)
+          # <<< CI0027-DRYRUN-PATCH <<<
           {
             echo "🤖 **doc-maintainer (dry-run)** — proposed doc edits after merge of PR #${PR}."
             echo ""
