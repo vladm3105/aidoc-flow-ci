@@ -5,6 +5,36 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — PLAN-021's owed fourth review pass ran; 7 findings folded, 3 change the shipping diff
+
+- **The pass §10 owed since 2026-07-31 is discharged.** It is the fourth
+  independent pass and not a breach of OPS-0066: the cap's escape is escalation
+  to the founder, that escalation resolved, and §10 recorded the scoped fourth
+  as its resolution. Verdict was **NOT READY** — 7 load-bearing findings, all
+  verified against source before folding.
+- **PR-D was missing two obligations its own landed `CI-0027` imposes** — D-1
+  must disclose its narrowing in the inventory block's label (`REPO_STANDARDS`
+  §20.2 rule 5, "a filtered input is a lying input"), and §24.4 must extend §20
+  rather than sit beside it. A PR-D built from the plan alone would have shipped
+  the silently-narrowed label §20 exists to forbid. §24.4's landing site is now
+  concrete so PR-D does not re-decide it.
+- **D-2 had no test**, against §5's own mutation obligation — the half the plan
+  calls load-bearing was deletable with CI green. **PR-B's non-allowlisted
+  branch omitted `continue`**, which re-creates the conflated-message defect
+  353a exists to fix.
+- **"`[ -z "$PR" ]` is dead code" was false**, and the plan contradicted itself
+  about it in four places. `|| echo ""` inside the substitution empties `$PR` on
+  any `gh` non-zero exit, so the guard fires on exactly one class — the API
+  fault — and reports it as "no PR found" with **exit 0**. A silent miss that
+  scores clean against P4(e). PR-A's design is unaffected; its rationale is
+  stronger than the plan was claiming.
+- **The fold itself introduced three defects, caught by the OPS-0065 pre-push
+  review and recorded in the plan rather than quietly fixed** — an inverted
+  `awk` range that could not fail, a header block left contradicting the section
+  the same fold had rewritten, and a ledger row naming silent-green where the
+  mechanism produces a hard red. Third consecutive fold on this plan to need
+  one.
+
 ### Fixed — `set-litellm-secrets.sh` no longer overwrites a working secret silently (closes #350)
 
 - **An existing secret is kept unless `--overwrite` is passed.** Adding the
