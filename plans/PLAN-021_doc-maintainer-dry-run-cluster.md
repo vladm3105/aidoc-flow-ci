@@ -523,7 +523,8 @@ changes is what rules out MAJOR, which is a separate test from MINOR-vs-PATCH.
     (2026-07-30T00:05:39Z) in `Run review through LiteLLM → verdict file`, and
     PR #382 held `ai:review-infra-error` from 2026-07-29T23:54:22Z to
     2026-07-30T00:07:43Z. It was **repaired by hand the same night** — attempt 4
-    passed at 00:06:42Z. What was false is the present tense this bullet then
+    started 00:06:42Z and passed at 00:07:50Z. What was false is the present
+    tense this bullet then
     kept asserting for three handoffs: nothing has been owed since, and **do not
     `--overwrite` that secret.** Re-derive from the **attempt** history, not
     `gh run list` — that reports only the latest attempt, so the three failures
