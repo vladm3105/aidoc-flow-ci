@@ -50,7 +50,7 @@ the rest are covered offline or descoped. (The table also lists the
 | `.github/workflows/markdown-lint.yml` | `self-markdown-lint.yml` self-caller (blocking; runs canon's root `.markdownlint.json` on every PR) | self-caller |
 | `.github/workflows/ai-review.yml` | `test_resolver.sh` (resolver — the FT-15 surface), `test_checknames.sh`, `test_contract.sh` | descoped (library repo, founder 2026-07-22; live self-run needs LiteLLM + reviewer App + self-hosted pool this library does not warrant) + offline-test |
 | `.github/workflows/composition.yml` | `test_checknames.sh`, `test_contract.sh` | descoped (library; live self-run needs the reviewer App identity) + offline-test |
-| `.github/workflows/doc-maintainer.yml` | `test_resolver.sh` (resolver) | descoped (library; needs LiteLLM + App) + offline-test |
+| `.github/workflows/doc-maintainer.yml` | `test_resolver.sh` (resolver); `test_scripts.sh` drives Step 9's dry-run patch loop for real, extracted at the `CI0027-DRYRUN-PATCH` markers under the step's true `bash -euo pipefail` flags (#352) | descoped (library; needs LiteLLM + App) + offline-test |
 | `.github/workflows/auto-merge-ai-prs.yml` | `test_contract.sh` (I/O contract) | descoped — self-running it would auto-merge canon's own PRs; the behaviour cannot be safely dogfooded + offline-test |
 | `.github/workflows/codeql.yml` | `test_contract.sh` | descoped — consumer-customized (`languages` input); not adopted on canon |
 | `.github/workflows/dep-scan.yml` | `test_contract.sh` | descoped — PLAN-014 optional report-only scanner; not adopted on canon |

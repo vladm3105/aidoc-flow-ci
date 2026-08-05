@@ -2165,3 +2165,90 @@ gate emits, and make sure none of it comes back in.
 
 **Origin:** issue #322, reproduced on `aidoc-flow-framework` PR #346. Recorded as
 CI-0025. §23.4 added from #331.
+
+## 24. The PLAN-021 cluster — shell, message, template and prompt discipline
+
+**§24 is a container, not a single rule.** It holds four independent sub-rules,
+one per PLAN-021 PR, each stating its own rule under its own sub-heading. §24.2
+(_an error message names one condition_), §24.3 (_a default a canon template
+recommends must be executable by the code that consumes it_) and §24.4 (_what
+canon shows a model must agree with what canon will accept from it_) land with
+PR-B, PR-C and PR-D; this PR ships §24.1 only. **§24 is claimed in full by
+PLAN-021 — a later plan wanting a new section takes §25**, PLAN-023 included.
+
+### 24.1 A tolerated non-zero exit must be scoped off
+
+**A step that tolerates a command's non-zero exit must scope `-e` off around that
+command — `set +e` … `set -e`, or a tested context. Adding `set -uo pipefail` at
+the top of the step does NOT do this, because the `-e` it would have to clear was
+applied by the shell GitHub invoked, before the step's first line ran.**
+
+For a `run:` step with no `shell:` key and no workflow `defaults:`, GitHub's
+implicit default shell on Linux is **`bash -e {0}`**. The step's own
+`set -uo pipefail` adds `-u` and `-o pipefail` and leaves that inherited `-e` in
+place; the effective flag set is `-euo pipefail`. Only `set +e`, or putting the
+command in a tested context (`if cmd; then`, `cmd || { … }`, `cmd && { … }`),
+suppresses it.
+
+Do not confuse the implicit default with the string an **explicit** `shell: bash`
+selects, `bash --noprofile --norc -eo pipefail {0}`. Both carry `-e` — which is
+all this rule turns on — but only the explicit form carries `-o pipefail`, so a
+harness that drives one step's block under the other's flags is testing
+something the step never runs.
+
+**A comment asserting the opposite is a defect in its own right**, not a
+harmless inaccuracy: it is the artifact a later reader uses to decide the step is
+already safe. Canon shipped two — `doc-maintainer.yml` carried
+`` `set -uo pipefail` (no -e) `` twice, at the two steps whose explicit
+`|| { echo "::error::…"; exit 1; }` gates the comments were there to justify.
+
+State the reason correctly, because the gate's purpose is not what the wrong
+comment claimed. Under bare `-e` a failing command **already** fails the step; the
+explicit `|| { … }` gate exists so it fails **with an `::error::` annotation
+instead of silently**, which is the substance of the fail-LOUD requirement
+(IPLAN-0025 D12). Describing the gate as redundancy invites its deletion.
+
+**The failure mode is a silent step, and the log actively misleads.**
+**Observed** on `doc-maintainer.yml` Step 9. The dry-run patch renderer ran
+`diff -u … >> "$PATCH"` — which exits 1 **whenever the files differ**, the normal
+case for a proposed edit — and captured `rc=$?` on the next line under a
+`[ "$rc" -le 1 ]` guard written to tolerate exactly that. The inherited `-e`
+killed the step **at the `diff`**, so the capture and the guard were unreachable.
+Every dry-run carrying ≥1 **low-risk** proposed edit died with a bare `exit 1`
+and no annotation — the loop is fed `.low_risk_set[]` only. It shipped in every
+release that carried the renderer, `ci/v2.0.0` through `ci/v2.16.0`, so the path
+had never once worked.
+
+Two properties make this class expensive to diagnose, and both generalise:
+
+- **The step emits nothing.** `gh run view --log-failed` yields only
+  `##[error]Process completed with exit code 1.`
+- **`--log-failed` echoes the step's `run:` source**, so any `::error::` string
+  _literals_ in the step body appear in the log and read as though those guards
+  had fired. Distinguishing emitted output from echoed source needs the
+  `\x1b[36;1m` command-echo prefix filtered out. Grepping for `##[error]` is not
+  enough.
+
+**Auditing a step for this.** Enumerate the step's commands that may
+legitimately exit non-zero, and confirm each is either scoped with `set +e` or
+in a tested context. A command that is
+neither is the defect. `diff`, `grep -q`, `git diff --quiet`, `cmp` and
+`jq -e` are the usual carriers — all of them signal a **result** through exit
+status, so tolerating that status is the whole point of the call.
+
+**A regression test must drive the step under `bash -euo pipefail`**, the real
+flag set. A test that drives it under the step's own `set -uo pipefail` alone
+does not reproduce GitHub's shell and will pass against the unfixed code.
+**Extract and drive the real block — never re-implement it** (a re-implementation
+tests the copy, which is how FT-40's SHA-peel guard passed while untested), and
+fence it with the repo's `# >>> NAME >>>` / `# <<< NAME <<<` markers so the
+extraction does not silently break when lines above it move. Extract the
+expression-free inner block, not the whole step: a `run:` body containing
+`${{ }}` expressions is a bash syntax error, and a harness fed one goes red for
+the wrong reason.
+
+**Origin:** issue #352, reproduced on `aidoc-flow-framework` runs
+[30546848518](https://github.com/vladm3105/aidoc-flow-framework/actions/runs/30546848518),
+30548353113 and 30553994621. Recorded as CI-0027 (PLAN-021 PR-A). Same class as
+the closed #306 — a dry-run branch that cannot complete, in a flow whose whole
+purpose during pilot is the dry run.

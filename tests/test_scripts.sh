@@ -318,6 +318,96 @@ else
   _g "apply rejects excessive document deletion/replacement"
 fi
 
+echo "== doc-maintainer Step 9 renders a dry-run patch when the files differ (#352) =="
+# Extract-and-drive, never re-implement (how FT-40's SHA-peel guard passed while
+# untested). The fenced region is the expression-free `while … done` loop, NOT
+# the whole step — the step's `run:` body carries five `${{ }}` expressions that
+# are a bash syntax error, so a whole-step extraction would go red for the wrong
+# reason. The markers keep this off line ranges, which silently break on edits above.
+DMW="$ROOT/.github/workflows/doc-maintainer.yml"
+assert_eq "$(grep -c '# >>> CI0027-DRYRUN-PATCH >>>' "$DMW")" "1" "#352 patch loop has exactly one start marker"
+assert_eq "$(grep -c '# <<< CI0027-DRYRUN-PATCH <<<' "$DMW")" "1" "#352 patch loop has exactly one end marker"
+mkdir -p "$TMP/step9/.doc-maintainer-proposed/docs" "$TMP/step9/docs"
+awk '/# >>> CI0027-DRYRUN-PATCH >>>/{f=1;next} /# <<< CI0027-DRYRUN-PATCH <<</{f=0} f' "$DMW" > "$TMP/step9/loop.sh"
+assert_absent "$(cat "$TMP/step9/loop.sh")" '${{' "#352 extracted loop is expression-free"
+# An empty extraction would make the drive assertions below pass vacuously —
+# `assert_absent` on "" also passes. Prove the block is really there.
+assert_ok "grep -q 'diff -u --label' '$TMP/step9/loop.sh'" "#352 extracted block really contains the diff loop"
+printf '# Project\n'                                    > "$TMP/step9/README.md"
+printf '# Project\n\nThe API includes `/v2/items`.\n'    > "$TMP/step9/.doc-maintainer-proposed/README.md.proposed"
+printf '# Guide\n'                                      > "$TMP/step9/docs/GUIDE.md"
+printf '# Guide\n\nSee `/v2/items`.\n'                   > "$TMP/step9/.doc-maintainer-proposed/docs/GUIDE.md.proposed"
+echo '{"low_risk_set":[{"path":"README.md"},{"path":"docs/GUIDE.md"}]}' > "$TMP/step9/.doc-maintainer-plan.json"
+# $PATCH is assigned outside the extracted range, so the driver defines it. The
+# driver opens with the step's own `set -uo pipefail` and is invoked with -e:
+# together that is the step's real flag set, since GitHub's IMPLICIT default
+# shell is `bash -e {0}` (this workflow sets no `shell:` and no `defaults:`).
+_step9_driver() { { echo 'set -uo pipefail'; echo 'PATCH=out.patch'; echo ': > "$PATCH"'; cat; } > "$1"; }
+_step9_driver "$TMP/step9/run-fixed.sh" < "$TMP/step9/loop.sh"
+sed '/^[[:space:]]*set +e$/d; /^[[:space:]]*set -e$/d' "$TMP/step9/loop.sh" | _step9_driver "$TMP/step9/run-mutated.sh"
+assert_ok "(cd '$TMP/step9' && bash -euo pipefail run-fixed.sh) >/dev/null 2>&1" "#352 patch loop survives a differing file instead of dying at the diff"
+assert_ok "grep -qF 'a/README.md' '$TMP/step9/out.patch' && grep -qF 'a/docs/GUIDE.md' '$TMP/step9/out.patch'" "#352 loop iterates past the first differing file; both patches render"
+# The `[ "$rc" -le 1 ]` branch is the D12 half — the annotation the fix makes
+# reachable. `diff` returns 2 on trouble, e.g. a .proposed file apply.py never
+# wrote. Assert BOTH that it fails and that it says why: assert_fail alone would
+# also pass against the unfixed code, which died silently one line earlier.
+rm -f "$TMP/step9/.doc-maintainer-proposed/docs/GUIDE.md.proposed"
+assert_fail "(cd '$TMP/step9' && bash -euo pipefail run-fixed.sh) >/dev/null 2>&1" "#352 a missing .proposed file (diff rc=2) fails the step"
+# Decide on the captured OUTPUT, not on a pipeline's status: this file runs under
+# `pipefail`, so piping the failing script into `grep -q` would return the
+# script's rc=2 even when grep matched — turning a match into a miss.
+_step9_rc2_out="$( (cd "$TMP/step9" && bash -euo pipefail run-fixed.sh) 2>&1 || true )"
+assert_contains "$_step9_rc2_out" "::error::could not render dry-run patch for docs/GUIDE.md" "#352 rc=2 fails LOUD with the ::error:: annotation, per D12"
+printf '# Guide\n\nSee `/v2/items`.\n' > "$TMP/step9/.doc-maintainer-proposed/docs/GUIDE.md.proposed"
+
+# Mutation, asserted rather than merely recorded: strip the `set +e`/`set -e`
+# scoping and the same loop must die at the first `diff`. If this ever passes,
+# the harness has stopped reproducing GitHub's shell and the assertions above
+# prove nothing — the failure mode PLAN-021 §5 says to distrust.
+# Assert the exit code AND how far it got: a bare "exits non-zero" would also be
+# satisfied by a syntax error in the mutated script, silently ending the proof.
+_step9_mut_rc=0
+(cd "$TMP/step9" && bash -euo pipefail run-mutated.sh) >/dev/null 2>&1 || _step9_mut_rc=$?
+assert_eq "$_step9_mut_rc" "1" "#352 mutation: dies with diff's own rc=1, not a harness or syntax error"
+assert_ok "grep -qF 'a/README.md' '$TMP/step9/out.patch' && ! grep -qF 'a/docs/GUIDE.md' '$TMP/step9/out.patch'" "#352 mutation: died AT the first diff — first patch written, second never reached"
+
+echo "== doc-maintainer Step 9 tells a PR-less merge apart from a faulty plan (#352) =="
+# The PR-resolution change is PR-A's other behaviour change, and it is the one
+# that regressed silently before: the old `gh api … || echo ""` reported an API
+# fault as "no PR found" and exited 0. Drive the real block so a later edit
+# cannot collapse the fault gate back into the exit-0 branch with CI green.
+assert_eq "$(grep -c '# >>> CI0027-PR-RESOLVE >>>' "$DMW")" "1" "#352 PR-resolve block has exactly one start marker"
+assert_eq "$(grep -c '# <<< CI0027-PR-RESOLVE <<<' "$DMW")" "1" "#352 PR-resolve block has exactly one end marker"
+mkdir -p "$TMP/step9pr"
+awk '/# >>> CI0027-PR-RESOLVE >>>/{f=1;next} /# <<< CI0027-PR-RESOLVE <<</{f=0} f' "$DMW" > "$TMP/step9pr/resolve.sh"
+assert_ok "grep -q 'jq -r' '$TMP/step9pr/resolve.sh'" "#352 extracted PR-resolve block really reads .pr_number"
+assert_absent "$(cat "$TMP/step9pr/resolve.sh")" '${{' "#352 extracted PR-resolve block is expression-free"
+# $MERGE_SHA is an env: var supplied by the job, so the driver defines it, as
+# GitHub would. Same flags as Step 9 itself: implicit `bash -e {0}` + `set -uo pipefail`.
+{ echo 'set -uo pipefail'; echo 'MERGE_SHA=deadbeef'; cat "$TMP/step9pr/resolve.sh"; echo 'echo "FELL-THROUGH pr=$PR"'; } > "$TMP/step9pr/run.sh"
+_step9pr() { # $1 = plan JSON content ('' = zero-byte file, 'NOFILE' = absent)
+  case "$1" in
+    NOFILE) rm -f "$TMP/step9pr/.doc-maintainer-plan.json" ;;
+    *)      printf '%s' "$1" > "$TMP/step9pr/.doc-maintainer-plan.json" ;;
+  esac
+  _s9pr_rc=0
+  _s9pr_out="$( (cd "$TMP/step9pr" && bash -euo pipefail run.sh) 2>&1 )" || _s9pr_rc=$?
+}
+_step9pr '{"pr_number": 353}'
+assert_eq "$_s9pr_rc" "0" "#352 a real PR number falls through to the comment path"
+assert_contains "$_s9pr_out" "FELL-THROUGH pr=353" "#352 the resolved PR number is what the rest of the step sees"
+_step9pr '{"pr_number": null}'
+assert_eq "$_s9pr_rc" "0" "#352 a PR-less merge exits 0 — not a failure"
+assert_contains "$_s9pr_out" "::notice::dry-run: no PR found" "#352 the PR-less merge says so with a notice"
+_step9pr ''
+assert_eq "$_s9pr_rc" "1" "#352 a truncated plan is a FAULT — exit 1, never the exit-0 notice"
+assert_contains "$_s9pr_out" "::error::dry-run: .pr_number is empty" "#352 the truncated plan fails LOUD, per D12"
+_step9pr '{not json'
+assert_eq "$_s9pr_rc" "1" "#352 a malformed plan is a fault — exit 1"
+_step9pr NOFILE
+assert_eq "$_s9pr_rc" "1" "#352 an absent plan is a fault — exit 1"
+assert_contains "$_s9pr_out" "::error::dry-run: could not read .pr_number" "#352 the absent plan fails LOUD, per D12"
+
 echo "== doc-maintainer reconciler ignores schedule-only coverage =="
 if python3 - "$ROOT/scripts/doc-maintainer/reconcile.py" <<'PY'
 import contextlib, importlib.util, io, sys

@@ -5,6 +5,40 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — `doc-maintainer` dry-run has never rendered a patch; `set -e` killed Step 9 at the first `diff` (#352, PLAN-021 PR-A)
+
+- **The dry-run patch renderer died on the normal case.** `diff` exits 1
+  whenever the files differ — what a proposed edit always looks like — and the
+  `rc=$?` capture plus its `[ "$rc" -le 1 ]` tolerance guard sat on the *next*
+  lines, unreachable. `set -uo pipefail` at the top of the step does not clear
+  the `-e` GitHub's implicit default shell (`bash -e {0}`) already applied. Every
+  dry-run carrying ≥1 **low-risk** proposed edit died with a bare `exit 1` and no
+  annotation — the loop is fed `.low_risk_set[]` only. Present in **every release
+  that carried the renderer**, `ci/v2.0.0` through `ci/v2.16.0`, so the path had
+  never once worked. Fixed by scoping `-e` off around the `diff`.
+- **Step 9's PR resolution now reads `.pr_number` from the plan** the planner
+  already wrote, as Step 11 does, instead of re-querying the API. The old
+  `gh api … --jq '.[0].number' 2>/dev/null || echo ""` emptied `$PR` on any `gh`
+  non-zero exit and then reported that fault as `::notice::no PR found` with
+  **exit 0** — a silent miss that would have scored clean against IPLAN-0025 §3
+  P4(e). The two cases now get opposite handling, which the old code could not
+  tell apart: a genuinely PR-less merge is `"pr_number": null`, which `jq -r`
+  renders as the literal string `null` and which exits 0 with a notice; an empty
+  value means a truncated plan, which is a fault and exits 1. An unreadable or
+  malformed plan exits 1 one line earlier, on `jq`'s own non-zero status.
+- **Two comments asserting `set -uo pipefail` means "(no -e)" are corrected**,
+  with the right reason: under bare `-e` the step already fails, and the explicit
+  `|| { echo "::error::…"; exit 1; }` gate is what makes it fail *loudly* rather
+  than silently (IPLAN-0025 D12). Calling that gate redundant invites its deletion.
+- **`REPO_STANDARDS` §24.1 added** — a tolerated non-zero exit must be scoped
+  with `set +e` or put in a tested context, and a comment claiming otherwise is a
+  defect in its own right. §24.2–§24.4 are reserved for PLAN-021 PR-B/C/D.
+- **Regression test** drives the real loop, extracted at the new
+  `# >>> CI0027-DRYRUN-PATCH >>>` markers, under `bash -euo pipefail` — the
+  step's true flag set. The mutation is asserted permanently, not just recorded:
+  the same loop with the scoping stripped must still die, or the harness has
+  stopped reproducing GitHub's shell and the test proves nothing.
+
 ### Changed — PLAN-021's owed fourth review pass ran; 7 findings folded, 3 change the shipping diff
 
 - **The pass §10 owed since 2026-07-31 is discharged.** It is the fourth
