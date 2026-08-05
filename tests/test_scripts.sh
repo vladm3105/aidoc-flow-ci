@@ -281,6 +281,14 @@ def completion(prompt, **_kwargs):
         return "one replacement line"
     if "CURRENT FILE:" in prompt:
         return "# Project\n\nThe API includes `/v2/items`.\n"
+    # Planner-only modes — below the apply branch above, so an apply test run
+    # under one of these still gets file content rather than a plan document.
+    if mode == "rejects":
+        return '{"updates":[{"path":"README.md","instruction":"Document /v2/items","rationale":"PR #42 adds the endpoint"},{"path":"README.md","instruction":"Document it a second time","rationale":"duplicate proposal"},{"path":"CLAUDE.md","instruction":"Edit a non-allowlisted file that IS on disk","rationale":"outside allowed_paths"},{"path":"CLAUDE.md","instruction":"Edit it a second time","rationale":"repeat of an already-rejected path"},{"path":"notes/ABSENT.md","instruction":"Edit a non-allowlisted file that is NOT on disk","rationale":"outside allowed_paths and missing"}]}'
+    if mode == "duplicate":
+        return '{"updates":[{"path":"README.md","instruction":"Document /v2/items","rationale":"PR #42 adds the endpoint"},{"path":"README.md","instruction":"Document it a second time","rationale":"duplicate proposal"}]}'
+    if mode == "nonallowlisted-present":
+        return '{"updates":[{"path":"README.md","instruction":"Document /v2/items","rationale":"PR #42 adds the endpoint"},{"path":"CLAUDE.md","instruction":"Edit a non-allowlisted file that IS on disk","rationale":"outside allowed_paths"}]}'
     return '{"updates":[{"path":"README.md","instruction":"Document /v2/items","rationale":"PR #42 adds the endpoint"},{"path":"docs/DECISIONS.md","instruction":"Record the API decision","rationale":"Public API changed"}]}'
 PY
 cat > "$TMP/doc/bin/gh" <<'SH'
@@ -317,6 +325,65 @@ if (cd "$TMP/doc/repo" && LITELLM_FAKE_MODE=destructive PATH="$TMP/doc/bin:$PATH
 else
   _g "apply rejects excessive document deletion/replacement"
 fi
+
+echo "== doc-maintainer planner de-conflates and records rejections (#353) =="
+# A fresh repo dir with its own config: the apply cases above overwrite
+# README.md, and copying `repo/config.json` would couple this block's allowlist
+# to a fixture some future apply test may edit.
+# The two `continue`s are what these assertions are really for. Recording a
+# rejection without continuing re-creates the defect 353a fixes, because the
+# entry falls through into the per-entry validation below it — an absent
+# rejected path then aborts with `planned documentation file does not exist`
+# (planner.py:227, one condition reported as another) and a present one is
+# classified into high_risk_set (planner.py:235), putting a recorded violation
+# into the written plan. The two shapes are caught by DIFFERENT assertions and
+# both are needed: the absent path is caught by the missing-file assert and by
+# the plan never being written, the on-disk one by `.high_risk_set == []` —
+# which only becomes load-bearing in the `nonallowlisted-present` run below,
+# where no absent path aborts first.
+mkdir -p "$TMP/doc/repo353"
+cat > "$TMP/doc/repo353/config.json" <<'JSON'
+{"dry_run":true,"allowed_paths":["README.md","docs/**"],"max_edits_per_pr":10,"auto_merge":{"low_risk_paths":["README.md"],"high_risk_paths":["docs/**"]}}
+JSON
+printf '# Project\n' > "$TMP/doc/repo353/README.md"
+printf '# Conventions\n' > "$TMP/doc/repo353/conventions.md"
+printf '# Claude\n' > "$TMP/doc/repo353/CLAUDE.md"
+if (cd "$TMP/doc/repo353" && LITELLM_FAKE_MODE=rejects PATH="$TMP/doc/bin:$PATH" python3 ../planner.py --merge-sha abc --gh-repo owner/repo --config config.json --conventions conventions.md --model ai-doc-maintainer --out-plan plan.json) >"$TMP/doc/repo353/rejects.log" 2>&1; then
+  _r "#353 planner exited 0 on a non-allowlisted path (D12 requires a loud failure)"
+else
+  _g "#353 a non-allowlisted path still fails the run (D12 preserved)"
+fi
+REJ353=$(cat "$TMP/doc/repo353/rejects.log")
+assert_contains "$REJ353" '::warning::planner: dropping duplicate plan path: README.md' "#353 a duplicate is a ::warning:: naming only its own condition"
+assert_contains "$REJ353" '::error::planner: non-allowlisted plan path: CLAUDE.md' "#353 a non-allowlisted path is an ::error:: naming only its own condition"
+assert_contains "$REJ353" '::error::planner: non-allowlisted plan path: notes/ABSENT.md' "#353 the absent-on-disk violation gets its own ::error:: too — both shapes annotated"
+assert_contains "$REJ353" '::error::planner: 2 non-allowlisted plan path(s) rejected' "#353 the aggregate line counts DISTINCT violating paths, not occurrences"
+assert_eq "$(grep -c '::error::planner: non-allowlisted plan path:' "$TMP/doc/repo353/rejects.log")" "2" "#353 one ::error:: per DISTINCT violating path — the lines and the aggregate must add up"
+assert_ok "[ \"$(grep -n '::warning::planner: dropping duplicate' "$TMP/doc/repo353/rejects.log" | cut -d: -f1)\" -lt \"$(grep -n '::error::planner: non-allowlisted' "$TMP/doc/repo353/rejects.log" | head -1 | cut -d: -f1)\" ]" "#353 the warning is not block-buffered behind the errors (the flush=True fix)"
+assert_absent "$REJ353" 'duplicate or non-allowlisted' "#353 the conflated message is gone (REPO_STANDARDS §24.2)"
+assert_absent "$REJ353" 'planned documentation file does not exist' "#353 a rejected path is never re-reported as a missing file"
+assert_ok "jq -e '.validation.rejected == [{\"path\":\"README.md\",\"reason\":\"duplicate\"},{\"path\":\"CLAUDE.md\",\"reason\":\"not-allowlisted\"},{\"path\":\"CLAUDE.md\",\"reason\":\"not-allowlisted\"},{\"path\":\"notes/ABSENT.md\",\"reason\":\"not-allowlisted\"}]' '$TMP/doc/repo353/plan.json' >/dev/null" "#353 plan written on a non-allowlisted entry; rejected is per-entry, in input order, and a repeat of a REJECTED path is never relabelled \`duplicate\`"
+assert_ok "jq -e '[.validation.allowlist_violations[].path] == [\"CLAUDE.md\",\"notes/ABSENT.md\"]' '$TMP/doc/repo353/plan.json' >/dev/null" "#353 allowlist_violations is populated and DISTINCT — a path proposed twice is one violation"
+assert_ok "jq -e '[.low_risk_set[].path] == [\"README.md\"] and .high_risk_set == []' '$TMP/doc/repo353/plan.json' >/dev/null" "#353 no rejected path reaches low_risk_set or high_risk_set (the \`continue\` assertion)"
+
+if (cd "$TMP/doc/repo353" && LITELLM_FAKE_MODE=duplicate PATH="$TMP/doc/bin:$PATH" python3 ../planner.py --merge-sha abc --gh-repo owner/repo --config config.json --conventions conventions.md --model ai-doc-maintainer --out-plan plan-dup.json) >"$TMP/doc/repo353/dup.log" 2>&1; then
+  _g "#353 a duplicate alone no longer discards the whole plan (353b)"
+else
+  _r "#353 a duplicate alone still kills the run"
+fi
+assert_ok "jq -e '.validation.rejected == [{\"path\":\"README.md\",\"reason\":\"duplicate\"}] and .validation.allowlist_violations == [] and [.low_risk_set[].path] == [\"README.md\"]' '$TMP/doc/repo353/plan-dup.json' >/dev/null" "#353 the duplicate is recorded once and the surviving entry is still planned"
+
+# The pure `continue` probe for the ALLOWLIST branch. In the `rejects` run above,
+# deleting that branch's `continue` aborts on notes/ABSENT.md before a plan is
+# written, so `.high_risk_set == []` never gets to fire. Here the only rejected
+# path is on disk, so dropping the `continue` writes a plan with CLAUDE.md
+# classified into high_risk_set — caught by nothing else in this block.
+if (cd "$TMP/doc/repo353" && LITELLM_FAKE_MODE=nonallowlisted-present PATH="$TMP/doc/bin:$PATH" python3 ../planner.py --merge-sha abc --gh-repo owner/repo --config config.json --conventions conventions.md --model ai-doc-maintainer --out-plan plan-present.json) >"$TMP/doc/repo353/present.log" 2>&1; then
+  _r "#353 an on-disk non-allowlisted path exited 0"
+else
+  _g "#353 an on-disk non-allowlisted path still fails the run"
+fi
+assert_ok "jq -e '.high_risk_set == [] and [.low_risk_set[].path] == [\"README.md\"] and [.validation.allowlist_violations[].path] == [\"CLAUDE.md\"]' '$TMP/doc/repo353/plan-present.json' >/dev/null" "#353 an on-disk rejected path is dropped, not classified (the allowlist branch's \`continue\`)"
 
 echo "== doc-maintainer Step 9 renders a dry-run patch when the files differ (#352) =="
 # Extract-and-drive, never re-implement (how FT-40's SHA-peel guard passed while

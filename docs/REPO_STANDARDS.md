@@ -2169,12 +2169,14 @@ CI-0025. §23.4 added from #331.
 ## 24. The PLAN-021 cluster — shell, message, template and prompt discipline
 
 **§24 is a container, not a single rule.** It holds four independent sub-rules,
-one per PLAN-021 PR, each stating its own rule under its own sub-heading. §24.2
-(_an error message names one condition_), §24.3 (_a default a canon template
-recommends must be executable by the code that consumes it_) and §24.4 (_what
-canon shows a model must agree with what canon will accept from it_) land with
-PR-B, PR-C and PR-D; this PR ships §24.1 only. **§24 is claimed in full by
-PLAN-021 — a later plan wanting a new section takes §25**, PLAN-023 included.
+one per PLAN-021 **code** PR (PR-A…PR-D; PR-0 was the decision record and
+carries no rule), each stating its own rule under its own sub-heading. §24.3
+(_a default a canon template recommends must be executable by the code that
+consumes it_) and §24.4 (_what canon shows a model must agree with what canon
+will accept from it_) land with PR-C and PR-D; §24.1 shipped with PR-A and
+§24.2 ships here.
+**§24 is claimed in full by PLAN-021 — a later plan wanting a new section takes
+§25**, PLAN-023 included.
 
 ### 24.1 A tolerated non-zero exit must be scoped off
 
@@ -2252,3 +2254,78 @@ the wrong reason.
 30548353113 and 30553994621. Recorded as CI-0027 (PLAN-021 PR-A). Same class as
 the closed #306 — a dry-run branch that cannot complete, in a flow whose whole
 purpose during pilot is the dry run.
+
+### 24.2 An error message names one condition
+
+**A guard that tests two conditions in one `if` must be split into one branch
+per condition, each with its own message. De-conflate at the branch, not in the
+message text.** A message naming alternatives — `duplicate or non-allowlisted
+plan path: X` — is a defect whichever condition actually fired, because the
+reader cannot tell which, and the two conditions have different owners and
+different fixes.
+
+**Measured.** Across `aidoc-flow-framework`'s pilot — 23 failures over its first
+47 runs — `planner.py` rejected 15 plans under one such guard. **9 of the 15
+named `plans/HANDOFF.md`, a path that _is_ in that consumer's `allowed_paths`**
+— the cause was a duplicate every time. Read literally, the message pointed at
+an allowlist that was correct the whole time; the misreading was recorded in
+that repo's backlog as an allowlist misconfiguration, with a stated fix that
+would have changed nothing. The message compounded it by being plausible: the
+planner does hand the model the allowlist, so an allowlist error reads as a
+config fault rather than as model non-compliance.
+
+⚠️ **Those are run counts, and run counts rank wrong here.** `reconcile.py`
+re-dispatches an un-maintained merge, so one merge contributes 1–4 failures. By
+distinct merge the 15 rejections are **4 duplicate merges and 4 non-allowlisted
+merges out of 12 failing merges** — tied, where the run counts read 9 and 6.
+Quote the by-merge figure when ranking a fix; see `DECISIONS.md` CI-0027,
+whose title is that finding.
+
+**Rewording is not the fix.**
+Splitting the branch is what makes the _dispositions_ separable, and they were
+never the same: a duplicate is a plan-quality problem, a non-allowlisted path is
+a safety-boundary problem. While both conditions share one branch, both must
+share one disposition — so the cheap fault forces the expensive one's blast
+radius. Here that meant a repeated path discarded an entire completed LLM
+planning call.
+
+**A field a schema declares must be written by some path.** The same guard
+aborted before either `validation.rejected` or `validation.allowlist_violations`
+could be populated, so both shipped declared-and-never-populated — and the
+IPLAN-0025 P4 graduation gate, which requires _zero allowlist violations_, had
+no artifact to count. A declared-never-populated field reads to a consumer as a
+measured zero.
+
+**Where a violation must both be recorded and kill the run, record then fail:**
+write the artifact, then exit non-zero, having collected **all** violations
+first. Failing at the first one makes the artifact's contents depend on where in
+the input the first violation happened to fall, which is not a count.
+
+⚠️ **Do not justify record-then-fail by artifact countability without checking
+that something reads the artifact.** In this flow **nothing reads
+`validation.*`** — Steps 8-11 read the plan for its risk sets only, the plan
+JSON is never uploaded (the upload takes the _patch_), and `Cleanup` is
+`if: always()` and removes it, so no reader outside the run can ever see the
+record. The de-conflated `::error::` line in the log is what makes the
+violations countable — so the **emission must be deduplicated on the same key
+as the count**, or the summary names a number the lines above it do not add up
+to. The narrow reason record-then-fail is still right is the one above: it
+stops the schema declaring a field it never populates.
+
+**Each rejection branch must `continue`, and a test must prove it.** Recording a
+rejection and then falling through re-creates the very defect being fixed,
+because the per-entry validation below the guard still runs on the rejected
+entry: a rejected path absent from disk aborted as `planned documentation file
+does not exist` — one condition reported as another again — and a rejected path
+present on disk was classified into the accepted set, handing a recorded
+violation to the apply stage. **Assert the rejected path is absent from the
+accepted sets**, not merely that the message changed; a message-only assertion
+passes against both bugs. Drive both shapes — one rejected path on disk, one
+not.
+
+**Origin:** issue #353, measured on `aidoc-flow-framework`'s 23 `doc-maintainer`
+failures over its first 47 runs under `ci/v2.16.0`. Recorded as CI-0027
+(PLAN-021 PR-B). The
+blast-radius half of the same defect on a different guard — the 30 %-deletion
+trip, which reds the run rather than dropping the entry — is deliberately not
+fixed here; it is [#372](https://github.com/vladm3105/aidoc-flow-ci/issues/372).
