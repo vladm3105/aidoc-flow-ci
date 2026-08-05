@@ -6,14 +6,15 @@ against the corrected census** below), and both owed measurements are discharged
 in §9. **PR-0 done** (`DECISIONS.md` CI-0027; the §3 residual filed as
 [#372](https://github.com/vladm3105/aidoc-flow-ci/issues/372)). Next: PR-A.
 
-> **How the OPS-0066 cap was resolved — read this before treating READY as
-> "fully reviewed".** Three independent passes returned 10, 9 and 6 findings;
-> all 25 are folded, but the **third pass's fold was never independently
-> reviewed**, and the cap forbids a fourth pass. The cap's own escape is
-> *escalate to the founder*, and that is what happened — this is a founder
-> release, not a converged review. The residual is one unreviewed fold. Treat
-> PR-by-PR review as carrying more weight than usual, and do not cite this plan
-> as having converged.
+> **This plan has not converged — read §10 before treating it as reviewed.**
+> Four independent passes have returned **10, 9, 6 and 7** load-bearing
+> findings; all 32 are folded. The OPS-0066 cap was reached at the third pass
+> and resolved by its own escape, escalation to the founder; the scoped fourth
+> pass that release owed **has now run** (Pass 6, 2026-08-04) and discharged the
+> Pass-4 fold. **The residual is unchanged in shape: the newest fold is itself
+> unreviewed**, and three of Pass 6's seven findings changed the shipping diff.
+> Treat PR-by-PR review as carrying more weight than usual, and do not cite this
+> plan as having converged.
 
 **Issues:** [#352](https://github.com/vladm3105/aidoc-flow-ci/issues/352),
 [#353](https://github.com/vladm3105/aidoc-flow-ci/issues/353),
@@ -52,8 +53,11 @@ say. Four defects converge on it, each verified against source at `ci/v2.16.0`:
 switch is a **`maintain`-job property only**, checked at one place in the
 reusable. Push runs still execute Steps 1-2 and exit 0; the `reconcile` job is
 gated `github.event_name == 'schedule'` and reads **no config at all**, so
-framework's `cron: '7,37 * * * *'` keeps it dispatching ~48×/day. The accurate
-claim is **no LLM cost, no proposals, no failures** — not "no runs".
+framework's `cron: '7,37 * * * *'` keeps it **running** ~48×/day. Running, not
+dispatching: a paused push run exits 0, so `reconcile.py` sees
+`conclusion == "success"`, finds no missed SHA (`:99`, `:109`) and dispatches
+nothing. The accurate claim is **no LLM cost, no proposals, no failures** — not
+"no runs".
 
 The consumer's recorded census, over its first 47 runs — **23 failures**, 12 of
 13 `push` runs:
@@ -70,10 +74,17 @@ The consumer's recorded census, over its first 47 runs — **23 failures**, 12 o
 >
 > **(a) These are run counts, not defect instances.** `reconcile.py` treats a
 > completed run with `conclusion != "success"` as *un-maintained* and
-> re-dispatches the SHA; its 90-minute lookback against a 30-minute cron means
-> each failing push run is re-dispatched up to ~3 times. That is how 13 push runs
-> became 47. It also means every residual failure costs ~3 extra planner+apply
-> LLM invocations.
+> re-dispatches the SHA (`reconcile.py:99`, `:109`, `:125`); its 90-minute
+> lookback (`doc-maintainer.yml:191`) against a 30-minute cron bounds that at up
+> to ~3 re-dispatches per failing merge, while the merge commit stays inside the
+> window. **That bound is a ceiling, not the observed cost** — §9 M2 measures 23
+> failing runs over 12 distinct merges, i.e. **≈1 extra planner+apply invocation
+> per failing merge**, and the retry factor varies 1-4.
+>
+> **Do not read the 13 → 47 growth as retries.** The 34 non-push runs mix
+> `workflow_dispatch` re-dispatches with ~48/day scheduled reconcile runs that
+> invoke no LLM. The split is unmeasured and nothing here depends on it — the
+> note exists only so the retry reading does not come back.
 >
 > **✅ DISCHARGED 2026-07-31 — the re-derivation is §9 M2.** The estimate in this
 > warning was low: the 23 failures are **12** distinct merges, not "roughly 6",
@@ -88,8 +99,10 @@ The consumer's recorded census, over its first 47 runs — **23 failures**, 12 o
 > apply-200 KB failures cannot recur as #354 — they recur as **non-allowlisted
 > rejections**, because nothing stops the model proposing it: framework's
 > `CHANGELOG.md` is in the inventory *and* in the changed-file list of nearly
-> every merge, since this workspace requires a changelog entry per PR. Only the
-> prompt imperative in PR-D closes this.
+> every merge, since this workspace requires a changelog entry per PR. The prompt
+> imperative in PR-D (D-2) is the only in-scope change that addresses it — and it
+> is advisory, not enforced, so **re-measure this bucket after resume rather than
+> assuming it closed** (§4 PR-D).
 
 **#352 is among the smallest buckets by count and is still the graduation
 blocker**, because its loop reads `.low_risk_set[]` — so no plan containing a
@@ -259,12 +272,30 @@ residual, and the PR-D spec deviation. Lands first so the others can cite it.
           done < <(jq -r '.low_risk_set[].path' .doc-maintainer-plan.json)
 ```
 
-**Also fix Step 9's PR resolution — and the guard there is dead code today.**
+**Also fix Step 9's PR resolution — the guard there fires on the wrong input.**
 Measured, not inferred: `gh api … --jq '.[0].number'` on an empty array emits
 jq's `null`, which `gh` prints as the **literal string `null`** — not empty. So
-`[ -z "$PR" ]` never fires, the designed "no PR found" early exit is
-**unreachable**, and the real no-PR failure is `gh pr comment null` at the end of
-the step. Verify with `echo '[]' | jq -r '.[0].number'` before writing anything.
+`[ -z "$PR" ]` is unreachable **for the case it was written for**: a legitimately
+PR-less SHA yields `null`, and the real no-PR failure is `gh pr comment null` at
+the end of the step. Verify with `echo '[]' | jq -r '.[0].number'` before writing
+anything.
+
+But the guard is **not dead code** — read the whole substitution
+(`.github/workflows/doc-maintainer.yml:408`):
+
+```sh
+PR=$(gh api "repos/$GH_REPO/commits/$MERGE_SHA/pulls" --jq '.[0].number' 2>/dev/null || echo "")
+```
+
+The `|| echo ""` makes `$PR` empty on any `gh` non-zero exit — 404, 5xx,
+rate-limit, missing token. So the guard is reachable on **exactly one** input
+class, the `gh api` fault, which it then reports as `::notice::dry-run: no PR
+found` and **exits 0**. That is a silent miss of the class D12 exists to prevent,
+and it would score as a clean run against P4(e), "zero claude-CLI
+infrastructure errors".
+It is a stronger argument for (3) below than "the guard never fires" — which is
+what earlier drafts of this section, §9's M1 and the Pass-4 log all said, and
+which contradicted this plan's own ledger row 12.
 
 That changes the fix in three ways:
 
@@ -290,7 +321,10 @@ miss D12 exists to prevent. Once (3) lands, the inconsistency closes on its own.
 
 **Sweep the mental model.** Two comments assert `set -uo pipefail` means
 *"(no -e)"*. Correct both — **and state the reason correctly**: `-e` is inherited
-from GitHub's default shell (`bash --noprofile --norc -e -o pipefail {0}`), and
+from GitHub's default shell (`bash -e {0}` — the **implicit** default, since this
+workflow sets no `shell:` and no `defaults:`; `bash --noprofile --norc -eo
+pipefail {0}` is what an explicit `shell: bash` selects, and getting the two
+confused would put a wrong shell string into canon §24.1), and
 the explicit `|| { echo "::error::…"; exit 1; }` gate exists because under bare
 `-e` the step fails **without emitting the `::error::` annotation**, which is the
 substance of D12. It is *not* "deliberate redundancy" — an earlier draft said so,
@@ -313,9 +347,19 @@ messages.
 
 **353b — on founder confirmation.** Duplicate → append
 `{"path": …, "reason": "duplicate"}` to `rejected`, emit `::warning::`,
-`continue`. Non-allowlisted → append with `reason: "not-allowlisted"`, then
-**write the plan and exit non-zero** (see §3). An empty survivor set is an empty
-plan, which the flow already handles.
+`continue`. Non-allowlisted → append with `reason: "not-allowlisted"`,
+**`continue` as well**, and after the loop **write the plan and exit non-zero**
+(see §3). An empty survivor set is an empty plan, which the flow already handles.
+
+⚠️ **Both branches must `continue`; recording without it re-creates the defect
+353a is about.** The `continue` is not decoration — the remaining per-entry
+validation runs on the same entry. Falling through from the non-allowlisted
+branch reaches `Path(path).is_file()` (`planner.py:189`), so a rejected path that
+does not exist on disk aborts with `planned documentation file does not exist` —
+one condition reported as another, the exact confusion §24.2 is being written to
+forbid — and if it does exist, classification at `planner.py:197` appends it to
+`low_risk_set`/`high_risk_set`, putting a recorded violation into the written
+plan for apply to consume.
 
 **Do not widen this.** `max_edits_per_pr` and the not-low-risk-means-high-risk
 classification are correct and out of scope.
@@ -392,6 +436,21 @@ opposite: *"glob the consumer's `allowed_paths` set."* Fix: one predicate,
 filtering through `matches(path, allowed)` **before** the `MAX_DOC_INVENTORY`
 slice, or a large repo can truncate the allowlisted set away.
 
+⚠️ **D-1 must relabel the block it narrows — this is a CI-0027 requirement, not
+a style note.** `REPO_STANDARDS` §20.2 rule 5: *"A filtered input is a lying
+input… if the assembly narrows what it collects, the prompt must say so where the
+rule consumes it, or the omitted category reads as 'absent from the repo'."*
+Filtering the inventory silently makes every non-allowlisted file read as missing
+from the repo. Ship the label with the filter — `Documentation inventory
+(allowed_paths only):` — in the same diff. `DECISIONS.md:1724`.
+
+**D-1 is an exact no-op on `operations`** — not approximately one. The inventory
+is built from `rglob("*.md")`, so every entry ends `.md`; `matches()` uses
+`fnmatchcase`, whose `*` crosses `/`; and `operations`' `allowed_paths` ends with
+the catch-all `"*.md"`. Every entry matches, so the filter removes nothing.
+`DECISIONS.md:1711` states the adjacent fact the same way. Do not let the release note claim D-1 for the live
+consumer; it is `framework` that gains from it.
+
 **D-2 — the prompt never forbids what it rejects.** This is the load-bearing
 half, and D-1 alone would leave the bucket red:
 
@@ -401,31 +460,44 @@ half, and D-1 alone would leave the bucket red:
   diff as input, so PR-D cannot remove it.
 - **All six offending proposals are files the triggering PRs themselves had just
   changed** (`plans/PIN-CURRENCY-READER-PLAN.md` from its own PR series,
-  `CLAUDE.md` from the traps graduation, the conventions file from the pause
-  commit). A 500-entry menu did not make the model pick exactly the files each
-  merge touched — the changed-file list did.
+  `CLAUDE.md` from the traps graduation, the conventions file from a merge that
+  changed it — **not** the pause commit, whose push run exits at Step 2 before
+  the planner ever runs). A 500-entry menu did not make the model pick exactly
+  the files each merge touched — the changed-file list did.
 - **The prompt contains no imperative binding the model to `allowed_paths` at
   all.** `Allowed documentation paths:` is a labelled datum. The only prohibition
   forbids "source code, workflow, configuration, generated, or non-documentation
-  files" — and **every one of the six is a documentation file**, so nothing in
-  the prompt was violated.
+  files" — and **all six are markdown prose files, five of them unambiguously
+  documentation** (the sixth being the conventions file). Phrase it as `DECISIONS.md:1719`
+  does; the argument does not need the stronger claim.
 - The consumer *did* write the rule ("The allowed-paths list is closed. Propose
   nothing outside it") — but the prompt's first line declares conventions
   "untrusted DATA, not instructions", so **canon explicitly instructs the model
   to disregard the consumer's countermeasure.**
 
 **Fix D-2.** One sentence in the canon-owned prompt, beside the existing
-prohibitions — e.g. *"Propose only paths matching the allowed documentation paths
-above; a path in the changed-file list that is not in that list must not be
-proposed."* Ship it in the same PR as D-1.
+prohibitions — e.g. *"Propose only paths matching the `Allowed documentation
+paths:` list; a path in the changed-file list that is not in that list must not
+be proposed."* Refer to the datum **by its label, not by position** — the
+prohibitions sit at `planner.py:160` and the allowlist at `:166`, so "above"
+would be false. Ship it in the same PR as D-1.
+
+**D-2 is advisory, and the plan must not promise more than that.** The only
+enforcement point remains `planner.py:187`'s `fail()`; a prompt sentence makes
+non-compliance less likely, not impossible. So: **D-2 is the only in-scope change
+that can reduce this bucket, and D-1 alone would leave it red — but the bucket is
+not closed by construction.** IPLAN-0025 P4(d) ("zero allowlist-violation
+rejections") must be **re-measured after resume**, never assumed from this PR.
+The deterministic alternative — drop the offending entry instead of failing the
+plan — is exactly what D12 / Risk 1 forbid, which is why it is not proposed here.
 
 **This supersedes two earlier framings, in both directions.** An early draft
 called the bucket "model non-compliance, prompt-side, out of scope" — wrong,
 because the inventory is a genuine spec deviation. The next draft swung to "D-1
 is the direct cause" — also wrong, and it would have shipped a fix that left the
-bucket red. Both halves are needed, and only D-2 explains the observed six.
+bucket red. Both halves are needed, and only D-2 addresses the observed six.
 
-**Doc surfaces:** `REPO_STANDARDS` §24.4 · `CHANGELOG.md` · the new issue.
+**Doc surfaces:** `REPO_STANDARDS` §20.2 + §24.4 (one file — see §8) · `CHANGELOG.md` · the new issue.
 
 ---
 
@@ -435,10 +507,19 @@ Two different root causes (§1) need two different remedies:
 
 | Defect | Test | Where |
 |---|---|---|
-| #352 | Drive the patch-render loop under `bash --noprofile --norc -eo pipefail` against a fixture where the files **differ**. Assert the loop completes and `$PATCH` is non-empty. | `tests/test_scripts.sh` |
-| #353 | Feed the mocked planner a plan with a duplicate and a non-allowlisted path. Assert two **distinct** messages; under 353b assert the run survives the duplicate, the plan is written even on a non-allowlisted entry, and both `rejected` and `allowlist_violations` are populated. | extend the existing mocked harness |
+| #352 | Drive the patch-render loop under `bash -euo pipefail` (the step's effective flags — see below) against a fixture where the files **differ**. Assert the loop completes and `$PATCH` is non-empty. | `tests/test_scripts.sh` |
+| #353 | Feed the mocked planner a plan with a duplicate and a non-allowlisted path. Assert two **distinct** messages; under 353b assert the run survives the duplicate, the plan is written even on a non-allowlisted entry, both `rejected` and `allowlist_violations` are populated, and **neither rejected path appears in `low_risk_set` or `high_risk_set`** (the `continue` assertion — see §4 PR-B). | extend the existing mocked harness |
 | #354 | Assert the install template carries no path apply would refuse; assert the planner drops an over-limit **low-risk** path and **keeps** an over-limit high-risk one. | `tests/test_contract.sh` + the harness |
-| PR-D | Assert a non-allowlisted `*.md` present on disk does **not** appear in the prompt's inventory. | the harness |
+| PR-D **D-1** | Capture the assembled prompt. Assert a non-allowlisted `*.md` present on disk does **not** appear in the inventory block, **and** that the block's label states the scope (`allowed_paths`). | the harness |
+| PR-D **D-2** | On the same captured prompt, assert the allowlist imperative is present. Mutation: delete the sentence → red. | the harness |
+
+**D-2 needs a test precisely because it is the half that carries the plan's
+ranking.** §4 calls it load-bearing and §9 M2 promotes PR-D to co-equal on it —
+yet as a bare prompt sentence it is deletable without breaking anything in CI,
+which the mutation obligation below forbids. The capture is free: the LiteLLM
+double is `def completion(prompt, **_kwargs)` (`tests/test_scripts.sh:276`) and
+receives the assembled prompt verbatim, the real planner already runs as a
+subprocess (`:302`), and the D-1 assertion needs the same capture.
 
 **Extraction has a trap — extract the loop, not the step.** Step 9's `run:` body
 contains five `${{ }}` expressions; fed to bash verbatim they are a syntax error,
@@ -449,9 +530,11 @@ seven lines after PR-A's fix, five before). **Use the repo's existing marker
 convention** (`# >>> NAME >>>` / `# <<< NAME <<<`, driven by `test_resolver.sh`) —
 PR-A must add the markers to Step 9, or the extraction is line-range-fragile and
 silently breaks on the next edit above it. The harness must define `$PATCH`
-itself and apply `set -u` itself — both live *outside* the extracted range.
-GitHub's default shell is `bash --noprofile --norc -e -o pipefail {0}`, so
-`-eo pipefail` reproduces it.
+itself — it is assigned *outside* the extracted range.
+The step runs under GitHub's **implicit** default `bash -e {0}` (no `shell:` key
+anywhere in the workflow — the `--noprofile --norc -eo pipefail` form is the
+explicit `shell: bash` one) and then applies its own `set -uo pipefail`, so
+`bash -euo pipefail` is what reproduces the step's actual flags.
 
 **Extract-and-drive, never re-implement** — how FT-40's SHA-peel guard passed
 while untested.
@@ -551,16 +634,45 @@ governance cap:
   that reaches the guard.
 - **§24.4** — *What canon shows a model must agree with what canon will accept
   from it.* An inventory wider than the allowlist manufactures rejections and
-  charges them to the model.
+  charges them to the model; and a datum the prompt never turns into an
+  imperative constrains nothing.
 
-**`DECISIONS.md` CI-0027** (PR-0) records the cluster, the D12 reading, the 353b
-confirmation, the PR-D spec deviation, and the standing 30 %-deletion residual.
-It must also record, from §9: **the corrected distinct-merge census** (the
-run-count ranking was retry-weighted; by merge the duplicate and non-allowlisted
-buckets are 4 and 4), **the founder's PR-C acceptance, re-put a third time on the
-corrected 3-of-12 figure**, and **that the consumer's resume condition needs
-`#360` added** — none of which are derivable
-from the run counts this plan was drafted against.
+  ⚠️ **§24.4 is written as an extension of §20, not beside it** — a CI-0027
+  requirement (`DECISIONS.md:1728`). §20.2 already governs prompt assembly, and
+  rule 5 ("a filtered input is a lying input") is the rule D-1's narrowing must
+  satisfy. A free-standing §24.4 would split one contract across two sections and
+  leave §20 silent about the case that motivated it.
+
+  **Concretely, so PR-D does not have to re-decide this.** §24.4 exists under
+  §24 (CI-0027 calls it "PR-D's new §24.4"), and PR-D edits **two** sections of
+  one file: §20.2 gains a **rule 8** carrying the normative text — *the set a
+  prompt shows a model and the set the code will accept from it must agree; a
+  datum the prompt never turns into an imperative constrains nothing* — and
+  §24.4 is the short cross-referencing subsection that names the rule and points
+  at §20.2 rule 8, opening with an explicit **"Extends §20.2."** Do not state
+  the rule twice. **Doc surfaces for PR-D are therefore `REPO_STANDARDS` §20.2 +
+  §24.4 (one file) · `CHANGELOG.md` · the new issue** — still within the ≤3-doc
+  cap.
+
+  **PLAN-023 PR-1 also claims §24 and renumbers** — PLAN-021 has priority (see
+  `HANDOFF.md`).
+
+**`DECISIONS.md` CI-0027** — **landed in PR-0 on 2026-08-03**; the paragraphs
+below record what it says, not what it must be made to say. It covers the
+cluster, the D12 reading, the 353b confirmation, the PR-D spec deviation split
+into D-1/D-2, D-1's disclosure obligation, and the standing 30 %-deletion
+residual.
+It also carries, from §9, the three things not derivable from the run counts this
+plan was drafted against: **the corrected distinct-merge census** (by merge the
+duplicate and non-allowlisted buckets are 4 and 4, where run counts read 9 and
+6), **the founder's PR-C acceptance re-put a third time on the corrected 3-of-12
+figure**, and **that the consumer's resume condition needs `#360` added**.
+Verify rather than re-derive: `awk '/^## CI-0027/,/^## CI-0028/' DECISIONS.md`.
+⚠️ The terminator is **CI-0028**, the ID *below* it in the file — `DECISIONS.md`
+runs in ascending ID order, and CI-0027 filled a slot CI-0028 had reserved, so
+its **date** (2026-08-03) is later than CI-0028's (2026-07-31). A date-ordered
+intuition picks the wrong neighbour, the range never closes, and awk prints 425
+lines to EOF instead of the entry's 129.
 
 ---
 
@@ -594,7 +706,8 @@ from the run counts this plan was drafted against.
 code, and the second changed the plan's priority framing — which is why they were
 required.
 
-**M1 — Step 9's `[ -z "$PR" ]` is dead code. CONFIRMED.**
+**M1 — Step 9's `[ -z "$PR" ]` never fires on the case it was written for.
+CONFIRMED — but "dead code" overstates it.**
 
 ```console
 $ echo '[]' | jq -r '.[0].number' | od -c
@@ -602,7 +715,15 @@ $ echo '[]' | jq -r '.[0].number' | od -c
 ```
 
 It prints the literal 4-character string `null`, not an empty string, so the
-guard never fires. PR-A's replacement guard must test for `null` explicitly.
+legitimately-PR-less path does not take the guard, and PR-A's replacement must
+test for `null` explicitly.
+
+**The guard is still reachable, by a different input.** `|| echo ""` inside the
+substitution (`doc-maintainer.yml:408`) empties `$PR` on any `gh` non-zero exit,
+so a `gh api` fault takes the guard and is reported as "no PR found" with
+`exit 0` — a silent miss, and a clean run against P4(e). The earlier "dead code /
+unreachable" wording here and in §4 was wrong and contradicted ledger row 12,
+which cites that same `2>/dev/null` as the swallowed fault.
 
 **M2 — the census re-derived by distinct merge. The RANKING changed; the
 composition did not.**
@@ -648,7 +769,7 @@ error produced a first draft of this table reporting PR-C at 1 of 11; it is 3 of
 12. Reproduce with:
 
 ```sh
-gh run list --workflow doc-maintainer.yml --limit 100 --json conclusion,databaseId \
+gh run list --workflow doc-maintainer.yml --limit 500 --json conclusion,databaseId \
   --jq '.[]|select(.conclusion=="failure")|.databaseId' |
 while read id; do
   log=$(gh run view "$id" --log)
@@ -661,13 +782,39 @@ done
 Classify **every** run, then aggregate per merge — do not sample one run per
 group.
 
+⚠️ **`--limit` applies before the `select(.conclusion=="failure")` filter.** The
+`'7,37 * * * *'` cron alone produces ~48 runs/day, so a `--limit 100` covers
+about two days and cannot reach a census window that opened 2026-07-30. Raise
+the limit (500 above) rather than trusting a short listing to be complete.
+
 ⚠️ Grep for `##[error]`, **not** `::error::` — a downloaded log renders the
 workflow command, so the emitted form matches nothing. The `^[[36;1m` lines are
 echoed script source, not errors; reading those inverts the diagnosis.
 
 ---
 
-## 10. Review status — stopped at the cap
+## 10. Review status — the owed fourth pass has run
+
+**Discharged 2026-08-04.** The scoped fourth independent pass ran, returned
+**7 load-bearing findings, verdict NOT READY**, and all seven are folded. **The
+Pass-4 fold is no longer unreviewed.** Three of the seven changed the shipping
+diff — PR-D twice, PR-B once. Narrative in **Pass 6** of the review log; it is
+not repeated here.
+
+**The Pass-6 fold WAS reviewed — by the OPS-0065 pre-push pass, and it found
+three defects the fold had introduced.** All three are corrected (Pass 6
+addendum). This is the residual's shape changing rather than repeating: the
+Pass-4 fold went unreviewed for five days, the Pass-6 fold did not survive its
+own push. Folding a review finding is a code change (`CLAUDE.md` § "Durable
+traps") and this is now the third consecutive fold on this plan to contain one.
+
+**Residual, declared not resolved:** the *addendum* fold — three corrections
+applied after the pre-push review — has not itself been re-reviewed, and no
+`verified-planning-reviewer` pass has seen the plan in its present state. The
+trend across independent passes is 10 → 9 → 6 → 7.
+
+<details>
+<summary>Historical — the cap that produced the owed pass</summary>
 
 Three independent passes returned **10, 9 and 6** load-bearing findings. All 25
 are folded. **The third pass's fold is itself unreviewed**, and OPS-0066 caps the
@@ -679,6 +826,8 @@ cycle"* — but three of them changed the shipping diff, so the plan cannot be
 called ready on that basis alone. **A fourth pass should be run by a fresh
 session after the founder answers §9**, scoped to the Pass-4 fold only (§1
 warnings, §3's countability correction, §4 PR-A's `null` guard, §4 PR-D's D-2).
+
+</details>
 
 ---
 
@@ -732,9 +881,9 @@ warnings, §3's countability correction, §4 PR-A's `null` guard, §4 PR-D's D-2
 | 44 | The cold-start surface walks every manifest template with no `auto_install` filter | `out.add(t)` | scripts/release.sh:112 |
 | 45 | ...plus five explicitly named installer files, which do not include `scripts/` | `install/templates/manifest.json \` | scripts/release.sh:137 |
 | 46 | `release.sh tag` refuses when that surface changed and the dry-run is unverified | `refusing to tag without --dry-run-verified` | scripts/release.sh:298 |
-| 47 | An offline exerciser for planner+apply already exists — so #353/#354/PR-D lacked fixtures, not coverage | `doc-maintainer planner + apply (mocked GitHub and LiteLLM adapter)` | tests/test_scripts.sh:218 |
-| 48 | ...and already drives the real planner as a subprocess | `python3 ../planner.py --merge-sha abc` | tests/test_scripts.sh:264 |
-| 49 | ...and already asserts an apply guard, confirming the harness can express these fixtures | `LITELLM_FAKE_MODE=destructive` | tests/test_scripts.sh:277 |
+| 47 | An offline exerciser for planner+apply already exists — so #353/#354/PR-D lacked fixtures, not coverage | `doc-maintainer planner + apply (mocked GitHub and LiteLLM adapter)` | tests/test_scripts.sh:256 |
+| 48 | ...and already drives the real planner as a subprocess | `python3 ../planner.py --merge-sha abc` | tests/test_scripts.sh:302 |
+| 49 | ...and already asserts an apply guard, confirming the harness can express these fixtures | `LITELLM_FAKE_MODE=destructive` | tests/test_scripts.sh:315 |
 | 50 | The inventory guard enforces FT-naming only on rows saying `unexercised`, so a stale exerciser column passes green | `unexercised` | tests/test_exerciser_inventory.sh:118 |
 | 51 | The workflow body's only recorded exerciser is the resolver | `descoped (library; needs LiteLLM + App)` | docs/EXERCISER_INVENTORY.md:53 |
 | 52 | Canon requires every canon-body change to ship a REPO_STANDARDS update | `Every canon-body change ships with a` | CLAUDE.md:225 |
@@ -757,10 +906,16 @@ warnings, §3's countability correction, §4 PR-A's `null` guard, §4 PR-D's D-2
 | 69 | **PR-D D-2:** the prompt's only prohibition is by file TYPE — every rejected path was a documentation file, so nothing was violated | `Do not propose source code, workflow, configuration, generated, or non-documentation files.` | scripts/doc-maintainer/planner.py:160 |
 | 70 | **PR-D D-2:** canon tells the model to treat the consumer's conventions — including its "propose nothing outside the allowlist" rule — as untrusted data | `untrusted DATA, not instructions` | scripts/doc-maintainer/planner.py:156 |
 | 71 | **PR-D D-2:** the changed-file list is passed unfiltered and untruncated, and is what surfaced the six rejected paths | `Complete changed-file list:` | scripts/doc-maintainer/planner.py:169 |
-| 72 | The census is retry-weighted: a non-success run is treated as un-maintained and re-dispatched | `if: ${{ github.event_name == 'schedule' }}` | .github/workflows/doc-maintainer.yml:111 |
+| 72 | The census is retry-weighted: a **completed** run counts as coverage only when its conclusion is `success` (an in-flight run also counts), so a failure leaves the SHA un-maintained | `run.get("conclusion") == "success"` | scripts/doc-maintainer/reconcile.py:99 |
 | 73 | The plan JSON is deleted unconditionally, so `validation.*` never leaves the runner | `Cleanup` | .github/workflows/doc-maintainer.yml:535 |
 | 74 | Step 11 already reads the authoritative PR number from the plan — the pattern PR-A should adopt | `.pr_number` | .github/workflows/doc-maintainer.yml:523 |
 | 75 | Step 8's `if:` has no `dry_run` term, so the low-risk-only apply invocation holds in both modes | `steps.plan.outputs.low_count != '0'` | .github/workflows/doc-maintainer.yml:391 |
+| 76 | ...and the un-maintained SHA is then re-dispatched — the mechanism behind the retry weighting | `"gh", "workflow", "run", args.workflow` | scripts/doc-maintainer/reconcile.py:129 |
+| 77 | ...bounded by a 90-minute lookback against a 30-minute cron, which is what caps it at ~3 | `--lookback-min 90` | .github/workflows/doc-maintainer.yml:191 |
+| 78 | **PR-D D-1:** CI-0027 requires D-1 to disclose its narrowing in the block's label, and §24.4 to extend §20 rather than sit beside it | `must be written as an extension of §20, not beside it` | DECISIONS.md:1728 |
+| 79 | ...because a filtered input is a lying input — the §20.2 rule D-1's narrowing must satisfy | `A filtered input is a lying input.` | docs/REPO_STANDARDS.md:1783 |
+| 80 | The upload step is `low_count`-gated, which is what makes PR-A's early exit safe — drop this term and the **misnamed red** returns, because Step 9 exits at :411 before `$PATCH` is created at :418 and the upload hard-errors on the missing file (`if-no-files-found: error`, :454). Silent green is the *other* knob — creating `$PATCH` earlier (§4) | `steps.plan.outputs.low_count != '0'` | .github/workflows/doc-maintainer.yml:449 |
+| 81 | The guard is reachable after all: `\|\| echo ""` empties `$PR` on any `gh` non-zero exit, so a fault is misreported as "no PR found" and exits 0 | `2>/dev/null \|\| echo ""` | .github/workflows/doc-maintainer.yml:408 |
 
 *Measured facts verified by command rather than cited symbol (re-run before
 trusting): `operations` carries `CHANGELOG.md` in both `allowed_paths` and
@@ -960,3 +1115,113 @@ was re-put a third time on the corrected figure (§9 item 2).
 Two residuals are declared rather than resolved: the unreviewed Pass-4 fold (see
 the header), and the 30 %-deletion blast-radius question (§3), which is 2 of 12
 merges and is fixed by no PR here.
+
+### Pass 6 — 2026-08-04 — independent (`verified-planning-reviewer`, fresh context), **scoped** — verdict: NOT READY
+
+The pass §10 owed, and the **fourth** independent one. It is not a breach of
+OPS-0066: the cap's own escape is escalation to the founder, that escalation
+happened and resolved (Pass 5), and §10 records the scoped fourth as its
+resolution. Scope was the Pass-4 fold only — §1's warnings, §3's countability
+correction, §4 PR-A's `null` guard, §4 PR-D's D-2 — and the reviewer was given
+three inputs so it would not re-litigate settled ground: ledger row 16's
+deliberate correction, §9's deliberately-narrated superseded figures, and §7.
+
+Seven load-bearing findings, **all folded, and every one re-verified against
+source before folding** — the fold, not the report, is what ships. Ranked:
+
+1. **PR-D violated a requirement its own landed decision record imposes.**
+   `CI-0027` (landed in PR-0, 2026-08-03) requires D-1 to **disclose its
+   narrowing** in the inventory block's label per `REPO_STANDARDS` §20.2 rule 5,
+   and requires §24.4 to be authored as an **extension of §20**, not beside it.
+   The plan said neither, so a PR-D built from it alone would have shipped the
+   silently-narrowed label §20 exists to forbid. Both folded into §4 and §8.
+2. **D-2 — the half the plan calls load-bearing — had no test**, against §5's own
+   mutation obligation: deleting the prompt sentence would have broken nothing in
+   CI. Added a row; the capture it needs is the one D-1's assertion needs anyway
+   (`tests/test_scripts.sh:276` receives the assembled prompt verbatim).
+3. **"Only D-2 closes the bucket" overstated an advisory fix as a deterministic
+   one.** The only enforcement point is still `planner.py:187`'s `fail()`. The
+   plan's whole re-ranking rides on this. Reworded to what is true — D-2 is the
+   only in-scope change that can reduce the bucket, compliance is not enforced,
+   and P4(d) must be **re-measured after resume**. The deterministic alternative
+   is the one D12 forbids, now said so a later reader does not re-propose it.
+4. **M1's "dead code" verdict was false, and the plan contradicted itself about
+   it.** `|| echo ""` inside the substitution (`doc-maintainer.yml:408`) empties
+   `$PR` on any `gh` non-zero exit, so the guard fires on exactly one class — the
+   API fault — and reports it as "no PR found" with `exit 0`. A silent miss that
+   would score clean against P4(e). Two sections called it unreachable while two
+   others (including ledger row 12) asserted the fault path. Corrected in §4 and
+   §9 M1; the Pass-4 log entry is left as the record of what that pass concluded.
+   **PR-A's design is unaffected** — this is a stronger argument for it.
+5. **Ledger row 72 did not support its claim** — its citation was byte-identical
+   to row 22's and proved only that reconcile is schedule-gated, while the entire
+   M2 re-derivation and PR-D's promotion rest on the retry mechanism. Re-pointed
+   at `reconcile.py:108`; added rows 76-77 for the dispatch and the 90-minute
+   lookback.
+6. **§1 warning (a) kept two superseded figures its own discharge contradicts** —
+   "~3 extra LLM invocations per residual failure" (measured: ≈1) and "13 push
+   runs became 47" (the 34 non-push runs mix `workflow_dispatch` re-dispatches
+   with ~48/day scheduled reconcile runs that invoke no LLM; the split is
+   unmeasured). Bound and measurement now stated separately.
+7. **PR-B's non-allowlisted branch omitted the `continue`**, re-creating the
+   defect 353a exists to fix: falling through reaches `planner.py:189`, so a
+   rejected path absent from disk aborts with `planned documentation file does
+   not exist` — one condition reported as another, the exact confusion §24.2 is
+   being written to forbid — and a recorded violation still lands in
+   `low_risk_set`/`high_risk_set`. Both branches now `continue`; §5 gained the
+   assertion.
+
+**Three scoped areas were confirmed sound, which is itself a result.** §3's
+countability correction verified on every leg (one `upload-artifact`, `Cleanup`
+is `if: always()`, no reader of `validation.*` outside `planner.py:202`). PR-A's
+`.pr_number` design verified including the step the plan asserts without showing
+— the planner's early exit also empties `low_risk_set`, so the upload step's
+`low_count` gate is false and the early exit can no longer coincide with a
+hard-erroring upload. D-2's **diagnosis** verified in full, including that
+`planner.py:156` names "allowed paths" explicitly among what the model is told to
+ignore from consumer conventions.
+
+Minors also folded: the shell string was the explicit `shell: bash` form, not the
+implicit default this workflow actually gets (`bash -e {0}`) — it was about to go
+into canon §24.1; ledger row 80 now cites the upload step's `low_count` gate,
+previously the uncited mechanism behind "closes on its own"; D-1 noted as near
+no-op on `operations`; "every one of the six is a documentation file" aligned to
+`DECISIONS.md:1719`'s "five unambiguously"; the conventions-file proposal cannot
+have come from the pause commit (that run exits at Step 2); D-2's example
+reworded to name the datum by label rather than "above"; §1's "~48×/day
+dispatching" corrected to *running*.
+
+**Addendum — the OPS-0065 pre-push review of this fold found three defects the
+fold itself introduced.** Recorded rather than quietly fixed, because the pattern
+is the point: this is the third consecutive fold on this plan to need one.
+
+1. **The `awk` range added to §8 to "verify rather than re-derive" CI-0027 was
+   inverted** — it terminated on `CI-0026`, which sits *above* `CI-0027` in a
+   file ordered by ascending ID, so it printed 425 lines to EOF instead of the
+   129-line entry. The trap: CI-0027 filled a slot CI-0028 had reserved, so its
+   date is *later* than CI-0028's and date-ordered intuition picks the wrong
+   neighbour. A verification command that cannot fail is worse than none.
+2. **The header block still said the cap forbids a fourth pass and the Pass-4
+   fold was unreviewed** — the first thing a fresh reader sees, contradicting the
+   §10 this same fold had just rewritten, with Pass 5 cross-referencing it.
+   Rewriting a section without its summary is how §7 went stale for three
+   handoffs.
+3. **New ledger row 80 named the wrong failure mode.** Dropping the upload step's
+   `low_count` gate produces a **hard red** (Step 9 exits before `$PATCH` is
+   created; `if-no-files-found: error`), not a silent green — silent green is the
+   *other* knob, creating `$PATCH` early. The row inverted the very distinction
+   §4 spends a paragraph drawing.
+
+Also folded from that review: §24.4's landing site made concrete (§20.2 gains
+rule 8 with the normative text, §24.4 cross-references it) so PR-D does not
+re-decide it; row 72's claim corrected to say *completed* run and re-pointed at
+the success test it actually cites; P4(e) quoted whole ("zero **claude-CLI**
+infrastructure errors"); D-1 stated as an *exact* no-op on `operations` rather
+than a hedged one; the "arguably reached by the type prohibition" clause dropped,
+since `DECISIONS.md:1720` denies it; §9's reproduction `--limit` raised to 500
+with the reason (`--limit` applies before the failure filter, and the cron alone
+fills 100 runs in two days); and three paragraphs cut for volume.
+
+**Result:** NOT READY as reported. All seven folded, plus three addendum
+corrections; ledger grew 75 → 81 rows. **No independent plan-review pass has seen
+the plan in its present state** — see §10.
