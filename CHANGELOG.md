@@ -5,6 +5,45 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — `doc-maintainer` planner conflated two rejection causes and discarded the whole plan for either (#353, PLAN-021 PR-B)
+
+- **One message, two causes.** `if path in seen or not matches(path, allowed)`
+  emitted `duplicate or non-allowlisted plan path: X` for either condition.
+  On the `aidoc-flow-framework` pilot the majority of these rejections named an
+  allowlisted path, because the cause was a duplicate — so the message sent the
+  maintainer to audit a config that was correct, and the misdiagnosis was
+  recorded in that repo's backlog as an allowlist misconfiguration. Now two
+  branches with two messages. Census and sources: §24.2.
+- **A duplicate no longer discards a completed planning call.** It is recorded to
+  `validation.rejected` with a `::warning::` and the surviving entries are
+  planned. By distinct merge — the unit CI-0027 ranks on, since `reconcile.py`
+  retries inflate run counts — this accounts for **4 of the pilot's 12 failing
+  merges**; bucket membership is a sample per CI-0027, so that is a
+  retrospective count, not a prediction about the resumed pilot. A
+  **non-allowlisted** path is unchanged as a safety boundary: still dropped,
+  still an `::error::`, still a red run (IPLAN-0025 D12). What changed is only
+  that the cheap fault no longer inherits the expensive one's blast radius.
+- **`validation.rejected` and `validation.allowlist_violations` are populated** —
+  both were declared in the plan schema and populated by no path in the file, so
+  IPLAN-0025 P4's *zero allowlist violations* had nothing to count. `rejected` is
+  per-entry; `allowlist_violations` is distinct by path. See §24.2.
+- **Both branches `continue`**, without which a rejected entry falls into the
+  validation below it and is re-reported as a missing file or classified into
+  `high_risk_set`. The regression test drives both shapes. See §24.2.
+- **`REPO_STANDARDS` §24.2 added** — an error message names one condition;
+  de-conflate at the branch, not in the message text. Carries the
+  record-then-fail rule and the `continue` trap. §24.3–§24.4 remain reserved for
+  PLAN-021 PR-C/PR-D.
+- **Not fixed here, deliberately** — filed rather than widened, per §4 PR-B's
+  scope bound: the identically-shaped blast-radius defect in apply's
+  30 %-deletion guard ([#372](https://github.com/vladm3105/aidoc-flow-ci/issues/372));
+  the remaining conflated messages elsewhere in `planner.py`
+  ([#389](https://github.com/vladm3105/aidoc-flow-ci/issues/389)); `apply.py`
+  trusting the plan artifact wholesale
+  ([#390](https://github.com/vladm3105/aidoc-flow-ci/issues/390)); and
+  `clean_path`'s control-character filter covering C0 only
+  ([#391](https://github.com/vladm3105/aidoc-flow-ci/issues/391)).
+
 ### Fixed — `doc-maintainer` dry-run has never rendered a patch; `set -e` killed Step 9 at the first `diff` (#352, PLAN-021 PR-A)
 
 - **The dry-run patch renderer died on the normal case.** `diff` exits 1

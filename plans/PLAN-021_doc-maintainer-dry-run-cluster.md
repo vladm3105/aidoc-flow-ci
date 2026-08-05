@@ -1,10 +1,12 @@
 # PLAN-021 — doc-maintainer: make the dry-run path executable
 
-**Status:** **In Progress — PR-0 landed 2026-08-03.** Both §9 items closed (353b
-approved 2026-07-30; PR-C's consumer cost accepted 2026-07-31, **re-confirmed
-against the corrected census** below), and both owed measurements are discharged
-in §9. **PR-0 done** (`DECISIONS.md` CI-0027; the §3 residual filed as
-[#372](https://github.com/vladm3105/aidoc-flow-ci/issues/372)). Next: PR-A.
+**Status:** **In Progress — PR-0 (2026-08-03) and PR-A (#382, 2026-08-05)
+landed; PR-B (#353) ships in the PR carrying this edit.** Both §9 items closed (353b approved 2026-07-30;
+PR-C's consumer cost accepted 2026-07-31, **re-confirmed against the corrected
+census** below), and both owed measurements are discharged in §9. **PR-0 done**
+(`DECISIONS.md` CI-0027; the §3 residual filed as
+[#372](https://github.com/vladm3105/aidoc-flow-ci/issues/372)). **Next: PR-C
+(#354), then PR-D (#360)** — PR-D lands *with* the cluster, not after.
 
 > **This plan has not converged — read §10 before treating it as reviewed.**
 > Four independent passes have returned **10, 9, 6 and 7** load-bearing
@@ -195,7 +197,13 @@ implementation writes
 at plan construction — a field that **can never be non-empty**, because a
 non-allowlisted path still calls `fail()`, which raises `SystemExit(1)` *before*
 the plan is written. That would ship a second declared-never-populated field, the
-exact defect #353 is about. Instead: **write the plan artifact, then exit
+exact defect #353 is about. (**SHIPS IN PR-B** — `planner.py` now writes that field for real, and it is
+correct *because* neither rejection branch calls `fail()` any more; the run
+exits 1 after the write. **It is NOT the naive comprehension quoted above:**
+that form is per-entry, and the shipped one is distinct by path, built in the
+allowlist branch alongside the log line so the record and the count cannot
+drift. The paragraph below is retained as the reasoning that got it there.) Instead: **write the plan
+artifact, then exit
 non-zero**, collecting **all** violations and failing once at the end — a
 fail-at-first-violation loop makes the artifact's contents depend on where in
 `updates` the first violation happens to fall, which is not a count.
@@ -259,6 +267,16 @@ residual, and the PR-D spec deviation. Lands first so the others can cite it.
 **Doc surfaces:** `DECISIONS.md` · `CHANGELOG.md` · this plan's status.
 
 ### PR-A — #352: scope `-e` off around the tolerated `diff`
+
+⚠️ **LANDED 2026-08-05 (`aidoc-flow-ci` #382), and NOT as point 1 below.** The
+`diff` scoping shipped as specified. The PR-resolution guard did **not**: it is
+**split** — `[ -n "$PR" ]` is an exit-1 fault gate, `[ "$PR" = null ]` the exit-0
+branch (`doc-maintainer.yml:417-427`). Point 1's literal
+`[ -z "$PR" ] || [ "$PR" = null ]` was written when empty meant a `gh` fault;
+once the value is read from the plan, empty means a *truncated plan*, so the
+literal guard would violate point 2, the governing requirement. **Do not restore
+point 1** — see ledger row 81. The spec below is left as written, as the record
+of what was specified.
 
 **Change.** Wrap the `diff` in the idiom the file already uses:
 
@@ -354,12 +372,16 @@ messages.
 ⚠️ **Both branches must `continue`; recording without it re-creates the defect
 353a is about.** The `continue` is not decoration — the remaining per-entry
 validation runs on the same entry. Falling through from the non-allowlisted
-branch reaches `Path(path).is_file()` (`planner.py:189`), so a rejected path that
+branch reaches `Path(path).is_file()` (`planner.py:227`), so a rejected path that
 does not exist on disk aborts with `planned documentation file does not exist` —
 one condition reported as another, the exact confusion §24.2 is being written to
-forbid — and if it does exist, classification at `planner.py:197` appends it to
+forbid — and if it does exist, classification at `planner.py:235` appends it to
 `low_risk_set`/`high_risk_set`, putting a recorded violation into the written
 plan for apply to consume.
+
+**SHIPS IN PR-B** — both branches `continue`; `tests/test_scripts.sh` drives
+both shapes (a rejected path on disk, one absent) and asserts neither reaches
+`low_risk_set`/`high_risk_set`. Canon rule ships as §24.2.
 
 **Do not widen this.** `max_edits_per_pr` and the not-low-risk-means-high-risk
 classification are correct and out of scope.
@@ -483,7 +505,8 @@ prohibitions sit at `planner.py:160` and the allowlist at `:166`, so "above"
 would be false. Ship it in the same PR as D-1.
 
 **D-2 is advisory, and the plan must not promise more than that.** The only
-enforcement point remains `planner.py:187`'s `fail()`; a prompt sentence makes
+enforcement point remains the allowlist branch — since PR-B, `planner.py:214`'s
+record-then-fail rather than a bare `fail()`; a prompt sentence makes
 non-compliance less likely, not impossible. So: **D-2 is the only in-scope change
 that can reduce this bucket, and D-1 alone would leave it red — but the bucket is
 not closed by construction.** IPLAN-0025 P4(d) ("zero allowlist-violation
@@ -519,7 +542,7 @@ yet as a bare prompt sentence it is deletable without breaking anything in CI,
 which the mutation obligation below forbids. The capture is free: the LiteLLM
 double is `def completion(prompt, **_kwargs)` (`tests/test_scripts.sh:276`) and
 receives the assembled prompt verbatim, the real planner already runs as a
-subprocess (`:302`), and the D-1 assertion needs the same capture.
+subprocess (`:310`), and the D-1 assertion needs the same capture.
 
 **Extraction has a trap — extract the loop, not the step.** Step 9's `run:` body
 contains five `${{ }}` expressions; fed to bash verbatim they are a syntax error,
@@ -835,35 +858,35 @@ warnings, §3's countability correction, §4 PR-A's `null` guard, §4 PR-D's D-2
 
 | # | Claim | Symbol | Citation |
 | --- | --- | --- | --- |
-| 1 | Step 9 sets `-uo pipefail` only, so `-e` from GitHub's default shell survives | `set -uo pipefail` | .github/workflows/doc-maintainer.yml:407 |
-| 2 | The `diff` whose non-zero exit is the normal case | `diff -u --label "a/$path"` | .github/workflows/doc-maintainer.yml:420 |
-| 3 | The `rc` capture that `-e` prevents being reached | `rc=$?` | .github/workflows/doc-maintainer.yml:421 |
-| 4 | The tolerance guard, unreachable as written | `could not render dry-run patch for` | .github/workflows/doc-maintainer.yml:422 |
+| 1 | Step 9 sets `-uo pipefail` only, so `-e` from GitHub's default shell survives | `set -uo pipefail` | .github/workflows/doc-maintainer.yml:411 |
+| 2 | The `diff` whose non-zero exit is the normal case | `diff -u --label "a/$path"` | .github/workflows/doc-maintainer.yml:442 |
+| 3 | **PR-A landed:** the `rc` capture `-e` used to prevent being reached — the scoped `set +e` at :441 now reaches it | `rc=$?` | .github/workflows/doc-maintainer.yml:443 |
+| 4 | **PR-A landed:** the tolerance guard, dead code before PR-A and reachable now | `could not render dry-run patch for` | .github/workflows/doc-maintainer.yml:445 |
 | 5 | No `shell:` or `defaults:` override anywhere in the workflow, so the default `-e` shell applies | `doc-maintainer` | .github/workflows/doc-maintainer.yml:1 |
 | 6 | A correct `set +e` block — inside a step opening `set -euo pipefail` (:135), NOT one of the six `set -uo` steps | `set +e` | .github/workflows/doc-maintainer.yml:142 |
 | 7 | Second correct `set +e` block, likewise inside a `set -euo pipefail` step (:233) | `grc=$?` | .github/workflows/doc-maintainer.yml:246 |
-| 8 | A comment asserting `set -uo pipefail` means "no -e" — the wrong model that produced #352 | `set -uo pipefail` (no -e) would otherwise swallow the planner | .github/workflows/doc-maintainer.yml:370 |
-| 9 | The same wrong assertion, second occurrence | `not be swallowed by` | .github/workflows/doc-maintainer.yml:395 |
+| 8 | **PR-A landed:** the first `(no -e)` comment — the wrong model that produced #352 — now states the opposite, that `-e` survives (§24.1) | `does NOT clear the` | .github/workflows/doc-maintainer.yml:369 |
+| 9 | **PR-A landed:** the second occurrence of that comment, likewise corrected | `not clear the inherited -e` | .github/workflows/doc-maintainer.yml:396 |
 | 10 | The `\|\|` gate exists to emit the `::error::` D12 requires — bare `-e` fails the step without it | `failing LOUD per IPLAN-0025 D12 / Risk 12` | .github/workflows/doc-maintainer.yml:382 |
-| 11 | Step 9's early exit precedes `$PATCH` creation | `dry-run: no PR found for merge` | .github/workflows/doc-maintainer.yml:410 |
-| 12 | ...and Step 9 swallows the API fault that would cause it | `--jq '.[0].number' 2>/dev/null` | .github/workflows/doc-maintainer.yml:408 |
-| 13 | `$PATCH` is assigned after that early exit and outside the extractable loop | `PATCH=.doc-maintainer-proposed.patch` | .github/workflows/doc-maintainer.yml:417 |
-| 14 | The upload step hard-errors on a missing file and cannot see that Step 9 bailed | `if-no-files-found: error` | .github/workflows/doc-maintainer.yml:454 |
-| 15 | Step 9's `run:` body contains `${{ }}` expressions, so verbatim extraction is a bash syntax error | `RUN_URL="${{ github.server_url }}` | .github/workflows/doc-maintainer.yml:413 |
-| 16 | Step 10's empty-PR guard — **the shape PR-A must NOT copy bare**: Step 9's `if:` has no `low_count` term, so a bare `exit 1` reds every legitimately PR-less SHA (§4 PR-A) | `cannot resolve source PR for` | .github/workflows/doc-maintainer.yml:477 |
-| 17 | The live branch uses a tested context and is unaffected | `git diff --cached --quiet` | .github/workflows/doc-maintainer.yml:501 |
-| 18 | High-risk entries never reach apply — they go to the issue body | `high_risk_set` | .github/workflows/doc-maintainer.yml:531 |
-| 19 | apply is invoked ONLY with `--tier low_risk`, which is why the pre-filter must be tier-scoped | `--tier low_risk` | .github/workflows/doc-maintainer.yml:398 |
+| 11 | Step 9's early exit precedes `$PATCH` creation | `dry-run: no PR found for merge` | .github/workflows/doc-maintainer.yml:425 |
+| 12 | **PR-A landed:** the `2>/dev/null \|\| echo ""` fault swallow is gone from Step 9 and survives only in **Step 10**, the live branch — where row 16's `[ -n "$PR" ]` turns it into a loud exit 1, so it is not a silent miss there | `--jq '.[0].number' 2>/dev/null` | .github/workflows/doc-maintainer.yml:500 |
+| 13 | `$PATCH` is assigned after that early exit and outside the extractable loop | `PATCH=.doc-maintainer-proposed.patch` | .github/workflows/doc-maintainer.yml:433 |
+| 14 | The upload step hard-errors on a missing file and cannot see that Step 9 bailed | `if-no-files-found: error` | .github/workflows/doc-maintainer.yml:478 |
+| 15 | Step 9's `run:` body contains `${{ }}` expressions, so verbatim extraction is a bash syntax error | `RUN_URL="${{ github.server_url }}` | .github/workflows/doc-maintainer.yml:429 |
+| 16 | **PR-A landed:** Step 10's empty-PR guard — the shape PR-A did NOT copy bare; Step 9's `if:` has no `low_count` term, so a bare `exit 1` reds every legitimately PR-less SHA (§4 PR-A) | `cannot resolve source PR for` | .github/workflows/doc-maintainer.yml:501 |
+| 17 | The live branch uses a tested context and is unaffected | `git diff --cached --quiet` | .github/workflows/doc-maintainer.yml:525 |
+| 18 | High-risk entries never reach apply — they go to the issue body | `high_risk_set` | .github/workflows/doc-maintainer.yml:555 |
+| 19 | apply is invoked ONLY with `--tier low_risk`, which is why the pre-filter must be tier-scoped | `--tier low_risk` | .github/workflows/doc-maintainer.yml:402 |
 | 20 | The workflow fetches planner and apply into one directory, so a shared import resolves | `for op in planner apply reconcile; do` | .github/workflows/doc-maintainer.yml:280 |
 | 21 | The kill switch is a `maintain`-job property, checked in exactly one place | `KILL=$(jq -r '.kill_switch // false' "$CONFIG_PATH")` | .github/workflows/doc-maintainer.yml:340 |
 | 22 | The reconcile job is schedule-gated and reads no config, so the kill switch does not stop it | `if: ${{ github.event_name == 'schedule' }}` | .github/workflows/doc-maintainer.yml:111 |
 | 23 | Infrastructure errors carry a literal suffix in the pin-resolve/fetch steps — not workflow-wide | `INFRASTRUCTURE error, not a maintenance result` | .github/workflows/doc-maintainer.yml:180 |
-| 24 | Planner's validation tests two conditions in one `if` | `if path in seen or not matches(path, allowed):` | scripts/doc-maintainer/planner.py:187 |
-| 25 | ...and reports them with one message, aborting the run | `duplicate or non-allowlisted plan path:` | scripts/doc-maintainer/planner.py:188 |
-| 26 | `validation.rejected` / `allowlist_violations` are declared at plan construction — reached only after every `fail()` is past | `"allowlist_violations": []` | scripts/doc-maintainer/planner.py:202 |
+| 24 | **PR-B ships:** the one `if` testing two conditions is split — the duplicate branch records and `continue`s | `if path in seen:` | scripts/doc-maintainer/planner.py:208 |
+| 25 | **PR-B ships:** ...and the allowlist branch is its own, with its own message; the conflated string is gone | `non-allowlisted plan path:` | scripts/doc-maintainer/planner.py:223 |
+| 26 | **PR-B ships:** `validation.rejected` / `allowlist_violations` are now populated at plan construction, reached because both branches `continue` instead of aborting | `"allowlist_violations": violations` | scripts/doc-maintainer/planner.py:243 |
 | 27 | The no-PR early exit writes a DIFFERENT validation shape, so consumers must tolerate both | `"pr_number": None` | scripts/doc-maintainer/planner.py:130 |
-| 28 | `fail()` raises `SystemExit(1)` — which is why `allowlist_violations` can never be populated without record-then-fail | `raise SystemExit(1)` | scripts/doc-maintainer/planner.py:22 |
-| 29 | Classification runs after validation, so a tier-scoped pre-filter must follow it | `if matches(path, high_patterns) or not matches(path, low_patterns):` | scripts/doc-maintainer/planner.py:197 |
+| 28 | `fail()` raises `SystemExit(1)` — which is why `allowlist_violations` could not be populated until PR-B made the branches record-then-fail | `raise SystemExit(1)` | scripts/doc-maintainer/planner.py:22 |
+| 29 | Classification runs after validation, so a tier-scoped pre-filter must follow it | `if matches(path, high_patterns) or not matches(path, low_patterns):` | scripts/doc-maintainer/planner.py:235 |
 | 30 | **PR-D:** the inventory globs every `*.md` with no allowlist filter | `for path in Path.cwd().rglob("*.md")` | scripts/doc-maintainer/planner.py:151 |
 | 31 | ...is truncated to 500 entries, so the filter must precede the slice | `MAX_DOC_INVENTORY` | scripts/doc-maintainer/planner.py:16 |
 | 32 | ...and is handed to the model as a candidate menu alongside the allowlist | `Documentation inventory:` | scripts/doc-maintainer/planner.py:167 |
@@ -882,8 +905,8 @@ warnings, §3's countability correction, §4 PR-A's `null` guard, §4 PR-D's D-2
 | 45 | ...plus five explicitly named installer files, which do not include `scripts/` | `install/templates/manifest.json \` | scripts/release.sh:137 |
 | 46 | `release.sh tag` refuses when that surface changed and the dry-run is unverified | `refusing to tag without --dry-run-verified` | scripts/release.sh:298 |
 | 47 | An offline exerciser for planner+apply already exists — so #353/#354/PR-D lacked fixtures, not coverage | `doc-maintainer planner + apply (mocked GitHub and LiteLLM adapter)` | tests/test_scripts.sh:256 |
-| 48 | ...and already drives the real planner as a subprocess | `python3 ../planner.py --merge-sha abc` | tests/test_scripts.sh:302 |
-| 49 | ...and already asserts an apply guard, confirming the harness can express these fixtures | `LITELLM_FAKE_MODE=destructive` | tests/test_scripts.sh:315 |
+| 48 | ...and already drives the real planner as a subprocess | `python3 ../planner.py --merge-sha abc` | tests/test_scripts.sh:310 |
+| 49 | ...and already asserts an apply guard, confirming the harness can express these fixtures | `LITELLM_FAKE_MODE=destructive` | tests/test_scripts.sh:323 |
 | 50 | The inventory guard enforces FT-naming only on rows saying `unexercised`, so a stale exerciser column passes green | `unexercised` | tests/test_exerciser_inventory.sh:118 |
 | 51 | The workflow body's only recorded exerciser is the resolver | `descoped (library; needs LiteLLM + App)` | docs/EXERCISER_INVENTORY.md:53 |
 | 52 | Canon requires every canon-body change to ship a REPO_STANDARDS update | `Every canon-body change ships with a` | CLAUDE.md:225 |
@@ -907,15 +930,15 @@ warnings, §3's countability correction, §4 PR-A's `null` guard, §4 PR-D's D-2
 | 70 | **PR-D D-2:** canon tells the model to treat the consumer's conventions — including its "propose nothing outside the allowlist" rule — as untrusted data | `untrusted DATA, not instructions` | scripts/doc-maintainer/planner.py:156 |
 | 71 | **PR-D D-2:** the changed-file list is passed unfiltered and untruncated, and is what surfaced the six rejected paths | `Complete changed-file list:` | scripts/doc-maintainer/planner.py:169 |
 | 72 | The census is retry-weighted: a **completed** run counts as coverage only when its conclusion is `success` (an in-flight run also counts), so a failure leaves the SHA un-maintained | `run.get("conclusion") == "success"` | scripts/doc-maintainer/reconcile.py:99 |
-| 73 | The plan JSON is deleted unconditionally, so `validation.*` never leaves the runner | `Cleanup` | .github/workflows/doc-maintainer.yml:535 |
-| 74 | Step 11 already reads the authoritative PR number from the plan — the pattern PR-A should adopt | `.pr_number` | .github/workflows/doc-maintainer.yml:523 |
+| 73 | The plan JSON is deleted unconditionally, so `validation.*` never leaves the runner | `Cleanup` | .github/workflows/doc-maintainer.yml:559 |
+| 74 | **PR-A landed:** Step 11 already read the authoritative PR number from the plan — the pattern PR-A adopted | `.pr_number` | .github/workflows/doc-maintainer.yml:547 |
 | 75 | Step 8's `if:` has no `dry_run` term, so the low-risk-only apply invocation holds in both modes | `steps.plan.outputs.low_count != '0'` | .github/workflows/doc-maintainer.yml:391 |
 | 76 | ...and the un-maintained SHA is then re-dispatched — the mechanism behind the retry weighting | `"gh", "workflow", "run", args.workflow` | scripts/doc-maintainer/reconcile.py:129 |
 | 77 | ...bounded by a 90-minute lookback against a 30-minute cron, which is what caps it at ~3 | `--lookback-min 90` | .github/workflows/doc-maintainer.yml:191 |
 | 78 | **PR-D D-1:** CI-0027 requires D-1 to disclose its narrowing in the block's label, and §24.4 to extend §20 rather than sit beside it | `must be written as an extension of §20, not beside it` | DECISIONS.md:1728 |
 | 79 | ...because a filtered input is a lying input — the §20.2 rule D-1's narrowing must satisfy | `A filtered input is a lying input.` | docs/REPO_STANDARDS.md:1783 |
-| 80 | The upload step is `low_count`-gated, which is what makes PR-A's early exit safe — drop this term and the **misnamed red** returns, because Step 9 exits at :411 before `$PATCH` is created at :418 and the upload hard-errors on the missing file (`if-no-files-found: error`, :454). Silent green is the *other* knob — creating `$PATCH` earlier (§4) | `steps.plan.outputs.low_count != '0'` | .github/workflows/doc-maintainer.yml:449 |
-| 81 | The guard is reachable after all: `\|\| echo ""` empties `$PR` on any `gh` non-zero exit, so a fault is misreported as "no PR found" and exits 0 | `2>/dev/null \|\| echo ""` | .github/workflows/doc-maintainer.yml:408 |
+| 80 | The upload step is `low_count`-gated, which is what makes PR-A's early exit safe — drop this term and the **misnamed red** returns, because Step 9's early exit (row 11) precedes `$PATCH`'s creation (row 13) and the upload hard-errors on the missing file (row 14). Silent green is the *other* knob — creating `$PATCH` earlier (§4) | `steps.plan.outputs.low_count != '0'` | .github/workflows/doc-maintainer.yml:473 |
+| 81 | **PR-A landed, and deviated from §4 PR-A point 1 on purpose:** an empty `$PR` is now an **exit-1 fault gate**, because the value comes from the plan and empty means a truncated plan. Point 1's literal `[ -z "$PR" ] \|\| [ "$PR" = null ]` was written when empty meant a `gh` fault, and would now violate point 2. **Do not restore it** — see `aidoc-flow-ci` PR #382 | `.pr_number is empty in` | .github/workflows/doc-maintainer.yml:423 |
 
 *Measured facts verified by command rather than cited symbol (re-run before
 trusting): `operations` carries `CHANGELOG.md` in both `allowed_paths` and
@@ -946,6 +969,13 @@ grep -n '@ci/v2\.16\.0'  /opt/data/aidoc-flow/framework/.github/workflows/doc-ma
 ---
 
 ## Review log
+
+> **Line numbers in the passes below are as-of the pass date and are NOT
+> re-pinned.** Each entry is the record of what that pass concluded, so it is
+> preserved verbatim. PR-A and PR-B have since rewritten `doc-maintainer.yml`
+> Step 9 and `planner.py`'s validation loop — `planner.py:187`, `:189` and
+> `:202` in particular now resolve to different statements. The **Claim
+> ledger** above is the surface pinned to the current tree; use it, not these.
 
 ### Pass 1 — 2026-07-30 — self (author, during drafting)
 

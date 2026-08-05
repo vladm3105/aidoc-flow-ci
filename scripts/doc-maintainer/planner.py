@@ -180,12 +180,50 @@ Changed files and bounded patches: {json.dumps(patches)}
     low: list[dict] = []
     high: list[dict] = []
     seen: set[str] = set()
+    rejected: list[dict] = []
+    # `rejected` is per-entry — a path the model proposed twice was proposed
+    # twice, and that is plan-quality signal. `violations` is the field
+    # IPLAN-0025 P4 counts, so it is DISTINCT by path and built in the same
+    # branch that emits the log line, which keeps the two in step by
+    # construction rather than by a second dedup that can drift from it.
+    violations: list[dict] = []
+    violated: set[str] = set()
     for entry in updates:
         if not isinstance(entry, dict):
             fail("plan entries must be objects")
         path = clean_path(entry.get("path"))
-        if path in seen or not matches(path, allowed):
-            fail(f"duplicate or non-allowlisted plan path: {path}")
+        # Two conditions, two branches, two messages (REPO_STANDARDS §24.2).
+        # Both branches MUST continue: without it the rejected entry falls into
+        # the validation below, where an absent path aborts as "does not exist"
+        # and a present one is classified into low/high_risk_set — a recorded
+        # violation handed to apply.
+        #
+        # The branch ORDER is load-bearing and so is where `seen` is filled:
+        # `seen.add()` is below the allowlist check, so `seen` only ever holds
+        # allowlist-approved paths and a duplicate is by construction already
+        # allowlisted. Do NOT hoist `seen.add()` up here to de-duplicate the
+        # violation count — that relabels a repeat of a REJECTED path as
+        # "duplicate", recording a path as previously planned when it was never
+        # accepted. The allowlist branch counts distinct itself instead.
+        if path in seen:
+            rejected.append({"path": path, "reason": "duplicate"})
+            # flush: stdout block-buffers under a pipe and stderr does not, so
+            # without this every warning sorts behind every error in the log.
+            print(f"::warning::planner: dropping duplicate plan path: {path}", flush=True)
+            continue
+        if not matches(path, allowed):
+            rejected.append({"path": path, "reason": "not-allowlisted"})
+            # Record every occurrence, but NAME each violating path once — the
+            # log lines and the aggregate count below must agree, or the summary
+            # tells the reader to count something that gives another number.
+            if path not in violated:
+                violated.add(path)
+                violations.append({"path": path, "reason": "not-allowlisted"})
+                print(
+                    f"::error::planner: non-allowlisted plan path: {path}",
+                    file=sys.stderr,
+                )
+            continue
         if not Path(path).is_file():
             fail(f"planned documentation file does not exist: {path}")
         instruction = entry.get("instruction")
@@ -199,10 +237,28 @@ Changed files and bounded patches: {json.dumps(patches)}
         else:
             low.append(normalized)
 
-    plan = {"merge_sha": args.merge_sha, "pr_number": pr_number, "low_risk_set": low, "high_risk_set": high, "validation": {"allowlist_violations": [], "rejected": [], "patch_bytes": used}}
+    # `validation` has two shapes: the no-PR early exit above writes `rejected`
+    # only, with no `allowlist_violations` and no `patch_bytes`. Any consumer
+    # must tolerate both.
+    plan = {"merge_sha": args.merge_sha, "pr_number": pr_number, "low_risk_set": low, "high_risk_set": high, "validation": {"allowlist_violations": violations, "rejected": rejected, "patch_bytes": used}}
     destination = Path(args.out_plan)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(plan, indent=2) + "\n")
+    # Record then fail: an allowlist violation is still a loud, run-killing
+    # failure (IPLAN-0025 D12). Writing the plan first is NOT for artifact
+    # countability — nothing reads `validation.*`, and `Cleanup` (`if: always()`)
+    # deletes the file — it is so the schema stops declaring a field it never
+    # populates (REPO_STANDARDS §24.2). The `::error::` lines are what a
+    # maintainer counts — one per distinct violating path, matching this
+    # aggregate. Collecting the whole batch before failing keeps the
+    # record independent of where in `updates` the first violation fell.
+    # A duplicate is not a D12 case — it is warned about and the survivors planned.
+    if violations:
+        print(
+            f"::error::planner: {len(violations)} non-allowlisted plan path(s) rejected; see the ::error:: lines above",
+            file=sys.stderr,
+        )
+        return 1
     print(f"::notice::planner: AI selected {len(low)} low-risk and {len(high)} high-risk documentation updates")
     return 0
 
