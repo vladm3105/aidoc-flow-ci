@@ -472,9 +472,12 @@ echo "== doc-maintainer planner inventory respects allowed_paths, and the prompt
 # Both halves are asserted against the prompt the planner actually assembled,
 # because both are prompt-side and neither is observable in the plan JSON.
 #
-# EVERY assertion here reads the parsed facts file, never the raw prompt, and
-# the parser below fails LOUD when a block it is asked for is absent. That is
-# not fastidiousness: a `grep | sed` extractor yields the empty string when its
+# Every assertion over the prompt's SHAPE reads the parsed facts file below, and
+# that parser fails LOUD when a block it is asked for is absent or duplicated.
+# (Two assertions deliberately read text instead — the D-2 sentence, via
+# `assert_contains`, which is fail-closed on an empty haystack, and the cap probe
+# at the end, which has its own capture and its own inline parse.) That is not
+# fastidiousness: a `grep | sed` extractor yields the empty string when its
 # anchor misses, `jq -e ''` exits 0 on empty input, and `assert_absent` passes
 # on the empty string — so a two-space indent in the prompt silently disarmed
 # three assertions at once, including the central one, and the whole D-1 defect
@@ -500,7 +503,7 @@ MAXINV360=$(python3 -c "import re;print(re.search(r'^MAX_DOC_INVENTORY = ([0-9_]
 assert_ok "[ '$MAXINV360' -gt 0 ]" "#360 the fixture reads MAX_DOC_INVENTORY from the planner — one declaration, so the cap and the fixture cannot drift apart"
 mkdir -p "$TMP/doc/repo360/docs" "$TMP/doc/bin360"
 cat > "$TMP/doc/repo360/config.json" <<'JSON'
-{"dry_run":true,"allowed_paths":["README.md","zzz-INDEX.md","docs/**"],"max_edits_per_pr":5,"auto_merge":{"low_risk_paths":["README.md"],"high_risk_paths":["docs/**","zzz-INDEX.md"]}}
+{"dry_run":true,"allowed_paths":["README.md","zzz-INDEX.md","docs/**"],"max_edits_per_pr":5,"auto_merge":{"low_risk_paths":["README.md"],"high_risk_paths":["docs/**"]}}
 JSON
 printf '# Project\n'     > "$TMP/doc/repo360/README.md"
 printf '# Decisions\n'   > "$TMP/doc/repo360/docs/DECISIONS.md"
@@ -553,10 +556,25 @@ def json_block(label):
     index, payload = block(label)
     return index, json.loads(payload)
 
-# Every label the assembly emits, in order — §20.2 rule 6: the assembly and the
-# prompt are one contract, so an EXTRA block (say a second, unfiltered
-# inventory under another name) has to be a test failure, not a silent pass.
-labels = [line.split(":")[0] for line in lines if re.match(r"^[A-Z][A-Za-z0-9 ()_-]*: ", line)]
+# Every label the assembly emits, in order — the assembly and the prompt are one
+# contract, so an EXTRA block (say a second, unfiltered inventory under another
+# name) has to be a test failure, not a silent pass.
+#
+# The detector is DELIBERATELY not a charset whitelist. A `^[A-Z][A-Za-z0-9 ()_-]*: `
+# form was tried and is bypassed by one comma: `Full document set, unfiltered:`
+# is invisible to it, and a block under that label restores the whole repo to the
+# model with every assertion green. Anything up to the first colon is a label.
+LABEL = re.compile(r"^([^\s:][^:]*): ")
+labelled = [(n, m.group(1)) for n, m in ((n, LABEL.match(line)) for n, line in enumerate(lines)) if m]
+labels = [label for _, label in labelled]
+# ...and the same scan supplies the position anchor. Hardcoding one label here
+# was the second bypass: an untrusted block inserted ABOVE the imperative left
+# `Repository:` still below it, so the position assertion passed while the
+# imperative sat under consumer-controlled data.
+first_block = labelled[0][0] if labelled else len(lines)
+# A payload is what makes a block a datum rather than prose, so the set of lines
+# carrying one is pinned too — belt to the roster's braces.
+payloads = [label for n, label in labelled if lines[n][len(label) + 2:len(label) + 3] in "[{"]
 imperative = [n for n, line in enumerate(lines) if IMPERATIVE in line]
 if len(imperative) != 1:
     raise SystemExit(f"the D-2 imperative appears {len(imperative)} times, expected exactly 1")
@@ -564,9 +582,9 @@ inventory_line, inventory = json_block("Documentation inventory (allowed_paths o
 allowed_line, allowed = json_block("Allowed documentation paths")
 changed_line, changed = json_block("Complete changed-file list")
 _, patches = json_block("Changed files and bounded patches")
-first_block, _ = block("Repository")
 pathlib.Path(sys.argv[2]).write_text(json.dumps({
     "labels": labels,
+    "payload_labels": payloads,
     "inventory": inventory,
     "allowed": allowed,
     "changed_files": changed,
@@ -582,20 +600,25 @@ else
   _r "#360 the assembled prompt did not parse; every assertion below would be vacuous"
 fi
 F360="$TMP/doc/facts360.json"
-# §20.2 rule 6 — the block roster, in order. Kills the mutation that leaves
-# every assertion below intact and simply adds a SECOND, unfiltered inventory
-# under a different label, restoring the model's access to the whole repo.
-assert_ok "jq -e '.labels == [\"Repository\",\"PR\",\"PR body\",\"Author\",\"Allowed documentation paths\",\"Documentation inventory (allowed_paths only)\",\"Repository conventions\",\"Complete changed-file list\",\"Changed files and bounded patches\"]' '$F360' >/dev/null" "#360 the prompt's block roster is exactly the nine the assembly declares, in order — no tenth block, and the inventory's label states its scope (§20.2 rules 5 + 6)"
+# The block roster, in order — the assembly and the prompt are one contract
+# (§20.2 rule 6 states this for the `ai-review` prompts; the same discipline is
+# what makes the assertion below meaningful here). Kills the mutation that
+# leaves every other assertion intact and simply adds a SECOND, unfiltered
+# inventory under a different label, restoring the model's access to the whole
+# repo.
+assert_ok "jq -e '.labels == [\"Repository\",\"PR\",\"PR body\",\"Author\",\"Allowed documentation paths\",\"Documentation inventory (allowed_paths only)\",\"Repository conventions\",\"Complete changed-file list\",\"Changed files and bounded patches\"]' '$F360' >/dev/null" "#360 the prompt's block roster is exactly the nine the assembly declares, in order — no tenth block, and the inventory's label states its scope (§20.2 rule 5)"
+assert_ok "jq -e '.payload_labels == [\"Allowed documentation paths\",\"Documentation inventory (allowed_paths only)\",\"Complete changed-file list\",\"Changed files and bounded patches\"]' '$F360' >/dev/null" "#360 exactly four blocks carry a JSON payload — a fifth is a datum handed to the model that the roster above was written to catch and the contract does not declare"
 assert_ok "jq -e '.inventory == [\"README.md\",\"docs/DECISIONS.md\",\"zzz-INDEX.md\"]' '$F360' >/dev/null" "#360 D-1 the inventory is exactly the allowlisted set, sorted — docs/DECISIONS.md survives MAX_DOC_INVENTORY+100 higher-sorting non-allowlisted files (filter BEFORE the slice) and zzz-INDEX.md is last (sorted, not rglob order)"
 assert_ok "jq -e '[.inventory[] | select(startswith(\"aaa-\") or . == \"CLAUDE.md\")] == []' '$F360' >/dev/null" "#360 D-1 no non-allowlisted markdown file on disk is offered as a candidate, including one the consumer keeps at its root"
 # D-2 is the load-bearing half: D-1 alone leaves the bucket red, because the
 # offending proposals came from the changed-file list, not the inventory.
 assert_contains "$(cat "$TMP/doc/prompt360.txt")" 'Propose only paths matching the "Allowed documentation paths:" list; a path that appears in "Complete changed-file list:" but not in the allowed documentation paths must not be proposed.' "#360 D-2 the prompt carries an IMPERATIVE binding the model to the allowlist, not just the labelled datum"
-# WHERE it sits is as load-bearing as whether it is there. The prompt's own
-# preamble declares everything from the first data block onward untrusted DATA,
-# so an imperative that drifts below that line is one canon has already told the
-# model to ignore — and presence-only assertions cannot see the difference.
-assert_ok "jq -e '.imperative_line < .first_block_line' '$F360' >/dev/null" "#360 D-2 the imperative sits in the INSTRUCTION region, above the first data block — below it, canon's own untrusted-DATA preamble disowns it"
+# WHERE it sits is as load-bearing as whether it is there. The prompt's preamble
+# names the PR title, body, patches, repository documents and conventions as
+# untrusted DATA, and those are all below the first labelled block — so an
+# imperative that drifts down there sits among text canon has already told the
+# model to disregard, and presence-only assertions cannot see the difference.
+assert_ok "jq -e '.imperative_line < .first_block_line' '$F360' >/dev/null" "#360 D-2 the imperative sits in the INSTRUCTION region, above every labelled block — below them it is indistinguishable from the untrusted data canon tells the model to disregard"
 # ...and it names its datum by LABEL, so the block must exist and carry the
 # real allowlist, not an empty or placeholder one.
 assert_ok "jq -e '.allowed == [\"README.md\",\"zzz-INDEX.md\",\"docs/**\"]' '$F360' >/dev/null" "#360 D-2 the block the imperative names carries the consumer's actual allowed_paths — a label alone constrains nothing"

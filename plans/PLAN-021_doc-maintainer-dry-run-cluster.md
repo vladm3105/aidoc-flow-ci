@@ -600,35 +600,59 @@ beside the existing prohibitions, naming both blocks by label (row 87). Canon:
 opening "Extends §20.2." (row 89) — the CI-0027 shape, not a second statement of
 the rule.
 
-**Eleven assertions over one captured prompt, and fifteen mutations, each red on
-a named assertion.** The capture (row 88) is what makes a prompt sentence
-testable. The fixture is the test: `MAX_DOC_INVENTORY + 100` non-allowlisted
-`aaa-NNNN.md` files sort between `README.md` and `docs/`, so under the old
-inventory the slice truncates `docs/DECISIONS.md` — an allowlisted, on-disk
-document — away; `zzz-INDEX.md` is allowlisted and sorts after `docs/`, which
-`rglob` order does not; and the block's own `gh` double gives the second changed
-file a patch over `MAX_PATCH_BYTES`, so the changed-file list and the patch set
-differ. The noise count is **derived from `MAX_DOC_INVENTORY`**, never a second
-literal — a raised cap would otherwise retire the ordering coverage silently.
+**Twelve assertions across two fixtures, and seventeen mutations, each red on a
+named assertion.** The capture (row 88) is what makes a prompt sentence testable.
+The fixture is the test: `MAX_DOC_INVENTORY + 100` non-allowlisted `aaa-NNNN.md`
+files sort between `README.md` and `docs/`, so under the old inventory the slice
+truncates `docs/DECISIONS.md` — an allowlisted, on-disk document — away;
+`zzz-INDEX.md` is allowlisted and sorts after `docs/`, which `rglob` order does
+not; and the block's own `gh` double gives the second changed file a patch over
+`MAX_PATCH_BYTES`, so the changed-file list and the patch set differ. A second
+fixture puts `MAX_DOC_INVENTORY + 2` allowlisted documents on disk, because after
+filtering the first one leaves three and the slice would otherwise be measured by
+nothing. Both counts are **derived from `MAX_DOC_INVENTORY`**, never a second
+literal — a raised cap would otherwise retire that coverage silently.
 
-**The first eight assertions of this block were written the way the previous
-matrix failed, and a review pass caught it.** Extraction was `grep | sed` into
-`jq -e`, and `jq -e` **exits 0 on empty input** while `assert_absent` passes on
-the empty string — so indenting the inventory line by two spaces disarmed three
-assertions at once, the whole D-1 defect returned, and the block reported `ok`.
-Twelve mutations survived that shape. The prompt is now parsed **once**, anchored,
-by a step that fails loud when a named block is absent or appears twice; every
-assertion reads the parsed facts, never the raw text.
+**Two review passes rewrote this block, and both found the same class of defect:
+the assertions measured the wrong thing.** Pass 1: extraction was `grep | sed`
+into `jq -e`, and `jq -e` **exits 0 on empty input** while `assert_absent` passes
+on the empty string — so indenting the inventory line by two spaces disarmed
+three assertions at once, the whole D-1 defect returned, and the block reported
+`ok`. Twelve mutations survived. Pass 2, over the fix: the new roster detector was
+a **charset whitelist** (a `^[A-Z][A-Za-z0-9 ()_-]*:` prefix match), so one comma made a block
+invisible to it and a second, fully unfiltered inventory under
+`Full document set, unfiltered:` passed everything; and the position anchor was
+the line of the block named `Repository`, not the first block, so an untrusted
+block inserted **above** the imperative left the check green. Both bypasses are
+now red. The prompt is parsed by an anchored step that fails loud when a named
+block is absent or duplicated, the label detector takes anything up to the first
+colon, and the position anchor is the first labelled line of the scan.
 
 Mutations run: filter deleted · filter after the slice · label reverted while the
 block stays narrowed · D-2 deleted · filtered against `low_risk_paths` · matched
 on the basename · D-2 naming its datum by position · `sorted()` dropped · D-2
-relocated below the untrusted-data blocks · a second unfiltered inventory added
-under another label · the named allowlist block emitted empty · the changed-file
-list built from the byte-budgeted patch set · the changed-file list truncated ·
-the slice deleted · the filter deleted with the block indented (the vacuity path
-above). The last eight are **measurement** mutations, and every one of them was
-found by review rather than by the author.
+relocated below the untrusted-data blocks · a second unfiltered inventory under
+another label · the same under a **comma-bearing** label · an untrusted block
+inserted above the imperative · the named allowlist block emitted empty · the
+changed-file list built from the byte-budgeted patch set · the changed-file list
+truncated · the slice deleted · the filter deleted with the block indented (the
+Pass-1 vacuity path). **Ten of the seventeen are measurement mutations, and every
+one of those came from a review pass rather than from the author** — the same
+split as PR-C, and the reason to keep running them.
+
+**Filed rather than folded**, all three surfaced by the review passes and all
+three pre-existing: [#408](https://github.com/vladm3105/aidoc-flow-ci/issues/408)
+(the inventory's exclusion set is tested against the **absolute** path's parts, so
+a checkout under a directory named `vendor`, `node_modules`, `.venv` or `.git`
+blanks the inventory — and D-1 makes an empty inventory less conspicuous, since
+narrowing legitimately shrinks it),
+[#409](https://github.com/vladm3105/aidoc-flow-ci/issues/409) (PR title, PR body
+and conventions are interpolated **raw**, so a PR body can forge a block label at
+column 0 ahead of the genuine one — bounded to a failed run, never a bypass,
+because the allowlist branch consults the config and not the model's belief), and
+[#413](https://github.com/vladm3105/aidoc-flow-ci/issues/413) (this prompt
+satisfies rule 8 but **not** §20.2 rules 1, 4, 6 and 7 — no inputs section, and
+three truncations with no sentinel).
 
 **What this does NOT close.** D-2 is advisory (§4 above): the enforcement point
 is still the allowlist branch, so IPLAN-0025 P4(d) must be **re-measured after
@@ -999,7 +1023,7 @@ warnings, §3's countability correction, §4 PR-A's `null` guard, §4 PR-D's D-2
 | 27 | The no-PR early exit writes a DIFFERENT validation shape, so consumers must tolerate both | `"pr_number": None` | scripts/doc-maintainer/planner.py:137 |
 | 28 | `fail()` raises `SystemExit(1)` — which is why `allowlist_violations` could not be populated until PR-B made the branches record-then-fail | `raise SystemExit(1)` | scripts/doc-maintainer/planner.py:29 |
 | 29 | Classification runs after validation, so a tier-scoped pre-filter must follow it | `if matches(path, high_patterns) or not matches(path, low_patterns):` | scripts/doc-maintainer/planner.py:263 |
-| 30 | **PR-D landed:** the glob is still every `*.md`, but it now feeds a filter rather than the model — the raw sweep is no longer what is shown | `for path in Path.cwd().rglob("*.md")` | scripts/doc-maintainer/planner.py:173 |
+| 30 | **PR-D landed:** the glob is still every `*.md`, but it now feeds a filter rather than the model — the raw sweep is no longer what is shown | `for path in Path.cwd().rglob("*.md")` | scripts/doc-maintainer/planner.py:175 |
 | 31 | **PR-D landed:** the allowlist filter and the 500-entry slice are one expression, with the filter first — so no repo can truncate the allowlisted set away | `docs = sorted(path for path in inventory if matches(path, allowed))[:MAX_DOC_INVENTORY]` | scripts/doc-maintainer/planner.py:181 |
 | 32 | **PR-D landed:** ...and the narrowed block declares its own scope in its label, which is what §20.2 rule 5 requires of any filtered input | `Documentation inventory (allowed_paths only):` | scripts/doc-maintainer/planner.py:195 |
 | 33 | The allowlist IS also given to the model — the block the row-87 imperative now names. Cited by its assembled form, because the bare label also occurs inside that imperative | `Allowed documentation paths: {json.dumps(allowed)}` | scripts/doc-maintainer/planner.py:194 |
@@ -1024,7 +1048,7 @@ warnings, §3's countability correction, §4 PR-A's `null` guard, §4 PR-D's D-2
 | 52 | Canon requires every canon-body change to ship a REPO_STANDARDS update | `Every canon-body change ships with a` | CLAUDE.md:225 |
 | 53 | This repo adopts OPS-0061's ≤3-doc-surface cap verbatim | `OPS-0061 governance PR discipline` | CLAUDE.md:115 |
 | 54 | `plans/` + GitHub issues ARE this repo's backlog, which is why PR-D files an issue first (the cross-repo section governs the opposite direction and is NOT the authority here). Re-pinned 2026-07-31: CI-0028 rewrote this row, and the legacy `plans/FRAMEWORK-TODO.md` is declared live in the row below it | `its backlog, whoever filed them` | CLAUDE.md:73 |
-| 55 | The highest existing canon section is §23, so the new rule is §24 | `## 23. Only a code-changing event may cancel an in-flight run of a required gate` | docs/REPO_STANDARDS.md:2094 |
+| 55 | The highest existing canon section is §23, so the new rule is §24 | `## 23. Only a code-changing event may cancel an in-flight run of a required gate` | docs/REPO_STANDARDS.md:2101 |
 | 56 | The highest existing decision id is CI-0026, so the new record is CI-0027 | `## CI-0026` | DECISIONS.md:1565 |
 | 57 | Semver: MAJOR is the input/schema/consumer-surface test; MINOR is "additive" | `Additive` | CLAUDE.md:230 |
 | 58 | The framework pilot is PAUSED | `"kill_switch": true` | .github/doc-maintainer.json:6 |
@@ -1058,8 +1082,8 @@ warnings, §3's countability correction, §4 PR-A's `null` guard, §4 PR-D's D-2
 | 86 | **PR-C landed:** an unreadable planned file is a NAMED loud failure, not a drop — a different condition from over-limit (§24.2) | `cannot read planned documentation file` | scripts/doc-maintainer/planner.py:296 |
 | 87 | **PR-D D-2 landed:** the allowlist is no longer only a labelled datum — the prompt instructs the model to obey it, naming both blocks by their labels rather than by position | `Propose only paths matching the "Allowed documentation paths:" list` | scripts/doc-maintainer/planner.py:188 |
 | 88 | **PR-D landed:** the tests assert both halves against the prompt the planner actually assembled — the capture is what makes a prompt-side rule testable at all | `LITELLM_PROMPT_CAPTURE` | tests/test_scripts.sh:280 |
-| 89 | **PR-D landed:** §24.4 cross-references §20.2 rule 8 instead of restating it, which is the shape CI-0027 requires (row 78) | `**Extends §20.2.**` | docs/REPO_STANDARDS.md:2540 |
-| 90 | ...and the prompt is parsed once, anchored and fail-closed, because the `grep`+`jq -e` shape it replaced passed on empty input and made three assertions vacuous | `the assembled prompt did not parse; every assertion below would be vacuous` | tests/test_scripts.sh:582 |
+| 89 | **PR-D landed:** §24.4 cross-references §20.2 rule 8 instead of restating it, which is the shape CI-0027 requires (row 78) | `**Extends §20.2.**` | docs/REPO_STANDARDS.md:2548 |
+| 90 | ...and the prompt is parsed once, anchored and fail-closed, because the `grep`+`jq -e` shape it replaced passed on empty input and made three assertions vacuous | `the assembled prompt did not parse; every assertion below would be vacuous` | tests/test_scripts.sh:600 |
 
 *Measured facts verified by command rather than cited symbol (re-run before
 trusting): `operations` carries `CHANGELOG.md` in both `allowed_paths` and

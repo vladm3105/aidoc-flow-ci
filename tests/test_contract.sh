@@ -168,10 +168,12 @@ assert_ok "jq -e '.allowed_paths | index(\"DECISIONS.md\")' install/templates/do
 # must NOT be low-risk.
 assert_ok "jq -e '.auto_merge.low_risk_paths | index(\"CHANGELOG.md\") | not' install/templates/doc-maintainer.json >/dev/null" "#354 the template does not mark CHANGELOG.md low-risk — apply refuses it once it passes 200 KB, and a changelog only grows"
 # ...and it must STAY allowlisted. De-allowlisting relocates the failure rather
-# than removing it: the planner's inventory is an unfiltered `rglob("*.md")` and
-# the conventions template canon installs alongside this file tells the model to
-# use CHANGELOG.md, so it is still proposed — and a non-allowlisted proposal is
-# a run-killing `return 1`, where a high-risk one is an issue for a human.
+# than removing it: the conventions template canon installs alongside this file
+# tells the model to use CHANGELOG.md and the merge's changed-file list reaches
+# it unfiltered, so it is still proposed — and a non-allowlisted proposal is a
+# run-killing `return 1`, where a high-risk one is an issue for a human.
+# #360 narrowed the INVENTORY, which was the third route, and added an allowlist
+# imperative — advisory, not enforcement (§20.2 rule 8), so this pair stands.
 # Reverse this pair and a fresh adopter's first changelog-touching merge reds.
 assert_ok "jq -e '(.allowed_paths | index(\"CHANGELOG.md\")) != null and (.auto_merge.high_risk_paths | index(\"CHANGELOG.md\")) != null' install/templates/doc-maintainer.json >/dev/null" "#354 CHANGELOG.md stays allowlisted and is high-risk, so a proposal reaches a human instead of failing the run"
 assert_ok "grep -q 'CHANGELOG.md' install/templates/doc-maintainer-conventions.md" "#354 the conventions template still names CHANGELOG.md — the pair above is what keeps canon from contradicting itself (§24.3)"

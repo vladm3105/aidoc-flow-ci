@@ -30,10 +30,13 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 - **An exact no-op on `aidoc-flow-operations`.** Every inventory entry ends
   `.md`, `matches()` is `fnmatchcase` whose `*` crosses `/`, and that consumer's
   `allowed_paths` ends in a `"*.md"` catch-all — so the filter removes nothing
-  there. It is `aidoc-flow-framework`, with a narrow allowlist, that gains.
+  there. The consumer with a narrow allowlist is `aidoc-flow-framework`, and it
+  stands to gain **once its pilot resumes**; it is paused at
+  `kill_switch: true`, so nothing has been measured there yet.
 - Canon rule: `REPO_STANDARDS` **§20.2 rule 8** (normative) + **§24.4** (the
-  case). Tests: eleven assertions over the prompt the planner assembles, parsed
-  once and fail-closed; fifteen mutations, each red on a named assertion.
+  case). Tests: twelve assertions in `tests/test_scripts.sh` over the prompts two
+  fixtures make the planner assemble, parsed by an anchored fail-closed step;
+  seventeen mutations, each red on a named assertion.
 
 ### Fixed — `doc-maintainer` shipped a default `apply.py` refuses, and nothing stopped it being planned (#354, PLAN-021 PR-C)
 

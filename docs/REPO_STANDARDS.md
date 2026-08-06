@@ -1819,8 +1819,7 @@ sends the author to fix something that was never wrong.
 ### 20.2 The rule
 
 For any prompt this repo ships (`ai-review/review-prompt.md`,
-`ai-review/fix-prompt.md`, and the prompt `scripts/doc-maintainer/planner.py`
-assembles — rule 8 was derived from that one):
+`ai-review/fix-prompt.md`):
 
 1. **Enumerate the inputs.** The prompt states, up front, exactly what the model
    receives and that it receives nothing else — no tools, no filesystem, no
@@ -1858,11 +1857,11 @@ assembles — rule 8 was derived from that one):
      them to the model. Where the assembly can narrow a block to the accepted
      set, it does — and the narrowing precedes any truncation of that block,
      or every rejectable entry sorting ahead of an acceptable one consumes a
-     slot and the truncation discards the accepted set instead. This is the one
-     case rule 5's "prefer collecting the whole set" preference yields to,
-     because the omitted entries are not merely unmarked but _rejectable_;
-     rule 5's labelling obligation still applies in full, so the narrowed
-     block's own label states its scope.
+     slot and the truncation discards the accepted set instead. This is a case
+     rule 5's "prefer collecting the whole set" preference yields to, because
+     the omitted entries are not merely unmarked but _rejectable_; rule 5's
+     labelling obligation still applies in full, so the narrowed block's own
+     label states its scope.
    - **State the constraint as an instruction.** A labelled block is an input,
      not a prohibition; the model has no way to tell which of the blocks it was
      handed is enforced. Where the consuming code rejects on a rule, the prompt
@@ -1879,6 +1878,14 @@ assembles — rule 8 was derived from that one):
    re-measure the bucket after the change instead. And where the narrowing is a
    no-op for a given consumer's configuration, do not let a release note claim
    the gain for that consumer.
+
+   **Scope.** Rule 8 was derived from a third prompt this repo ships — the one
+   `scripts/doc-maintainer/planner.py` assembles — and governs it as well as the
+   two named above. **Rules 1-7 are not claimed for that prompt:** it has no
+   "your inputs" section, and it truncates its conventions, inventory and patch
+   blocks with no `UNAVAILABLE`-style marker. That is a known gap, filed as
+   [#413](https://github.com/vladm3105/aidoc-flow-ci/issues/413), not a
+   compliance.
 
 ### 20.3 Applied to `ai-review` (ci/v2.x)
 
@@ -2259,9 +2266,8 @@ one per PLAN-021 **code** PR (PR-A…PR-D; PR-0 was the decision record and
 carries no rule). §24.1 shipped with PR-A, §24.2 with PR-B, §24.3 (_a default a
 canon template recommends must be executable by the code that consumes it_) with
 PR-C, and §24.4 (_what canon shows a model must agree with what canon will
-accept from it_) with PR-D. §24.1–24.3 each state their rule under their own
-sub-heading; **§24.4 deliberately does not** — its rule belongs to prompt
-assembly, so it lives in §20.2 rule 8 and §24.4 records the case.
+accept from it_) with PR-D. §24.4's rule belongs to prompt assembly and is
+therefore carried by §20.2 rule 8, which §24.4 extends.
 **§24 is claimed in full by PLAN-021 — a later plan wanting a new section takes
 §26**, PLAN-023 included. (§25 went to issue #387, which landed first; PLAN-023
 already declares that it yields and renumbers on landing.)
@@ -2469,9 +2475,11 @@ and it fires only on the merges where the model happens to select the changelog
    protects anyone is `auto_merge.low_risk_paths`, because that is what routes a
    path into the refusing stage; removing the path from `allowed_paths` instead
    **relocates the failure rather than removing it.** The path is still proposed
-   — the planner's inventory is an unfiltered `rglob("*.md")` (until §24.4) and
-   the conventions template canon installs alongside the config tells the model
-   to use the changelog — and a non-allowlisted proposal is a run-killing
+   — the conventions template canon installs alongside the config tells the model
+   to use the changelog, and the merge's changed-file list reaches the model
+   unfiltered. (§24.4 later narrowed the _inventory_, which was the third route,
+   and added an allowlist imperative that is advisory only — neither removes
+   this one.) A non-allowlisted proposal is a run-killing
    `return 1`, where a high-risk one is an issue body a human acts on. Measured
    against the shipped planner: de-allowlisted → `::error::` and exit 1;
    demoted → exit 0 with the proposal in `high_risk_set`. **De-allowlisting a
@@ -2538,8 +2546,7 @@ mode is a separate change.
 ### 24.4 What canon shows a model must agree with what canon will accept from it
 
 **Extends §20.2.** The general rule is **§20.2 rule 8**; this subsection records
-the case that produced it and what it required in practice, and states no rule of
-its own.
+the case that produced it and what it required in practice.
 
 `scripts/doc-maintainer/planner.py` built its documentation inventory from an
 unfiltered `rglob("*.md")` and handed the model up to `MAX_DOC_INVENTORY`
