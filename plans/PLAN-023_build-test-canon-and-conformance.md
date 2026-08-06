@@ -1096,8 +1096,8 @@ team member either), correcting an earlier draft of this section.
 | 5 | A Class A scanner fork-guards by skipping the job for fork PRs | `if: ${{ github.event.pull_request.head.repo.fork != true }}` | .github/workflows/dep-scan.yml:57 |
 | 6 | A Class A reusable defaults to the self-hosted single-use pool | `default: '["self-hosted", "ci-runner", "single-use"]'` | .github/workflows/dep-scan.yml:42 |
 | 7 | The scanner precedent ships report-only via a `fail-on-findings` toggle | `fail-on-findings:` | .github/workflows/dep-scan.yml:27 |
-| 8 | A compliance-evidence table exists mapping each rule to its audit trail | `## 12. Compliance evidence — where each rule's audit-trail lives` | docs/REPO_STANDARDS.md:972 |
-| 9 | Only a code-changing event may cancel an in-flight run of a required gate | `## 23. Only a code-changing event may cancel an in-flight run of a required gate` | docs/REPO_STANDARDS.md:2008 |
+| 8 | A compliance-evidence table exists mapping each rule to its audit trail | `## 12. Compliance evidence — where each rule's audit-trail lives` | docs/REPO_STANDARDS.md:1028 |
+| 9 | Only a code-changing event may cancel an in-flight run of a required gate | `## 23. Only a code-changing event may cancel an in-flight run of a required gate` | docs/REPO_STANDARDS.md:2064 |
 | 10 | `governance_check` is defined in the standards applier | `governance_check() {` | install/apply-standards.sh:320 |
 | 11 | It has exactly one call site, reachable only by running the script by hand | `governance_check` | install/apply-standards.sh:433 |
 | 12 | An intentional deviation is recorded only as a prose comment today | `- **Intentionally keep the divergence** — add a comment in your` | docs/overrides.md:183 |
@@ -1113,7 +1113,7 @@ team member either), correcting an earlier draft of this section.
 | 24 | Canon's own pre-commit config declares only whitespace/YAML hygiene hooks plus two local hooks — no linter, no typechecker | `- id: check-yaml` | .pre-commit-config.yaml:44 |
 | 25 | The gate, not the scanned PR, decides coverage — a PR-supplied ignore file produced a verified silent bypass | `# THE GATE — NOT THE SCANNED PR — DECIDES COVERAGE. semgrep ALWAYS honors a` | .github/workflows/sast-scan.yml:89 |
 | 26 | Required status checks are a tier-static list with no language dimension | `"required_status_checks": {` | install/templates/branch-protection-product.json:5 |
-| 27 | A required check with no producing workflow never reports and pins every PR | `required check with no producing workflow does not fail; it never reports, so` | docs/REPO_STANDARDS.md:1440 |
+| 27 | A required check with no producing workflow never reports and pins every PR | `required check with no producing workflow does not fail; it never reports, so` | docs/REPO_STANDARDS.md:1496 |
 | 28 | Applying standards PUTs the whole tier protection template, clobbering hand-added contexts | `apply_branch_protection() {` | install/apply-standards.sh:700 |
 | 29 | Canon records that a job skipped by `if:` reports green and can supersede a standing `request_changes` | `unarmed repo has no such gate, so a skipped-job green would SUPERSEDE a prior` | .github/workflows/ai-review.yml:143 |
 | 30 | The fork boundary is what scopes the untrusted-code-on-self-hosted concern | `### 4.1 Runner class by flow-class + visibility (canon)` | docs/REPO_STANDARDS.md:239 |
@@ -1130,7 +1130,7 @@ team member either), correcting an earlier draft of this section.
 | 41 | Canon self-adopts its own surfaces through dedicated `self-*` callers, because the in-repo file IS the reusable and needs a caller | `# self-pre-commit.yml — canon dogfoods the pre-commit gate it ships (PLAN-018 FT-36).` | .github/workflows/self-pre-commit.yml:1 |
 | 42 | GitHub does not expose the fork-PR toggles via REST, so canon cannot verify them | `echo "    fork-PR toggles: SECURITY WARNING — GitHub does not expose these via REST."` | install/apply-standards.sh:694 |
 | 43 | The installers never touch rulesets, so a ruleset is a surface no canon apply can clobber | `apply_branch_protection() {` | install/apply-standards.sh:700 |
-| 44 | Canon already ships a `.gitattributes` baseline to carry linguist overrides | `### 10.2` | docs/REPO_STANDARDS.md:929 |
+| 44 | Canon already ships a `.gitattributes` baseline to carry linguist overrides | `### 10.2` | docs/REPO_STANDARDS.md:985 |
 | 45 | Canon's own pre-commit config is a hand-maintained Wave-0 copy whose marker must be kept in step with the fragment | `# Keep the marker in step with install/templates/pre-commit-hook-block.yaml.` | .pre-commit-config.yaml:30 |
 | 46 | The pre-commit merge de-dups by repo URL, keeping the consumer's rev and reporting the collision rather than merging hook lists | `# De-dup by repo URL, NOT whole-entry structural equality (PLAN-018 F3). Canon` | install/install.sh:988 |
 | 47 | Self-callers pin the released tag by deliberate convention, so canon consumes what its consumers do | `# self-pre-commit.yml — canon dogfoods the pre-commit gate it ships (PLAN-018 FT-36).` | .github/workflows/self-pre-commit.yml:1 |
