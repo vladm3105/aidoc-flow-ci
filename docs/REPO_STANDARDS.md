@@ -2174,7 +2174,7 @@ carries no rule), each stating its own rule under its own sub-heading. §24.3
 (_a default a canon template recommends must be executable by the code that
 consumes it_) and §24.4 (_what canon shows a model must agree with what canon
 will accept from it_) land with PR-C and PR-D; §24.1 shipped with PR-A and
-§24.2 ships here.
+§24.2 with PR-B.
 **§24 is claimed in full by PLAN-021 — a later plan wanting a new section takes
 §25**, PLAN-023 included.
 

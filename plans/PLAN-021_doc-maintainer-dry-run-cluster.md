@@ -1,7 +1,7 @@
 # PLAN-021 — doc-maintainer: make the dry-run path executable
 
-**Status:** **In Progress — PR-0 (2026-08-03) and PR-A (#382, 2026-08-05)
-landed; PR-B (#353) ships in the PR carrying this edit.** Both §9 items closed (353b approved 2026-07-30;
+**Status:** **In Progress — PR-0 (2026-08-03), PR-A (#382) and PR-B (#392, both
+2026-08-05) landed.** Both §9 items closed (353b approved 2026-07-30;
 PR-C's consumer cost accepted 2026-07-31, **re-confirmed against the corrected
 census** below), and both owed measurements are discharged in §9. **PR-0 done**
 (`DECISIONS.md` CI-0027; the §3 residual filed as
@@ -197,7 +197,7 @@ implementation writes
 at plan construction — a field that **can never be non-empty**, because a
 non-allowlisted path still calls `fail()`, which raises `SystemExit(1)` *before*
 the plan is written. That would ship a second declared-never-populated field, the
-exact defect #353 is about. (**SHIPS IN PR-B** — `planner.py` now writes that field for real, and it is
+exact defect #353 is about. (**LANDED 2026-08-05 (#392)** — `planner.py` now writes that field for real, and it is
 correct *because* neither rejection branch calls `fail()` any more; the run
 exits 1 after the write. **It is NOT the naive comprehension quoted above:**
 that form is per-entry, and the shipped one is distinct by path, built in the
@@ -379,9 +379,9 @@ forbid — and if it does exist, classification at `planner.py:235` appends it t
 `low_risk_set`/`high_risk_set`, putting a recorded violation into the written
 plan for apply to consume.
 
-**SHIPS IN PR-B** — both branches `continue`; `tests/test_scripts.sh` drives
+**LANDED 2026-08-05 (#392)** — both branches `continue`; `tests/test_scripts.sh` drives
 both shapes (a rejected path on disk, one absent) and asserts neither reaches
-`low_risk_set`/`high_risk_set`. Canon rule ships as §24.2.
+`low_risk_set`/`high_risk_set`. Canon rule shipped as §24.2.
 
 **Do not widen this.** `max_edits_per_pr` and the not-low-risk-means-high-risk
 classification are correct and out of scope.
@@ -881,9 +881,9 @@ warnings, §3's countability correction, §4 PR-A's `null` guard, §4 PR-D's D-2
 | 21 | The kill switch is a `maintain`-job property, checked in exactly one place | `KILL=$(jq -r '.kill_switch // false' "$CONFIG_PATH")` | .github/workflows/doc-maintainer.yml:340 |
 | 22 | The reconcile job is schedule-gated and reads no config, so the kill switch does not stop it | `if: ${{ github.event_name == 'schedule' }}` | .github/workflows/doc-maintainer.yml:111 |
 | 23 | Infrastructure errors carry a literal suffix in the pin-resolve/fetch steps — not workflow-wide | `INFRASTRUCTURE error, not a maintenance result` | .github/workflows/doc-maintainer.yml:180 |
-| 24 | **PR-B ships:** the one `if` testing two conditions is split — the duplicate branch records and `continue`s | `if path in seen:` | scripts/doc-maintainer/planner.py:208 |
-| 25 | **PR-B ships:** ...and the allowlist branch is its own, with its own message; the conflated string is gone | `non-allowlisted plan path:` | scripts/doc-maintainer/planner.py:223 |
-| 26 | **PR-B ships:** `validation.rejected` / `allowlist_violations` are now populated at plan construction, reached because both branches `continue` instead of aborting | `"allowlist_violations": violations` | scripts/doc-maintainer/planner.py:243 |
+| 24 | **PR-B landed:** the one `if` testing two conditions is split — the duplicate branch records and `continue`s | `if path in seen:` | scripts/doc-maintainer/planner.py:208 |
+| 25 | **PR-B landed:** ...and the allowlist branch is its own, with its own message; the conflated string is gone | `non-allowlisted plan path:` | scripts/doc-maintainer/planner.py:223 |
+| 26 | **PR-B landed:** `validation.rejected` / `allowlist_violations` are now populated at plan construction, reached because both branches `continue` instead of aborting | `"allowlist_violations": violations` | scripts/doc-maintainer/planner.py:243 |
 | 27 | The no-PR early exit writes a DIFFERENT validation shape, so consumers must tolerate both | `"pr_number": None` | scripts/doc-maintainer/planner.py:130 |
 | 28 | `fail()` raises `SystemExit(1)` — which is why `allowlist_violations` could not be populated until PR-B made the branches record-then-fail | `raise SystemExit(1)` | scripts/doc-maintainer/planner.py:22 |
 | 29 | Classification runs after validation, so a tier-scoped pre-filter must follow it | `if matches(path, high_patterns) or not matches(path, low_patterns):` | scripts/doc-maintainer/planner.py:235 |
