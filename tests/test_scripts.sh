@@ -520,7 +520,7 @@ root, cap = pathlib.Path(sys.argv[1]), int(sys.argv[2])
 for n in range(cap + 100):
     (root / f"aaa-{n:04d}.md").write_text("# noise\n")
 PY
-assert_eq "$(ls "$TMP/doc/repo360" | grep -c '^aaa-')" "$((MAXINV360 + 100))" "#360 the noise fixture actually materialised — every D-1 assertion below is vacuous without it, and a fixture that dies on stderr is invisible to all of them"
+assert_eq "$(find "$TMP/doc/repo360" -maxdepth 1 -name 'aaa-*.md' | wc -l)" "$((MAXINV360 + 100))" "#360 the noise fixture actually materialised — every D-1 assertion below is vacuous without it, and a fixture that dies on stderr is invisible to all of them"
 python3 - "$TMP/doc/bin360" <<'PY'
 import json, pathlib, sys
 # Two changed files; the second's patch alone exceeds MAX_PATCH_BYTES (120_000),
