@@ -1819,7 +1819,8 @@ sends the author to fix something that was never wrong.
 ### 20.2 The rule
 
 For any prompt this repo ships (`ai-review/review-prompt.md`,
-`ai-review/fix-prompt.md`):
+`ai-review/fix-prompt.md`, and the prompt `scripts/doc-maintainer/planner.py`
+assembles — rule 8 was derived from that one):
 
 1. **Enumerate the inputs.** The prompt states, up front, exactly what the model
    receives and that it receives nothing else — no tools, no filesystem, no
@@ -1852,10 +1853,16 @@ For any prompt this repo ships (`ai-review/review-prompt.md`,
 8. **The set a prompt shows a model and the set the code will accept from it
    must agree — and a datum the prompt never turns into an imperative
    constrains nothing.** Two obligations, and each fails on its own:
-   - **Show the accepted set.** An input wider than what the consumer will
-     accept manufactures rejections and charges them to the model. Where the
-     assembly can narrow a block to the accepted set, it does — subject to
-     rule 5, so the narrowing is declared in that block's own label.
+   - **Show the accepted set, and narrow before you truncate.** An input wider
+     than what the consumer will accept manufactures rejections and charges
+     them to the model. Where the assembly can narrow a block to the accepted
+     set, it does — and the narrowing precedes any truncation of that block,
+     or every rejectable entry sorting ahead of an acceptable one consumes a
+     slot and the truncation discards the accepted set instead. This is the one
+     case rule 5's "prefer collecting the whole set" preference yields to,
+     because the omitted entries are not merely unmarked but _rejectable_;
+     rule 5's labelling obligation still applies in full, so the narrowed
+     block's own label states its scope.
    - **State the constraint as an instruction.** A labelled block is an input,
      not a prohibition; the model has no way to tell which of the blocks it was
      handed is enforced. Where the consuming code rejects on a rule, the prompt
@@ -1869,7 +1876,9 @@ For any prompt this repo ships (`ai-review/review-prompt.md`,
    The imperative is **advisory** — it makes non-compliance less likely, not
    impossible, and the enforcement branch in the consuming code remains the only
    guarantee. Do not record a prompt sentence as closing a failure bucket;
-   re-measure the bucket after the change instead.
+   re-measure the bucket after the change instead. And where the narrowing is a
+   no-op for a given consumer's configuration, do not let a release note claim
+   the gain for that consumer.
 
 ### 20.3 Applied to `ai-review` (ci/v2.x)
 
@@ -2247,11 +2256,12 @@ CI-0025. §23.4 added from #331.
 
 **§24 is a container, not a single rule.** It holds four independent sub-rules,
 one per PLAN-021 **code** PR (PR-A…PR-D; PR-0 was the decision record and
-carries no rule), each stating its own rule under its own sub-heading. §24.3
-(_a default a canon template recommends must be executable by the code that
-consumes it_) and §24.4 (_what canon shows a model must agree with what canon
-will accept from it_) — of which §24.4 still lands with PR-D; §24.1 shipped with
-PR-A, §24.2 with PR-B and §24.3 with PR-C.
+carries no rule). §24.1 shipped with PR-A, §24.2 with PR-B, §24.3 (_a default a
+canon template recommends must be executable by the code that consumes it_) with
+PR-C, and §24.4 (_what canon shows a model must agree with what canon will
+accept from it_) with PR-D. §24.1–24.3 each state their rule under their own
+sub-heading; **§24.4 deliberately does not** — its rule belongs to prompt
+assembly, so it lives in §20.2 rule 8 and §24.4 records the case.
 **§24 is claimed in full by PLAN-021 — a later plan wanting a new section takes
 §26**, PLAN-023 included. (§25 went to issue #387, which landed first; PLAN-023
 already declares that it yields and renumbers on landing.)
@@ -2527,9 +2537,9 @@ mode is a separate change.
 
 ### 24.4 What canon shows a model must agree with what canon will accept from it
 
-**Extends §20.2.** The normative rule is **§20.2 rule 8** and is stated only
-there; this subsection records the case that produced it and what it required in
-practice.
+**Extends §20.2.** The general rule is **§20.2 rule 8**; this subsection records
+the case that produced it and what it required in practice, and states no rule of
+its own.
 
 `scripts/doc-maintainer/planner.py` built its documentation inventory from an
 unfiltered `rglob("*.md")` and handed the model up to `MAX_DOC_INVENTORY`
@@ -2540,26 +2550,23 @@ attached. IPLAN-0025 §2.1 step 4 specifies the opposite: glob the consumer's
 
 Two changes, and the second is the load-bearing one:
 
-- **Narrow the inventory, before any truncation.** The allowlist filter runs
-  ahead of the `MAX_DOC_INVENTORY` slice; after it, a repo whose non-allowlisted
-  files sort ahead of its allowlisted ones truncates the allowlisted set away and
-  hands the model a menu it is forbidden to order from. The block is relabelled
-  `Documentation inventory (allowed_paths only):` in the same change — rule 5.
-- **Bind the model to the allowlist in the prompt.** The narrowing alone does not
-  reach the observed rejections: every one of them was a file the triggering PR
+- **The inventory is narrowed ahead of the `MAX_DOC_INVENTORY` slice**, and the
+  block is relabelled `Documentation inventory (allowed_paths only):` in the same
+  change.
+- **The prompt binds the model to the allowlist.** The narrowing alone does not
+  reach the observed rejections: every one of them was a file the triggering PRs
   had just changed, and the merge diff — mandated by IPLAN-0025 and therefore not
   removable — reaches the model as an unfiltered `Complete changed-file list:`.
   The prompt's only prohibition was by file _type_ ("source code, workflow,
   configuration, generated, or non-documentation files"), which markdown prose
   files do not trip. The consumer had written the rule into its own conventions,
-  and canon's first line declares conventions untrusted DATA — so canon was
+  and canon's preamble declares conventions untrusted DATA — so canon was
   instructing the model to disregard the consumer's countermeasure.
 
-**A narrowing that is a no-op for one consumer is not a no-op for canon.** Every
-inventory entry ends `.md` and `matches()` is `fnmatchcase`, whose `*` crosses
-`/`, so on a consumer whose `allowed_paths` ends in a `"*.md"` catch-all the
-filter removes nothing at all. Ship the rule for the narrower allowlists, and do
-not let a release note claim the gain for a consumer that cannot see it.
+The narrowing is an **exact no-op** on a consumer whose `allowed_paths` ends in a
+`"*.md"` catch-all: `matches()` is `fnmatchcase`, whose `*` crosses `/`, and every
+inventory entry ends `.md`. That is `aidoc-flow-operations`; it is the narrower
+allowlists that gain.
 
 **Origin:** issue
 [#360](https://github.com/vladm3105/aidoc-flow-ci/issues/360), measured on

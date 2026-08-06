@@ -469,54 +469,170 @@ assert_absent "$_unread354" "Traceback (most recent call last)" "#354 ...and doe
 printf '# Small\n' > "$TMP/doc/repo354/SMALL.md"
 
 echo "== doc-maintainer planner inventory respects allowed_paths, and the prompt binds the model to it (#360) =="
-# Both halves are asserted on ONE captured prompt, because both are prompt-side
-# and neither is observable in the plan JSON.
+# Both halves are asserted against the prompt the planner actually assembled,
+# because both are prompt-side and neither is observable in the plan JSON.
 #
-# The fixture's shape is the test. 600 non-allowlisted `aaa-NNN.md` files at the
-# root sort between `README.md` and `docs/`, so under the OLD unfiltered
-# inventory the 500-entry slice keeps `CLAUDE.md`, `README.md` and 498 noise
-# files and truncates `docs/DECISIONS.md` — an allowlisted, on-disk document —
-# away entirely. That is what makes this fixture distinguish "filter before the
-# slice" from "filter after it": a filter applied after the slice yields an
-# inventory WITHOUT `docs/DECISIONS.md`, which no assertion about the noise
-# files alone would catch.
-mkdir -p "$TMP/doc/repo360/docs"
+# EVERY assertion here reads the parsed facts file, never the raw prompt, and
+# the parser below fails LOUD when a block it is asked for is absent. That is
+# not fastidiousness: a `grep | sed` extractor yields the empty string when its
+# anchor misses, `jq -e ''` exits 0 on empty input, and `assert_absent` passes
+# on the empty string — so a two-space indent in the prompt silently disarmed
+# three assertions at once, including the central one, and the whole D-1 defect
+# came back green. Fail closed.
+#
+# The fixture's shape IS the test:
+#   * `aaa-NNN.md` x (MAX_DOC_INVENTORY + 100), non-allowlisted, sorting between
+#     `README.md` and `docs/` — under the old unfiltered inventory the slice
+#     keeps these and truncates `docs/DECISIONS.md`, an allowlisted on-disk
+#     document, away. This is what separates "filter before the slice" from
+#     "filter after it". The count is DERIVED from the constant, never a second
+#     literal: raising `MAX_DOC_INVENTORY` past a hardcoded 600 would retire
+#     that coverage in silence.
+#   * `zzz-INDEX.md` — allowlisted, at the root, sorting AFTER `docs/`. `rglob`
+#     yields a directory's own entries before recursing, so it comes out before
+#     `docs/DECISIONS.md`; only `sorted()` puts it last. Without it the sort is
+#     ungated and the inventory becomes filesystem-order-dependent.
+#   * a `gh` double of its own whose second changed file carries a patch over
+#     `MAX_PATCH_BYTES`, so `patches` truncates to one entry while the
+#     changed-file list keeps both. With a single changed file, "passed whole"
+#     is indistinguishable from "passed the byte-budgeted subset".
+MAXINV360=$(python3 -c "import re;print(re.search(r'^MAX_DOC_INVENTORY = ([0-9_]+)', open('$ROOT/scripts/doc-maintainer/planner.py').read(), re.M).group(1).replace('_',''))")
+assert_ok "[ '$MAXINV360' -gt 0 ]" "#360 the fixture reads MAX_DOC_INVENTORY from the planner — one declaration, so the cap and the fixture cannot drift apart"
+mkdir -p "$TMP/doc/repo360/docs" "$TMP/doc/bin360"
 cat > "$TMP/doc/repo360/config.json" <<'JSON'
-{"dry_run":true,"allowed_paths":["README.md","docs/**"],"max_edits_per_pr":5,"auto_merge":{"low_risk_paths":["README.md"],"high_risk_paths":["docs/**"]}}
+{"dry_run":true,"allowed_paths":["README.md","zzz-INDEX.md","docs/**"],"max_edits_per_pr":5,"auto_merge":{"low_risk_paths":["README.md"],"high_risk_paths":["docs/**","zzz-INDEX.md"]}}
 JSON
 printf '# Project\n'     > "$TMP/doc/repo360/README.md"
 printf '# Decisions\n'   > "$TMP/doc/repo360/docs/DECISIONS.md"
+printf '# Index\n'       > "$TMP/doc/repo360/zzz-INDEX.md"
 printf '# Conventions\n' > "$TMP/doc/repo360/conventions.md"
 printf '# Claude\n'      > "$TMP/doc/repo360/CLAUDE.md"
-python3 - "$TMP/doc/repo360" <<'PY'
+python3 - "$TMP/doc/repo360" "$MAXINV360" <<'PY'
 import pathlib, sys
-root = pathlib.Path(sys.argv[1])
-# > MAX_DOC_INVENTORY, and sorting after README.md but before docs/.
-for n in range(600):
-    (root / f"aaa-{n:03d}.md").write_text("# noise\n")
+root, cap = pathlib.Path(sys.argv[1]), int(sys.argv[2])
+for n in range(cap + 100):
+    (root / f"aaa-{n:04d}.md").write_text("# noise\n")
 PY
-(cd "$TMP/doc/repo360" && LITELLM_PROMPT_CAPTURE="$TMP/doc/prompt360.txt" PATH="$TMP/doc/bin:$PATH" python3 ../planner.py --merge-sha abc --gh-repo owner/repo --config config.json --conventions conventions.md --model ai-doc-maintainer --out-plan plan.json)
-assert_ok "[ -s '$TMP/doc/prompt360.txt' ]" "#360 the prompt was captured — every assertion below is vacuous without this"
-PROMPT360=$(cat "$TMP/doc/prompt360.txt")
-# The label, per REPO_STANDARDS §20.2 rule 5: a narrowed block whose label does
-# not say so makes every omitted file read to the model as absent from the repo.
-assert_contains "$PROMPT360" 'Documentation inventory (allowed_paths only): [' "#360 D-1 the narrowed block declares its scope in its own label"
-INV360=$(grep '^Documentation inventory' "$TMP/doc/prompt360.txt" | sed 's/^[^[]*//')
-assert_ok "printf '%s' '$INV360' | jq -e '. == [\"README.md\",\"docs/DECISIONS.md\"]' >/dev/null" "#360 D-1 the inventory is exactly the allowlisted set — docs/DECISIONS.md survives 600 higher-sorting non-allowlisted files, so the filter runs BEFORE the MAX_DOC_INVENTORY slice"
-assert_absent "$INV360" 'aaa-000.md' "#360 D-1 a non-allowlisted markdown file on disk is not offered as a candidate"
-assert_absent "$INV360" 'CLAUDE.md' "#360 D-1 ...including one the consumer keeps at its root"
+python3 - "$TMP/doc/bin360" <<'PY'
+import json, pathlib, sys
+# Two changed files; the second's patch alone exceeds MAX_PATCH_BYTES (120_000),
+# so the planner's patch loop breaks and `patches` holds one entry.
+pathlib.Path(sys.argv[1], "files.json").write_text(json.dumps([
+    {"filename": "src/api.py", "status": "modified", "patch": "+new endpoint"},
+    {"filename": "docs/DECISIONS.md", "status": "modified", "patch": "+x" * 70_000},
+]))
+PY
+cat > "$TMP/doc/bin360/gh" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  *commits/*/pulls*) echo '[{"number":42}]' ;;
+  *pulls/42/files*) cat "$(dirname "$0")/files.json" ;;
+  *pulls/42*) echo '{"number":42,"title":"Add API endpoint","body":"Adds /v2/items","user":{"login":"owner"}}' ;;
+  *) exit 1 ;;
+esac
+SH
+chmod +x "$TMP/doc/bin360/gh"
+(cd "$TMP/doc/repo360" && LITELLM_PROMPT_CAPTURE="$TMP/doc/prompt360.txt" PATH="$TMP/doc/bin360:$PATH" python3 ../planner.py --merge-sha abc --gh-repo owner/repo --config config.json --conventions conventions.md --model ai-doc-maintainer --out-plan plan.json)
+# One parse, anchored, loud on absence — see the header comment.
+if python3 - "$TMP/doc/prompt360.txt" "$TMP/doc/facts360.json" <<'PY'
+import json, pathlib, re, sys
+text = pathlib.Path(sys.argv[1]).read_text()
+lines = text.split("\n")
+IMPERATIVE = 'Propose only paths matching the "Allowed documentation paths:" list'
+
+
+def block(label):
+    prefix = label + ": "
+    hits = [n for n, line in enumerate(lines) if line.startswith(prefix)]
+    if len(hits) != 1:
+        raise SystemExit(f"block {label!r} appears {len(hits)} times, expected exactly 1")
+    return hits[0], lines[hits[0]][len(prefix):]
+
+
+def json_block(label):
+    index, payload = block(label)
+    return index, json.loads(payload)
+
+# Every label the assembly emits, in order — §20.2 rule 6: the assembly and the
+# prompt are one contract, so an EXTRA block (say a second, unfiltered
+# inventory under another name) has to be a test failure, not a silent pass.
+labels = [line.split(":")[0] for line in lines if re.match(r"^[A-Z][A-Za-z0-9 ()_-]*: ", line)]
+imperative = [n for n, line in enumerate(lines) if IMPERATIVE in line]
+if len(imperative) != 1:
+    raise SystemExit(f"the D-2 imperative appears {len(imperative)} times, expected exactly 1")
+inventory_line, inventory = json_block("Documentation inventory (allowed_paths only)")
+allowed_line, allowed = json_block("Allowed documentation paths")
+changed_line, changed = json_block("Complete changed-file list")
+_, patches = json_block("Changed files and bounded patches")
+first_block, _ = block("Repository")
+pathlib.Path(sys.argv[2]).write_text(json.dumps({
+    "labels": labels,
+    "inventory": inventory,
+    "allowed": allowed,
+    "changed_files": changed,
+    "patch_count": len(patches),
+    "imperative_line": imperative[0],
+    "first_block_line": first_block,
+    "inventory_line": inventory_line,
+}, indent=2))
+PY
+then
+  _g "#360 the assembled prompt parses — exactly one of each named block, and one D-2 imperative"
+else
+  _r "#360 the assembled prompt did not parse; every assertion below would be vacuous"
+fi
+F360="$TMP/doc/facts360.json"
+# §20.2 rule 6 — the block roster, in order. Kills the mutation that leaves
+# every assertion below intact and simply adds a SECOND, unfiltered inventory
+# under a different label, restoring the model's access to the whole repo.
+assert_ok "jq -e '.labels == [\"Repository\",\"PR\",\"PR body\",\"Author\",\"Allowed documentation paths\",\"Documentation inventory (allowed_paths only)\",\"Repository conventions\",\"Complete changed-file list\",\"Changed files and bounded patches\"]' '$F360' >/dev/null" "#360 the prompt's block roster is exactly the nine the assembly declares, in order — no tenth block, and the inventory's label states its scope (§20.2 rules 5 + 6)"
+assert_ok "jq -e '.inventory == [\"README.md\",\"docs/DECISIONS.md\",\"zzz-INDEX.md\"]' '$F360' >/dev/null" "#360 D-1 the inventory is exactly the allowlisted set, sorted — docs/DECISIONS.md survives MAX_DOC_INVENTORY+100 higher-sorting non-allowlisted files (filter BEFORE the slice) and zzz-INDEX.md is last (sorted, not rglob order)"
+assert_ok "jq -e '[.inventory[] | select(startswith(\"aaa-\") or . == \"CLAUDE.md\")] == []' '$F360' >/dev/null" "#360 D-1 no non-allowlisted markdown file on disk is offered as a candidate, including one the consumer keeps at its root"
 # D-2 is the load-bearing half: D-1 alone leaves the bucket red, because the
 # offending proposals came from the changed-file list, not the inventory.
-assert_contains "$PROMPT360" 'Propose only paths matching the "Allowed documentation paths:" list; a path that appears in "Complete changed-file list:" but not in that list must not be proposed.' "#360 D-2 the prompt carries an IMPERATIVE binding the model to the allowlist, not just the labelled datum"
-# ...and it names the two data by their LABELS. The prohibitions and the
-# allowlist are not adjacent in the assembled prompt, so "above"/"below" would
-# be false the moment a block moves.
-assert_ok "grep -q 'Allowed documentation paths: \[' '$TMP/doc/prompt360.txt'" "#360 D-2 the label the imperative names is a real block label in the same prompt"
+assert_contains "$(cat "$TMP/doc/prompt360.txt")" 'Propose only paths matching the "Allowed documentation paths:" list; a path that appears in "Complete changed-file list:" but not in the allowed documentation paths must not be proposed.' "#360 D-2 the prompt carries an IMPERATIVE binding the model to the allowlist, not just the labelled datum"
+# WHERE it sits is as load-bearing as whether it is there. The prompt's own
+# preamble declares everything from the first data block onward untrusted DATA,
+# so an imperative that drifts below that line is one canon has already told the
+# model to ignore — and presence-only assertions cannot see the difference.
+assert_ok "jq -e '.imperative_line < .first_block_line' '$F360' >/dev/null" "#360 D-2 the imperative sits in the INSTRUCTION region, above the first data block — below it, canon's own untrusted-DATA preamble disowns it"
+# ...and it names its datum by LABEL, so the block must exist and carry the
+# real allowlist, not an empty or placeholder one.
+assert_ok "jq -e '.allowed == [\"README.md\",\"zzz-INDEX.md\",\"docs/**\"]' '$F360' >/dev/null" "#360 D-2 the block the imperative names carries the consumer's actual allowed_paths — a label alone constrains nothing"
 # IPLAN-0025 §2.1 mandates the merge diff as an input; PR-D narrows the
 # inventory and must NOT narrow or drop this. Its unfiltered breadth is why D-2
-# is needed at all.
-assert_contains "$PROMPT360" 'Complete changed-file list: ["src/api.py"]' "#360 the changed-file list is still passed whole — PR-D narrows the inventory, not the diff"
+# is needed at all. The patch set is byte-budgeted and this list is not: the
+# fixture makes them differ, so "whole" is a real assertion.
+assert_ok "jq -e '.changed_files == [\"src/api.py\",\"docs/DECISIONS.md\"] and .patch_count == 1' '$F360' >/dev/null" "#360 the changed-file list is passed WHOLE — it is not the byte-budgeted patch set, which truncated to one entry on the same PR"
 assert_ok "jq -e '[.low_risk_set[].path] == [\"README.md\"] and [.high_risk_set[].path] == [\"docs/DECISIONS.md\"]' '$TMP/doc/repo360/plan.json' >/dev/null" "#360 classification is unchanged by the inventory narrowing"
+
+# The slice itself, which the block above cannot reach: after filtering, that
+# fixture leaves three entries, so MAX_DOC_INVENTORY could be deleted, raised or
+# set to 2 with everything still green. Its own fixture puts MAX_DOC_INVENTORY+2
+# ALLOWLISTED documents on disk.
+mkdir -p "$TMP/doc/repo360cap/docs"
+cat > "$TMP/doc/repo360cap/config.json" <<'JSON'
+{"dry_run":true,"allowed_paths":["README.md","docs/**"],"max_edits_per_pr":5,"auto_merge":{"low_risk_paths":["README.md"],"high_risk_paths":["docs/**"]}}
+JSON
+printf '# Project\n'     > "$TMP/doc/repo360cap/README.md"
+printf '# Decisions\n'   > "$TMP/doc/repo360cap/docs/DECISIONS.md"
+printf '# Conventions\n' > "$TMP/doc/repo360cap/conventions.md"
+python3 - "$TMP/doc/repo360cap" "$MAXINV360" <<'PY'
+import pathlib, sys
+root, cap = pathlib.Path(sys.argv[1]), int(sys.argv[2])
+for n in range(cap + 2):
+    (root / "docs" / f"zz-{n:04d}.md").write_text("# filler\n")
+PY
+(cd "$TMP/doc/repo360cap" && LITELLM_PROMPT_CAPTURE="$TMP/doc/prompt360cap.txt" PATH="$TMP/doc/bin:$PATH" python3 ../planner.py --merge-sha abc --gh-repo owner/repo --config config.json --conventions conventions.md --model ai-doc-maintainer --out-plan plan.json)
+assert_ok "python3 -c \"
+import json, sys
+prefix = 'Documentation inventory (allowed_paths only): '
+hits = [l for l in open('$TMP/doc/prompt360cap.txt').read().split(chr(10)) if l.startswith(prefix)]
+assert len(hits) == 1, hits
+inventory = json.loads(hits[0][len(prefix):])
+assert len(inventory) == $MAXINV360, len(inventory)
+assert inventory[:2] == ['README.md', 'docs/DECISIONS.md'], inventory[:2]
+\"" "#360 the MAX_DOC_INVENTORY slice still bounds the inventory — MAX_DOC_INVENTORY+2 allowlisted documents are cut to exactly the cap, lowest-sorting kept"
 
 echo "== doc-maintainer Step 9 renders a dry-run patch when the files differ (#352) =="
 # Extract-and-drive, never re-implement (how FT-40's SHA-peel guard passed while
