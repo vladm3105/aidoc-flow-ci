@@ -19,6 +19,16 @@ from litellm_client import (
     restore_redactions,
 )
 
+# The largest source file this script will hand to a model for full-file
+# regeneration. Exported rather than inlined because `planner.py` imports it to
+# pre-filter the low-risk set — a path this guard would refuse must not be
+# planned in the first place (REPO_STANDARDS §24.3). Keep this the ONLY
+# declaration of the limit: a second literal is an untested duplicate that
+# drifts silently, and the planner would then filter on a number apply no
+# longer enforces.
+MAX_APPLY_BYTES = 200_000
+
+
 def fail(message: str) -> None:
     print(f"::error::apply: {message}", file=sys.stderr)
     raise SystemExit(1)
@@ -56,8 +66,8 @@ def main() -> int:
         if not source.is_file() or source.is_symlink():
             fail(f"refusing to edit missing or symlinked file: {path}")
         original = source.read_text()
-        if len(original.encode()) > 200_000:
-            fail(f"refusing autonomous full-file generation over 200 KB: {path}")
+        if len(original.encode()) > MAX_APPLY_BYTES:
+            fail(f"refusing autonomous full-file generation over {MAX_APPLY_BYTES // 1000} KB: {path}")
         safe_original, redactions = redact_secret_shaped(original)
         safe_instruction, _ = redact_secret_shaped(str(entry["instruction"]))
         safe_rationale, _ = redact_secret_shaped(str(entry["rationale"]))

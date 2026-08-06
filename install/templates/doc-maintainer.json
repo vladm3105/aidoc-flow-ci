@@ -4,10 +4,11 @@
   "dry_run": true,
   "kill_switch": false,
   "allowed_paths": ["README.md", "CHANGELOG.md", "HANDOFF.md", "ROADMAP.md", "DECISIONS.md", "docs/**"],
+  "_comment_changelog": "CHANGELOG.md is allowlisted but deliberately NOT low-risk, and moving it back into auto_merge.low_risk_paths re-creates aidoc-flow-ci#354. The low-risk listing is the knob that matters: it is what routes a path into apply.py, which refuses full-file regeneration over 200 KB. A Keep a Changelog file is append-only by construction, so every adopter's changelog crosses that threshold eventually and never returns under it. Whole-file regeneration is also the wrong edit shape for it at any size — the only correct changelog edit is an insert under `## [Unreleased]`, which needs the head of the file, not a rewrite of all of it. Left allowlisted on purpose: a changelog proposal then becomes a high-risk item for a human instead of an allowlist violation that fails the whole run. Do NOT de-allowlist it to 'fix' this — that relocates the red run rather than removing it. Read REPO_STANDARDS §24.3 before changing either key, and if you are judging whether a file fits the limit, measure the decoded bytes (python3 -c \"import pathlib;print(len(pathlib.Path('CHANGELOG.md').read_text().encode()))\"), not `wc -c`.",
   "max_edits_per_pr": 8,
   "max_prs_per_day": 5,
   "auto_merge": {
-    "low_risk_paths": ["README.md", "CHANGELOG.md", "docs/**"],
-    "high_risk_paths": ["HANDOFF.md", "ROADMAP.md", "DECISIONS.md", "**/HANDOFF.md", "**/ROADMAP.md", "**/DECISIONS.md"]
+    "low_risk_paths": ["README.md", "docs/**"],
+    "high_risk_paths": ["CHANGELOG.md", "HANDOFF.md", "ROADMAP.md", "DECISIONS.md", "**/HANDOFF.md", "**/ROADMAP.md", "**/DECISIONS.md"]
   }
 }
