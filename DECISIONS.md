@@ -2039,6 +2039,132 @@ properties; OpenSSF Allstar's org-level model), recorded in
 
 ---
 
+## CI-0032: A coordination surface with N writers needs a carrier that refuses a concurrent write (2026-08-05)
+
+**Context**
+
+Every coordination mechanism canon specifies was designed for one agent per repo
+at a time. Fleets of independent agents — Claude Code sessions, Codex, DeepSeek —
+now run against one repository with no orchestrator and no shared context. Each
+mechanism is a shared mutable resource with no lock: correct for one writer,
+silently wrong for N.
+
+The sharp instance is the session handoff. "Close the current handoff issue and
+open its successor" is a compare-and-swap with nothing between the read and the
+write. With N agents, each closes whatever it found and creates its own, so the
+losing sessions' handoffs become **unfindable rather than deleted** — and both
+agents report success, because both did what they were told.
+
+**Status across the workspace: latent, not observed.** Wraps have been serial so
+far. This is decided before the first collision deliberately, because after one
+the evidence is an intact, unreferenced artifact that looks like nothing
+happened.
+
+**Decision**
+
+`REPO_STANDARDS` §25. Choose a coordination carrier by how it behaves under a
+concurrent write, not by convenience:
+
+- **Issue body** — last write wins silently → the state of that one issue, one
+  claimant.
+- **Issue comments** — append-only, every write survives → per-session log, safe
+  for N writers.
+- **A git file** — *refuses* the write (non-fast-forward or merge conflict) →
+  repo-wide state.
+
+Git is the only one of the three that fails a concurrent write rather than
+taking the last, and that refusal — not the file format — is why repo-wide state
+lives in a file.
+
+**This decides no repo's handoff surface.** §16 governs that, via each repo's
+declared governance table, and §16 states nothing about files versus issues — it
+requires presence, declaration and consistency, and §16.4's parser only verifies
+that a declared path exists. `aidoc-flow-ci` declares the file form and CI-0028
+decides how that file is *edited* (regenerated wholesale), not whether it is a
+file. That the file form happens to have no compare-and-swap to lose is a
+property of the choice, not the reason it was made.
+
+Plus: **claim before starting** (assignee and/or `status:in-progress`, §5.4), and
+**one `git worktree` per issue** on a branch named for it.
+
+**Alternatives rejected for the worktree rule.** Separate clones lose the shared
+object store, so integration becomes a remote round-trip instead of a local
+`git merge`. Sandboxes bound blast radius but do not give a second index, so two
+agents still contend on `.git/index.lock` — they are complementary, not a
+substitute. A worktree is the only option that gives each agent its own `HEAD`
+and index while keeping one object store.
+
+**Two proposals in the source issue are DECLINED, not deferred**, so they are not
+re-proposed as oversights:
+
+- **`flock`-serialized deploy/verify.** The reasoning is sound — `flock` releases
+  on process death where an issue-based lock cannot. But **no repo that canon
+  governs deploys a running service from a shell.** The 2026-08-05 sweep of the
+  nine non-paused repos (CI-0001's roster; `.gitmodules` lists eleven, of which
+  `feedback-desk` and `logging` are out of scope) found only `install/deploy-ci-wizard.sh` (a founder-executed CI installer),
+  `scripts/release.sh` (tag cut), and a runbook plus a post-deploy smoke test in
+  `framework`/`iplanic` — none a singleton runtime that concurrent execution
+  corrupts. `flock` appears nowhere in this repo. (§23 is **not** the counter-
+  argument and is not cited as one: it is a *cancellation* policy — which events
+  may cancel an in-flight required gate — and mandates mutual exclusion for
+  nothing.) A canon rule whose subject no consumer has is untested and
+  unenforceable; it belongs in the docs of a repo that deploys from a shell.
+- **Making `CLAUDE.md` a symlink to `AGENTS.md`.** The problem is real —
+  conventions in `CLAUDE.md` and Claude-only skills are never seen by Codex or
+  DeepSeek. But `AGENTS.md` exists in **2 of the 9** non-paused repos and is a
+  **symlink in neither** — and the two do not agree on a direction, so there is
+  no single convention for a symlink to codify:
+
+  - `aidoc-flow-framework` — a short orientation pointing at the long file:
+    "`CLAUDE.md` is the full working agreement; this file is the short
+    orientation… Where the two disagree, `CLAUDE.md` wins" (87 lines vs 1,029).
+  - `engramory` — **co-equal and split by topic**, pointing the other way:
+    `CLAUDE.md` says "For engineering conventions… see **AGENTS.md** — this file
+    records only what's specific to Engramory as an aidoc-flow workspace repo…
+    **Both files apply**", and `AGENTS.md` is a declared §16 surface in its own
+    right (`| Engineering agreement | AGENTS.md |`). 41 lines vs 218.
+
+  An earlier draft of this entry read both as the framework shape and called it a
+  2-of-2 convergence. It is not, and the corrected reading does not rescue the
+  symlink: it makes the case weaker, because there is no agreed direction to
+  invert. What decides it is mechanical — a symlink changes what §16's governance
+  table and `parse-governance-table.py` parse, and degrades to a text stub on
+  Windows without `core.symlinks`.
+
+**Consequences**
+
+- §25 is a **no-op for a single writer** — every rule is already satisfied when
+  one agent works one repo, and none of it adds a step to that case.
+- **The shared-tree hazard is measured here, but the worktree rule is not what
+  fixes the measured case.** PR #277 shipped without the code it was written to
+  add — its diff carries only `CHANGELOG.md`, `HANDOFF.md` and
+  `plans/FRAMEWORK-TODO.md`; the code landed in #278, whose title is "land the
+  FT-45 code that PR #277 dropped" and whose body names the mechanism
+  contemporaneously: the review sub-agents ran `git stash` / `git add` on the
+  shared tree between the `git add` and the `git commit`. Those racers were a
+  session and **its own sub-agents**, which share the parent's tree by
+  construction — a per-issue worktree gives them the same tree and would not have
+  helped. The remedy for that case is `CLAUDE.md`'s durable trap (`git add -A`
+  and re-diff after the agents finish). §25.4 separates agents from *each other*;
+  both rules are needed, and §25.4 says so.
+- These repos are submodules: a worktree lives outside the umbrella's tree, so
+  the umbrella pointer bump must still be made from the primary checkout.
+- **The `AGENTS.md` reachability problem is unresolved by this entry.** Declining
+  the symlink does not address it; making the short vendor-neutral orientation
+  file a required §16 surface across all nine repos is the version worth doing,
+  and it is [#395](https://github.com/vladm3105/aidoc-flow-ci/issues/395).
+- Reopening either decline needs **new evidence** — a repo that actually deploys
+  from a shell, or a vendor that reads neither file — not a re-reading.
+
+**Origin**
+
+Issue [#387](https://github.com/vladm3105/aidoc-flow-ci/issues/387), filed from
+`vladm3105/llm-router` at the founder's direction. Labels in §5.4
+([#386](https://github.com/vladm3105/aidoc-flow-ci/issues/386), CI-0032's
+prerequisite). **CI-0031 is deliberately skipped** — it is reserved by PLAN-023
+PR-0, which already cites it in three places; per the ordering rule at the top of
+this file it is filled in place when that plan lands.
+
 <!-- Append new entries above this line (or into a previously reserved ID
 slot — see the ordering rule at the top); append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
