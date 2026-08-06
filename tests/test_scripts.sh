@@ -274,6 +274,13 @@ def restore_redactions(text, mapping):
         text = text.replace(token, original)
     return text
 def completion(prompt, **_kwargs):
+    # The assembled prompt, verbatim, for the #360 assertions. A prompt-side
+    # rule is otherwise untestable: it is a sentence in a string, deletable
+    # without breaking anything else in CI.
+    capture = os.environ.get("LITELLM_PROMPT_CAPTURE", "")
+    if capture:
+        with open(capture, "w") as handle:
+            handle.write(prompt)
     mode = os.environ.get("LITELLM_FAKE_MODE", "")
     if mode == "secret":
         return "Existing sk-AAAAAAAAAAAAAAAAAAAA and new sk-BBBBBBBBBBBBBBBBBBBB"
@@ -460,6 +467,56 @@ _unread354="$( (cd "$TMP/doc/repo354" && LITELLM_FAKE_MODE=oversize PATH="$TMP/d
 assert_contains "$_unread354" "::error::planner: cannot read planned documentation file SMALL.md" "#354 an unreadable planned file fails LOUD and names the file, rather than raising a bare traceback"
 assert_absent "$_unread354" "Traceback (most recent call last)" "#354 ...and does not surface as a Python traceback"
 printf '# Small\n' > "$TMP/doc/repo354/SMALL.md"
+
+echo "== doc-maintainer planner inventory respects allowed_paths, and the prompt binds the model to it (#360) =="
+# Both halves are asserted on ONE captured prompt, because both are prompt-side
+# and neither is observable in the plan JSON.
+#
+# The fixture's shape is the test. 600 non-allowlisted `aaa-NNN.md` files at the
+# root sort between `README.md` and `docs/`, so under the OLD unfiltered
+# inventory the 500-entry slice keeps `CLAUDE.md`, `README.md` and 498 noise
+# files and truncates `docs/DECISIONS.md` — an allowlisted, on-disk document —
+# away entirely. That is what makes this fixture distinguish "filter before the
+# slice" from "filter after it": a filter applied after the slice yields an
+# inventory WITHOUT `docs/DECISIONS.md`, which no assertion about the noise
+# files alone would catch.
+mkdir -p "$TMP/doc/repo360/docs"
+cat > "$TMP/doc/repo360/config.json" <<'JSON'
+{"dry_run":true,"allowed_paths":["README.md","docs/**"],"max_edits_per_pr":5,"auto_merge":{"low_risk_paths":["README.md"],"high_risk_paths":["docs/**"]}}
+JSON
+printf '# Project\n'     > "$TMP/doc/repo360/README.md"
+printf '# Decisions\n'   > "$TMP/doc/repo360/docs/DECISIONS.md"
+printf '# Conventions\n' > "$TMP/doc/repo360/conventions.md"
+printf '# Claude\n'      > "$TMP/doc/repo360/CLAUDE.md"
+python3 - "$TMP/doc/repo360" <<'PY'
+import pathlib, sys
+root = pathlib.Path(sys.argv[1])
+# > MAX_DOC_INVENTORY, and sorting after README.md but before docs/.
+for n in range(600):
+    (root / f"aaa-{n:03d}.md").write_text("# noise\n")
+PY
+(cd "$TMP/doc/repo360" && LITELLM_PROMPT_CAPTURE="$TMP/doc/prompt360.txt" PATH="$TMP/doc/bin:$PATH" python3 ../planner.py --merge-sha abc --gh-repo owner/repo --config config.json --conventions conventions.md --model ai-doc-maintainer --out-plan plan.json)
+assert_ok "[ -s '$TMP/doc/prompt360.txt' ]" "#360 the prompt was captured — every assertion below is vacuous without this"
+PROMPT360=$(cat "$TMP/doc/prompt360.txt")
+# The label, per REPO_STANDARDS §20.2 rule 5: a narrowed block whose label does
+# not say so makes every omitted file read to the model as absent from the repo.
+assert_contains "$PROMPT360" 'Documentation inventory (allowed_paths only): [' "#360 D-1 the narrowed block declares its scope in its own label"
+INV360=$(grep '^Documentation inventory' "$TMP/doc/prompt360.txt" | sed 's/^[^[]*//')
+assert_ok "printf '%s' '$INV360' | jq -e '. == [\"README.md\",\"docs/DECISIONS.md\"]' >/dev/null" "#360 D-1 the inventory is exactly the allowlisted set — docs/DECISIONS.md survives 600 higher-sorting non-allowlisted files, so the filter runs BEFORE the MAX_DOC_INVENTORY slice"
+assert_absent "$INV360" 'aaa-000.md' "#360 D-1 a non-allowlisted markdown file on disk is not offered as a candidate"
+assert_absent "$INV360" 'CLAUDE.md' "#360 D-1 ...including one the consumer keeps at its root"
+# D-2 is the load-bearing half: D-1 alone leaves the bucket red, because the
+# offending proposals came from the changed-file list, not the inventory.
+assert_contains "$PROMPT360" 'Propose only paths matching the "Allowed documentation paths:" list; a path that appears in "Complete changed-file list:" but not in that list must not be proposed.' "#360 D-2 the prompt carries an IMPERATIVE binding the model to the allowlist, not just the labelled datum"
+# ...and it names the two data by their LABELS. The prohibitions and the
+# allowlist are not adjacent in the assembled prompt, so "above"/"below" would
+# be false the moment a block moves.
+assert_ok "grep -q 'Allowed documentation paths: \[' '$TMP/doc/prompt360.txt'" "#360 D-2 the label the imperative names is a real block label in the same prompt"
+# IPLAN-0025 §2.1 mandates the merge diff as an input; PR-D narrows the
+# inventory and must NOT narrow or drop this. Its unfiltered breadth is why D-2
+# is needed at all.
+assert_contains "$PROMPT360" 'Complete changed-file list: ["src/api.py"]' "#360 the changed-file list is still passed whole — PR-D narrows the inventory, not the diff"
+assert_ok "jq -e '[.low_risk_set[].path] == [\"README.md\"] and [.high_risk_set[].path] == [\"docs/DECISIONS.md\"]' '$TMP/doc/repo360/plan.json' >/dev/null" "#360 classification is unchanged by the inventory narrowing"
 
 echo "== doc-maintainer Step 9 renders a dry-run patch when the files differ (#352) =="
 # Extract-and-drive, never re-implement (how FT-40's SHA-peel guard passed while

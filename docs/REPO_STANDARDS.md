@@ -1849,6 +1849,27 @@ For any prompt this repo ships (`ai-review/review-prompt.md`,
    input missing is, by construction, the one that goes green — and nobody
    reads the log of a green check. Canon puts the degradation in the PR comment,
    so an unevaluated rule is not indistinguishable from a passed one.
+8. **The set a prompt shows a model and the set the code will accept from it
+   must agree — and a datum the prompt never turns into an imperative
+   constrains nothing.** Two obligations, and each fails on its own:
+   - **Show the accepted set.** An input wider than what the consumer will
+     accept manufactures rejections and charges them to the model. Where the
+     assembly can narrow a block to the accepted set, it does — subject to
+     rule 5, so the narrowing is declared in that block's own label.
+   - **State the constraint as an instruction.** A labelled block is an input,
+     not a prohibition; the model has no way to tell which of the blocks it was
+     handed is enforced. Where the consuming code rejects on a rule, the prompt
+     must instruct the model to obey that rule, naming the block it applies to
+     **by that block's label** — never by position, which is false the moment a
+     block moves. This bites hardest when the prompt also declares
+     consumer-supplied text untrusted DATA: canon has then instructed the model
+     to disregard any equivalent rule the consumer wrote for itself, so the
+     imperative must be canon's own.
+
+   The imperative is **advisory** — it makes non-compliance less likely, not
+   impossible, and the enforcement branch in the consuming code remains the only
+   guarantee. Do not record a prompt sentence as closing a failure bucket;
+   re-measure the bucket after the change instead.
 
 ### 20.3 Applied to `ai-review` (ci/v2.x)
 
@@ -2503,6 +2524,46 @@ mode is a separate change.
 `aidoc-flow-framework` under `ci/v2.16.0` (runs
 [30557567489](https://github.com/vladm3105/aidoc-flow-framework/actions/runs/30557567489),
 30546425750, 30504587299). Recorded as CI-0027 (PLAN-021 PR-C).
+
+### 24.4 What canon shows a model must agree with what canon will accept from it
+
+**Extends §20.2.** The normative rule is **§20.2 rule 8** and is stated only
+there; this subsection records the case that produced it and what it required in
+practice.
+
+`scripts/doc-maintainer/planner.py` built its documentation inventory from an
+unfiltered `rglob("*.md")` and handed the model up to `MAX_DOC_INVENTORY`
+entries, while `allowed_paths` — the set the same script rejects on, loudly and
+run-killing — was passed beside it as a labelled datum with no instruction
+attached. IPLAN-0025 §2.1 step 4 specifies the opposite: glob the consumer's
+`allowed_paths` set.
+
+Two changes, and the second is the load-bearing one:
+
+- **Narrow the inventory, before any truncation.** The allowlist filter runs
+  ahead of the `MAX_DOC_INVENTORY` slice; after it, a repo whose non-allowlisted
+  files sort ahead of its allowlisted ones truncates the allowlisted set away and
+  hands the model a menu it is forbidden to order from. The block is relabelled
+  `Documentation inventory (allowed_paths only):` in the same change — rule 5.
+- **Bind the model to the allowlist in the prompt.** The narrowing alone does not
+  reach the observed rejections: every one of them was a file the triggering PR
+  had just changed, and the merge diff — mandated by IPLAN-0025 and therefore not
+  removable — reaches the model as an unfiltered `Complete changed-file list:`.
+  The prompt's only prohibition was by file _type_ ("source code, workflow,
+  configuration, generated, or non-documentation files"), which markdown prose
+  files do not trip. The consumer had written the rule into its own conventions,
+  and canon's first line declares conventions untrusted DATA — so canon was
+  instructing the model to disregard the consumer's countermeasure.
+
+**A narrowing that is a no-op for one consumer is not a no-op for canon.** Every
+inventory entry ends `.md` and `matches()` is `fnmatchcase`, whose `*` crosses
+`/`, so on a consumer whose `allowed_paths` ends in a `"*.md"` catch-all the
+filter removes nothing at all. Ship the rule for the narrower allowlists, and do
+not let a release note claim the gain for a consumer that cannot see it.
+
+**Origin:** issue
+[#360](https://github.com/vladm3105/aidoc-flow-ci/issues/360), measured on
+`aidoc-flow-framework` under `ci/v2.16.0`. Recorded as CI-0027 (PLAN-021 PR-D).
 
 ## 25. A coordination surface with N writers needs a carrier that refuses a concurrent write
 

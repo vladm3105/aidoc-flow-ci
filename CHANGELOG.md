@@ -5,6 +5,40 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — the `doc-maintainer` planner offered the model files it would then reject (#360, PLAN-021 PR-D)
+
+- **The inventory is now the allowlisted set, filtered before it is truncated.**
+  `planner.py` built `Documentation inventory:` from an unfiltered
+  `rglob("*.md")` — the spec deviation from IPLAN-0025 §2.1 step 4 ("glob the
+  consumer's `allowed_paths` set"). The filter runs **ahead of** the
+  `MAX_DOC_INVENTORY` slice: after it, a repo whose non-allowlisted files sort
+  ahead of its allowlisted ones truncates the allowlisted set away entirely. The
+  block is relabelled `Documentation inventory (allowed_paths only):` in the same
+  change, per `REPO_STANDARDS` §20.2 rule 5 — a narrowed block that does not say
+  so makes every omitted file read to the model as absent from the repository.
+- **The prompt now instructs the model to obey the allowlist, and this is the
+  half that reaches the observed failures.** All six rejected proposals on the
+  pilot were files the triggering PR had **just changed**, and the merge diff —
+  mandated by IPLAN-0025, so not removable — reaches the model as an unfiltered
+  `Complete changed-file list:`. The prompt's only prohibition was by file
+  *type*, which markdown prose files do not trip, while `Allowed documentation
+  paths:` was a labelled datum with no imperative attached. Worse, the consumer
+  had written the rule into its own conventions and canon's first line declares
+  conventions untrusted DATA — so canon was telling the model to disregard the
+  consumer's own countermeasure. The new sentence names both blocks **by their
+  labels**, never by position.
+- **Advisory, not a closed bucket.** The only enforcement point is still the
+  planner's allowlist branch; a prompt sentence makes non-compliance less likely,
+  not impossible. IPLAN-0025 P4(d) ("zero allowlist-violation rejections") must
+  be **re-measured after resume**, never inferred from this change.
+- **An exact no-op on `aidoc-flow-operations`.** Every inventory entry ends
+  `.md`, `matches()` is `fnmatchcase` whose `*` crosses `/`, and that consumer's
+  `allowed_paths` ends in a `"*.md"` catch-all — so the filter removes nothing
+  there. It is `aidoc-flow-framework`, with a narrow allowlist, that gains.
+- Canon rule: `REPO_STANDARDS` **§20.2 rule 8** (normative) + **§24.4** (the
+  case). Tests: nine assertions over the captured prompt in
+  `tests/test_scripts.sh`; seven mutations, each red on a named assertion.
+
 ### Fixed — `doc-maintainer` shipped a default `apply.py` refuses, and nothing stopped it being planned (#354, PLAN-021 PR-C)
 
 - **The recommended config nominated a path the code downstream would refuse.**
