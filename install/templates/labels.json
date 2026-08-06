@@ -88,5 +88,20 @@
     "name": "skip-audit-trail",
     "color": "d876e3",
     "description": "Audit override; requires a matching [skip-audit-trail] commit-body marker"
+  },
+  {
+    "name": "handoff",
+    "color": "006b75",
+    "description": "Session-continuity issue, where the handoff is an issue (canon §5.4). One open per repo"
+  },
+  {
+    "name": "todo",
+    "color": "0052cc",
+    "description": "Captured backlog item — work to do, as distinct from a defect report (canon §5.4)"
+  },
+  {
+    "name": "status:in-progress",
+    "color": "e4e669",
+    "description": "This issue is claimed and being worked (canon §5.4). An unassigned issue being worked is a defect"
   }
 ]

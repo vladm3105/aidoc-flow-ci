@@ -775,6 +775,62 @@ config maps the paths above.
 - `dependencies` — Dependabot PRs
 - `security` — security-tagged issues/PRs
 
+### 5.4 Issue-lifecycle labels (required where the tracker is the task surface)
+
+**§5.1–§5.3 name no issue _role_.** One of them is applied to issues —
+§5.3's `security` is documented "security-tagged issues/PRs" — but it names an
+_area_, which is a different thing. (`dependencies` is Dependabot **PRs** only.)
+Once a repo's open issues **are** its backlog, three
+issue roles need names, and a role with no label can only be found by searching
+prose.
+
+That backlog convention is set outside this repo and canon does not currently
+have an `OPS-NNNN` to cite for it — §5.4 provisions the labels the convention
+needs and takes no position on the convention itself. A repo that does not work
+that way carries the labels unused, which costs nothing.
+
+| Label | Applied by | Semantics |
+| --- | --- | --- |
+| `handoff` | Human/agent at a session wrap | The session-continuity issue, **in repos whose handoff is an issue**. Exactly one open per repo |
+| `todo` | Human/agent at capture | A captured backlog item — work to do, as distinct from a defect report |
+| `status:in-progress` | Whoever claims the issue | The issue is claimed and being worked. An issue being worked with neither this label nor an assignee cannot be told apart from an unstarted one |
+
+Provisioned from `install/templates/labels.json` by `install.sh` like the other
+three groups; nothing auto-applies them, and `labeler.yml` cannot, because it
+fires on pull-request events only — never on `issues`. Every non-paused repo should carry all three —
+a repo that never uses the issue-form handoff simply leaves `handoff` unused.
+
+**A label is a lookup key, and an approximate lookup key is a defect when the
+next step is destructive.** Finding the live handoff by title search is the
+instance:
+
+```sh
+gh issue list --label handoff --state open              # exact
+gh issue list --search "HANDOFF in:title" --state open  # returns non-handoffs
+```
+
+`in:title` matches the word anywhere in the title, case-insensitively, so it
+also returns issues merely _about_ handoffs. Measured in `vladm3105/llm-router`:
+that search returned the live handoff **and** an unrelated migration issue. The
+wrap procedure's next step is to **close** what it found, so the failure is not
+a slow lookup — it is closing the wrong issue.
+
+**Shipping the label does not fix any caller.** The wrap procedure that runs the
+title search lives outside this repo, so it keeps running it until it is changed
+there; canon here supplies the exact key and says which one to use. Per §18 that
+is the owning repo's issue to file, not a local workaround to apply.
+
+**Provisioning `handoff` does not migrate any repo's handoff to an issue.** The
+surface each repo declares in its §16 governance table governs; `aidoc-flow-ci`
+declares the file form (`HANDOFF.md`, regenerated wholesale per `DECISIONS.md`
+CI-0028) and keeps it. Canon ships the label so that repos on the issue form
+have an exact key, not to move anyone onto that form.
+
+**`todo` is what lets the backlog be read without the handoff in it.** Where the
+task list is the open-issue list, a pinned handoff issue otherwise sits
+permanently at the top of it as a non-task. `is:open -label:handoff` is the
+filter; no other mechanism excludes it.
+
 ## 6. Dependabot (`.github/dependabot.yml`)
 
 Every non-paused repo ships `.github/dependabot.yml`. Ecosystems declared
