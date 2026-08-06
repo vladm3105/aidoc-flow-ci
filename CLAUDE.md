@@ -280,6 +280,23 @@ has settled — measured, reproduced, and not expected to change.
   path, stripping only a trailing `§N`/`#anchor` (`:172`) or a parenthesized
   annotation (`:180`). A prose cell — including one starting `**` — parses as a
   path and fails. Measured; see CI-0028.
+- **Two traps make the suite total read LOW, and both fail silently.**
+  `tests/lib.sh`'s `suite_summary()` wraps the counts in SGR escapes with **no
+  TTY guard**, so `grep -oE '[0-9]+ passed, [0-9]+ failed'` matches **nothing**
+  when the output is piped or redirected — the naive command returns 0, not a
+  wrong number. And two of the fifteen suites carry characters outside
+  `[a-z-]` in their names (`test_install`, `test_litellm_secrets.sh`), so a
+  `^[a-z-]+:` prefix regex silently drops **235** assertions and reads as a
+  shrinking suite. Strip SGR first:
+  `bash tests/run.sh | sed 's/\x1b\[[0-9;]*m//g' | grep -oE '[0-9]+ passed, [0-9]+ failed' | awk '{p+=$1;f+=$3} END{print NR" suites, "p" passed, "f" failed"}'`
+  → `15 suites, 1093 passed, 0 failed` at `ci/v2.16.0`+#405. Measured 2026-08-06,
+  after a wrap reported 858 and read it as suites having been dropped.
+- **`sync/check-standards-drift.sh` needs `--tier`, and exits 0 without it.**
+  Bare, it warns `--tier required`, verifies **0 of 4** control families and
+  still returns success — a gate that checked nothing, reporting pass. With
+  `--tier product` it verifies 4/4 and reports 2 known branch-protection drifts
+  (`enforce_admins`, `contexts`), which are the deliberate FT-52 canon profile,
+  not a regression.
 - **`scripts/ft30-dry-run.sh` asserts the bootstrap COMPLETED, not that it
   installed the right file set.** A run that silently dropped `ai-review.yml`
   passes every criterion. Tracked as

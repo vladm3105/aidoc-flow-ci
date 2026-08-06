@@ -411,16 +411,27 @@ population half 1 reaches — new adopters, since `safe_to_replace: false` (row
 43) — point 1 as written would ship a config whose first changelog-touching
 merge reds, at any file size, from day one.
 
-**Three things in this plan already said so, which is why this is a correction
-rather than a new decision.** §4's own analysis of `operations` says _"That is
+**Two things in this plan already said so, which is why this is a correction
+rather than a new decision.** §4's own analysis of `operations` says *"That is
 the correction that belongs in the release notes, not 'drop it from
-`allowed_paths`'"*. §9 item 2 records the founder's acceptance as *"Demoting
-`CHANGELOG.md` to high-risk"* — the shipped shape, not point 1's. And §1
-correction (b) states that framework's 200 KB failures *"recur as
-non-allowlisted rejections"* once the path is de-allowlisted. Point 1 is the one
-place the plan wrote the stronger action; three independent pre-push reviewers
-converged on it, two with reproductions. Same shape as PR-A's row-81 deviation:
-the literal was written before its governing constraint was understood.
+`allowed_paths`'"*. And §1 correction (b) states that framework's 200 KB
+failures *"recur as non-allowlisted rejections"* once the path is
+de-allowlisted. Point 1 is the one place the plan wrote the stronger action;
+three independent pre-push reviewers converged on it, two with reproductions.
+Same shape as PR-A's row-81 deviation: the literal was written before its
+governing constraint was understood.
+
+⚠️ **§9 item 2 is NOT authority for the shipped shape — it reads the other way,
+and this paragraph exists so nobody quietly "corrects" the deviation back.** Its
+headline is *"PR-C ships as specified, **both halves**"* and it closes *"PR-C
+ships as specified"*; "as specified" is point 1. Its *"Demoting `CHANGELOG.md`
+to high-risk"* sentence is about the **cost on `operations`** — where
+de-allowlisting is a no-op anyway, since that allowlist ends in a `*.md`
+catch-all — not about which keys the template edits. An earlier draft of this
+note cited it as recording "the shipped shape, not point 1's", which is an
+authority the record does not carry. **The founder has not been re-asked.** The
+deviation stands on the measured reproduction and on §4/§1 above, and wants a
+founder confirmation before `ci/v2.17.0` is tagged.
 
 Two additions the spec did not name, neither changing what it required:
 
@@ -946,7 +957,7 @@ warnings, §3's countability correction, §4 PR-A's `null` guard, §4 PR-D's D-2
 | 28 | `fail()` raises `SystemExit(1)` — which is why `allowlist_violations` could not be populated until PR-B made the branches record-then-fail | `raise SystemExit(1)` | scripts/doc-maintainer/planner.py:29 |
 | 29 | Classification runs after validation, so a tier-scoped pre-filter must follow it | `if matches(path, high_patterns) or not matches(path, low_patterns):` | scripts/doc-maintainer/planner.py:242 |
 | 30 | **PR-D:** the inventory globs every `*.md` with no allowlist filter | `for path in Path.cwd().rglob("*.md")` | scripts/doc-maintainer/planner.py:158 |
-| 31 | ...is truncated to 500 entries, so the filter must precede the slice | `MAX_DOC_INVENTORY` | scripts/doc-maintainer/planner.py:16 |
+| 31 | ...is truncated to 500 entries, so the filter must precede the slice | `MAX_DOC_INVENTORY` | scripts/doc-maintainer/planner.py:24 |
 | 32 | ...and is handed to the model as a candidate menu alongside the allowlist | `Documentation inventory:` | scripts/doc-maintainer/planner.py:174 |
 | 33 | The allowlist IS also given to the model — so the two contradict each other | `Allowed documentation paths:` | scripts/doc-maintainer/planner.py:173 |
 | 34 | `matches()` uses `fnmatchcase`, so a `*.md` catch-all matches any path — the reason operations' `allowed_paths` edit is a no-op | `fnmatch.fnmatchcase(path, pattern)` | scripts/doc-maintainer/planner.py:71 |
