@@ -5,6 +5,85 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — `doc-maintainer` shipped a default `apply.py` refuses, and nothing stopped it being planned (#354, PLAN-021 PR-C)
+
+- **The recommended config nominated a path the code downstream would refuse.**
+  `apply.py` refuses full-file regeneration over 200 KB;
+  `install/templates/doc-maintainer.json` shipped `CHANGELOG.md` in both
+  `allowed_paths` and `auto_merge.low_risk_paths`. Measured at diagnosis
+  (2026-07-30): `framework/CHANGELOG.md` 281,502 bytes (**3 of that pilot's 12
+  failing merges**), canon's own 363,377 bytes, `operations` at 89,703 and
+  running `dry_run: false`. A changelog is append-only by house rule, so the
+  threshold is one-way — no adopter's file returns under it.
+- **The template now DEMOTES `CHANGELOG.md` to high-risk rather than
+  de-allowlisting it**, and that distinction is the whole fix. `low_risk_paths`
+  is what routes a path into apply; `allowed_paths` only decides whether the
+  model may propose it at all. Removing it from `allowed_paths` would
+  **relocate** the red run rather than remove it — the path is still proposed
+  (the planner's inventory is an unfiltered `rglob("*.md")` until PR-D, and the
+  `doc-maintainer-conventions.md` template canon installs alongside the config
+  tells the model to use the changelog), and a non-allowlisted proposal is a
+  run-killing `return 1` where a high-risk one is an issue body a human acts on.
+  Measured against the shipped planner: de-allowlisted → exit 1; demoted →
+  exit 0 with the proposal in `high_risk_set`. **This deviates from PLAN-021
+  §4 PR-C item 1, deliberately** — see the plan's LANDED note.
+- **The consumer edit that protects an existing repo is to
+  `auto_merge.low_risk_paths`, and it must be made by hand.** `--update` never
+  rewrites `.github/doc-maintainer.json` unattended (`safe_to_replace: false`;
+  `--non-interactive` and the no-TTY path both keep the local file), so the
+  template change reaches **new adopters only** — but an *interactive*
+  `--update` does prompt on the drift, and answering `[r]` replaces the whole
+  file and discards every local tuning. Answer `[k]`. Note too that removing the
+  path from a consumer's `allowed_paths` can be an outright no-op: `matches()`
+  is `fnmatch.fnmatchcase`, whose `*` crosses `/`, so an allowlist ending in a
+  `*.md` catch-all re-admits it — which is exactly `aidoc-flow-operations`'
+  shape.
+  - **That demotion has a cost, accepted rather than overlooked (CI-0027):** on
+    `operations` it **retires changelog auto-maintenance**, which is that flow's
+    primary operation. Its near-term hazard was never the size refusal — at
+    ~90 KB it is well under — but truncation on whole-file regeneration tripping
+    the 30 %-deletion guard, which stays out of scope
+    ([#372](https://github.com/vladm3105/aidoc-flow-ci/issues/372)).
+- **The planner now drops what apply will refuse, before dispatching.** An
+  over-limit path is recorded to `validation.rejected` with reason
+  `over-apply-limit` and a `::warning::` that names
+  `auto_merge.low_risk_paths` — the configuration that nominated it — rather
+  than only the file. A configuration mismatch is a note, not a red run that
+  arrives after a full planning call has been spent.
+- **The filter is scoped to the low-risk set, and that is load-bearing.** apply
+  is invoked only with `--tier low_risk`; high-risk entries become an issue body
+  or a dry-run comment and never reach the guard, so an unscoped filter would
+  silently delete over-limit high-risk proposals that work correctly today. It
+  therefore runs *after* classification.
+- **One declaration of the limit.** `apply.py` exports `MAX_APPLY_BYTES` and
+  `planner.py` imports it; a second literal would drift, and a pre-filter tuned
+  to a limit the guard no longer enforces fails in the direction that looks
+  safe. Measured with apply's own yardstick — `len(read_text().encode())`, never
+  `stat().st_size`, which differ on CRLF files.
+- **`REPO_STANDARDS` §24.3 added** — a default a canon template recommends must
+  be executable by the code that consumes it, and a guard's pre-filter must be
+  scoped to the tier that reaches the guard. §24.4 remains reserved for PLAN-021
+  PR-D.
+- **An unreadable planned file now fails loud and named**, instead of the bare
+  `UnicodeDecodeError` traceback the new size measurement would otherwise raise —
+  which named neither the file nor the cause and wrote no plan artifact at all.
+  A different condition from over-limit, so a different disposition (§24.2).
+- **Not fixed here, filed instead:** the pre-filter mirrors apply's size refusal
+  only, not its symlink refusal, so a symlinked low-risk doc still reds the run
+  ([#403](https://github.com/vladm3105/aidoc-flow-ci/issues/403)); and
+  `.doc-maintainer-scripts/` is not cleared before the fetch loop, so a
+  committed package directory can shadow `apply`/`litellm_client` at import time
+  ([#404](https://github.com/vladm3105/aidoc-flow-ci/issues/404)).
+- **Not fixed here, deliberately:** the 200 KB guard itself, which is correct and
+  stays; a config knob for the limit; and section-scoped edits for append-only
+  documents — whole-file regeneration is the wrong edit shape for a changelog at
+  *any* size, since the only correct edit is an insert under `## [Unreleased]`.
+- **Release note for adopters:** this changes an installed template. Existing
+  consumers must edit `.github/doc-maintainer.json` **by hand** — remove
+  `CHANGELOG.md` from `auto_merge.low_risk_paths` and leave it in
+  `allowed_paths`. `--update` will not do it for you, and answering `[r]` at its
+  drift prompt replaces the whole file rather than making that edit.
+
 ### Added — `REPO_STANDARDS` §25: multi-agent fleet coordination (#387, CI-0032)
 
 - **Canon assumed one agent per repo at a time.** Every coordination mechanism it

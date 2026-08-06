@@ -12,6 +12,13 @@ import sys
 from pathlib import Path, PurePosixPath
 
 from litellm_client import completion, redact_secret_shaped
+# Single-sourced from the script that enforces it, never re-declared here. Both
+# are fetched into one directory by the workflow's
+# `for op in planner apply reconcile` loop and copied into one directory by the
+# offline harness, and apply.py has no import-time side effects. Two literals
+# would drift, and the planner would then filter on a limit apply no longer
+# enforces (REPO_STANDARDS §24.3).
+from apply import MAX_APPLY_BYTES
 
 MAX_PATCH_BYTES = 120_000
 MAX_DOC_INVENTORY = 500
@@ -236,6 +243,49 @@ Changed files and bounded patches: {json.dumps(patches)}
             high.append(normalized)
         else:
             low.append(normalized)
+
+    # Drop what apply will refuse ON SIZE, instead of paying a planning call to
+    # have it refused downstream (REPO_STANDARDS §24.3). Scoped to the size
+    # guard deliberately — apply's other pre-LLM refusal, the symlink check at
+    # `apply.py`'s `source.is_symlink()`, is NOT mirrored here, because the
+    # validation above tests `Path(path).is_file()`, which follows symlinks.
+    # That gap is real and filed as #403, not overlooked; do not read this
+    # loop as "everything apply would refuse". This runs AFTER classification
+    # and against the LOW-risk set only, and both are load-bearing: the 200 KB
+    # refusal lives in apply.py, and the workflow invokes apply only with
+    # `--tier low_risk`. High-risk entries never reach apply — they become the
+    # issue body or the dry-run comment, where an over-limit file is a perfectly
+    # good proposal — so an unscoped filter would silently delete high-risk
+    # proposals that work correctly today.
+    #
+    # Measure with apply's own yardstick, `len(read_text().encode())`, never
+    # `stat().st_size`: `read_text()` translates CRLF, so on a CRLF file the two
+    # disagree and the mismatch is a silent false drop (or a false keep).
+    survivors: list[dict] = []
+    for entry in low:
+        try:
+            size = len(Path(entry["path"]).read_text().encode())
+        except (OSError, UnicodeDecodeError) as exc:
+            # Loud and NAMED, the `load_json` idiom above. apply.py reads the
+            # same file the same way and would die on it too — but as a bare
+            # traceback whose annotation names neither the file nor the cause,
+            # which is the diagnosis problem #354 is about. Not a drop: an
+            # unreadable document is a different condition from an over-limit
+            # one (§24.2), and it is not something a configuration change fixes.
+            fail(f"cannot read planned documentation file {entry['path']}: {exc}")
+        if size > MAX_APPLY_BYTES:
+            rejected.append({"path": entry["path"], "reason": "over-apply-limit"})
+            # Name the config that nominated it, not just the file: the path is
+            # not the thing that is wrong, `auto_merge.low_risk_paths` is.
+            print(
+                f"::warning::planner: dropping low-risk {entry['path']}: {size} bytes "
+                f"exceeds apply's {MAX_APPLY_BYTES}-byte full-file limit — "
+                "auto_merge.low_risk_paths nominates a path apply will refuse",
+                flush=True,
+            )
+            continue
+        survivors.append(entry)
+    low = survivors
 
     # `validation` has two shapes: the no-PR early exit above writes `rejected`
     # only, with no `allowlist_violations` and no `patch_bytes`. Any consumer

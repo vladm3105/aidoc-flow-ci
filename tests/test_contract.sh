@@ -162,6 +162,32 @@ sys.exit(0 if len(up) == 1 and up[0]['with'].get('if-no-files-found') == 'error'
 PYEOF" "doc-maintainer preserves dry-run patches as an artifact"
 assert_ok "jq -e '.auto_merge.high_risk_paths | index(\"**/DECISIONS.md\") and index(\"**/ROADMAP.md\") and index(\"**/HANDOFF.md\")' install/templates/doc-maintainer.json >/dev/null" "nested governance documents are high-risk by default"
 assert_ok "jq -e '.allowed_paths | index(\"DECISIONS.md\")' install/templates/doc-maintainer.json >/dev/null" "high-risk root decisions file is consistently allowlisted"
+# §24.3 — a default canon recommends must be executable by the code that
+# consumes it. `low_risk_paths` is the knob that matters: it is what routes a
+# path into apply.py, the only holder of the 200 KB refusal. So CHANGELOG.md
+# must NOT be low-risk.
+assert_ok "jq -e '.auto_merge.low_risk_paths | index(\"CHANGELOG.md\") | not' install/templates/doc-maintainer.json >/dev/null" "#354 the template does not mark CHANGELOG.md low-risk — apply refuses it once it passes 200 KB, and a changelog only grows"
+# ...and it must STAY allowlisted. De-allowlisting relocates the failure rather
+# than removing it: the planner's inventory is an unfiltered `rglob("*.md")` and
+# the conventions template canon installs alongside this file tells the model to
+# use CHANGELOG.md, so it is still proposed — and a non-allowlisted proposal is
+# a run-killing `return 1`, where a high-risk one is an issue for a human.
+# Reverse this pair and a fresh adopter's first changelog-touching merge reds.
+assert_ok "jq -e '(.allowed_paths | index(\"CHANGELOG.md\")) != null and (.auto_merge.high_risk_paths | index(\"CHANGELOG.md\")) != null' install/templates/doc-maintainer.json >/dev/null" "#354 CHANGELOG.md stays allowlisted and is high-risk, so a proposal reaches a human instead of failing the run"
+assert_ok "grep -q 'CHANGELOG.md' install/templates/doc-maintainer-conventions.md" "#354 the conventions template still names CHANGELOG.md — the pair above is what keeps canon from contradicting itself (§24.3)"
+# One declaration of the limit, imported rather than copied. An untested
+# duplicate drifts, and the planner would then pre-filter on a number apply no
+# longer enforces — which fails silently in the safe-looking direction.
+# Count ASSIGNMENTS, not the literal: a second declaration written `= 200000`
+# carries no underscore, so a grep for the literal token cannot see it, and the
+# import assertion below still matches. That mutation survives a literal grep.
+assert_eq "$(grep -hE '^[[:space:]]*MAX_APPLY_BYTES[[:space:]]*=' scripts/doc-maintainer/*.py | wc -l)" "1" "#354 exactly one assignment to MAX_APPLY_BYTES exists across the doc-maintainer scripts"
+assert_eq "$(grep -hE '200_?000' scripts/doc-maintainer/*.py | wc -l)" "1" "#354 ...and the limit appears as a literal exactly once, so no caller re-states the number inline"
+assert_ok "grep -q '^from apply import MAX_APPLY_BYTES$' scripts/doc-maintainer/planner.py" "#354 the planner imports that declaration instead of re-stating it"
+# ...which only resolves because the workflow fetches both scripts into one
+# directory. Nothing else asserts that co-fetch, and dropping `apply` from the
+# loop would make the planner ImportError at import time, before any annotation.
+assert_ok "grep -q 'for op in planner apply reconcile; do' .github/workflows/doc-maintainer.yml" "#354 the fetch loop still co-fetches planner and apply, which is what makes that import resolve"
 assert_ok "jq -e '.version == 2 and .litellm.model == \"ai-reviewer\"' install/templates/config.json.template >/dev/null && jq -e '.properties.version.const == 2 and (.required | index(\"litellm\"))' schemas/ai-review-config-v2.schema.json >/dev/null" "AI-review config and schema share the v2 contract"
 assert_ok "grep -q 'secrets.LITELLM_REVIEW_API_KEY' .github/workflows/ai-review.yml && grep -q 'secrets.LITELLM_DOC_API_KEY' .github/workflows/doc-maintainer.yml" "AI workflows use separate purpose-scoped LiteLLM keys"
 assert_ok "grep -q 'LITELLM_REVIEW_API_KEY' .github/workflows/litellm-smoke.yml && grep -q 'LITELLM_DOC_API_KEY' .github/workflows/litellm-smoke.yml && grep -q 'ai-reviewer' .github/workflows/litellm-smoke.yml && grep -q 'ai-doc-maintainer' .github/workflows/litellm-smoke.yml" "real-proxy smoke workflow covers both canonical aliases and keys"

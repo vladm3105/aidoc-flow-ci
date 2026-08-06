@@ -1,12 +1,14 @@
 # PLAN-021 — doc-maintainer: make the dry-run path executable
 
-**Status:** **In Progress — PR-0 (2026-08-03), PR-A (#382) and PR-B (#392, both
-2026-08-05) landed.** Both §9 items closed (353b approved 2026-07-30;
-PR-C's consumer cost accepted 2026-07-31, **re-confirmed against the corrected
-census** below), and both owed measurements are discharged in §9. **PR-0 done**
-(`DECISIONS.md` CI-0027; the §3 residual filed as
-[#372](https://github.com/vladm3105/aidoc-flow-ci/issues/372)). **Next: PR-C
-(#354), then PR-D (#360)** — PR-D lands *with* the cluster, not after.
+**Status:** **In Progress — PR-0 (2026-08-03), PR-A (#382), PR-B (#392, both
+2026-08-05) and PR-C (2026-08-06) landed.** Both §9 items closed (353b approved
+2026-07-30; PR-C's consumer cost accepted 2026-07-31, **re-confirmed against the
+corrected census** below), and both owed measurements are discharged in §9.
+**PR-0 done** (`DECISIONS.md` CI-0027; the §3 residual filed as
+[#372](https://github.com/vladm3105/aidoc-flow-ci/issues/372)). **Next: PR-D
+(#360)**, the last of the cluster and co-equal with PR-B by merge count.
+**PR-C has armed the 🔴 FT-30 cold-start gate** — the founder-executed
+`scripts/ft30-dry-run.sh` is now owed before `ci/v2.17.0` can be tagged (§6).
 
 > **This plan has not converged — read §10 before treating it as reviewed.**
 > Four independent passes have returned **10, 9, 6 and 7** load-bearing
@@ -389,6 +391,62 @@ classification are correct and out of scope.
 **Doc surfaces:** `REPO_STANDARDS` §24.2 · `CHANGELOG.md` · the issue close comment.
 
 ### PR-C — #354: stop planning what apply will refuse
+
+⚠️ **LANDED 2026-08-06, and half 1 DEVIATED from point 1 below on purpose.**
+Point 1 says drop `CHANGELOG.md` from `allowed_paths` **and**
+`auto_merge.low_risk_paths`. What shipped drops it from `low_risk_paths` only,
+adds it to `high_risk_paths`, and **leaves it allowlisted**. **Do not restore
+the de-allowlisting** — see ledger rows 40-41.
+
+**Why, measured rather than argued.** De-allowlisting does not remove the red
+run, it **relocates** it. The path is still proposed — the inventory is an
+unfiltered `rglob("*.md")` until PR-D lands (row 30), and
+`install/templates/doc-maintainer-conventions.md` tells the model to *"Use
+`CHANGELOG.md` for concise user-visible changes"* — and a non-allowlisted
+proposal is a run-killing `return 1` (PR-B's record-then-fail), where a
+high-risk one is an issue body a human acts on. Driven against the shipped
+planner with a stub proposing `CHANGELOG.md`: de-allowlisted → `::error::` +
+exit 1; demoted → exit 0, `high_risk_set: [CHANGELOG.md]`. So on the **only**
+population half 1 reaches — new adopters, since `safe_to_replace: false` (row
+43) — point 1 as written would ship a config whose first changelog-touching
+merge reds, at any file size, from day one.
+
+**Three things in this plan already said so, which is why this is a correction
+rather than a new decision.** §4's own analysis of `operations` says _"That is
+the correction that belongs in the release notes, not 'drop it from
+`allowed_paths`'"*. §9 item 2 records the founder's acceptance as *"Demoting
+`CHANGELOG.md` to high-risk"* — the shipped shape, not point 1's. And §1
+correction (b) states that framework's 200 KB failures *"recur as
+non-allowlisted rejections"* once the path is de-allowlisted. Point 1 is the one
+place the plan wrote the stronger action; three independent pre-push reviewers
+converged on it, two with reproductions. Same shape as PR-A's row-81 deviation:
+the literal was written before its governing constraint was understood.
+
+Two additions the spec did not name, neither changing what it required:
+
+- **`apply.py`'s refusal message derives its KB figure** from the new
+  `MAX_APPLY_BYTES` (`{MAX_APPLY_BYTES // 1000} KB`) instead of restating
+  `200 KB`. The rendered string is byte-identical today; what changes is that
+  the message can no longer contradict the constant. Ledger row 36's symbol
+  moved with it.
+- **The template records why `CHANGELOG.md` is not low-risk**, in a
+  `_comment_changelog` key — the `_comment*` convention both consumers already
+  use (framework's own key is `_comment_allowed_paths`; operations uses
+  `_comment` / `_comment2`). A demotion with no stated reason reads as an
+  oversight and gets reverted.
+
+Two review findings were **filed rather than folded**, per §4 PR-B's scope
+discipline: the pre-filter mirrors apply's size refusal but not its symlink
+refusal ([#403](https://github.com/vladm3105/aidoc-flow-ci/issues/403)), and
+`.doc-maintainer-scripts/` is not cleared before the fetch loop, so a committed
+package directory shadows `apply` / `litellm_client` at import time —
+pre-existing, not fork-reachable, and wider than this PR
+([#404](https://github.com/vladm3105/aidoc-flow-ci/issues/404)).
+
+The spec's fallback ("one literal plus a `test_contract.sh` assertion that the
+declarations agree") was **not** needed: the import shipped, so there is one
+declaration and no agreement to assert. `test_contract.sh` instead asserts the
+number appears exactly once across `scripts/doc-maintainer/*.py`.
 
 1. **Template default.** Drop `CHANGELOG.md` from `allowed_paths` and
    `auto_merge.low_risk_paths` in the install template.
@@ -881,25 +939,25 @@ warnings, §3's countability correction, §4 PR-A's `null` guard, §4 PR-D's D-2
 | 21 | The kill switch is a `maintain`-job property, checked in exactly one place | `KILL=$(jq -r '.kill_switch // false' "$CONFIG_PATH")` | .github/workflows/doc-maintainer.yml:340 |
 | 22 | The reconcile job is schedule-gated and reads no config, so the kill switch does not stop it | `if: ${{ github.event_name == 'schedule' }}` | .github/workflows/doc-maintainer.yml:111 |
 | 23 | Infrastructure errors carry a literal suffix in the pin-resolve/fetch steps — not workflow-wide | `INFRASTRUCTURE error, not a maintenance result` | .github/workflows/doc-maintainer.yml:180 |
-| 24 | **PR-B landed:** the one `if` testing two conditions is split — the duplicate branch records and `continue`s | `if path in seen:` | scripts/doc-maintainer/planner.py:208 |
-| 25 | **PR-B landed:** ...and the allowlist branch is its own, with its own message; the conflated string is gone | `non-allowlisted plan path:` | scripts/doc-maintainer/planner.py:223 |
-| 26 | **PR-B landed:** `validation.rejected` / `allowlist_violations` are now populated at plan construction, reached because both branches `continue` instead of aborting | `"allowlist_violations": violations` | scripts/doc-maintainer/planner.py:243 |
-| 27 | The no-PR early exit writes a DIFFERENT validation shape, so consumers must tolerate both | `"pr_number": None` | scripts/doc-maintainer/planner.py:130 |
-| 28 | `fail()` raises `SystemExit(1)` — which is why `allowlist_violations` could not be populated until PR-B made the branches record-then-fail | `raise SystemExit(1)` | scripts/doc-maintainer/planner.py:22 |
-| 29 | Classification runs after validation, so a tier-scoped pre-filter must follow it | `if matches(path, high_patterns) or not matches(path, low_patterns):` | scripts/doc-maintainer/planner.py:235 |
-| 30 | **PR-D:** the inventory globs every `*.md` with no allowlist filter | `for path in Path.cwd().rglob("*.md")` | scripts/doc-maintainer/planner.py:151 |
+| 24 | **PR-B landed:** the one `if` testing two conditions is split — the duplicate branch records and `continue`s | `if path in seen:` | scripts/doc-maintainer/planner.py:215 |
+| 25 | **PR-B landed:** ...and the allowlist branch is its own, with its own message; the conflated string is gone | `non-allowlisted plan path:` | scripts/doc-maintainer/planner.py:230 |
+| 26 | **PR-B landed:** `validation.rejected` / `allowlist_violations` are now populated at plan construction, reached because both branches `continue` instead of aborting | `"allowlist_violations": violations` | scripts/doc-maintainer/planner.py:293 |
+| 27 | The no-PR early exit writes a DIFFERENT validation shape, so consumers must tolerate both | `"pr_number": None` | scripts/doc-maintainer/planner.py:137 |
+| 28 | `fail()` raises `SystemExit(1)` — which is why `allowlist_violations` could not be populated until PR-B made the branches record-then-fail | `raise SystemExit(1)` | scripts/doc-maintainer/planner.py:29 |
+| 29 | Classification runs after validation, so a tier-scoped pre-filter must follow it | `if matches(path, high_patterns) or not matches(path, low_patterns):` | scripts/doc-maintainer/planner.py:242 |
+| 30 | **PR-D:** the inventory globs every `*.md` with no allowlist filter | `for path in Path.cwd().rglob("*.md")` | scripts/doc-maintainer/planner.py:158 |
 | 31 | ...is truncated to 500 entries, so the filter must precede the slice | `MAX_DOC_INVENTORY` | scripts/doc-maintainer/planner.py:16 |
-| 32 | ...and is handed to the model as a candidate menu alongside the allowlist | `Documentation inventory:` | scripts/doc-maintainer/planner.py:167 |
-| 33 | The allowlist IS also given to the model — so the two contradict each other | `Allowed documentation paths:` | scripts/doc-maintainer/planner.py:166 |
-| 34 | `matches()` uses `fnmatchcase`, so a `*.md` catch-all matches any path — the reason operations' `allowed_paths` edit is a no-op | `fnmatch.fnmatchcase(path, pattern)` | scripts/doc-maintainer/planner.py:64 |
-| 35 | apply.py refuses any source file over 200 KB, as an inline literal PR-C must name | `if len(original.encode()) > 200_000:` | scripts/doc-maintainer/apply.py:59 |
-| 36 | ...with a message naming the file, not the config that nominated it | `refusing autonomous full-file generation over 200 KB` | scripts/doc-maintainer/apply.py:60 |
-| 37 | apply.py is import-safe, so planner.py may import a constant from it | `if __name__ == "__main__":` | scripts/doc-maintainer/apply.py:104 |
-| 38 | The 30 %-deletion guard whose blast radius is the standing residual | `agent deleted/replaced more than 30% of` | scripts/doc-maintainer/apply.py:96 |
-| 39 | apply.py demands a complete replacement file — the wrong shape for an append-only doc | `Return the COMPLETE replacement file` | scripts/doc-maintainer/apply.py:66 |
-| 40 | The install template ships `CHANGELOG.md` as allowed | `"allowed_paths"` | install/templates/doc-maintainer.json:6 |
-| 41 | ...and as low-risk, i.e. auto-mergeable | `"low_risk_paths"` | install/templates/doc-maintainer.json:10 |
-| 42 | Canon's own changelog is 363 KB — 1.8x the apply limit | `# Changelog — aidoc-flow-ci` | CHANGELOG.md:1 |
+| 32 | ...and is handed to the model as a candidate menu alongside the allowlist | `Documentation inventory:` | scripts/doc-maintainer/planner.py:174 |
+| 33 | The allowlist IS also given to the model — so the two contradict each other | `Allowed documentation paths:` | scripts/doc-maintainer/planner.py:173 |
+| 34 | `matches()` uses `fnmatchcase`, so a `*.md` catch-all matches any path — the reason operations' `allowed_paths` edit is a no-op | `fnmatch.fnmatchcase(path, pattern)` | scripts/doc-maintainer/planner.py:71 |
+| 35 | **PR-C landed:** the refusal now names the constant PR-C was required to introduce, instead of an inline literal | `if len(original.encode()) > MAX_APPLY_BYTES:` | scripts/doc-maintainer/apply.py:69 |
+| 36 | ...and the message derives its KB figure from that constant, so it cannot contradict the guard. It still names only the file — the planner's new `::warning::` (row 82) is what names the config | `refusing autonomous full-file generation over {MAX_APPLY_BYTES` | scripts/doc-maintainer/apply.py:70 |
+| 37 | apply.py is import-safe, so planner.py may import a constant from it | `if __name__ == "__main__":` | scripts/doc-maintainer/apply.py:114 |
+| 38 | The 30 %-deletion guard whose blast radius is the standing residual | `agent deleted/replaced more than 30% of` | scripts/doc-maintainer/apply.py:106 |
+| 39 | apply.py demands a complete replacement file — the wrong shape for an append-only doc | `Return the COMPLETE replacement file` | scripts/doc-maintainer/apply.py:76 |
+| 40 | **PR-C landed, deviating from point 1:** the install template still ships `CHANGELOG.md` as **allowed**, on purpose — de-allowlisting relocates the red run rather than removing it (see the PR-C LANDED note) | `"allowed_paths"` | install/templates/doc-maintainer.json:6 |
+| 41 | ...but no longer as low-risk: it is listed under `high_risk_paths` instead, and low-risk is the only tier that reaches apply (row 19) | `"low_risk_paths"` | install/templates/doc-maintainer.json:11 |
+| 42 | Canon's own changelog was 363 KB at diagnosis (2026-07-30) and is 392,780 bytes as of 2026-08-06 — ~2x the apply limit, and one-way | `# Changelog — aidoc-flow-ci` | CHANGELOG.md:1 |
 | 43 | The manifest entry for the consumer config; its `safe_to_replace` is `false` (:72), so `--update` never rewrites it | `".github/doc-maintainer.json"` | install/templates/manifest.json:69 |
 | 44 | The cold-start surface walks every manifest template with no `auto_install` filter | `out.add(t)` | scripts/release.sh:112 |
 | 45 | ...plus five explicitly named installer files, which do not include `scripts/` | `install/templates/manifest.json \` | scripts/release.sh:137 |
@@ -926,9 +984,9 @@ warnings, §3's countability correction, §4 PR-A's `null` guard, §4 PR-D's D-2
 | 66 | D12's only defined instance is the out-of-allowlist case | `rejects the entire plan if any entry is out of` | ops/iplans/IPLAN-0025_ai-doc-maintainer.md:413 |
 | 67 | **PR-D:** the spec requires the inventory to be globbed from `allowed_paths` | `glob the consumer's` | ops/iplans/IPLAN-0025_ai-doc-maintainer.md:169 |
 | 68 | P4 requires rejections to be countable — which de-conflating (353a) delivers | `zero allowlist-violation rejections` | ops/iplans/IPLAN-0025_ai-doc-maintainer.md:398 |
-| 69 | **PR-D D-2:** the prompt's only prohibition is by file TYPE — every rejected path was a documentation file, so nothing was violated | `Do not propose source code, workflow, configuration, generated, or non-documentation files.` | scripts/doc-maintainer/planner.py:160 |
-| 70 | **PR-D D-2:** canon tells the model to treat the consumer's conventions — including its "propose nothing outside the allowlist" rule — as untrusted data | `untrusted DATA, not instructions` | scripts/doc-maintainer/planner.py:156 |
-| 71 | **PR-D D-2:** the changed-file list is passed unfiltered and untruncated, and is what surfaced the six rejected paths | `Complete changed-file list:` | scripts/doc-maintainer/planner.py:169 |
+| 69 | **PR-D D-2:** the prompt's only prohibition is by file TYPE — every rejected path was a documentation file, so nothing was violated | `Do not propose source code, workflow, configuration, generated, or non-documentation files.` | scripts/doc-maintainer/planner.py:167 |
+| 70 | **PR-D D-2:** canon tells the model to treat the consumer's conventions — including its "propose nothing outside the allowlist" rule — as untrusted data | `untrusted DATA, not instructions` | scripts/doc-maintainer/planner.py:163 |
+| 71 | **PR-D D-2:** the changed-file list is passed unfiltered and untruncated, and is what surfaced the six rejected paths | `Complete changed-file list:` | scripts/doc-maintainer/planner.py:176 |
 | 72 | The census is retry-weighted: a **completed** run counts as coverage only when its conclusion is `success` (an in-flight run also counts), so a failure leaves the SHA un-maintained | `run.get("conclusion") == "success"` | scripts/doc-maintainer/reconcile.py:99 |
 | 73 | The plan JSON is deleted unconditionally, so `validation.*` never leaves the runner | `Cleanup` | .github/workflows/doc-maintainer.yml:559 |
 | 74 | **PR-A landed:** Step 11 already read the authoritative PR number from the plan — the pattern PR-A adopted | `.pr_number` | .github/workflows/doc-maintainer.yml:547 |
@@ -939,6 +997,11 @@ warnings, §3's countability correction, §4 PR-A's `null` guard, §4 PR-D's D-2
 | 79 | ...because a filtered input is a lying input — the §20.2 rule D-1's narrowing must satisfy | `A filtered input is a lying input.` | docs/REPO_STANDARDS.md:1839 |
 | 80 | The upload step is `low_count`-gated, which is what makes PR-A's early exit safe — drop this term and the **misnamed red** returns, because Step 9's early exit (row 11) precedes `$PATCH`'s creation (row 13) and the upload hard-errors on the missing file (row 14). Silent green is the *other* knob — creating `$PATCH` earlier (§4) | `steps.plan.outputs.low_count != '0'` | .github/workflows/doc-maintainer.yml:473 |
 | 81 | **PR-A landed, and deviated from §4 PR-A point 1 on purpose:** an empty `$PR` is now an **exit-1 fault gate**, because the value comes from the plan and empty means a truncated plan. Point 1's literal `[ -z "$PR" ] \|\| [ "$PR" = null ]` was written when empty meant a `gh` fault, and would now violate point 2. **Do not restore it** — see `aidoc-flow-ci` PR #382 | `.pr_number is empty in` | .github/workflows/doc-maintainer.yml:423 |
+| 82 | **PR-C landed:** the pre-filter iterates `low` only — the tier scoping §4 PR-C requires, sitting after classification (row 29) because apply is reached only via `--tier low_risk` (row 19) | `for entry in low:` | scripts/doc-maintainer/planner.py:265 |
+| 83 | ...and takes the limit by import, so there is one declaration rather than two that can drift | `from apply import MAX_APPLY_BYTES` | scripts/doc-maintainer/planner.py:21 |
+| 84 | ...and the template records WHY `CHANGELOG.md` is high-risk, so the demotion does not read as an oversight and get reverted | `_comment_changelog` | install/templates/doc-maintainer.json:7 |
+| 85 | **PR-C landed:** the conventions template canon installs alongside the config tells the model to use `CHANGELOG.md` — which is why de-allowlisting it would make canon contradict itself | `for concise user-visible changes` | install/templates/doc-maintainer-conventions.md:6 |
+| 86 | **PR-C landed:** an unreadable planned file is a NAMED loud failure, not a drop — a different condition from over-limit (§24.2) | `cannot read planned documentation file` | scripts/doc-maintainer/planner.py:275 |
 
 *Measured facts verified by command rather than cited symbol (re-run before
 trusting): `operations` carries `CHANGELOG.md` in both `allowed_paths` and

@@ -2229,8 +2229,8 @@ one per PLAN-021 **code** PR (PR-A…PR-D; PR-0 was the decision record and
 carries no rule), each stating its own rule under its own sub-heading. §24.3
 (_a default a canon template recommends must be executable by the code that
 consumes it_) and §24.4 (_what canon shows a model must agree with what canon
-will accept from it_) land with PR-C and PR-D; §24.1 shipped with PR-A and
-§24.2 with PR-B.
+will accept from it_) — of which §24.4 still lands with PR-D; §24.1 shipped with
+PR-A, §24.2 with PR-B and §24.3 with PR-C.
 **§24 is claimed in full by PLAN-021 — a later plan wanting a new section takes
 §26**, PLAN-023 included. (§25 went to issue #387, which landed first; PLAN-023
 already declares that it yields and renumbers on landing.)
@@ -2386,6 +2386,123 @@ failures over its first 47 runs under `ci/v2.16.0`. Recorded as CI-0027
 blast-radius half of the same defect on a different guard — the 30 %-deletion
 trip, which reds the run rather than dropping the entry — is deliberately not
 fixed here; it is [#372](https://github.com/vladm3105/aidoc-flow-ci/issues/372).
+
+### 24.3 A default a canon template recommends must be executable by the code that consumes it
+
+**A value shipped as a default in a canon template is a claim that the code
+downstream of it will accept that value. Where a later stage can refuse the
+default, the template must not route the value to that stage — and where the
+refusal turns on a quantity that moves in one direction, "it works today" is not
+the test.**
+
+**Measured.** `apply.py` refuses full-file regeneration above `MAX_APPLY_BYTES`
+(200 KB). `install/templates/doc-maintainer.json` shipped `CHANGELOG.md` in
+**both** `allowed_paths` and `auto_merge.low_risk_paths`. Sizes as measured at
+diagnosis, `wc -c` on 2026-07-30:
+
+| File | Bytes | Against the limit |
+|---|---:|---|
+| `aidoc-flow-ci/CHANGELOG.md` | 363,377 | 1.8× — canon's own |
+| `framework/CHANGELOG.md` | 281,502 | 1.4× — failing at the time |
+| `operations/CHANGELOG.md` | 89,703 | under, and running `dry_run: false` |
+
+Re-measured 2026-08-06: `aidoc-flow-ci` 392,780 and `framework` 316,335, both
+larger; `operations` unchanged at 89,703, because it has taken no entry since.
+**Growth is monotonic, not continuous** — a file under the limit is not safe, it
+is undated.
+
+Three of `aidoc-flow-framework`'s 23 pilot failures — **3 of its 12 distinct
+failing merges** — were this refusal. Nothing between the two files stops it:
+the planner is given no file sizes at all — only the allowlist and a `*.md`
+inventory — and the size limit lives in a different script that runs later, so
+an over-limit path is planned, dispatched, and refused only after a full LLM
+planning call has been spent.
+
+**The threshold is one-way, which is what makes "under the limit today"
+worthless as an argument.** A Keep a Changelog file is append-only by
+construction: entries are added, never rewritten, reordered or pruned (the
+workspace's changelog rule, in the global `CLAUDE.md` under "Changelog and
+Roadmap Policy" — a per-agent file, so state the property rather than citing it
+at a consumer). No adopter's changelog comes back under the limit. The only open
+question is when each one crosses it — and `operations` will cross it in
+**live** mode, not dry-run.
+
+**It also mis-attributes.** The refusal names the file, so it reads as a
+property of that document rather than of the configuration that nominated it,
+and it fires only on the merges where the model happens to select the changelog
+— so the same broken default looks fine on most runs.
+
+**Four rules follow, and the first is the one most likely to be got wrong.**
+
+1. **Demote the doomed default — do not de-allowlist it.** The knob that
+   protects anyone is `auto_merge.low_risk_paths`, because that is what routes a
+   path into the refusing stage; removing the path from `allowed_paths` instead
+   **relocates the failure rather than removing it.** The path is still proposed
+   — the planner's inventory is an unfiltered `rglob("*.md")` (until §24.4) and
+   the conventions template canon installs alongside the config tells the model
+   to use the changelog — and a non-allowlisted proposal is a run-killing
+   `return 1`, where a high-risk one is an issue body a human acts on. Measured
+   against the shipped planner: de-allowlisted → `::error::` and exit 1;
+   demoted → exit 0 with the proposal in `high_risk_set`. **De-allowlisting a
+   path canon's own conventions recommend also makes canon contradict itself**,
+   which is what §24.4 forbids.
+2. **A `safe_to_replace: false` template change reaches new adopters only, and
+   an interactive `--update` is the exception.** `--non-interactive` and the
+   no-TTY path both keep the local file, so nothing is rewritten unattended. An
+   **interactive** `--update` still prints a drift prompt for the file, and
+   answering `[r]` replaces the whole thing — discarding every local tuning.
+   Answer `[k]` and make the edit by hand. Existing consumers therefore need a
+   named, hand-applied edit in the release note, not "the template changed".
+   Note also that removing a path from a consumer's `allowed_paths` by name can
+   be an outright no-op: `matches()` uses `fnmatch.fnmatchcase`, whose `*`
+   crosses `/` with no path-separator exception, so an allowlist ending in a
+   `*.md` catch-all re-admits it. The low-risk knob has no such escape, in
+   **both** modes, since the apply step's `if:` carries no `dry_run` term.
+3. **Pre-filter upstream, scoped to the tier that reaches the guard.** The
+   planner drops an over-limit path before dispatching and records it in
+   `validation.rejected` with its own reason, so a configuration mismatch
+   surfaces as a note rather than a red run. **Scope is load-bearing:** apply is
+   invoked only with `--tier low_risk`, so an unscoped filter would silently
+   delete over-limit **high-risk** proposals, which work correctly — they are
+   read by a human, not regenerated. The filter therefore runs _after_
+   classification, never before it. **Scope it to the guard you are mirroring,
+   and say so** — a pre-filter comment reading "drop what the next stage will
+   refuse" claims coverage of every refusal that stage has, and the next reader
+   will believe it.
+4. **Measure with the guard's own yardstick, and declare the number once.**
+   `len(read_text().encode())`, not `stat().st_size`: `read_text()` translates
+   CRLF, so the two disagree on any CRLF file and the mismatch is a silent false
+   drop in one direction and a false keep in the other. The limit is declared
+   once in the script that enforces it and **imported** by the pre-filter; a
+   second literal is an untested duplicate, and a pre-filter tuned to a limit
+   the guard no longer enforces fails in the direction that looks safe.
+
+**A pre-filter must name the configuration, not only the path.** The dropped
+path is not the thing that is wrong; the entry in `auto_merge.low_risk_paths`
+that nominated it is. A message naming only the file sends the reader to the
+document.
+
+**State the cost of the demotion, or it reads as free.** Demoting a changelog to
+high-risk on a live consumer **retires changelog auto-maintenance there** —
+which on `aidoc-flow-operations` is that flow's primary operation. That cost was
+put to the founder and accepted (CI-0027); it is not a side effect to discover
+after the fact.
+
+**What is NOT wrong here.** The 200 KB guard is correct and stays: re-emitting a
+281 KB file to change one entry sends the whole file through the model in both
+directions and re-derives every unchanged byte, and two of the pilot's twelve
+failing merges tripped apply's own 30 %-deletion guard on exactly that shape.
+The defect is only that nothing prevented such a path from being _planned_. The
+deeper mismatch — whole-file regeneration is the wrong edit shape for an
+append-only document at any size, where the only correct edit is an insert under
+`## [Unreleased]` — is real and deliberately out of scope; a section-scoped edit
+mode is a separate change.
+
+**Origin:** issue
+[#354](https://github.com/vladm3105/aidoc-flow-ci/issues/354), measured on
+`aidoc-flow-framework` under `ci/v2.16.0` (runs
+[30557567489](https://github.com/vladm3105/aidoc-flow-framework/actions/runs/30557567489),
+30546425750, 30504587299). Recorded as CI-0027 (PLAN-021 PR-C).
 
 ## 25. A coordination surface with N writers needs a carrier that refuses a concurrent write
 

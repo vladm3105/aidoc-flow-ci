@@ -287,6 +287,8 @@ def completion(prompt, **_kwargs):
         return '{"updates":[{"path":"README.md","instruction":"Document /v2/items","rationale":"PR #42 adds the endpoint"},{"path":"README.md","instruction":"Document it a second time","rationale":"duplicate proposal"},{"path":"CLAUDE.md","instruction":"Edit a non-allowlisted file that IS on disk","rationale":"outside allowed_paths"},{"path":"CLAUDE.md","instruction":"Edit it a second time","rationale":"repeat of an already-rejected path"},{"path":"notes/ABSENT.md","instruction":"Edit a non-allowlisted file that is NOT on disk","rationale":"outside allowed_paths and missing"}]}'
     if mode == "duplicate":
         return '{"updates":[{"path":"README.md","instruction":"Document /v2/items","rationale":"PR #42 adds the endpoint"},{"path":"README.md","instruction":"Document it a second time","rationale":"duplicate proposal"}]}'
+    if mode == "oversize":
+        return '{"updates":[{"path":"README.md","instruction":"Edit an over-limit LOW-risk file","rationale":"apply would refuse it"},{"path":"SMALL.md","instruction":"Edit an under-limit low-risk file","rationale":"apply can process it"},{"path":"CRLF.md","instruction":"Edit a low-risk file whose on-disk size exceeds the limit but whose decoded size does not","rationale":"apply measures the decoded text"},{"path":"ATLIMIT.md","instruction":"Edit a low-risk file sitting exactly ON the limit","rationale":"apply accepts it, so the planner must too"},{"path":"UTF8.md","instruction":"Edit a low-risk file under the limit in characters but over it in bytes","rationale":"apply measures bytes"},{"path":"docs/BIG.md","instruction":"Edit an over-limit HIGH-risk file","rationale":"never reaches apply"}]}'
     if mode == "nonallowlisted-present":
         return '{"updates":[{"path":"README.md","instruction":"Document /v2/items","rationale":"PR #42 adds the endpoint"},{"path":"CLAUDE.md","instruction":"Edit a non-allowlisted file that IS on disk","rationale":"outside allowed_paths"}]}'
     return '{"updates":[{"path":"README.md","instruction":"Document /v2/items","rationale":"PR #42 adds the endpoint"},{"path":"docs/DECISIONS.md","instruction":"Record the API decision","rationale":"Public API changed"}]}'
@@ -384,6 +386,80 @@ else
   _g "#353 an on-disk non-allowlisted path still fails the run"
 fi
 assert_ok "jq -e '.high_risk_set == [] and [.low_risk_set[].path] == [\"README.md\"] and [.validation.allowlist_violations[].path] == [\"CLAUDE.md\"]' '$TMP/doc/repo353/plan-present.json' >/dev/null" "#353 an on-disk rejected path is dropped, not classified (the allowlist branch's \`continue\`)"
+
+echo "== doc-maintainer planner drops what apply will refuse, LOW-risk only (#354) =="
+# Its own repo dir again: this fixture needs files an order of magnitude larger
+# than any other block's, and README.md is rewritten in place by the apply cases.
+#
+# The tier scoping is the half that is easy to get wrong and impossible to see
+# afterwards. apply.py's 200 KB refusal is reachable only with `--tier low_risk`
+# (doc-maintainer.yml:402), so an unscoped filter would silently delete
+# over-limit HIGH-risk proposals that work correctly today — they become the
+# issue body or the dry-run comment and never touch apply. `docs/BIG.md` is here
+# to fail that mutation: it is over the limit and must SURVIVE.
+mkdir -p "$TMP/doc/repo354/docs"
+cat > "$TMP/doc/repo354/config.json" <<'JSON'
+{"dry_run":true,"allowed_paths":["README.md","SMALL.md","CRLF.md","ATLIMIT.md","UTF8.md","docs/**"],"max_edits_per_pr":10,"auto_merge":{"low_risk_paths":["README.md","SMALL.md","CRLF.md","ATLIMIT.md","UTF8.md"],"high_risk_paths":["docs/**"]}}
+JSON
+printf '# Conventions\n' > "$TMP/doc/repo354/conventions.md"
+printf '# Small\n'       > "$TMP/doc/repo354/SMALL.md"
+# Five fixtures, one per way the measurement can be got wrong. 300 KB is 1.5x
+# the limit with no arithmetic to get wrong. The other three each kill a
+# distinct wrong implementation that every remaining assertion would pass:
+#   CRLF.md    — `read_text()` translates CRLF, so on-disk size is OVER and the
+#                bytes apply measures are UNDER. Kills `stat().st_size`.
+#   ATLIMIT.md — exactly ON the limit. apply's guard is `>`, so apply ACCEPTS
+#                this file; a planner using `>=` silently drops what apply would
+#                have processed. Kills the off-by-one.
+#   UTF8.md    — under the limit in characters, over it in bytes. Every other
+#                fixture here is ASCII, where the two are identical. Kills
+#                `len(read_text())` without the `.encode()`.
+python3 - "$TMP/doc/repo354" <<'PY'
+import pathlib, sys
+root = pathlib.Path(sys.argv[1])
+big = "# Big\n" + ("x" * 79 + "\n") * 3750
+assert len(big.encode()) > 200_000, "fixture must exceed the apply limit"
+(root / "README.md").write_text(big)
+(root / "docs" / "BIG.md").write_text(big)
+crlf = root / "CRLF.md"
+crlf.write_bytes((b"x" * 78 + b"\r\n") * 2520)
+assert crlf.stat().st_size > 200_000, "CRLF fixture must look over-limit on disk"
+assert len(crlf.read_text().encode()) <= 200_000, "...and under it once decoded"
+atlimit = root / "ATLIMIT.md"
+atlimit.write_text("x" * 199_999 + "\n")
+assert len(atlimit.read_text().encode()) == 200_000, "at-limit fixture must sit exactly ON the limit"
+utf8 = root / "UTF8.md"
+utf8.write_text("—" * 70_000)
+assert len(utf8.read_text()) <= 200_000, "utf8 fixture must be UNDER the limit in characters"
+assert len(utf8.read_text().encode()) > 200_000, "...and OVER it in bytes"
+PY
+if (cd "$TMP/doc/repo354" && LITELLM_FAKE_MODE=oversize PATH="$TMP/doc/bin:$PATH" python3 ../planner.py --merge-sha abc --gh-repo owner/repo --config config.json --conventions conventions.md --model ai-doc-maintainer --out-plan plan.json) >"$TMP/doc/repo354/oversize.log" 2>&1; then
+  _g "#354 an over-limit low-risk path is a warning, not a failed run"
+else
+  _r "#354 the planner failed the run over a path it should have dropped"
+fi
+OVER354=$(cat "$TMP/doc/repo354/oversize.log")
+assert_ok "jq -e '[.low_risk_set[].path] == [\"SMALL.md\",\"CRLF.md\",\"ATLIMIT.md\"]' '$TMP/doc/repo354/plan.json' >/dev/null" "#354 the over-limit low-risk paths are dropped and the rest still ship — pinning all three ways the measurement can be wrong: st_size (CRLF), >= instead of > (ATLIMIT), and characters instead of bytes (UTF8)"
+assert_ok "jq -e '[.high_risk_set[].path] == [\"docs/BIG.md\"]' '$TMP/doc/repo354/plan.json' >/dev/null" "#354 an over-limit HIGH-risk path is KEPT — the filter is tier-scoped, because high-risk never reaches apply"
+assert_ok "jq -e '.validation.rejected == [{\"path\":\"README.md\",\"reason\":\"over-apply-limit\"},{\"path\":\"UTF8.md\",\"reason\":\"over-apply-limit\"}]' '$TMP/doc/repo354/plan.json' >/dev/null" "#354 both drops are recorded in validation.rejected under their own reason, distinct from duplicate/not-allowlisted (§24.2)"
+assert_contains "$OVER354" '::warning::planner: dropping low-risk README.md' "#354 the drop is annotated"
+assert_contains "$OVER354" 'auto_merge.low_risk_paths nominates a path apply will refuse' "#354 the message names the CONFIG that nominated the path, not only the file — the diagnosis #354 was hard to reach"
+assert_absent "$OVER354" '::error::' "#354 nothing about an over-limit path is an error; it is a configuration note"
+# The planner must reject exactly what apply rejects. The CRLF fixture pins the
+# measurement; driving the real apply over the same file pins the number, so a
+# planner filtering on a limit apply no longer enforces cannot pass both.
+echo '{"pr_number":42,"low_risk_set":[{"path":"README.md","instruction":"i","rationale":"r"}],"high_risk_set":[]}' > "$TMP/doc/repo354/forced-plan.json"
+_apply354_out="$( (cd "$TMP/doc/repo354" && PATH="$TMP/doc/bin:$PATH" python3 ../apply.py --plan forced-plan.json --tier low_risk --gh-repo owner/repo --model ai-doc-maintainer --out-dir proposed) 2>&1 || true )"
+assert_contains "$_apply354_out" "refusing autonomous full-file generation over 200 KB: README.md" "#354 apply does refuse the very file the planner dropped — the two agree on the limit and on how it is measured"
+# An unreadable document is a DIFFERENT condition and gets the opposite
+# disposition: named and loud, not dropped (§24.2 — one message, one condition).
+# Without the guard this is a bare UnicodeDecodeError traceback naming neither
+# the file nor the cause, and no plan is written at all.
+printf '# Small\n\xff\xfe not utf-8\n' > "$TMP/doc/repo354/SMALL.md"
+_unread354="$( (cd "$TMP/doc/repo354" && LITELLM_FAKE_MODE=oversize PATH="$TMP/doc/bin:$PATH" python3 ../planner.py --merge-sha abc --gh-repo owner/repo --config config.json --conventions conventions.md --model ai-doc-maintainer --out-plan plan-unreadable.json) 2>&1 || true )"
+assert_contains "$_unread354" "::error::planner: cannot read planned documentation file SMALL.md" "#354 an unreadable planned file fails LOUD and names the file, rather than raising a bare traceback"
+assert_absent "$_unread354" "Traceback (most recent call last)" "#354 ...and does not surface as a Python traceback"
+printf '# Small\n' > "$TMP/doc/repo354/SMALL.md"
 
 echo "== doc-maintainer Step 9 renders a dry-run patch when the files differ (#352) =="
 # Extract-and-drive, never re-implement (how FT-40's SHA-peel guard passed while
