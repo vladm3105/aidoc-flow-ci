@@ -5,11 +5,48 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — `REPO_STANDARDS` §25: multi-agent fleet coordination (#387, CI-0032)
+
+- **Canon assumed one agent per repo at a time.** Every coordination mechanism it
+  specifies is a shared mutable resource with no lock — correct for one writer,
+  silently wrong for N. §25 states the carrier rule: **issue body** = last write
+  wins (one claimant); **issue comments** = append-only (safe for N);
+  **a git file** = *refuses* the write. Repo-wide state belongs in a file because
+  git is the only one of the three that fails a concurrent write instead of
+  taking the last.
+- **The handoff is the sharp instance.** "Close the current handoff issue and open
+  its successor" is a compare-and-swap with no lock; with N agents the losing
+  sessions' handoffs become **unfindable rather than deleted**, and every agent
+  reports success. Latent, not yet observed — written before the first collision
+  because afterwards the evidence looks like nothing happened. This repo's
+  `HANDOFF.md` stays a file (CI-0028) and is unaffected.
+- **Claim before starting** (§25.3) and **one `git worktree` per issue** (§25.4),
+  with the caveat that a worktree does **not** protect a session from its own
+  sub-agents — they share the parent's tree by construction. That is the shape of
+  this repo's one measured loss (PR #277 shipped without its code; #278 exists to
+  land it), and the remedy for it is `CLAUDE.md`'s re-diff trap, not §25.4.
+- **Two proposals declined, not deferred** (§25.5, reasoning in CI-0032): a
+  `flock`-serialized deploy — **no repo that canon governs deploys a running
+  service from a shell**, so the rule would bind nothing — and making `CLAUDE.md`
+  a symlink to `AGENTS.md`, which would change what §16's governance table and
+  `parse-governance-table.py` parse and degrade to a text stub on Windows.
+  `AGENTS.md` exists in **2 of the 9** non-paused repos and is a symlink in
+  neither, but the two **disagree on direction** — framework's points at
+  `CLAUDE.md` as the full agreement, engramory's is co-equal and split by topic
+  with `CLAUDE.md` pointing *at it*. There is no single convention to codify.
+- **The reachability problem behind that second decline stays open** — rules in
+  `CLAUDE.md` and Claude-only skills are never seen by Codex or DeepSeek.
+  [#395](https://github.com/vladm3105/aidoc-flow-ci/issues/395) owns it.
+- **§25 is a no-op for a single writer.** No rule adds a step to that case.
+- `REPO_STANDARDS` §24's preamble and PLAN-023's section claim are re-pointed:
+  **PR-1 now takes §26.** `DECISIONS.md` **CI-0031 stays reserved** for PLAN-023
+  PR-0, which already cites it; this entry took CI-0032 instead.
+
 ### Added — an issue-label namespace: `handoff`, `todo`, `status:in-progress` (#386, canon §5.4)
 
 - **The canonical set named no issue *roles*.** All 18 were PR-applied — §5.1
-  state, §5.2 diff-class, §5.3 area. (§5.3's `security` and `dependencies` do
-  land on issues; they name an *area*, not a role.) That was sufficient while
+  state, §5.2 diff-class, §5.3 area. (§5.3's `security` does land on issues; it
+  names an *area*, not a role. `dependencies` is Dependabot PRs only.) That was sufficient while
   issues were incidental. The set is now **21**.
 - **`handoff` is an exact lookup key for a search that currently returns
   non-handoffs.** The wrap procedure finds the live handoff with

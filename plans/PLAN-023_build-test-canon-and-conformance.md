@@ -1024,10 +1024,18 @@ inconsistent with the flow this plan ships.
   trigger (Claim 56) — and **supersedes its `apply_rulesets()` design** (§9e, §9f);
   PLAN-020 Phase 3's text must be edited to point here. PLAN-020 is DEFERRED, and
   `DECISIONS.md` CI-0029 constrains its WEAKENED-drift rule
-- **`REPO_STANDARDS` §24 is claimed by two unmerged plans** — this plan (PR-1) and
-  `plans/PLAN-021_doc-maintainer-dry-run-cluster.md`. Whichever lands second takes
-  §25 and must re-point the other's references. **PLAN-021 has priority** (it is
-  READY; this plan is not), so PLAN-023 yields and renumbers on landing
+- **`REPO_STANDARDS` §24 went to PLAN-021 and §25 to issue #387** — both landed
+  while this plan was still unREADY, so **PR-1 takes §26**. The yield this plan
+  declared is now called: **every remaining `§24` in this document is a forward
+  reference to the section PR-1 will write, and PR-1 must renumber them all to
+  §26** — **eleven occurrences across nine lines** (143, 215, 330, 660×2, 673,
+  675, 696, 951, 988×2), deliberately left in place because renumbering them now
+  would drift this plan's Claim-ledger citations for no benefit before PR-1
+  exists. **This bullet's own `§24` mentions are NOT among them and must not be
+  renumbered** — "§24 went to PLAN-021" stays true. List them with
+  `grep -n '§24' plans/PLAN-023_*.md | grep -v '^102[0-9]:\|^103[0-9]:'`.
+  **`DECISIONS.md` CI-0031 remains reserved for PR-0** — #387 took **CI-0032**
+  rather than disturb the three places this plan already cites CI-0031
 - `docs/overrides.md` §5 — the three override modes this plan extends
 - `plans/ASSESSMENT_flow-ci-value-and-standard-readiness.md` — why adoption, not
   canon breadth, is the binding constraint

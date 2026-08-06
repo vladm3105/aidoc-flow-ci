@@ -2232,7 +2232,8 @@ consumes it_) and §24.4 (_what canon shows a model must agree with what canon
 will accept from it_) land with PR-C and PR-D; §24.1 shipped with PR-A and
 §24.2 with PR-B.
 **§24 is claimed in full by PLAN-021 — a later plan wanting a new section takes
-§25**, PLAN-023 included.
+§26**, PLAN-023 included. (§25 went to issue #387, which landed first; PLAN-023
+already declares that it yields and renumbers on landing.)
 
 ### 24.1 A tolerated non-zero exit must be scoped off
 
@@ -2385,3 +2386,120 @@ failures over its first 47 runs under `ci/v2.16.0`. Recorded as CI-0027
 blast-radius half of the same defect on a different guard — the 30 %-deletion
 trip, which reds the run rather than dropping the entry — is deliberately not
 fixed here; it is [#372](https://github.com/vladm3105/aidoc-flow-ci/issues/372).
+
+## 25. A coordination surface with N writers needs a carrier that refuses a concurrent write
+
+Every coordination mechanism canon specifies was designed for **one agent per
+repo at a time**. That assumption no longer holds: fleets of independent agents
+— Claude Code sessions, Codex, DeepSeek — run against one repository with no
+orchestrator and no shared context. Each mechanism is a shared mutable resource
+with **no lock**, which is correct for one writer and silently wrong for N.
+
+**This section is a no-op for a single writer.** Every rule below is already
+satisfied when one agent works one repo; none of it adds a step to that case.
+
+### 25.1 The failure mode — an unlocked compare-and-swap reads as success
+
+The session-handoff convention is the sharp instance. "Close the current handoff
+issue and open its successor" is a **compare-and-swap** — read the current value,
+act on it, write a new one — with nothing between the read and the write. With
+five agents:
+
+- each closes whatever it found and creates its own, so four sessions' handoffs
+  become **unfindable** — not deleted, which is the part that makes it hard to
+  notice;
+- two wrapping in the same window both create successors, breaking the _exactly
+  one open_ invariant that the lookup depends on.
+
+Neither failure raises anything. Both agents report success, because both did
+exactly what they were told. Latent workspace-wide, not yet observed — the
+evidence and the reason for deciding it early are in `DECISIONS.md` CI-0032.
+
+### 25.2 The rule — choose the carrier by how it behaves under a concurrent write
+
+**Coordinate per issue, not per session.** An issue is naturally sharded:
+claiming or commenting on one never touches another. Within that, three carriers
+behave differently and are not interchangeable:
+
+| Carrier | Concurrent-write behavior | Use for |
+| --- | --- | --- |
+| Issue **body** | Last write wins, silently | Current state of that one issue — **one claimant** |
+| Issue **comments** | Append-only; every write survives | Per-session log — **safe for N writers** |
+| A **git file** | **Refuses** the write — non-fast-forward, or a merge conflict | Repo-wide state |
+
+**Repo-wide state belongs in a git file, and the reason is the refusal, not the
+format.** Git is the only one of the three that fails a concurrent write instead
+of silently taking the last.
+
+**This does not decide any repo's handoff surface — §16 does.** The surface each
+repo declares in its §16 governance table governs, exactly as §5.4 states.
+`aidoc-flow-ci` declares the file form (`HANDOFF.md`, regenerated wholesale per
+`DECISIONS.md` CI-0028) and keeps it; a file form has no compare-and-swap to
+lose, which is a property of the choice, not the reason canon made it. Where a
+repo's handoff **is** an issue, it carries the `handoff` label (§5.4), which is
+what makes the lookup exact rather than a title search.
+
+### 25.3 Claim before starting
+
+**Set the assignee, the `status:in-progress` label (§5.4), or both, before the
+first edit — not at the first push.** An issue being worked that carries neither
+is indistinguishable from an unstarted one, so agents handed "the open issues in
+priority order" all start the same one.
+
+Re-derive with `gh label list -R <repo> --limit 200 | grep status:`. Measured
+2026-08-05, **before** §5.4 shipped, across seven repos (`aidoc-flow-ci`,
+`-operations`, `-framework`, `-interlog`, `-business`, `b-local-privy`,
+`llm-router`): **0 carried any `status:*` label**, so the claim was unrecordable
+everywhere. `aidoc-flow-ci` now carries it — it self-adopted with §5.4 — so that
+repo no longer reproduces the zero.
+
+### 25.4 One worktree per issue
+
+**An agent that will edit files works in its own `git worktree`, on a branch
+named for the issue it claimed.** Agents sharing one checkout share `HEAD` and
+the index: one agent's `checkout -b` moves another's branch mid-edit, and
+`git add -A` sweeps a neighbour's half-written files into your commit. The
+result passes hooks and reads correctly in review, because nothing about it is
+malformed — it is simply someone else's work, or missing your own.
+
+Worktrees are the right shape because they give each agent its own `HEAD` and
+index **while sharing the object store** — no `.git/index.lock` contention, and
+integration stays a local `git merge`. The alternatives considered and rejected
+are in CI-0032.
+
+Three caveats, all load-bearing:
+
+- **A worktree does NOT protect a session from its own sub-agents.** They run in
+  the parent's tree by construction, so the one measured loss in this repo —
+  PR #277 shipping without the code it was written to add, landed separately by
+  #278 — is **not** prevented by this rule. What prevents it is the durable trap
+  in `CLAUDE.md`: `git add -A` and diff against what was reviewed **after** the
+  agents finish, before committing. §25.4 separates agents from _each other_;
+  that rule separates you from _your own_. You need both.
+- **These repos are submodules of the `aidoc-flow` umbrella.** A worktree lives
+  outside the umbrella's tree, so the umbrella's pointer bump must still be made
+  from the primary checkout.
+- **Remove the worktree when the issue closes** (`git worktree remove`). An
+  abandoned worktree keeps a branch checked out, and the next agent's `checkout`
+  of that branch fails with a message that names the worktree, not the cause.
+
+### 25.5 What this section deliberately does NOT require
+
+Two rules proposed with it are **declined, not deferred** — recorded here so they
+are not re-proposed as oversights. The evidence and the full reasoning are in
+`DECISIONS.md` CI-0032; do not restate them:
+
+- **A `flock`-serialized deploy is not canon here** — no repo that canon governs
+  deploys a running service from a shell, so the rule would have no instance to
+  bind. It belongs in the docs of a repo that does.
+- **`CLAUDE.md` is not made a symlink to `AGENTS.md`** — it would change what
+  §16's governance table and `parse-governance-table.py` parse, and degrade to a
+  text stub on Windows without `core.symlinks`.
+
+**The problem behind the second decline is real and stays open:** conventions
+living in `CLAUDE.md` and Claude-only skills are never seen by Codex or DeepSeek.
+Declining the symlink does not address it —
+[#395](https://github.com/vladm3105/aidoc-flow-ci/issues/395) does.
+
+**Origin:** issue #387, filed from `vladm3105/llm-router`. Recorded as CI-0032.
+Labels in §5.4 (#386).
