@@ -1818,8 +1818,9 @@ sends the author to fix something that was never wrong.
 
 ### 20.2 The rule
 
-For any prompt this repo ships (`ai-review/review-prompt.md`,
-`ai-review/fix-prompt.md`):
+Rules 1-7 govern the two prompts this repo ships as files
+(`ai-review/review-prompt.md`, `ai-review/fix-prompt.md`); **rule 8 reaches
+further — see its own Scope note**:
 
 1. **Enumerate the inputs.** The prompt states, up front, exactly what the model
    receives and that it receives nothing else — no tools, no filesystem, no
@@ -1849,6 +1850,47 @@ For any prompt this repo ships (`ai-review/review-prompt.md`,
    input missing is, by construction, the one that goes green — and nobody
    reads the log of a green check. Canon puts the degradation in the PR comment,
    so an unevaluated rule is not indistinguishable from a passed one.
+8. **The set a prompt shows a model and the set the code will accept from it
+   must agree — and a datum the prompt never turns into an imperative
+   constrains nothing.** Two obligations, and each fails on its own:
+   - **Show the accepted set, and narrow before you truncate.** An input wider
+     than what the consumer will accept manufactures rejections and charges
+     them to the model. Where the assembly can narrow a block to the accepted
+     set, it does — and the narrowing precedes any truncation of that block,
+     or every rejectable entry sorting ahead of an acceptable one consumes a
+     slot and the truncation discards the accepted set instead. This is a case
+     rule 5's "prefer collecting the whole set" preference yields to, because
+     the omitted entries are not merely unmarked but _rejectable_; rule 5's
+     labelling obligation still applies in full, so the narrowed block's own
+     label states its scope.
+   - **State the constraint as an instruction.** A labelled block is an input,
+     not a prohibition; the model has no way to tell which of the blocks it was
+     handed is enforced. Where the consuming code rejects on a rule, the prompt
+     must instruct the model to obey that rule, naming the block it applies to
+     **by that block's label** — never by position, which is false the moment a
+     block moves. This bites hardest when the prompt also declares
+     consumer-supplied text untrusted DATA: canon has then instructed the model
+     to disregard any equivalent rule the consumer wrote for itself, so the
+     imperative must be canon's own.
+
+   The imperative is **advisory** — it makes non-compliance less likely, not
+   impossible, and the enforcement branch in the consuming code remains the only
+   guarantee. Do not record a prompt sentence as closing a failure bucket;
+   re-measure the bucket after the change instead. And where the narrowing is a
+   no-op for a given consumer's configuration, do not let a release note claim
+   the gain for that consumer.
+
+   **Scope.** Rule 8 was derived from a third prompt this repo ships — the one
+   `scripts/doc-maintainer/planner.py` assembles — and governs it as well as the
+   two named in the lead-in. **Rules 1, 4, 6 and 7 are not claimed for that
+   prompt:** it has no "your inputs" section (1); it truncates its conventions,
+   PR body, inventory and patch blocks — four in all — with no `UNAVAILABLE`-style
+   marker (4); it has no inputs section for the assembly to be one contract with,
+   and `tests/test_contract.sh` asserts nothing about its blocks (6); and it
+   discloses no degraded input to a human (7). That is a known gap, filed as
+   [#413](https://github.com/vladm3105/aidoc-flow-ci/issues/413), not a
+   compliance. **Rule 5 it does satisfy** — the narrowed block's label states its
+   scope — which is the whole of §24.4.
 
 ### 20.3 Applied to `ai-review` (ci/v2.x)
 
@@ -2226,11 +2268,11 @@ CI-0025. §23.4 added from #331.
 
 **§24 is a container, not a single rule.** It holds four independent sub-rules,
 one per PLAN-021 **code** PR (PR-A…PR-D; PR-0 was the decision record and
-carries no rule), each stating its own rule under its own sub-heading. §24.3
-(_a default a canon template recommends must be executable by the code that
-consumes it_) and §24.4 (_what canon shows a model must agree with what canon
-will accept from it_) — of which §24.4 still lands with PR-D; §24.1 shipped with
-PR-A, §24.2 with PR-B and §24.3 with PR-C.
+carries no rule). §24.1 shipped with PR-A, §24.2 with PR-B, §24.3 (_a default a
+canon template recommends must be executable by the code that consumes it_) with
+PR-C, and §24.4 (_what canon shows a model must agree with what canon will
+accept from it_) with PR-D. §24.4's rule belongs to prompt assembly and is
+therefore carried by §20.2 rule 8, which §24.4 extends.
 **§24 is claimed in full by PLAN-021 — a later plan wanting a new section takes
 §26**, PLAN-023 included. (§25 went to issue #387, which landed first; PLAN-023
 already declares that it yields and renumbers on landing.)
@@ -2438,9 +2480,11 @@ and it fires only on the merges where the model happens to select the changelog
    protects anyone is `auto_merge.low_risk_paths`, because that is what routes a
    path into the refusing stage; removing the path from `allowed_paths` instead
    **relocates the failure rather than removing it.** The path is still proposed
-   — the planner's inventory is an unfiltered `rglob("*.md")` (until §24.4) and
-   the conventions template canon installs alongside the config tells the model
-   to use the changelog — and a non-allowlisted proposal is a run-killing
+   — the conventions template canon installs alongside the config tells the model
+   to use the changelog, and the merge's changed-file list reaches the model
+   unfiltered. (§24.4 later narrowed the _inventory_, which was the third route,
+   and added an allowlist imperative that is advisory only — neither removes
+   this one.) A non-allowlisted proposal is a run-killing
    `return 1`, where a high-risk one is an issue body a human acts on. Measured
    against the shipped planner: de-allowlisted → `::error::` and exit 1;
    demoted → exit 0 with the proposal in `high_risk_set`. **De-allowlisting a
@@ -2503,6 +2547,43 @@ mode is a separate change.
 `aidoc-flow-framework` under `ci/v2.16.0` (runs
 [30557567489](https://github.com/vladm3105/aidoc-flow-framework/actions/runs/30557567489),
 30546425750, 30504587299). Recorded as CI-0027 (PLAN-021 PR-C).
+
+### 24.4 What canon shows a model must agree with what canon will accept from it
+
+**Extends §20.2.** The general rule is **§20.2 rule 8**; this subsection records
+the case that produced it and what it required in practice.
+
+`scripts/doc-maintainer/planner.py` built its documentation inventory from an
+unfiltered `rglob("*.md")` and handed the model up to `MAX_DOC_INVENTORY`
+entries, while `allowed_paths` — the set the same script rejects on, loudly and
+run-killing — was passed beside it as a labelled datum with no instruction
+attached. IPLAN-0025 §2.1 step 4 specifies the opposite: glob the consumer's
+`allowed_paths` set.
+
+Two changes, and the second is the load-bearing one:
+
+- **The inventory is narrowed ahead of the `MAX_DOC_INVENTORY` slice**, and the
+  block is relabelled `Documentation inventory (allowed_paths only):` in the same
+  change.
+- **The prompt binds the model to the allowlist.** The narrowing alone does not
+  reach the observed rejections: every one of them was a file the triggering PRs
+  had just changed, and the merge diff — which IPLAN-0025 §2.1 mandates as an
+  input — reaches the model both as the bounded patches and as an unfiltered
+  `Complete changed-file list:`.
+  The prompt's only prohibition was by file _type_ ("source code, workflow,
+  configuration, generated, or non-documentation files"), which markdown prose
+  files do not trip. The consumer had written the rule into its own conventions,
+  and canon's preamble declares conventions untrusted DATA — so canon was
+  instructing the model to disregard the consumer's countermeasure.
+
+The narrowing is an **exact no-op** on a consumer whose `allowed_paths` ends in a
+`"*.md"` catch-all: `matches()` is `fnmatchcase`, whose `*` crosses `/`, and every
+inventory entry ends `.md`. That is `aidoc-flow-operations`; it is the narrower
+allowlists that gain.
+
+**Origin:** issue
+[#360](https://github.com/vladm3105/aidoc-flow-ci/issues/360), measured on
+`aidoc-flow-framework` under `ci/v2.16.0`. Recorded as CI-0027 (PLAN-021 PR-D).
 
 ## 25. A coordination surface with N writers needs a carrier that refuses a concurrent write
 
