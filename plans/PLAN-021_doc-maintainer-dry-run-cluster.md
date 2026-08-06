@@ -912,7 +912,7 @@ warnings, §3's countability correction, §4 PR-A's `null` guard, §4 PR-D's D-2
 | 52 | Canon requires every canon-body change to ship a REPO_STANDARDS update | `Every canon-body change ships with a` | CLAUDE.md:225 |
 | 53 | This repo adopts OPS-0061's ≤3-doc-surface cap verbatim | `OPS-0061 governance PR discipline` | CLAUDE.md:115 |
 | 54 | `plans/` + GitHub issues ARE this repo's backlog, which is why PR-D files an issue first (the cross-repo section governs the opposite direction and is NOT the authority here). Re-pinned 2026-07-31: CI-0028 rewrote this row, and the legacy `plans/FRAMEWORK-TODO.md` is declared live in the row below it | `its backlog, whoever filed them` | CLAUDE.md:73 |
-| 55 | The highest existing canon section is §23, so the new rule is §24 | `## 23. Only a code-changing event may cancel an in-flight run of a required gate` | docs/REPO_STANDARDS.md:2008 |
+| 55 | The highest existing canon section is §23, so the new rule is §24 | `## 23. Only a code-changing event may cancel an in-flight run of a required gate` | docs/REPO_STANDARDS.md:2064 |
 | 56 | The highest existing decision id is CI-0026, so the new record is CI-0027 | `## CI-0026` | DECISIONS.md:1565 |
 | 57 | Semver: MAJOR is the input/schema/consumer-surface test; MINOR is "additive" | `Additive` | CLAUDE.md:230 |
 | 58 | The framework pilot is PAUSED | `"kill_switch": true` | .github/doc-maintainer.json:6 |
@@ -936,7 +936,7 @@ warnings, §3's countability correction, §4 PR-A's `null` guard, §4 PR-D's D-2
 | 76 | ...and the un-maintained SHA is then re-dispatched — the mechanism behind the retry weighting | `"gh", "workflow", "run", args.workflow` | scripts/doc-maintainer/reconcile.py:129 |
 | 77 | ...bounded by a 90-minute lookback against a 30-minute cron, which is what caps it at ~3 | `--lookback-min 90` | .github/workflows/doc-maintainer.yml:191 |
 | 78 | **PR-D D-1:** CI-0027 requires D-1 to disclose its narrowing in the block's label, and §24.4 to extend §20 rather than sit beside it | `must be written as an extension of §20, not beside it` | DECISIONS.md:1728 |
-| 79 | ...because a filtered input is a lying input — the §20.2 rule D-1's narrowing must satisfy | `A filtered input is a lying input.` | docs/REPO_STANDARDS.md:1783 |
+| 79 | ...because a filtered input is a lying input — the §20.2 rule D-1's narrowing must satisfy | `A filtered input is a lying input.` | docs/REPO_STANDARDS.md:1839 |
 | 80 | The upload step is `low_count`-gated, which is what makes PR-A's early exit safe — drop this term and the **misnamed red** returns, because Step 9's early exit (row 11) precedes `$PATCH`'s creation (row 13) and the upload hard-errors on the missing file (row 14). Silent green is the *other* knob — creating `$PATCH` earlier (§4) | `steps.plan.outputs.low_count != '0'` | .github/workflows/doc-maintainer.yml:473 |
 | 81 | **PR-A landed, and deviated from §4 PR-A point 1 on purpose:** an empty `$PR` is now an **exit-1 fault gate**, because the value comes from the plan and empty means a truncated plan. Point 1's literal `[ -z "$PR" ] \|\| [ "$PR" = null ]` was written when empty meant a `gh` fault, and would now violate point 2. **Do not restore it** — see `aidoc-flow-ci` PR #382 | `.pr_number is empty in` | .github/workflows/doc-maintainer.yml:423 |
 
