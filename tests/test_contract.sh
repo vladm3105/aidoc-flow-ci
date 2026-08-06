@@ -165,8 +165,16 @@ assert_ok "jq -e '.allowed_paths | index(\"DECISIONS.md\")' install/templates/do
 assert_ok "jq -e '.version == 2 and .litellm.model == \"ai-reviewer\"' install/templates/config.json.template >/dev/null && jq -e '.properties.version.const == 2 and (.required | index(\"litellm\"))' schemas/ai-review-config-v2.schema.json >/dev/null" "AI-review config and schema share the v2 contract"
 assert_ok "grep -q 'secrets.LITELLM_REVIEW_API_KEY' .github/workflows/ai-review.yml && grep -q 'secrets.LITELLM_DOC_API_KEY' .github/workflows/doc-maintainer.yml" "AI workflows use separate purpose-scoped LiteLLM keys"
 assert_ok "grep -q 'LITELLM_REVIEW_API_KEY' .github/workflows/litellm-smoke.yml && grep -q 'LITELLM_DOC_API_KEY' .github/workflows/litellm-smoke.yml && grep -q 'ai-reviewer' .github/workflows/litellm-smoke.yml && grep -q 'ai-doc-maintainer' .github/workflows/litellm-smoke.yml" "real-proxy smoke workflow covers both canonical aliases and keys"
-assert_ok "jq -e 'length == 18 and ([.[].name | ascii_downcase] | unique | length == 18)' install/templates/labels.json >/dev/null" "canonical PR labels are complete and case-insensitively unique"
-assert_ok "jq -e 'all(.[]; (.description | length) <= 100)' install/templates/labels.json >/dev/null" "canonical PR label descriptions fit GitHub's 100-character limit"
+assert_ok "jq -e 'length == 21 and ([.[].name | ascii_downcase] | unique | length == 21)' install/templates/labels.json >/dev/null" "canonical labels are complete and case-insensitively unique"
+assert_ok "jq -e 'all(.[]; (.description | length) <= 100)' install/templates/labels.json >/dev/null" "canonical label descriptions fit GitHub's 100-character limit"
+# §5.4 issue-lifecycle labels. The count above pins the set size; these pin the
+# three names, so renaming one fails here rather than silently leaving every
+# `--label handoff` lookup in canon pointing at a label no consumer has.
+assert_ok "jq -e '([.[].name] | index(\"handoff\") and index(\"todo\") and index(\"status:in-progress\"))' install/templates/labels.json >/dev/null" "canon provisions the three issue-lifecycle labels (§5.4)"
+# Issue-label colors must not collide with a PR label's, or the two groups stop
+# being separable at a glance in a mixed listing — the §5.4 rule that motivated
+# not reusing the colors #386 originally suggested.
+assert_ok "jq -e '[.[] | select(.name == \"handoff\" or .name == \"todo\" or .name == \"status:in-progress\") | .color] as \$i | [.[] | select((.name == \"handoff\" or .name == \"todo\" or .name == \"status:in-progress\") | not) | .color] as \$p | (\$i | map(. as \$c | \$p | index(\$c)) | all(. == null))' install/templates/labels.json >/dev/null" "issue-label colors do not collide with any PR-label color"
 assert_ok "jq -e '.[] | select(.name == \"skip-ai-review\") | .description | test(\"suppress re-review\")' install/templates/labels.json >/dev/null" "skip-ai-review description matches suppress-and-carry-forward behavior"
 assert_ok "grep -q '^# Branching standard' docs/BRANCHING.md && grep -q 'BRANCHING.md' docs/REPO_STANDARDS.md && grep -q 'BRANCHING.md' CHANGELOG.md && grep -q 'feat/' docs/BRANCHING.md && grep -q 'All changes reach the default branch through a pull request' docs/BRANCHING.md" "branching standard is linked, released, and retains core naming/lifecycle rules"
 assert_ok "jq -e '.allow_merge_commit == false and .allow_squash_merge == true and .allow_rebase_merge == false and .delete_branch_on_merge == true and .allow_update_branch == true' install/templates/repo-settings.json >/dev/null" "repository settings enforce canonical merge and cleanup strategy"

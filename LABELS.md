@@ -1,9 +1,22 @@
 # LABELS.md — `aidoc-flow-ci` label conventions
 
 This document defines the label conventions used by `aidoc-flow-ci`
-across **two distinct namespaces**: GitHub **PR labels** (applied by
-the ai-reviewer + labeler workflows) and GitHub **runner labels** (used
-in `runs-on:` to select runner pools).
+across **two distinct namespaces**: GitHub **issue + PR labels** (applied
+by the ai-reviewer + labeler workflows, and by hand on issues) and GitHub
+**runner labels** (used in `runs-on:` to select runner pools).
+
+> **Issue labels and PR labels are ONE GitHub namespace, not two.** A repo
+> has a single label set; an issue and a PR draw from the same pool, and
+> `gh label list` returns both. The split below is a **usage** distinction —
+> which surface each group is applied to and by what — not a mechanical one.
+> Two consequences that get re-derived wrong: a name collision between an
+> issue label and a PR label is a real collision, and `labeler.yml` fires on
+> pull-request events only — never on `issues` or `issue_comment` — so a bare
+> word appearing on an **issue** is never a diff-class label. (The caller
+> template's trigger is `pull_request_target`, **not** `pull_request`:
+> `install/templates/workflows/labeler.yml:17-23` explains why — `pull_request`
+> downgrades `GITHUB_TOKEN` to read-only on fork PRs and labeling silently
+> fails.)
 
 The namespaces have different behavior:
 
@@ -15,10 +28,10 @@ The namespaces have different behavior:
 The two namespaces therefore use different separator conventions
 intentionally. Don't try to unify them; the constraints differ.
 
-## PR labels — the canonical 18
+## Issue + PR labels — the canonical 21
 
-`install/templates/labels.json` is the canonical set — **18 labels** in
-three functional groups. `install/install.sh` creates them idempotently
+`install/templates/labels.json` is the canonical set — **21 labels** in
+four functional groups. `install/install.sh` creates them idempotently
 on a consumer repo at bootstrap (fail-loud; prefetches existing, only
 adds missing, never removes drift). The groups:
 
@@ -77,28 +90,76 @@ diff-class agents can read the applied labels directly.
 | `dependencies` | `0366d6` | Dependabot PR (matches Dependabot's own convention) |
 | `security` | `b60205` | Security-tagged issue or PR |
 
-### Workflow-provisioned labels (NOT in the canonical 18)
+### 4. Issue-lifecycle labels (3) — canon §5.4
+
+Applied to **issues**, by hand or by an agent — never auto-applied, and never
+by `labeler.yml` (which fires on pull-request events only). Provisioned by
+`install.sh` exactly like the other three groups. The **rule — when each applies,
+why the `handoff` lookup must be exact, and that provisioning `handoff` migrates
+no repo's handoff surface — lives in `docs/REPO_STANDARDS.md` §5.4**; that is the
+source of truth, and the table below is the label reference.
+
+| Label | Color | Meaning |
+|---|---|---|
+| `handoff` | `006b75` | Session-continuity issue, in repos whose handoff **is** an issue. Exactly one open per repo; closed at each wrap and replaced by its successor |
+| `todo` | `0052cc` | A captured backlog item — work to do, as distinct from a defect report |
+| `status:in-progress` | `e4e669` | The issue is claimed and being worked. An issue being worked with neither this label nor an assignee cannot be told apart from an unstarted one |
+
+**None of the three reuses a color from the other 18** — a deliberate choice for
+this group so an issue label reads as distinct at a glance, and asserted in
+`tests/test_contract.sh`. It is **not** a set-wide invariant: the existing 18
+already collide twice (`5319e7` on `skip-ai-review` and `workflows`, `b60205` on
+`ai:autofix-escalated` and `security`), and this change does not disturb them.
+
+### Workflow-provisioned labels (NOT in the canonical 21)
 
 Applied on demand by a workflow, self-created via `gh api` if missing — NOT
-created by `install.sh` at bootstrap, so they are outside the canonical 18.
+created by `install.sh` at bootstrap, so they are outside the canonical 21.
 
 | Label | Applied by | Meaning |
 |---|---|---|
 | `ai:enforcer-failed` | `auto-merge-ai-prs.yml` | The stuck-green auto-merge enforcer could not re-arm native auto-merge; the PR stays open for operator attention (the workflow self-provisions the label, warning if creation fails). |
 
-### Naming conventions across the PR-label set
+### Naming conventions across the label set
 
-Three forms, each marking a different label purpose at a glance:
+Four forms, each marking a different label purpose at a glance:
 
 | Form | Used by | Why this form |
 |---|---|---|
 | `ai:<noun>` (colon, no space) | §1 AI **state** labels (programmatic) | Tight prefix the workflow code parses/matches; no-space avoids quoted-string label handling in shell loops |
 | `<verb>-<noun>` (hyphenated, no prefix) | §1 `skip-ai-review`, `skip-audit-trail` (human directives) | Reads like a command; not part of a namespace |
-| `<noun>` (unprefixed single word) | §2 diff-class + §3 area labels (semantic, path- or source-driven) | Maps 1:1 to an OPS-0065 diff class / a well-known area; kept short for the PR sidebar |
+| `<noun>` (unprefixed single word) | §2 diff-class + §3 area labels, and §4 `handoff` / `todo` | Maps 1:1 to an OPS-0065 diff class, a well-known area, or one issue role; kept short for the sidebar |
+| `status:<value>` (colon, no space) | §4 `status:in-progress` | A **state machine with room for more than one value** — the prefix reserves the space, exactly as `ai:` does. A bare word cannot express that it excludes its siblings |
+| `issue:<role>` (colon, no space) | reserved — **no label uses it yet** | The form a **new** issue label naming a *role* takes (`issue:epic`, `issue:decision`). Reserved now so the next one has a form rather than inventing a fifth |
 
 **Do NOT mix forms:** a state label MUST use `ai:<noun>`; a diff-class
 label MUST be the bare word from §2. Consistency within each form is the
 discipline.
+
+**§4's two bare words are grandfathered, not a pattern to copy.** Both were
+invented independently, before any standard existed, and matching what the fleet
+already uses is worth more than prefix purity. Re-derive with
+`gh label list -R <repo> --limit 200`:
+
+| Repo | handoff | todo-role |
+|---|---|---|
+| `vladm3105/b-local-privy` | `handoff` | **`TODO`** (uppercase) |
+| `vladm3105/llm-router` | `handoff` | `todo` |
+
+**The casing disagrees, which is the other reason to standardise it** — canon
+picks lowercase `todo`. Note GitHub's label namespace is case-insensitive
+(`gh api repos/vladm3105/b-local-privy/labels/todo` returns `TODO`), so the two
+are the *same* label to GitHub and cannot coexist in one repo.
+
+**Every new issue label takes a prefix** — `status:<value>` if it names a state,
+`issue:<role>` if it names a role. **Do not add more bare words to §4.**
+
+**The form does not tell you which group a label is in, and no rule here claims
+it does.** `labeler.yml` fires on pull-request events only, so a bare word on an
+**issue** is never a *diff-class* label — but §3's `security` is documented for
+issues **and** PRs, so a bare word on an issue is not uniquely §4 either.
+(`dependencies` is Dependabot PRs only.) Read the group tables; the form is a
+hint about purpose, not an index.
 
 ### Canonical source-of-truth + adding a label
 
@@ -106,13 +167,22 @@ discipline.
 `docs/REPO_STANDARDS.md` §5.2 owns the diff-class path map. To add one:
 
 1. Edit `install/templates/labels.json` (`{name, color, description}`).
-2. If it's a diff-class label, update `docs/REPO_STANDARDS.md` §5.2's
-   path→label map; otherwise document it in the relevant table above.
-3. PATCH-tag `aidoc-flow-ci` (a new label is additive) per `CHANGELOG.md`
+   Keep the description **≤100 characters** — GitHub's hard limit, and
+   `tests/test_contract.sh` asserts it.
+2. Update the matching canon section: a diff-class label changes
+   `docs/REPO_STANDARDS.md` §5.2's path→label map; an issue label changes
+   §5.4; anything else is documented in the relevant table above.
+3. **Bump the count assertion in `tests/test_contract.sh`** — it pins the
+   exact set size (`length == 21`) so a label added to `labels.json` and
+   nowhere else fails the suite rather than shipping undocumented. Bump the
+   prose counts in this file's headings too.
+4. PATCH-tag `aidoc-flow-ci` (a new label is additive) per `CHANGELOG.md`
    semver rules.
-4. Consumers re-run `install/install.sh` to pick it up (idempotent +
+5. Consumers re-run `install/install.sh` to pick it up (idempotent +
    fail-loud, PR #116 fix — prefetches existing, adds only missing, exits
-   nonzero on real auth/permission/network failures).
+   nonzero on real auth/permission/network failures). **Until a consumer
+   re-runs it the label does not exist there** — canon shipping a label
+   provisions nothing by itself.
 
 ### Live drift from canonical (allowed, must be intentional)
 
@@ -236,10 +306,11 @@ Branch naming follows from commit type: `feat/...`, `fix/...`,
 
 ## 4. References
 
-- `install/templates/labels.json` — canonical 18-label taxonomy
+- `install/templates/labels.json` — canonical 21-label taxonomy
   (name/color/description).
 - `docs/REPO_STANDARDS.md` §5.2 — diff-class label path→label map
-  (source of truth for §2 above); §5.3 — area labels.
+  (source of truth for §2 above); §5.3 — area labels; §5.4 — issue-lifecycle
+  labels (source of truth for §4 above).
 - `install/install.sh` — idempotent install + fail-loud creation
   (handles drift between canonical and existing labels).
 - `.github/workflows/ai-review.yml` — applies the §1 state labels.

@@ -3,7 +3,7 @@
 # that gates `release.sh tag`.
 #
 # WHY THIS EXISTS: the gate is founder-executed because it WRITES to another repo
-# (clones it and creates ~18 labels), and its pass criteria lived only as prose in
+# (clones it and creates ~21 labels), and its pass criteria lived only as prose in
 # docs/RELEASE_CHECKLIST.md — so "did it pass?" was a judgement call made by eye
 # over ~60 lines of installer output. This script asserts each criterion against
 # the markers install.sh actually prints, and fails loudly naming which one.
@@ -95,7 +95,7 @@ if [ -n "$TARGET" ]; then
     # install.sh CLONES the target; it will not create it.
     case "$TARGET" in
       */aidoc-flow-*|*/iplan*|*/engramory|*/interlog|*/llm-router|*/web-site)
-        bad "$TARGET looks like a REAL workspace repo. This creates ~18 labels on it. Use a throwaway." ;;
+        bad "$TARGET looks like a REAL workspace repo. This creates ~21 labels on it. Use a throwaway." ;;
       *) ok "target does not look like a workspace repo" ;;
     esac
   else
@@ -122,7 +122,7 @@ fi
 echo
 note "==> FT-30 cold-start dry-run against $TARGET"
 echo "    CI_TAG=$CI_TAG_RESOLVED"
-echo "    This CREATES ~18 labels on $TARGET. Ctrl-C within 5s to abort."
+echo "    This CREATES ~21 labels on $TARGET. Ctrl-C within 5s to abort."
 sleep 5
 
 LOG="$(mktemp -t ft30-XXXXXX.log)"

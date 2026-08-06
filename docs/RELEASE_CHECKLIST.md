@@ -111,7 +111,7 @@ the 🔴 dry-run for you.
   bootstrap set, or the pre-commit fragment, run `install.sh` against a
   **throwaway repo** and confirm it completes through labels without error.
   - This is a 🔴 write-to-another-repo action (it clones the target and creates
-    18 labels on it) — prepare it as an `ops/inbox` runbook and have the founder
+    21 labels on it) — prepare it as an `ops/inbox` runbook and have the founder
     execute it, exactly like PLAN-017's live-verification gate. The AI does not
     run it in-session.
   - **The runbook MUST `export CI_TAG=<merge-sha>`** (or the tag once it exists).

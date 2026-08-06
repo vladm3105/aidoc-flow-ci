@@ -7,7 +7,7 @@
 # with no visibility split and deleted `workflows/ai-review-private.yml` at
 # ci/v2.2.0 — so the derivation asked for a 404 and `|| exit 1` killed every
 # cold-start install before config.json, CODEOWNERS, CLAUDE.md, pre_push_check.sh,
-# the pre-commit merge, and all 18 labels. It survived nine releases because
+# the pre-commit merge, and all 21 labels. It survived nine releases because
 # canon is already adopted and therefore never runs its own cold start.
 #
 # THE OBVIOUS TEST WOULD NOT HAVE CAUGHT IT. "Every auto_install:true manifest

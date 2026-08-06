@@ -5,6 +5,51 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — an issue-label namespace: `handoff`, `todo`, `status:in-progress` (#386, canon §5.4)
+
+- **The canonical set named no issue *roles*.** All 18 were PR-applied — §5.1
+  state, §5.2 diff-class, §5.3 area. (§5.3's `security` and `dependencies` do
+  land on issues; they name an *area*, not a role.) That was sufficient while
+  issues were incidental. The set is now **21**.
+- **`handoff` is an exact lookup key for a search that currently returns
+  non-handoffs.** The wrap procedure finds the live handoff with
+  `gh issue list --search "HANDOFF in:title"`; `in:title` matches the word
+  anywhere, so it also returns issues merely *about* handoffs — measured in
+  `vladm3105/llm-router`, which returned the live handoff **and** an unrelated
+  migration issue. The procedure's next step is to **close** what it found.
+  **Shipping the label fixes no caller** — the procedure lives outside this repo
+  and keeps running the title search until changed there; canon supplies the key
+  and says which one to use (§18).
+- **`todo` makes the backlog readable without the handoff in it** — a pinned
+  handoff issue otherwise sits permanently at the top of the open-issue list as a
+  non-task. `is:open -label:handoff` is the filter.
+- **`status:in-progress` gives the claim step somewhere to write.** Measured
+  2026-08-05 across seven repos: **0 carried any `status:*` label**, so a claim
+  was unrecordable everywhere.
+- **Provisioning `handoff` migrates nobody.** Each repo's §16 governance table
+  still governs its handoff surface; `aidoc-flow-ci` keeps the file form per
+  CI-0028 and leaves the label unused.
+- Colors (`006b75`, `0052cc`, `e4e669`) do not reuse any of the other 18 — a
+  deliberate choice for this group, asserted in `tests/test_contract.sh`, and
+  **not** a set-wide invariant: the existing 18 already collide twice
+  (`5319e7`, `b60205`), and this change does not disturb them.
+- `handoff` and `todo` are bare words because both were independently invented
+  before any standard existed — `b-local-privy` and `llm-router` each carry a
+  `handoff` and a todo-role label. Their **casing disagrees** (`TODO` vs `todo`),
+  which is a further reason to standardise; canon picks lowercase. **Every new
+  issue label takes a prefix**: `status:<value>` for a state, `issue:<role>` for
+  a role.
+- The three labels are generic English words, unlike the invented `ai:*` /
+  diff-class names — which makes a pre-existing case-sensitivity defect in
+  `install.sh` reachable for the first time. Filed as
+  [#396](https://github.com/vladm3105/aidoc-flow-ci/issues/396), not fixed here:
+  no canon consumer carries a colliding label today.
+- Live label counts corrected in `install/README.md` (which also enumerated the
+  set), `docs/AI_CI_DEPLOYMENT.md`, `docs/RELEASE_CHECKLIST.md` and
+  `scripts/ft30-dry-run.sh`, and the installer-behaviour comment at
+  `tests/test_install.sh:10`. Historical counts in past `CHANGELOG` entries and
+  in `plans/` are **not** back-annotated, per §0.
+
 ### Fixed — `doc-maintainer` planner conflated two rejection causes and discarded the whole plan for either (#353, PLAN-021 PR-B)
 
 - **One message, two causes.** `if path in seen or not matches(path, allowed)`
