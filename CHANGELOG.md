@@ -17,9 +17,9 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   same change, per `REPO_STANDARDS` §20.2 rule 5.
 - **The prompt now instructs the model to obey the allowlist, and this is the
   half that reaches the observed failures.** All six rejected proposals on the
-  pilot were files the triggering PRs had **just changed**, and the merge diff
-  reaches the model as an unfiltered `Complete changed-file list:` that
-  IPLAN-0025 mandates. The allowlist was a labelled datum with no imperative
+  pilot were files the triggering PRs had **just changed**, and the merge diff —
+  an input IPLAN-0025 §2.1 mandates — reaches the model both as bounded patches
+  and as an unfiltered `Complete changed-file list:`. The allowlist was a labelled datum with no imperative
   attached; the new sentence names both blocks **by their labels**, never by
   position. Full causal account: `REPO_STANDARDS` §24.4 and `DECISIONS.md`
   CI-0027.
@@ -34,9 +34,12 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   stands to gain **once its pilot resumes**; it is paused at
   `kill_switch: true`, so nothing has been measured there yet.
 - Canon rule: `REPO_STANDARDS` **§20.2 rule 8** (normative) + **§24.4** (the
-  case). Tests: twelve assertions in `tests/test_scripts.sh` over the prompts two
-  fixtures make the planner assemble, parsed by an anchored fail-closed step;
-  seventeen mutations, each red on a named assertion.
+  case). Tests: seventeen assertions in `tests/test_scripts.sh` over the prompts
+  two fixtures make the planner assemble; twenty-three mutations, each red on a
+  named assertion. The two load-bearing assertions read the whole captured text
+  rather than a parsed label roster — a roster detector was evaded by three
+  successive review cycles, so the properties that matter are asserted where no
+  formatting can hide from them.
 
 ### Fixed — `doc-maintainer` shipped a default `apply.py` refuses, and nothing stopped it being planned (#354, PLAN-021 PR-C)
 

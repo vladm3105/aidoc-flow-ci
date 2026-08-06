@@ -1818,8 +1818,9 @@ sends the author to fix something that was never wrong.
 
 ### 20.2 The rule
 
-For any prompt this repo ships (`ai-review/review-prompt.md`,
-`ai-review/fix-prompt.md`):
+Rules 1-7 govern the two prompts this repo ships as files
+(`ai-review/review-prompt.md`, `ai-review/fix-prompt.md`); **rule 8 reaches
+further — see its own Scope note**:
 
 1. **Enumerate the inputs.** The prompt states, up front, exactly what the model
    receives and that it receives nothing else — no tools, no filesystem, no
@@ -1881,11 +1882,15 @@ For any prompt this repo ships (`ai-review/review-prompt.md`,
 
    **Scope.** Rule 8 was derived from a third prompt this repo ships — the one
    `scripts/doc-maintainer/planner.py` assembles — and governs it as well as the
-   two named above. **Rules 1-7 are not claimed for that prompt:** it has no
-   "your inputs" section, and it truncates its conventions, inventory and patch
-   blocks with no `UNAVAILABLE`-style marker. That is a known gap, filed as
+   two named in the lead-in. **Rules 1, 4, 6 and 7 are not claimed for that
+   prompt:** it has no "your inputs" section (1); it truncates its conventions,
+   PR body, inventory and patch blocks — four in all — with no `UNAVAILABLE`-style
+   marker (4); it has no inputs section for the assembly to be one contract with,
+   and `tests/test_contract.sh` asserts nothing about its blocks (6); and it
+   discloses no degraded input to a human (7). That is a known gap, filed as
    [#413](https://github.com/vladm3105/aidoc-flow-ci/issues/413), not a
-   compliance.
+   compliance. **Rule 5 it does satisfy** — the narrowed block's label states its
+   scope — which is the whole of §24.4.
 
 ### 20.3 Applied to `ai-review` (ci/v2.x)
 
@@ -2562,8 +2567,9 @@ Two changes, and the second is the load-bearing one:
   change.
 - **The prompt binds the model to the allowlist.** The narrowing alone does not
   reach the observed rejections: every one of them was a file the triggering PRs
-  had just changed, and the merge diff — mandated by IPLAN-0025 and therefore not
-  removable — reaches the model as an unfiltered `Complete changed-file list:`.
+  had just changed, and the merge diff — which IPLAN-0025 §2.1 mandates as an
+  input — reaches the model both as the bounded patches and as an unfiltered
+  `Complete changed-file list:`.
   The prompt's only prohibition was by file _type_ ("source code, workflow,
   configuration, generated, or non-documentation files"), which markdown prose
   files do not trip. The consumer had written the rule into its own conventions,
