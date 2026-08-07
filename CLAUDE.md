@@ -301,6 +301,22 @@ has settled — measured, reproduced, and not expected to change.
   installed the right file set.** A run that silently dropped `ai-review.yml`
   passes every criterion. Tracked as
   [#358](https://github.com/vladm3105/aidoc-flow-ci/issues/358).
+- **A job cancelled with `runner_name: ""` and zero steps never ran — it is not a
+  red build.** `gh pr checks` prints a plain `fail` for it and
+  `gh run view --log-failed` prints nothing at all, which is the tell. Confirm with
+  `gh api repos/<r>/actions/runs/<id>/attempts/<n>/jobs --jq '.jobs[]|{conclusion,runner_name,steps:(.steps|length)}'`
+  → `{"conclusion":"cancelled","runner_name":"","steps":0}`. Measured
+  2026-08-06 on PR #414: four `ubuntu-latest` contexts, two attempts each,
+  cancelled at ~15 minutes; a later batch on a **new head SHA** ran green and the
+  PR merged. **Do not spend the OPS-0062 attempt budget on it** — one rerun
+  establishes whether it is transient, and a second identical result is an
+  infrastructure condition a rerun cannot clear. **This is the OPPOSITE shape to
+  the self-hosted trap above**, where an unmatched label queues *forever* and
+  never terminates. And note `mergeStateStatus: BLOCKED` with
+  `mergeable: MERGEABLE` means required contexts are unmet, **not** a bad diff —
+  a cancelled required context is still not `SUCCESS`, so all of them block, not
+  just one that never reported.
+
 - **`gh run list` reports only a run's LATEST attempt — a re-run erases the red
   from the listing.** Run `30500957909` on framework failed three attempts, the
   third inside `Run review through LiteLLM → verdict file`, and reads in
