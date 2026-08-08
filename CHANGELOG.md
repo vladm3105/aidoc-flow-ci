@@ -5,6 +5,49 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — v3 composite-action foundation (PLAN-025, branch `feat/v3-composite-actions`, NOT merged)
+
+**Not released, not merged, and not reachable by any consumer.** Recorded here
+because the work exists and the next session needs to know it does. `install.sh`
+ships only what the manifest lists; the three new caller templates pin
+`ci/v3.0.0`, a tag that does not exist, guarded by `sync-version-refs:ignore`
+markers that must be removed at the tag cut.
+
+- **Six composite actions** (`actions/{markdownlint,pre-commit,links,dep-scan,trivy-scan,sast-scan}`).
+  A `workflow_call` reusable always gets its own runner, so twelve PR checks cost
+  twelve provisioning cycles — measured at ~167s for the audit-trail reusable to
+  run a `grep` on `aidoc-flow-operations`, almost all provisioning. Composite
+  actions share the caller's job. Step bodies are **verbatim ports**; only the
+  packaging changed.
+- **Five caller templates** — `quick-gates{,-private}` (pre-commit, markdownlint
+  and links), `scanners{,-private}` (the three self-hosted scanners), and
+  `links-external` (the weekly report-only half of the v2 links split). Both
+  consolidating callers carry a collect-then-fail verdict step, so one failing
+  check does not hide the others.
+- **`.github/actionlint.yaml`** — new and load-bearing. v2 callers passed runner
+  labels as a JSON *string input* and the reusable did the `fromJSON`, so
+  actionlint never saw a label. v3 callers carry a literal `runs-on:`, so without
+  this file every private caller fails `pre_push_check.sh` on every consumer.
+
+### Fixed — `required-context-map.py` returned a false green on bare contexts
+
+`call / X` is `<caller-job-key> / <callee-job-name>` and only a reusable call
+produces it; a plain job emits its bare job name. The map classified anything
+without `" / "` as `?non-call`, and `test_required_contexts.sh` scored that a
+**pass**. Every v3 context would have resolved green and unvalidated — so the
+step whose purpose is catching a context armed against nothing would have
+reported success on exactly that case. Bare contexts now resolve against canon's
+plain caller jobs; unresolved returns `?` like any other orphan, and `?non-call`
+fails if it ever reappears.
+
+### Fixed — composite-action shell had no linter
+
+`test_lint.sh` globbed `install sync scripts tests` for shellcheck and the two
+workflow directories for yamllint/actionlint. `actions/` matched none of them,
+leaving ~200 lines of canon shell uninspected on the surface v3 makes primary.
+actionlint cannot parse an `action.yml`, so the `run:` bodies are extracted and
+shellchecked directly, with the same `-S error` profile as standalone scripts.
+
 ### Fixed — the `doc-maintainer` planner offered the model files it would then reject (#360, PLAN-021 PR-D)
 
 - **The inventory is now the allowlisted set, filtered before it is truncated.**
