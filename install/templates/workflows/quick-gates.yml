@@ -1,0 +1,90 @@
+# quick-gates — v3 caller consolidating four PR checks into ONE job.
+#
+# Replaces four separate ci/v2.x callers (`pre-commit`, `markdown-lint`,
+# `links`, `audit-trail`), each of which was a `workflow_call` reusable and so
+# got its own runner. Measured motivation: a reusable pays a full provisioning
+# cycle per check — on aidoc-flow-operations the audit-trail reusable took ~167s
+# to run a grep. Four checks now share one cycle.
+#
+# WHAT IS **NOT** HERE, AND WHY (PLAN-025 §3.2):
+#   composition  — fires on `pull_request_review` + `workflow_run`, never
+#                  `pull_request`. Only checks sharing a trigger can share a
+#                  job. It stays its own workflow.
+#   security     — its own job: different tools, and the scanners graduate to
+#                  blocking separately (PLAN-014 Phase 5).
+#   ai-review    — separate runner profile, own trust gate, pull_request_target.
+#
+# ── D4: THE JOB ID IS THE REQUIRED STATUS CONTEXT ────────────────────────────
+# This renders as `call / quick-gates`. Renaming the job id silently
+# un-satisfies branch protection, which then never fires again. Migration is
+# add-new → observe green on LIVE protection → remove old → delete old callers.
+# Read live protection (`gh api repos/<r>/branches/<b>/protection`), NEVER the
+# branch-protection templates: canon's own `main` requires `call / markdownlint`
+# and `suite`, neither of which appears in any template. (PLAN-025 D19 — this is
+# the defect that killed PLAN-024 Phase G.)
+#
+# ── D7: RUNNER LABELS ARE NOT FREE HERE ──────────────────────────────────────
+# This job runs `pre-commit` against the PR's OWN files — fork-code execution.
+# On a PUBLIC repo it MUST stay `ubuntu-latest`; moving it to the self-hosted
+# pool is the untrusted-code-on-self-hosted leak. Only `security` and
+# `ai-review` may take the pool on a public repo. The `-private` variant of this
+# template carries the self-hosted labels; that split also exists so
+# `install.sh --update` resolves a labeled file for private consumers instead of
+# reverting them to `ubuntu-latest` and queueing forever (D1).
+name: quick-gates
+
+on:
+  pull_request:
+
+# D9: a callee's permissions are an INTERSECTION ceiling — a caller cannot raise
+# what the callee declares. Composite actions have no declaration of their own,
+# so the job's grant is the whole story. Keep it least-privilege: these four
+# checks read the tree and annotate; none writes.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # D3 / CI-0025 / REPO_STANDARDS §23: ALLOWLIST of code-changing events, never a
+  # blanket cancel. This job feeds a REQUIRED context. Every other event fires at
+  # the CURRENT head SHA, and a cancelled required check is NOT success — it is
+  # retained alongside any later success, so the rollup stays FAILURE and the PR
+  # becomes --admin-only. Expressed as `==` so an empty `github` context yields
+  # false and cancels nothing; a `!=` denylist would cancel everything in that
+  # degraded state.
+  cancel-in-progress: >-
+    ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_target')
+          && contains(fromJSON('["opened","synchronize"]'), github.event.action)) }}
+
+jobs:
+  quick-gates:
+    name: quick-gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # ONE checkout for all four actions — this is where the saving comes from.
+      # Settings satisfy the STRICTEST consumer: audit-trail needs full history
+      # at the PR head SHA for its fork-PR false-pass guard. Each action
+      # re-verifies the precondition it needs and fails loudly if unmet, so a
+      # future edit that shallows this cannot silently weaken a check.
+      - name: Checkout (full history, PR head — strictest consumer wins)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Lint / format / security hooks
+        uses: vladm3105/aidoc-flow-ci/actions/pre-commit@ci/v3.0.0
+
+      - name: markdownlint
+        uses: vladm3105/aidoc-flow-ci/actions/markdownlint@ci/v3.0.0
+
+      - name: links
+        uses: vladm3105/aidoc-flow-ci/actions/links@ci/v3.0.0
+
+      # Last: it reads the commit range, needs no tooling, and its failure is
+      # the least informative to debug first.
+      - name: OPS-0069 audit-trail
+        uses: vladm3105/aidoc-flow-ci/actions/audit-trail@ci/v3.0.0
