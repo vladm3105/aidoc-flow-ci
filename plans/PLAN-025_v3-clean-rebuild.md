@@ -224,7 +224,7 @@ ported check depends on at least one of these. **Resolved, not deferred:**
 | Constraint | Affected | Disposition |
 | --- | --- | --- |
 | **Job-level `if:`** | D27 scanner fork guard; D31 audit-trail's event refusal | **Moves to the CALLER's job `if:`, never to a step.** A step-level skip runs *after* the job has already checked the fork's code out, which converts an admission guard into a no-op. The caller must therefore carry the guard, and `tests/` must assert it is present — a defense that moved to a file nothing checks is a defense that was dropped. |
-| **`permissions:`** | Every check (D9) | One grant per job, and for `security` it is the **union** of four. §2 marks D9 carried; **structurally it is weakened** and this plan accepts that explicitly: the four scanners already run on the same trust boundary, same pool, same event. It is not acceptable for `quick-gates`, which stays `contents: read` — no ported check there needs more. |
+| **`permissions:`** | Every check (D9) | One grant per job, and for `scanners` it is the **union** of three (P3a split `secret-scan` out; this said four and `security` before that fold). §2 marks D9 carried; **structurally it is weakened** and this plan accepts that explicitly: those three already run on the same trust boundary, same pool, same event. It is not acceptable for `quick-gates`, which stays `contents: read` — no ported check there needs more. |
 | **`timeout-minutes`** | All | See §3.2b. |
 | **`secrets` context** | `links` passes `GITHUB_TOKEN` to lychee for github.com rate limits | The action takes it as an **input**; the caller passes `${{ secrets.GITHUB_TOKEN }}`. `quick-gates.yml` currently passes nothing — a defect on the branch (§6a). |
 | **`continue-on-error`** | D35, four SARIF uploads | **Must be verified on the target runner before P2 ships a scanner action.** If unsupported, a private consumer without GHAS turns a documented no-op 403 into a hard red on every PR. Until verified, the SARIF upload stays in a **caller step**, not inside the action. |
@@ -441,22 +441,56 @@ as a rule.** That mapping is the acceptance test for §4.4.
 
 ## 5. Phases
 
-**P1 — Defense inventory sign-off.** Complete §2: for each row, carried or
-dropped-with-reason. **Nothing is built before this is signed off.** It is the
-plan's whole safeguard against repeating PLAN-024's four withdrawals.
+> **PHASE STATUS AT A GLANCE** — kept here, at the phase definitions, because
+> this is the section a reader consults to answer "what do I do next". §8 has
+> the blocker view; the review log has the history.
+>
+> | | Phase | State |
+> | --- | --- | --- |
+> | P1 | Defense inventory sign-off | ✅ **DONE** — 46 rows, all carried |
+> | P2 | Composite actions | ✅ **DONE** — six actions |
+> | P3 | Caller templates | ✅ **DONE** — five templates |
+> | P3a | `security` splits in two | ✅ **DONE** — `scanners` + `secret-scan` |
+> | P4 | Local layer | ⬜ not started |
+> | P5 | Documentation set | ⬜ not started — largest remaining build item |
+> | P6 | Release `ci/v3.0.0` | ⬜ blocked on 🔴 founder FT-30 dry run |
+> | P7 | Required-context migration | ⬜ unblocked by P8, not started |
+> | P8 | Tooling and distribution | 🟨 core done; wizard + D44 remain |
+> | P9 | Rollback | ⬜ not started |
 
-**P2 — Composite actions.** Build `actions/<name>/action.yml` for each
-lightweight check. Each carries its §2 defenses (D5 pinning, D15 `bash -e`,
-D3 where it owns concurrency). Unit-test via `tests/`.
+**P1 — Defense inventory sign-off.** ✅ **DONE.** Complete §2: for each row,
+carried or dropped-with-reason. **Nothing is built before this is signed off.**
+It is the plan's whole safeguard against repeating PLAN-024's four withdrawals.
+Result: 46 defenses, **all carried, none dropped** — the rebuild changes
+packaging, not defenses.
 
-**P3 — The four callers.** `quick-gates`, `security`, `ai-review`, `auto-merge`
-as templates. D3's allowlist and D4's job-id discipline apply to every one.
+**P2 — Composite actions.** ✅ **DONE 2026-08-08.** Six shipped:
+`markdownlint`, `pre-commit`, `links`, `dep-scan`, `trivy-scan`, `sast-scan`.
+Each carries its §2 defenses (D5 pinning, D15 `bash -e`, D20 checksums, D21
+hand-rolled bodies, and the scanner-specific D23/D24/D25/D26/D12), each asserted
+in `tests/test_actions.sh` and each assertion mutation-tested.
 
-**P4 — Local layer.** New hook block, marker bumped (D10), fail-closed
-`pre_push_check.sh`, cli2 parity. **Ships before P5** — the local layer must be
-in place before CI consolidation changes what adopters rely on.
+**P3 — The caller templates.** ✅ **DONE 2026-08-08.** **Five, not "the four"**,
+and not the set this line originally named — it listed a `security` job that
+P3a split, and `ai-review`/`auto-merge`, which are unchanged v2 reusables and
+were never P3's work:
 
-**P3a — `security` splits in two. It is not a valid single job.** Three
+| Template | Emits | Notes |
+| --- | --- | --- |
+| `quick-gates{,-private}` | `quick-gates` | pre-commit + markdownlint + links |
+| `scanners{,-private}` | `scanners` | the three self-hosted scanners, job-level fork guard |
+| `links-external` | *(none — not required)* | the weekly report-only half, D42 |
+
+D3's allowlist and D4's job-id discipline apply to every one; both consolidating
+callers carry a collect-then-fail verdict step (§3.2c).
+
+**P4 — Local layer.** ⬜ **NOT STARTED.** New hook block, marker bumped (D10),
+fail-closed `pre_push_check.sh`, cli2 parity. **Ships before P5** — the local
+layer must be in place before CI consolidation changes what adopters rely on.
+Note D37: the zero-hook detector is *advisory*, and P4 rewrites the very file it
+inspects, so P4 must decide whether v3 promotes it to fatal.
+
+**P3a — `security` splits in two. It is not a valid single job.** ✅ **DONE.** Three
 independent conflicts, all found in review:
 
 - **Runner class.** `secret-scan` defaults to `ubuntu-latest`; the other three
@@ -478,10 +512,12 @@ keeping its `call / gitleaks` context unchanged — no migration, no risk. The
 three self-hosted scanners consolidate into `scanners`, fork-guarded at
 the job level (§3.2a).
 
-**P5 — Documentation set.** §4, including the §2→RULES mapping.
+**P5 — Documentation set.** ⬜ **NOT STARTED — the largest remaining build
+item.** §4, including the §2→`RULES.md` mapping, which §4.4 makes an
+acceptance test: every one of the 46 §2 rows must appear as a rule.
 
 **P8 — Tooling and distribution. Canon has never shipped a composite action, and
-nothing in the toolchain knows about them.** A phase the first draft omitted
+nothing in the toolchain knows about them.** 🟨 **CORE DONE; two items remain.** A phase the first draft omitted
 entirely; without it v3 cannot be installed, updated, drift-checked or
 context-mapped.
 
@@ -539,16 +575,20 @@ context-mapped.
 - ⬜ **`auto_install`** currently marks `pre-commit.yml` as the bootstrap tier's
   only gate; folding it into `quick-gates` moves that flag.
 
-**P9 — Rollback.** P7 is irreversible per repo and has no stated undo. Define
+**P9 — Rollback.** ⬜ **NOT STARTED.** P7 is irreversible per repo and has no stated undo. Define
 one: the v2 tag remains, the v2 callers are deleted only at P7 step 4, and a
 documented revert is "restore the v2 callers from the tag, re-add the old
 contexts to live protection **and** any ruleset." Ten repos hand-run with no
 script is not a plan; P9 ships a dry-run-capable helper or P7 is not started.
 
-**P6 — Release `ci/v3.0.0`.** Migration guide, LiteLLM smoke (MAJOR gate), FT-30
+**P6 — Release `ci/v3.0.0`.** ⬜ **NOT STARTED — blocked on a 🔴 founder step.**
+Migration guide, LiteLLM smoke (MAJOR gate), FT-30
 cold-start dry run (🔴 founder). Canon self-adopts first (Wave 0).
 
-**P7 — Per-repo required-context migration.** The only irreversible step:
+**P7 — Per-repo required-context migration.** ⬜ **NOT STARTED.** Unblocked by
+P8's core, and now migrating **two** context names rather than three —
+`secret-scan` keeps its existing `call / gitleaks` (P3a). The only
+irreversible step:
 
 0. **Update `install/templates/branch-protection-*.json` in the same release.**
    `apply-standards.sh` PUTs the tier file as one whole payload, so any later
@@ -1006,3 +1046,32 @@ less lets a defense be deleted while its own documentation vouches for it.
 **Result:** P2/P3 complete. §8's blocker 1 closed; blockers 2–7 stand.
 **Still NOT READY**, and the new material is **unreviewed** — the OPS-0066 cap
 remains spent.
+
+### Pass 7 - 2026-08-08 - author (status audit)
+
+Asked whether the plan had been updated with completed tasks, I audited rather
+than answered — and the honest answer was **partially**. §8's blocker table and
+the review log were current; **§5, where the phases are actually defined, was
+not.** That is the section a reader consults for "what do I do next", so it was
+the worst one to leave stale.
+
+Found and fixed:
+
+- **P3 still described "the four callers" as `quick-gates`, `security`,
+  `ai-review`, `auto-merge`.** Three errors in one line: `security` was split by
+  P3a; `ai-review` and `auto-merge` are unchanged v2 reusables that were never
+  P3's work; and there are **five** templates, not four. Rewritten with the
+  actual set and what each emits.
+- **§3.2a still called the `scanners` permission grant "the union of four".**
+  P3a split `secret-scan` out — it is three.
+- **No phase carried a status marker.** All nine now do, plus an at-a-glance
+  table at the head of §5. Kept there deliberately rather than only in §8: a
+  reader looking for the next task reads the phase list, not the blocker list.
+
+**Method note.** Every stale item here was found by grepping the document for
+what it asserts and comparing against the tree — not by re-reading it. After
+seven passes the document is long enough that reading it does not reliably
+surface a contradiction; querying it does. Worth doing at each wrap.
+
+**Result:** §5 reconciled. Suite unchanged at 1236 passed, 0 failed. Status
+unchanged: **NOT READY**, blockers 2–7 open, new material unreviewed.
