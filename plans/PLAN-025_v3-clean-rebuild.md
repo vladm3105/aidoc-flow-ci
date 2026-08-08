@@ -143,8 +143,8 @@ this table listed it inside `quick-gates`; that was wrong.
 
 | Job | Composite actions it runs | Trigger | Required context |
 | --- | --- | --- | --- |
-| `quick-gates` | pre-commit `--all-files`, audit-trail verify, markdownlint (cli2), links | `pull_request` | `call / quick-gates` |
-| `security` | gitleaks (full history), osv-scanner, trivy, semgrep | `pull_request` | `call / security` |
+| `quick-gates` | pre-commit `--all-files`, audit-trail verify, markdownlint (cli2), links | `pull_request` | `quick-gates` |
+| `security` | gitleaks (full history), osv-scanner, trivy, semgrep | `pull_request` | `security` |
 | `composition` | unchanged — different trigger, cannot consolidate | `pull_request_review`, `workflow_run` | `call / composition` |
 | `ai-review` | unchanged — separate runner, own trust gate | `pull_request_target` | `call / ai-review` |
 | `auto-merge` | unchanged — event-driven, no PR cost | `workflow_run` | none |
@@ -346,7 +346,7 @@ independent conflicts, all found in review:
   on fork PRs — it MUST see the PR's code. The other three deliberately skip
   them (D27). If a merged `security` job took the pool it would need a fork
   guard, and **a skipped job reports `skipped`, which branch protection treats as
-  satisfying a required context** — so `call / security` would go green on every
+  satisfying a required context** — so `security` would go green on every
   fork PR with gitleaks never having run. That is the "green required check that
   scanned nothing" class D22 exists to prevent, re-created by the consolidation
   meant to be safe.
@@ -355,7 +355,7 @@ independent conflicts, all found in review:
 
 **Therefore:** `secret-scan` stays its own job on `ubuntu-latest`, fork-visible,
 keeping its `call / gitleaks` context unchanged — no migration, no risk. The
-three self-hosted scanners consolidate into `call / scanners`, fork-guarded at
+three self-hosted scanners consolidate into `scanners`, fork-guarded at
 the job level (§3.2a).
 
 **P5 — Documentation set.** §4, including the §2→RULES mapping.
@@ -368,7 +368,7 @@ context-mapped.
 - **`install/required-context-map.py`** considers only workflows declaring
   `workflow_call`, and matches a caller's **job-level** `uses:` (Claim 41). A job
   whose steps are composite actions has no job-level `uses:`, so
-  `call / quick-gates` resolves to `?` — which `tests/test_required_contexts.sh`
+  `quick-gates` resolves to `?` — which `tests/test_required_contexts.sh`
   reports as latent and fails. Teach it the step-level shape.
 - **`tests/test_checknames.sh`** builds its emitted-name set the same way; both
   new contexts would flag as having no producer. Three assertions hardcode

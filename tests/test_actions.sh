@@ -62,16 +62,35 @@ for a in "${ACTIONS[@]}"; do
   # strict-mode assertion below was skipped by the `-gt 0` guard. A measurement
   # mutation (verified 2026-08-08) sailed through the whole suite while shipping
   # an action GitHub would refuse to load. A test extractor must fail closed.
-  read -r runs shells strict < <(python3 - "$a" <<'PY'
+  # FAIL CLOSED — this is the SECOND instance of the same class, found inside the
+  # fix for the first. The parsing version above still failed open two ways: a
+  # raising extractor prints nothing, `read` assigns three empty strings, and
+  # `assert_eq "" ""` reports PASS; and a `steps:` that is a scalar rather than a
+  # list yields 0/0/0, so a structurally invalid action passed every assertion
+  # (verified 2026-08-08). So the extractor now emits a sentinel and asserts the
+  # SHAPE of its own output before any count is trusted.
+  parsed="$(python3 - "$a" <<'PY'
 import sys, yaml
 d = yaml.safe_load(open(sys.argv[1])) or {}
-steps = ((d.get("runs") or {}).get("steps") or [])
-runs = [s for s in steps if isinstance(s, dict) and "run" in s]
+runs_block = d.get("runs")
+if not isinstance(runs_block, dict):
+    print("BADSHAPE runs-not-a-mapping"); raise SystemExit(0)
+steps = runs_block.get("steps")
+if not isinstance(steps, list):
+    print("BADSHAPE steps-not-a-list"); raise SystemExit(0)
+if any(not isinstance(s, dict) for s in steps):
+    print("BADSHAPE step-not-a-mapping"); raise SystemExit(0)
+runs = [s for s in steps if "run" in s]
 shells = [s for s in runs if s.get("shell") == "bash"]
 strict = [s for s in runs if "set -euo pipefail" in str(s.get("run", ""))]
-print(len(runs), len(shells), len(strict))
+print("OK", len(runs), len(shells), len(strict))
 PY
-  )
+  )" || parsed="CRASH"
+  read -r tag runs shells strict <<< "$parsed"
+  if [ "$tag" != "OK" ]; then
+    _r "$name: step extractor could not read this action ($parsed) — refusing to report pass"
+    runs=-1; shells=-2; strict=-3   # guarantee the assertions below also fail
+  fi
   assert_eq "$runs" "$shells" "$name: every run: has 'shell: bash' ($runs run / $shells shell)"
 
   # D15 (REPO_STANDARDS §24.1): GitHub already applies an implicit `bash -e`, so
@@ -142,7 +161,7 @@ if [ -f "$QG" ]; then
   assert_contains "$qg" 'contains(fromJSON(' "quick-gates: concurrency uses the §23 allowlist (D3)"
   assert_absent "$qg" "cancel-in-progress: true" "quick-gates: no blanket cancel (D3)"
 
-  # D4: the job id renders the required context `call / quick-gates`.
+  # D4: the job id renders the required context `quick-gates`.
   assert_contains "$qg" "  quick-gates:" "quick-gates: job id is 'quick-gates' (D4)"
 
   # The shared checkout must NOT pin a ref. On `pull_request` the default is the

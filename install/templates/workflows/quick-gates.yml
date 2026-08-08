@@ -21,7 +21,7 @@
 #                  are self-hosted and fork-guarded (PLAN-025 P3a).
 #
 # ── D4: THE JOB ID IS THE REQUIRED STATUS CONTEXT ────────────────────────────
-# Renders as `call / quick-gates`. Renaming the job id silently un-satisfies
+# Renders as `quick-gates`. Renaming the job id silently un-satisfies
 # branch protection, which then never fires again. Migrate add-new → observe
 # green → remove old → delete old callers, reading BOTH live protection AND
 # rulesets (D19, D40) — never the branch-protection templates: canon's own
