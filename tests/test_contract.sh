@@ -128,6 +128,15 @@ assert_absent "$(cat .github/workflows/tests.yml)" '$HOME/.local/bin/actionlint'
 # ruamel-specific __ne__ bug slip past. Assert tests.yml installs ruamel AND
 # re-runs a merge test under it.
 assert_ok "grep -q 'python3-ruamel.yaml' .github/workflows/tests.yml && grep -q 'test_precommit_refresh.sh' .github/workflows/tests.yml && grep -q 'test_precommit_merge.sh' .github/workflows/tests.yml" "tests.yml exercises the ruamel.yaml merge backend (both merge + refresh), not only PyYAML (FT-47)"
+# The only MULTILINE needle in the suite, and CI-0033 changed what that means.
+# `grep -F` treated each line as an ALTERNATIVE (absent only if NEITHER line is
+# present); the `case` in assert_absent requires the two lines CONTIGUOUSLY, so
+# it is the stricter, intended reading — "does not suggest a duplicate with
+# block" is about the pair, not about `    # with:` appearing anywhere. Verified
+# same verdict against the current template under both engines. Worth knowing:
+# adding a lone `    # with:` to that template reds under the old semantics and
+# passes under these, so if this assertion is ever meant to catch the line on
+# its own, split it into two single-line assert_absent calls.
 assert_absent "$(cat install/templates/workflows/markdown-lint.yml)" $'    # with:\n    #   runner_labels:' "markdown-lint template does not suggest a duplicate with block"
 # FT-41: markdown-lint's fail-on-findings input defaults to TRUE (blocking gate).
 # The three report-only scanners (dep-scan/trivy/sast) assert their CALLERS ship

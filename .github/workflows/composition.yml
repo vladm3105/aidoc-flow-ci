@@ -445,7 +445,9 @@ jobs:
             allow_lc=$(printf '%s' "$BG_ALLOW" | tr ',\r\n\t' '    ' | tr '[:upper:]' '[:lower:]')
             auth_lc=$(printf '%s\n' "$cauth" | tr '[:upper:]' '[:lower:]' | grep . || true)
             # An unattributable commit means SoD cannot be established for ANY approver.
-            if printf '%s\n' "$auth_lc" | grep -qxF '!unattributed'; then
+            # CI-0033 §27: `case` over the newline-delimited list, no pipeline.
+            # The \n guards keep this an exact WHOLE-LINE match, as `grep -x` was.
+            if [[ $'\n'"$auth_lc"$'\n' == *$'\n''!unattributed'$'\n'* ]]; then
               echo "::error::a commit at head $HEAD_SHA has no GitHub account linked to its author or committer email, so separation of duties cannot be established for any approver — the break-glass fails closed. Re-push with a commit email linked to a GitHub account (or enable required_signatures on this repo)."
               exit 1
             fi
@@ -458,7 +460,20 @@ jobs:
             for who in $hids; do
               who_lc=$(printf '%s' "$who" | tr '[:upper:]' '[:lower:]')
               case " $allow_lc " in *" $who_lc "*) ;; *) REJECTED="${REJECTED}${REJECTED:+, }${who} (not on the approver allowlist)"; continue ;; esac
-              if printf '%s\n' "$auth_lc" | grep -qxF "$who_lc"; then
+              # CI-0033 §27: exact whole-line membership, pipe-free (was grep -qxF).
+              # The `\n` sentinels reproduce `-x` (whole line) and the QUOTED
+              # expansion reproduces `-F` (a glob metacharacter in $who_lc is
+              # literal, so no pattern injection). Verified equivalent on 16
+              # crafted names including `*`, `?????`, `[abc]lice` and backslash.
+              #
+              # One divergence, and it depends on something above: `grep -F`
+              # treats a NEWLINE in the needle as an alternative, `case` requires
+              # contiguity. Unreachable only because `for who in $hids` is
+              # UNQUOTED word-splitting, which cannot produce a newline-bearing
+              # $who. If that loop is ever changed to read whole lines, this test
+              # becomes a separation-of-duties BYPASS in the fail-open direction
+              # — a crafted name would miss the author list and qualify.
+              if [[ $'\n'"$auth_lc"$'\n' == *$'\n'"$who_lc"$'\n'* ]]; then
                 REJECTED="${REJECTED}${REJECTED:+, }${who} (authored or pushed a commit at this head — separation of duties)"
                 continue
               fi

@@ -67,7 +67,10 @@ ok "CI_TAG resolves to $CI_TAG_RESOLVED"
 # raw.githubusercontent can only serve a commit that exists on the remote. A
 # local-only HEAD produces 404s on every template fetch — a failure that looks
 # like a broken installer rather than an unpushed commit.
-if git branch -r --contains "$CI_TAG_RESOLVED" 2>/dev/null | grep -q .; then
+# CI-0033 §27: capture, then test the capture. `git branch` is a multi-write
+# writer, the class where `| grep -q` inverts far below the pipe buffer.
+_branches="$(git branch -r --contains "$CI_TAG_RESOLVED" 2>/dev/null || true)"
+if [ -n "$_branches" ]; then   # exactly `grep -q .`: any character at all
   ok "HEAD is pushed (reachable from a remote branch)"
 else
   bad "HEAD is NOT pushed — raw.githubusercontent cannot serve it; every template fetch would 404"
