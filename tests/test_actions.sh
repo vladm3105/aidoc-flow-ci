@@ -250,6 +250,110 @@ if command -v bash >/dev/null && [ -x scripts/sync-version-refs.sh ]; then
     "sync-version-refs --check passes (the gate that blocks the branch)"
 fi
 
+echo "== scanners caller: the P3a defenses (D27, D35, verdict) =="
+SC=install/templates/workflows/scanners.yml
+SCP=install/templates/workflows/scanners-private.yml
+if [ -f "$SC" ]; then
+  sc="$(cat "$SC")"
+
+  # D27 — the fork guard MUST be job-level. A step-level skip runs after the job
+  # has already checked the fork's code out, turning an admission guard into a
+  # no-op. Assert it sits at job indentation (4 spaces), not step (6+).
+  if grep -qE '^    if: .*head\.repo\.fork' "$SC"; then
+    _g "scanners: fork guard is JOB-level (D27)"
+  else
+    _r "scanners: fork guard is not at job level — a step-level skip runs AFTER checkout (D27)"
+  fi
+
+  # secret-scan must NOT be folded in: it is fork-VISIBLE by design, and a
+  # skipped job satisfies a required context, so gitleaks would go green on
+  # every fork PR having never run (P3a).
+  assert_absent "$sc" "actions/secret-scan" \
+    "scanners: does not absorb secret-scan (fork-visible; skipped satisfies a required context)"
+
+  assert_contains "$sc" "security-events: write" "scanners: SARIF grant present (D35)"
+  assert_contains "$sc" "continue-on-error: true" "scanners: SARIF upload is best-effort (D35)"
+  assert_contains "$sc" 'contains(fromJSON(' "scanners: §23 allowlist, not the v2 blanket cancel (D3)"
+  assert_contains "$sc" "  scanners:" "scanners: job id is 'scanners' (D4)"
+
+  # §3.2c — one failing scanner must not hide the other two.
+  assert_contains "$sc" "name: verdict" "scanners: has a collect-then-fail verdict step (§3.2c)"
+  for s in depscan trivy sast; do
+    assert_contains "$sc" "id: $s" "scanners: $s has an id: for the verdict step"
+  done
+
+  tmo="$(grep -oE 'timeout-minutes: [0-9]+' "$SC" | grep -oE '[0-9]+' || echo 0)"
+  if [ "${tmo:-0}" -ge 50 ]; then _g "scanners: timeout ${tmo} >= 50 (sum of absorbed budgets)"
+  else _r "scanners: timeout ${tmo} < 50 — a slow scanner would kill ones that passed"; fi
+
+  if command -v diff >/dev/null 2>&1 && [ -f "$SCP" ]; then
+    d="$(diff <(sed -E 's/^\s*runs-on:.*/RUNNER/' "$SCP" | sed -n '/^name:/,$p') \
+              <(sed -E 's/^\s*runs-on:.*/RUNNER/' "$SC"  | sed -n '/^name:/,$p') | grep -c '^[<>]' || true)"
+    assert_eq "$d" "0" "scanners public/private bodies identical below the header (drift guard)"
+  fi
+  [ -f "$SCP" ] || _r "scanners-private missing — --update reverts private consumers to ubuntu-latest (D1)"
+else
+  _r "scanners caller template missing — P2's three scanner actions have no caller"
+fi
+
+echo "== scanner actions: the defenses that make them 100-line bodies =="
+# ASSERT ON THE EXECUTED COMMAND, NEVER ON THE FILE.
+#
+# Every one of these defenses is explained in its own action's header comment,
+# so `assert_contains "$(cat action.yml)" "--no-call-analysis=all"` passes even
+# after the flag is deleted from the command — the comment still says it. Two
+# mutations (M14 drop --no-call-analysis, M16 stop stripping .semgrepignore)
+# SURVIVED a version of this block written that way, and it is the fourth time
+# this session a grep has matched a key's own documentation.
+#
+# `runbody` returns the `run:` scalars with SHELL COMMENTS STRIPPED.
+#
+# Dropping the header was not enough: these bodies explain each flag on the line
+# above it, so `--no-call-analysis=all` survived deletion from the command
+# because the inline comment still named it. M14 survived TWO successive fixes
+# for this. The rule that finally holds: an assertion about what runs must see
+# only what runs.
+runbody() {
+  python3 - "$1" <<'PY'
+import sys, re, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+for s in ((d.get("runs") or {}).get("steps") or []):
+    if isinstance(s, dict) and "run" in s:
+        for line in str(s["run"]).split("\n"):
+            # Whole-line comments only. Trailing `# …` on a command line is left
+            # alone: stripping it needs shell-aware quote parsing, and a `#`
+            # inside a quoted string would corrupt the command we are asserting on.
+            if not re.match(r'\s*#', line):
+                print(line)
+PY
+}
+if [ -f actions/dep-scan/action.yml ]; then
+  ds="$(runbody actions/dep-scan/action.yml)"
+  assert_contains "$ds" "--no-call-analysis=all" "dep-scan: call analysis disabled in the COMMAND — it compiles source by default (D24)"
+  assert_contains "$ds" 'rc" -eq 128' "dep-scan: handles the zero-coverage exit code (D12)"
+  assert_contains "$ds" "sha256sum --check --strict" "dep-scan: binary checksum-verified (D20)"
+fi
+if [ -f actions/trivy-scan/action.yml ]; then
+  ts="$(runbody actions/trivy-scan/action.yml)"
+  sclist="$(printf '%s' "$ts" | grep -oE '\-\-misconfig-scanners [a-z,]+' | head -1)"
+  assert_contains "$sclist" "dockerfile" "trivy: dockerfile scanner enabled (D25)"
+  assert_absent "$sclist" "terraform" "trivy: terraform NOT in --misconfig-scanners (SSRF via module source)"
+  assert_absent "$sclist" "helm" "trivy: helm NOT in --misconfig-scanners (fetches remote charts)"
+  assert_contains "$ts" "sha256sum --check --strict" "trivy: tarball checksum-verified (D20)"
+fi
+if [ -f actions/sast-scan/action.yml ]; then
+  ss="$(runbody actions/sast-scan/action.yml)"
+  # The strip must be an executed `find … -delete`, not a mention.
+  strip="$(printf '%s' "$ss" | grep -E "find .*semgrepignore.*-delete" || true)"
+  if [ -n "$strip" ]; then
+    _g "sast: PR-supplied .semgrepignore is DELETED before scanning (D23 — a verified gate bypass)"
+  else
+    _r "sast: no executed strip of .semgrepignore — a PR committing '*' silently zeroes coverage (D23)"
+  fi
+  assert_contains "$ss" "--metrics off" "sast: no telemetry (D26)"
+  assert_contains "$ss" '--config "$CONFIG"' "sast: explicit ruleset, never repo-local discovery (D26)"
+fi
+
 echo "== private variant (D1) =="
 # D1: install.sh --update resolves each surface through manifest.json's
 # visibility_variants. With no private variant it re-applies the label-less

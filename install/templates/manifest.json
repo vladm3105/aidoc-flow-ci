@@ -209,6 +209,18 @@
       "auto_install": false
     },
     {
+      "path": ".github/workflows/scanners.yml",
+      "template": "workflows/scanners.yml",
+      "_note": "PLAN-025 P3a: consolidates dep-scan + trivy-scan + sast-scan into ONE self-hosted, fork-guarded job. secret-scan is deliberately NOT here — it is ubuntu-latest and fork-VISIBLE, and a merged job would report `skipped` on fork PRs, which SATISFIES a required context, so gitleaks would go green having never run. Emits the BARE context `scanners`. visibility_variants REQUIRED (literal runs-on, D1).",
+      "visibility_variants": {
+        "public": "workflows/scanners.yml",
+        "private": "workflows/scanners-private.yml"
+      },
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": false
+    },
+    {
       "path": ".github/workflows/links-external.yml",
       "template": "workflows/links-external.yml",
       "_note": "PLAN-025 D42: the weekly, NON-BLOCKING half of the v2 links split. quick-gates carries the internal/offline half. Ship BOTH — a consumer adopting quick-gates and deleting its v2 links.yml would otherwise lose external link checking entirely. No visibility_variants: ubuntu-latest on both, no fork-code execution, so a visibility flip is a no-op.",

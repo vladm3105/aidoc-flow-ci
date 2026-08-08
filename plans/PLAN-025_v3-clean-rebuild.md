@@ -697,9 +697,10 @@ fires on `pull_request_review` + `workflow_run`, never `pull_request`
 into a job whose trigger never fires for it. The count moved 4 → 5 → **6** as
 later folds split `audit-trail` (§3.2d) and `secret-scan` (P3a) out as well.
 
-**Remaining in P2 — reduced by the folds.** `actions/pre-commit` and
-`actions/links` are **done**. Still to port: the three self-hosted scanners
-(osv-scanner, trivy, semgrep) for the `scanners` job.
+**P2 COMPLETE 2026-08-08.** All six composite actions are ported:
+`markdownlint`, `pre-commit`, `links`, `dep-scan`, `trivy-scan`, `sast-scan`.
+P3 complete too — `quick-gates{,-private}`, `scanners{,-private}` and
+`links-external`, all manifested and inventoried.
 
 **Two flows are deliberately NOT ported and stay reusables:** `composition`
 (403 lines, different trigger) and `audit-trail`. An earlier version of this
@@ -942,7 +943,7 @@ per-check timeouts) · **P8 core — which unblocks P7**.
 
 | # | Blocker | Owner |
 | --- | --- | --- |
-| 1 | **P2 incomplete** — the three self-hosted scanner actions (osv-scanner, trivy, semgrep) for the `scanners` job are not ported | build |
+| ~~1~~ | ~~P2 incomplete~~ — **DONE 2026-08-08.** All six actions ported; `scanners{,-private}` caller added with the D27 job-level fork guard, D35 best-effort SARIF and a collect-then-fail verdict | ✅ |
 | 2 | **P5 not started** — the whole v3 documentation set, plus the §2→`RULES.md` mapping §4.4 requires | build |
 | 3 | **P6** — release mechanics: `MIGRATION_v3.0.0.md`, the MAJOR-bump LiteLLM smoke, and the 🔴 **founder-executed FT-30 cold-start dry run**, which is owed before any tag | **founder** |
 | 4 | **P7** — the per-repo required-context migration. Now *unblocked* by P8, but still the only irreversible phase | founder + build |
@@ -971,3 +972,37 @@ tag that does not exist yet (marker-guarded so `sync-version-refs` stays green),
 and canon self-runs none of them — the FT-21 constraint means canon cannot adopt
 its own composite actions until the `ci/v3.0.0` tag exists.
 
+### Pass 6 - 2026-08-08 - author (P2 complete)
+
+**P2 and P3 are done.** Six composite actions, five caller templates, all
+manifested and inventoried. Suite: **16 suites, 1236 passed, 0 failed**;
+`test_actions.sh` 112 assertions.
+
+**The three scanner ports carry the densest defenses in §2** — D20 (checksum
+verification), D21 (why the bodies are hand-rolled at all), D23 (the verified
+SAST bypass), D24 (call analysis compiles source), D25 (terraform/helm SSRF),
+D12 (zero-coverage), D26 (explicit ruleset, no telemetry). Each is now asserted,
+and each assertion was mutation-tested.
+
+**`scanners` is a separate caller from `secret-scan`, per P3a**, with the fork
+guard at JOB level — a step-level skip would run after the fork's code was
+already checked out. The `secret-scan` context is untouched, so P7 migrates two
+context names, not three.
+
+**One thing the ports revealed:** the `sast-scan` autofix-preview step relied on
+`continue-on-error`, which §3.2a records as unverified inside a composite action.
+Rather than assume, the guarantee is now enforced in the body — every command
+`|| true`-guarded, ending `exit 0` — so a preview cannot fail the scan gate even
+if the attribute is inert.
+
+**Test-authoring lesson, recorded because it recurred four times.** Assertions
+about what a body *does* kept matching the comment *documenting* it: `terraform`
+in the prose explaining its exclusion, `--no-call-analysis=all` in the comment
+above the command, `.semgrepignore` in the header. M14 survived **two** successive
+fixes. The rule that finally held: **an assertion about what runs must see only
+what runs** — extract the `run:` scalars and strip whole-line comments. Anything
+less lets a defense be deleted while its own documentation vouches for it.
+
+**Result:** P2/P3 complete. §8's blocker 1 closed; blockers 2–7 stand.
+**Still NOT READY**, and the new material is **unreviewed** — the OPS-0066 cap
+remains spent.

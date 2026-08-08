@@ -1,0 +1,149 @@
+# scanners — v3 caller consolidating the three SELF-HOSTED security scanners
+# into ONE job (PLAN-025 P3a).
+#
+# ── WHY `secret-scan` IS NOT HERE (P3a — this is the disqualifier) ───────────
+# `secret-scan` is `ubuntu-latest` and deliberately FORK-VISIBLE: it must see a
+# fork PR's code. These three are self-hosted and deliberately fork-GUARDED.
+# One job has one `runs-on` and one `if:`, so merging them would force a choice,
+# and either answer is wrong:
+#
+#   - Take the pool + fork guard → the job reports `skipped` on every fork PR,
+#     and **a skipped job SATISFIES a required context**. `secret-scan` would go
+#     green having never run: a green required check that scanned nothing, which
+#     is the D22 class this plan exists to prevent.
+#   - Stay on ubuntu-latest → the three lose their uniform-protected posture and
+#     private consumers pay GitHub-hosted minutes (OPS-0049).
+#
+# So `secret-scan` keeps its own job and its existing `call / gitleaks` context —
+# no P7 migration for it at all.
+#
+# ── PRIVATE VARIANT — self-hosted, per PLAN-014 §1a uniform-protected ────────
+# The three scanners run on the ephemeral single-use pool. On a private repo
+# that is REQUIRED: GitHub-hosted minutes are OPS-0049 billing exposure. D1 —
+# without this variant `install.sh --update` re-applies the label-less generic
+# and jobs queue forever. Do not merge these two files.
+#
+# ── D27: THE FORK GUARD IS JOB-LEVEL, AND THAT IS LOAD-BEARING ───────────────
+# It CANNOT move into the composite actions. A step-level skip runs AFTER the
+# job has already checked the fork's code out, which turns an admission guard
+# into a no-op. All three v2 reusables carry the identical condition, so one
+# job-level `if:` serves all three exactly.
+#
+# ── D4: THE JOB ID IS THE REQUIRED STATUS CONTEXT ────────────────────────────
+# Emits the BARE context `scanners` — a plain job has no `<jobkey> / ` prefix
+# (that shape comes only from a reusable call). Migrate add-new → observe green
+# on LIVE protection AND rulesets → remove old → delete old callers (D19, D40).
+name: scanners
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  # D35: needed by the SARIF uploads below. This is the UNION of the three
+  # scanners' v2 grants — §3.2a records that consolidating weakens D9's
+  # per-callee ceiling, and accepts it here because all three already share one
+  # trust boundary, one pool and one event.
+  security-events: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # D3 / CI-0025 / §23: an ALLOWLIST, never a blanket cancel. The three v2
+  # reusables each carried `cancel-in-progress: true`, which was safe while none
+  # of them fed a required context. This job DOES, so the allowlist applies:
+  # a cancelled required check is not success, and the rollup stays FAILURE.
+  cancel-in-progress: >-
+    ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_target')
+          && contains(fromJSON('["opened","synchronize"]'), github.event.action)) }}
+
+jobs:
+  scanners:
+    name: scanners
+    # D27 — see the header. Identical across all three v2 reusables.
+    if: ${{ github.event.pull_request.head.repo.fork != true }}
+    runs-on: ["self-hosted", "ci-runner", "single-use"]
+    # §3.2b: the SUM of the absorbed budgets (dep-scan 15 + sast 20 + trivy 15).
+    timeout-minutes: 50
+    steps:
+      - name: Checkout (data-only; no persisted creds)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      # §3.2c COLLECT-THEN-FAIL. Without it the first blocking scanner prevents
+      # the other two from running or uploading SARIF, and under PLAN-014 Phase 5
+      # (fail-on-findings → true) that becomes the normal case.
+      # sync-version-refs:ignore-start
+      # ^ FORWARD REFERENCE, not a stale pin. `ci/v3.0.0` does not exist yet, and
+      # `actions/` does not exist at ci/v2.16.0 — the rewriter's remedy #1 would
+      # point these at a tag where the action is absent. REMOVE THESE MARKERS AT
+      # THE v3.0.0 TAG CUT. (FT-21 chicken-and-egg shape.)
+      - name: dep-scan (SCA — osv-scanner)
+        id: depscan
+        continue-on-error: true
+        uses: vladm3105/aidoc-flow-ci/actions/dep-scan@ci/v3.0.0
+        with:
+          scan-path: .
+          fail-on-findings: 'false'
+          expect-manifests: 'true'
+          sarif-path: osv.sarif
+
+      - name: trivy-scan (IaC/misconfig)
+        id: trivy
+        continue-on-error: true
+        uses: vladm3105/aidoc-flow-ci/actions/trivy-scan@ci/v3.0.0
+        with:
+          scan-path: .
+          fail-on-findings: 'false'
+          sarif-path: trivy.sarif
+
+      - name: sast-scan (semgrep)
+        id: sast
+        continue-on-error: true
+        uses: vladm3105/aidoc-flow-ci/actions/sast-scan@ci/v3.0.0
+        with:
+          scan-path: .
+          config: p/default
+          fail-on-findings: 'false'
+          autofix-preview: 'false'
+          sarif-path: semgrep.sarif
+      # sync-version-refs:ignore-end
+
+      # D35: best-effort by construction. A private repo without GHAS returns
+      # 403 "code scanning not enabled" — the SARIF surfacing is a nice-to-have;
+      # the fail-on-findings GATE is the compliance control, and a failed upload
+      # must NEVER fail the job. `continue-on-error` is supported HERE because
+      # these are job steps (§3.2a defers it only INSIDE a composite action).
+      - name: Upload SARIF to Code Scanning (best-effort)
+        continue-on-error: true
+        if: always() && (hashFiles('osv.sarif') != '' || hashFiles('trivy.sarif') != '' || hashFiles('semgrep.sarif') != '')
+        uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
+        with:
+          sarif_file: .
+
+      # THE VERDICT — fails CLOSED (D6, CI-0026). Any outcome that is not exactly
+      # `success` fails, including `skipped` and the empty string a step that
+      # never ran produces. `skipped` matters especially: P3a establishes that a
+      # skipped JOB satisfies a required context, so treating a skipped STEP as a
+      # pass would launder a crashed scanner into a green gate by the same route.
+      - name: verdict
+        if: always()
+        shell: bash
+        env:
+          R_DEPSCAN: ${{ steps.depscan.outcome }}
+          R_TRIVY: ${{ steps.trivy.outcome }}
+          R_SAST: ${{ steps.sast.outcome }}
+        run: |
+          set -euo pipefail
+          rc=0
+          for chk in DEPSCAN TRIVY SAST; do
+            var="R_${chk}"; out="${!var-}"
+            case "$out" in
+              success) printf '  %-10s %s\n' "$chk" "pass" ;;
+              failure) printf '::error::%s failed\n' "$chk"; rc=1 ;;
+              *)       printf '::error::%s did not report a verdict (outcome=%s) — failing closed\n' "$chk" "${out:-<empty>}"; rc=1 ;;
+            esac
+          done
+          exit "$rc"
