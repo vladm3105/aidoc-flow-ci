@@ -74,7 +74,46 @@ row, **carried** or **dropped + why**.
 
 **D19 is new to this plan and was the defect that killed PLAN-024 Phase G.** Every
 step of this rebuild that touches a required context reads
-`gh api repos/<r>/branches/<b>/protection`, never the templates.
+`gh api repos/<r>/branches/<b>/protection` **and `gh api repos/<r>/rulesets`** —
+never the templates. Rulesets are a separate aggregating surface that
+`apply-standards.sh` never touches, and repo admins are not ruleset bypass actors
+unless listed, so a ruleset-required context has no `--admin` escape (Claim 40).
+
+### 2a. Added 2026-08-08 after independent review — §2 was ~20 rows short
+
+The first cut of §2 was assembled from PLAN-024's ledger, which covered the
+*packaging* defenses. Review found that the **scanner and gate bodies** carry a
+second, larger family of defenses that no row named. Because §4.4 makes §2 the
+acceptance test for `RULES.md` too, each of these would have been dropped from
+the port checklist *and* the rulebook.
+
+| # | Encoded defense | What it prevents | Cite |
+| --- | --- | --- | --- |
+| D20 | SHA-256 verify every downloaded tool binary before executing it | A substituted release tarball executes on the runner. D5 covers `uses:` pins only, not curl'd binaries | Claim 22 |
+| D21 | Allowed-actions policy: only `actions/*`, `github/*`, `vladm3105/*`; `verified_allowed: false` | A marketplace action is a `startup_failure` with a web-UI-only message `actionlint` cannot catch. **This is why the checks are 100-line `run:` bodies and not thin wrappers** — the single biggest constraint on how a v3 action may be written | Claims 23, 24 |
+| D22 | `secret-scan` config canary | A consumer `.gitleaks.toml` with an `[allowlist]` but no rules scans nothing and exits 0 — a green required check that scanned nothing. Plants a credential at a randomized path (a fixed one could be allowlisted away) | Claim 25 |
+| D23 | `sast-scan` strips PR-supplied `.semgrepignore`/`.semgreprc` | A PR committing `.semgrepignore: *` is a **verified full SAST-gate bypass**. The gate, not the scanned PR, decides coverage | Claim 26 |
+| D24 | `dep-scan` passes `--no-call-analysis=all` | osv-scanner's Go call-analysis is **on by default** and compiles source — arbitrary code execution at scan time on the self-hosted pool | Claim 27 |
+| D25 | `trivy` restricted to `dockerfile,kubernetes,cloudformation,azure-arm` | terraform/helm fetch PR-controlled remote sources; a `.tf` `module { source = "https://…" }` makes the runner clone an attacker-chosen URL. `--tf-exclude-downloaded-modules` does **not** prevent the fetch | Claim 28 |
+| D26 | `semgrep` uses an explicit `--config`, never repo-local auto-discovery; `--metrics off` | A PR injecting its own rules; telemetry from private repos | Claim 29 |
+| D27 | Scanner fork guard is a **job-level** `if: head.repo.fork != true` | Keeps fork code off the self-hosted pool. **Distinct from D7** — that is the runner-label half; this is the admission half, and a composite action cannot express it (§3.2a) | Claim 30 |
+| D28 | audit-trail identity: GitHub's `pull_request.user.type`/`.login`, never commit `%an` | `%an` is attacker-spoofable on fork PRs | Claim 31 |
+| D29 | audit-trail **ordering**: the bot exemption runs before the fetch/cat-file guard | An unreachable `BASE_SHA` must not fail a PR the gate would have exempted outright | Claim 31 |
+| D30 | audit-trail fails loud on an unreachable `BASE_SHA`/`HEAD_SHA` | "Silent PASS on unreachable BASE_SHA was the load-bearing failure mode this workflow exists to prevent" | Claim 32 |
+| D31 | audit-trail's job-level `if:` refuses any event but `pull_request` | Pairing a PR-HEAD checkout with `pull_request_target`'s privileged context is the classic untrusted-checkout RCE | Claim 33 |
+| D32 | The caller's `types: [… labeled, unlabeled]` | Without them, applying the escape-hatch label fires no event, the check never re-runs, and the operator is told to apply a label that cannot take effect | Claim 34 |
+| D33 | Two-signal override: label **and** body marker, `jq` exact-array membership | `skip-audit-trail-later` must not substring-match | Claim 31 |
+| D34 | `--redact` on gitleaks output | The scanner's own logs leaking the secret it found | Claim 35 |
+| D35 | SARIF upload is best-effort: `continue-on-error` + a fork `if:` | A private repo without GHAS 403s; `security-events: write` is downgraded on fork PRs. **The gate is the scan step; the upload must never fail the job** | Claim 36 |
+| D36 | `persist-credentials: false` everywhere **except** audit-trail | audit-trail runs `git fetch --no-tags origin "$BASE_SHA"` and needs the credential. The asymmetry is deliberate, and inverting it reds the check on private consumers | Claim 37 |
+| D37 | The zero-hook detector (`check-precommit-hooks.sh`) | D11 states the rule; this is the **detector** that enforces it — and P4 rewrites the very file it inspects | Claim 38 |
+| D38 | `lychee` must be the **musl** static build | The gnu build needs GLIBC 2.38+ and fails on older Debian ephemeral runners. Same class as D17 | Claim 39 |
+| D39 | Required-context → producer derivation (FT-18/FT-45) | Arming a required context nothing produces pins every PR forever. **v3 breaks the tool that does this** — see P8 | Claim 41 |
+| D40 | Rulesets are a second required-check surface | `apply-standards.sh` never touches them and admins are not bypass actors unless listed | Claim 40 |
+| D41 | CI-0021 targeted break-glass; CI-0023 "a fail-closed guard fails on faults, not on shapes" | CI-0014: an ai-review outage normalised `--admin` across seven repos for ~9 days | Claims 42, 43 |
+
+**All 21 CARRIED. None dropped.** D21 and D27 additionally constrain the
+architecture and are answered in §3.2a.
 
 ## 3. Target architecture
 
@@ -122,6 +161,85 @@ prevent.
 
 `links` also carries a `schedule` trigger. That is unaffected — the scheduled
 caller invokes the same composite action in its own small workflow.
+
+### 3.2a What composite packaging CANNOT express — and the disposition for each
+
+A composite action has no job of its own. It therefore cannot carry
+`permissions:`, `concurrency:`, `timeout-minutes`, a job-level `if:`, or the
+`secrets` context, and `continue-on-error` on its steps is undocumented. Each
+ported check depends on at least one of these. **Resolved, not deferred:**
+
+| Constraint | Affected | Disposition |
+| --- | --- | --- |
+| **Job-level `if:`** | D27 scanner fork guard; D31 audit-trail's event refusal | **Moves to the CALLER's job `if:`, never to a step.** A step-level skip runs *after* the job has already checked the fork's code out, which converts an admission guard into a no-op. The caller must therefore carry the guard, and `tests/` must assert it is present — a defense that moved to a file nothing checks is a defense that was dropped. |
+| **`permissions:`** | Every check (D9) | One grant per job, and for `security` it is the **union** of four. §2 marks D9 carried; **structurally it is weakened** and this plan accepts that explicitly: the four scanners already run on the same trust boundary, same pool, same event. It is not acceptable for `quick-gates`, which stays `contents: read` — no ported check there needs more. |
+| **`timeout-minutes`** | All | See §3.2b. |
+| **`secrets` context** | `links` passes `GITHUB_TOKEN` to lychee for github.com rate limits | The action takes it as an **input**; the caller passes `${{ secrets.GITHUB_TOKEN }}`. `quick-gates.yml` currently passes nothing — a defect on the branch (§6a). |
+| **`continue-on-error`** | D35, four SARIF uploads | **Must be verified on the target runner before P2 ships a scanner action.** If unsupported, a private consumer without GHAS turns a documented no-op 403 into a hard red on every PR. Until verified, the SARIF upload stays in a **caller step**, not inside the action. |
+| **Marketplace `uses:` (D21)** | All | Unchanged — the allowlist admits `vladm3105/aidoc-flow-ci/actions/*`, so the new packaging is itself permitted, but the bodies must stay hand-rolled `run:` blocks. No action may introduce a marketplace `uses:`; `tests/` asserts owner, not just SHA-pinning. |
+
+### 3.2b Timeouts: four budgets collapse into one, and the first number shipped was too small
+
+v2 per-check: `pre-commit` 15, `markdown-lint` 10, `links` **20**, `audit-trail`
+10. The branch shipped `quick-gates` at `timeout-minutes: 15` — **below the 20
+`links` needs**, so a legitimately slow lychee run would kill the whole job
+including the three checks that already passed.
+
+**Rule: a consolidated job's timeout is the SUM of the checks it absorbs, not the
+max and never a round number picked by eye.** `quick-gates` → 55.
+`security` → 65. Padding is cheaper than a false red; the runner is released on
+completion either way, so a high ceiling costs nothing when jobs pass.
+
+### 3.2c Failure sequencing: a composite step failure aborts the job
+
+In v2's job-per-check model every verdict arrives together. Consolidated, one
+markdownlint error means the PR never learns its links are broken — and under
+§3.4's graduation the first blocking scanner prevents the other three from
+running or uploading SARIF.
+
+**Decision: collect, then fail.** Each action records its verdict and returns
+success; a final `verdict` step in the caller fails the job if any recorded
+verdict failed. This preserves v2's all-verdicts-at-once property, which is the
+thing that makes a consolidated job tolerable to work with. It is also the D6
+fail-closed shape: the verdict step must fail closed if a verdict file is
+missing, or a crashed action reads as a pass.
+
+### 3.2e A new distribution artifact: `.github/actionlint.yaml`
+
+Found while building the private variant. Under v2 a private caller **never
+named a runner label directly** — it passed a JSON *string* input and the
+reusable did the `fromJSON`, so actionlint only ever saw an expression and had
+nothing to validate.
+
+v3 callers carry a literal `runs-on: ["self-hosted","ci-runner","single-use"]`,
+because a composite action runs in the caller's job. actionlint's `runner-label`
+rule rejects any label it does not know, and canon ships no config — so **every
+private v3 caller fails the lint**: canon's own `test_lint.sh`,
+`pre_push_check.sh` check 3 on every consumer, and any consumer's own actionlint.
+
+`.github/actionlint.yaml` declaring `ci-runner` and `single-use` fixes it, and
+**must ship to consumers** — manifest entry plus `install.sh` fetch, added to
+P8. Note the file declares labels; it does not create runners. A job whose
+labels match no registered runner queues forever and `timeout-minutes` cannot
+save it (D16), so the list must stay in step with what is actually registered.
+
+### 3.2d The `types:` conflict — resolved by splitting audit-trail back out
+
+`audit-trail` needs `types: [opened, synchronize, reopened, labeled, unlabeled]`
+for its D32 escape hatch. The other three want the default types, because
+`ai-review`/`labeler`/`auto-merge` toggle labels routinely and re-running lint on
+every label write burns runner minutes for no signal. **No single `types:`
+satisfies both.**
+
+**`audit-trail` therefore stays its own workflow.** It is a `grep` over a commit
+range — the cheapest check in the set — and it carries the most trigger-specific
+requirements (D31, D32) plus the D36 credential asymmetry. Consolidating it buys
+one provisioning cycle and costs three defenses.
+
+**Revised target: `quick-gates` = pre-commit + markdownlint + links.**
+**12 → 6 jobs**, not 5 and not 4. Each successive count has moved in the same
+direction as review found constraints; that is the estimate converging, and it
+is recorded here rather than smoothed over.
 
 Off the PR path: `codeql` (push-to-main + weekly only — report-only and
 GitHub-native), `standards-drift` (weekly), `docs-sync` (post-merge),
@@ -218,20 +336,103 @@ as templates. D3's allowlist and D4's job-id discipline apply to every one.
 `pre_push_check.sh`, cli2 parity. **Ships before P5** — the local layer must be
 in place before CI consolidation changes what adopters rely on.
 
+**P3a — `security` splits in two. It is not a valid single job.** Three
+independent conflicts, all found in review:
+
+- **Runner class.** `secret-scan` defaults to `ubuntu-latest`; the other three
+  default to the self-hosted pool as *uniform protected* (PLAN-014 §1a). One job
+  has one `runs-on`.
+- **Fork posture, and this is the disqualifier.** `secret-scan` deliberately runs
+  on fork PRs — it MUST see the PR's code. The other three deliberately skip
+  them (D27). If a merged `security` job took the pool it would need a fork
+  guard, and **a skipped job reports `skipped`, which branch protection treats as
+  satisfying a required context** — so `call / security` would go green on every
+  fork PR with gitleaks never having run. That is the "green required check that
+  scanned nothing" class D22 exists to prevent, re-created by the consolidation
+  meant to be safe.
+- **OPS-0049.** Keeping the three on `ubuntu-latest` instead makes private
+  consumers pay GitHub-hosted minutes.
+
+**Therefore:** `secret-scan` stays its own job on `ubuntu-latest`, fork-visible,
+keeping its `call / gitleaks` context unchanged — no migration, no risk. The
+three self-hosted scanners consolidate into `call / scanners`, fork-guarded at
+the job level (§3.2a).
+
 **P5 — Documentation set.** §4, including the §2→RULES mapping.
+
+**P8 — Tooling and distribution. Canon has never shipped a composite action, and
+nothing in the toolchain knows about them.** This is a phase the first draft
+omitted entirely; without it v3 cannot be installed, updated, drift-checked or
+context-mapped.
+
+- **`install/required-context-map.py`** considers only workflows declaring
+  `workflow_call`, and matches a caller's **job-level** `uses:` (Claim 41). A job
+  whose steps are composite actions has no job-level `uses:`, so
+  `call / quick-gates` resolves to `?` — which `tests/test_required_contexts.sh`
+  reports as latent and fails. Teach it the step-level shape.
+- **`tests/test_checknames.sh`** builds its emitted-name set the same way; both
+  new contexts would flag as having no producer. Three assertions hardcode
+  `call / verify`, `call / Lint / format / security hooks` and `call / gitleaks`
+  to their v2 reusables.
+- **`manifest.json`** has no schema for an `actions/` surface, and every v3
+  caller needs `path`/`template`/`visibility_variants`/`safe_to_replace`/
+  `auto_install`. **`quick-gates.yml` is unmanifested today** — the exact defect
+  the manifest itself records for audit-trail, which "shipped as a template but
+  NOT manifested until 2026-07-16, so manifest-driven tooling skipped it
+  entirely."
+- **`tests/test_lint.sh`** yamllints and actionlints `.github/workflows/` and
+  `install/templates/workflows/` only. P2 moves the majority of canon's shell
+  into `actions/*/action.yml`, **where none of the three linters reach it** —
+  while §3.4 makes "actionlint becomes enforced" a headline of v3. Extend the
+  globs; note actionlint does not validate `action.yml` as a workflow, so the
+  embedded-shell delegation needs a different invocation.
+- **`scripts/sync-version-refs.sh`** rewrites every `uses: …@ci/vX.Y.Z` in
+  `install/templates/workflows/*.yml` to the `VERSION` value, so a v2 patch cut
+  while v3 templates sit in-tree rewrites their `@ci/v3.0.0` pins to the v2 tag.
+  (`--repin`'s regexes *do* match `…/actions/x@ci/v…`, so re-pinning composites
+  works — that half is fine.)
+- **`install/deploy-ci-wizard.sh`** is the adoption surface and gets no mention.
+- **`auto_install`** currently marks `pre-commit.yml` as the bootstrap tier's
+  only gate; folding it into `quick-gates` moves that flag.
+
+**P9 — Rollback.** P7 is irreversible per repo and has no stated undo. Define
+one: the v2 tag remains, the v2 callers are deleted only at P7 step 4, and a
+documented revert is "restore the v2 callers from the tag, re-add the old
+contexts to live protection **and** any ruleset." Ten repos hand-run with no
+script is not a plan; P9 ships a dry-run-capable helper or P7 is not started.
 
 **P6 — Release `ci/v3.0.0`.** Migration guide, LiteLLM smoke (MAJOR gate), FT-30
 cold-start dry run (🔴 founder). Canon self-adopts first (Wave 0).
 
 **P7 — Per-repo required-context migration.** The only irreversible step:
 
+0. **Update `install/templates/branch-protection-*.json` in the same release.**
+   `apply-standards.sh` PUTs the tier file as one whole payload, so any later
+   `--apply` after step 3 **restores the old contexts and hangs every PR**
+   (Claim 44). The templates must already name the new contexts before any live
+   edit happens.
 1. Add the new job **alongside** the old
-2. Add the new context to **live** protection; observe green
-3. Remove old contexts from live protection
+2. Add the new context to **live** protection; observe it reporting green
+3. Remove old contexts from live protection **and from any ruleset** (D40) —
+   `apply-standards.sh` never touches rulesets, and admins are not ruleset bypass
+   actors unless listed, so a ruleset-required context has no `--admin` escape
 4. Only then delete the old callers
+5. Re-run `install/required-context-map.py` and `tests/test_required_contexts.sh`
+   — both must resolve every armed context to a real producer (D39). This is the
+   step that catches a context armed against nothing.
 
-Read live protection at every step (D19). `enforce_admins: true` on consumer
-tiers means there is no `--admin` escape if this is got wrong.
+Read **both** surfaces at every step (D19, D40):
+
+```bash
+gh api repos/<r>/branches/<b>/protection --jq '.required_status_checks.contexts'
+gh api repos/<r>/rulesets --jq '.[].id' | while read -r id; do
+  gh api "repos/<r>/rulesets/$id" \
+    --jq '.rules[]|select(.type=="required_status_checks")
+          |.parameters.required_status_checks[].context'; done
+```
+
+`enforce_admins: true` on consumer tiers means there is no `--admin` escape if
+this is got wrong. P9 owns the undo.
 
 ## 6. Non-goals
 
@@ -280,6 +481,30 @@ governance.
 | 18 | The LiteLLM route is the docker bridge; loopback resolves to the container | `172.17.0.1:4001` | CLAUDE.md:194 |
 | 19 | markdown-lint is named among the caller templates feeding a required context | `the eight caller templates feeding a` | docs/REPO_STANDARDS.md:2154 |
 | 20 | The pre-commit reusable runs every hook against every file | `pre-commit run --all-files --show-diff-on-failure` | .github/workflows/pre-commit.yml:100 |
+| 21 | composition fires on pull_request_review and workflow_run, never pull_request | `pull_request_review:` | install/templates/workflows/composition-public.yml:16 |
+| 22 | Downloaded tool binaries are SHA-256 verified before execution | `sha256sum --check --strict` | .github/workflows/secret-scan.yml:101 |
+| 23 | Canon may only `uses:` actions from an allowlisted set of owners | `actions/*` | .github/workflows/secret-scan.yml:5 |
+| 24 | Verified marketplace creators are blocked too, since CI-0011 | `verified_allowed` | install/templates/actions-permissions.json:16 |
+| 25 | secret-scan plants a canary because a rule-less config scans nothing and exits 0 | `config canary` | .github/workflows/secret-scan.yml:127 |
+| 26 | sast-scan strips PR-supplied semgrep ignore files before scanning | `semgrepignore` | .github/workflows/sast-scan.yml:90 |
+| 27 | dep-scan disables osv-scanner call analysis, which compiles source by default | `no-call-analysis` | .github/workflows/dep-scan.yml:20 |
+| 28 | trivy is restricted to scanners that cannot fetch PR-controlled remote sources | `cloudformation` | .github/workflows/trivy-scan.yml:15 |
+| 29 | semgrep uses an explicit config so a PR cannot inject rules | `--config` | .github/workflows/sast-scan.yml:29 |
+| 30 | The scanner fork guard is a job-level condition, not a step-level skip | `head.repo.fork` | .github/workflows/dep-scan.yml:57 |
+| 31 | audit-trail derives identity from GitHub metadata, never spoofable commit author | `PR_USER_TYPE` | .github/workflows/audit-trail-check.yml:105 |
+| 32 | A silent pass on an unreachable BASE_SHA was the failure this gate exists to prevent | `load-bearing failure mode` | .github/workflows/audit-trail-check.yml:147 |
+| 33 | audit-trail refuses pull_request_target because a PR-HEAD checkout there is an RCE | `pull_request_target` | .github/workflows/audit-trail-check.yml:72 |
+| 34 | The caller's label types are load-bearing or the escape hatch cannot fire | `labeled` | install/templates/workflows/audit-trail-public.yml:11 |
+| 35 | gitleaks output is redacted so the scanner does not leak what it finds | `--redact` | .github/workflows/secret-scan.yml:186 |
+| 36 | SARIF upload is best-effort so a GHAS-less private repo does not red the gate | `continue-on-error` | .github/workflows/secret-scan.yml:246 |
+| 37 | audit-trail deliberately omits persist-credentials because it fetches the base SHA | `ref: ${{ github.event.pull_request.head.sha }}` | .github/workflows/audit-trail-check.yml:95 |
+| 38 | A detector verifies the produced config actually selects a hook at the runner's stage | `check-precommit-hooks` | install/install.sh:1170 |
+| 39 | lychee must be the musl static build for older self-hosted runners | `musl` | .github/workflows/links.yml:16 |
+| 40 | Rulesets are a second required-check surface apply-standards.sh never touches | `CI-0029` | DECISIONS.md:1877 |
+| 41 | The required-context map only understands workflow_call reusables | `workflow_call` | install/required-context-map.py:41 |
+| 42 | CI-0021 defines a targeted break-glass so an outage does not normalise --admin | `CI-0021` | docs/REPO_STANDARDS.md:1799 |
+| 43 | CI-0023 records that a fail-closed guard fails on faults, not on shapes | `CI-0023` | docs/REPO_STANDARDS.md:2003 |
+| 44 | apply-standards PUTs the tier branch-protection file as one whole payload | `branch-protection-` | install/apply-standards.sh:701 |
 
 ## Implementation log
 
@@ -326,3 +551,64 @@ consolidated a check into a job whose trigger never fires for it.
 job's four. `composition` (403 lines) is **not** ported — it stays a reusable.
 
 ## Review log
+
+### Pass 1 - 2026-08-08 - author
+
+Drafted against PLAN-024's ledger and the founder's clean-rebuild directive.
+Self-review folded the governing risk into §1 (this library's apparent
+redundancy is encoded defect history — four PLAN-024 proposals were withdrawn on
+exactly that ground) and made §2 the acceptance criterion rather than a
+background note. Author's own §2 was assembled from PLAN-024's ledger, which
+covered *packaging* defenses only — Pass 2 found that limitation.
+
+**Result:** dispatched independent review.
+
+### Pass 2 - 2026-08-08 - independent
+
+**45 findings. The central one: §2 was ~20 rows short — the plan's declared
+acceptance criterion was itself the biggest gap.** Because §4.4 also makes §2 the
+acceptance test for `RULES.md`, every missing defense would have been dropped
+from both the port checklist and the new rulebook.
+
+Folded:
+
+1. **§2 → §2a, +21 rows (D20–D41).** The scanner and gate *bodies* carry a
+   second, larger family of defenses than the packaging: SHA-256 verification of
+   downloaded binaries, the allowed-actions policy (which is *why* the checks are
+   100-line hand-rolled bodies), the gitleaks config canary, the semgrepignore
+   strip (a verified full-SAST-bypass), `--no-call-analysis`, trivy's scanner
+   restriction, the job-level fork guard, audit-trail's five-part identity/
+   ordering/fail-closed cluster, `--redact`, best-effort SARIF, the
+   `persist-credentials` asymmetry, the zero-hook detector, lychee's musl
+   requirement, the required-context map, rulesets, CI-0021 and CI-0023.
+   **All 21 CARRIED.**
+2. **§3.2a — what composite packaging cannot express**, with a disposition per
+   constraint. The consequential one: a job-level `if:` becomes a *step-level*
+   skip, which runs after the fork's code is already checked out — so the guard
+   moves to the **caller**, never to a step.
+3. **§3.2b — timeouts.** Four budgets collapse into one, and the branch had
+   shipped 15, *below* the 20 `links` alone needs. Rule: sum, never max.
+4. **§3.2c — failure sequencing.** A composite step failure aborts the job, so
+   one markdownlint error hides every other verdict. Collect-then-fail, with a
+   fail-closed verdict step.
+5. **§3.2d — the `types:` conflict is unresolvable**, so `audit-trail` splits
+   back out. Target moved 4 → 5 → **6 jobs**; each move followed a constraint
+   review found, and is recorded rather than smoothed.
+6. **P3a — `security` is not a valid single job.** `secret-scan` is
+   `ubuntu-latest` and fork-visible; the other three are self-hosted and
+   fork-guarded. A skipped job reports *skipped*, which **satisfies** a required
+   context — so a merged job would go green on every fork PR with gitleaks never
+   having run. It stays separate.
+7. **P7 gains steps 0 and 5**, and reads **rulesets** as well as branch
+   protection (D40). Without step 0 a later `apply-standards.sh --apply` restores
+   the old contexts and hangs every PR.
+8. **P8 (new) — tooling and distribution.** Canon has never shipped a composite
+   action: `required-context-map.py` understands only `workflow_call`,
+   `test_checknames.sh` and `test_required_contexts.sh` hardcode the v2
+   contexts, `manifest.json` has no `actions/` schema, and `test_lint.sh` lints
+   neither. **P9 (new) — rollback**, which P7 had no undo for.
+9. **Five code defects on the branch**, all fixed — see the implementation log.
+
+**Result:** all load-bearing findings folded. §2 is now 41 rows; the plan gained
+three phases. **Not ready** — §2a, §3.2a–e, P3a, P8 and P9 are all new since the
+last independent pass and are themselves unreviewed.

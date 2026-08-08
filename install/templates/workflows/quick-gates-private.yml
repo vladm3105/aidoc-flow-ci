@@ -28,12 +28,18 @@
 # `main` requires `call / markdownlint` and `suite`, neither of which appears in
 # any template.
 #
-# ── D7: RUNNER LABELS ARE NOT FREE HERE ──────────────────────────────────────
-# This job runs `pre-commit` over the PR's OWN files — fork-code execution. On a
-# PUBLIC repo it MUST stay `ubuntu-latest`. The `-private` sibling carries the
-# self-hosted labels; that split also exists so `install.sh --update` resolves a
-# labeled file for private consumers instead of reverting them to
-# `ubuntu-latest` and queueing forever (D1).
+# ── PRIVATE VARIANT — self-hosted, and that is SAFE here ─────────────────────
+# This job runs `pre-commit` over the PR's own files, i.e. it executes PR code.
+# On a PUBLIC repo that means it must stay `ubuntu-latest` (D7) — see the
+# `quick-gates.yml` sibling. On a PRIVATE repo there is no fork-PR surface, so
+# the ephemeral single-use pool is both safe and REQUIRED: GitHub-hosted minutes
+# on a private repo are OPS-0049 billing exposure and against workspace policy.
+#
+# D1 — WHY THIS FILE EXISTS AS A SEPARATE TEMPLATE. `install.sh --update`
+# resolves each surface through manifest.json's `visibility_variants`. With no
+# private variant it re-applies the label-less generic, the reusable's
+# `ubuntu-latest` default wins, and jobs QUEUE FOREVER on a private repo — the
+# defect ci/v2.1.0 shipped the variants to close. Do not merge these two files.
 name: quick-gates
 
 on:
@@ -61,7 +67,7 @@ concurrency:
 jobs:
   quick-gates:
     name: quick-gates
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted", "ci-runner", "single-use"]
     # PLAN-025 §3.2b: a consolidated job's timeout is the SUM of the budgets it
     # absorbs (pre-commit 15 + markdownlint 10 + links 20), never the max and
     # never a round number picked by eye. An earlier draft shipped 15 — BELOW

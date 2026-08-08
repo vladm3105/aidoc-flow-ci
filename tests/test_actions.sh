@@ -55,16 +55,66 @@ for a in "${ACTIONS[@]}"; do
 
   # A composite action's `run:` steps MUST declare a shell; GitHub does not
   # default one (unlike a workflow job), and omitting it is a load error.
-  runs="$(grep -c '^\s*run: |' "$a" || true)"
-  shells="$(grep -c '^\s*shell: bash' "$a" || true)"
+  #
+  # PARSE, DO NOT GREP. The first version of this counted `grep -c '^\s*run: |'`,
+  # which matches only the block-scalar spelling — so an action written
+  # `run: npm ci` yielded 0 run / 0 shell, the equality passed VACUOUSLY, and the
+  # strict-mode assertion below was skipped by the `-gt 0` guard. A measurement
+  # mutation (verified 2026-08-08) sailed through the whole suite while shipping
+  # an action GitHub would refuse to load. A test extractor must fail closed.
+  read -r runs shells strict < <(python3 - "$a" <<'PY'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+steps = ((d.get("runs") or {}).get("steps") or [])
+runs = [s for s in steps if isinstance(s, dict) and "run" in s]
+shells = [s for s in runs if s.get("shell") == "bash"]
+strict = [s for s in runs if "set -euo pipefail" in str(s.get("run", ""))]
+print(len(runs), len(shells), len(strict))
+PY
+  )
   assert_eq "$runs" "$shells" "$name: every run: has 'shell: bash' ($runs run / $shells shell)"
 
   # D15 (REPO_STANDARDS §24.1): GitHub already applies an implicit `bash -e`, so
   # a step that does not set its own strict mode aborts at the first non-zero
-  # BEFORE any guard can forgive it. Declaring it makes the behaviour explicit
-  # and adds -u/-o pipefail.
-  if [ "$runs" -gt 0 ]; then
-    assert_contains "$body" "set -euo pipefail" "$name: run: uses strict mode (D15)"
+  # BEFORE any guard can forgive it. Asserted PER STEP, not "somewhere in the
+  # file" — one strict step must not vouch for four sloppy ones.
+  assert_eq "$runs" "$strict" "$name: every run: sets strict mode ($strict/$runs) (D15)"
+
+  # D21: canon may `uses:` only actions/*, github/* or vladm3105/*. A marketplace
+  # action is a run-init `startup_failure` with a web-UI-only message that
+  # actionlint does not catch, in every consumer at once.
+  #
+  # PARSED, not grepped — the first version matched the literal text `uses:`
+  # inside a COMMENT explaining this very rule, and reported the prose as a
+  # non-allowlisted owner. Grepping a structured file for a key finds the key's
+  # name wherever it appears, including in the documentation of the key.
+  badowner="$(python3 - "$a" <<'PY'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+ok = ("actions/", "github/", "vladm3105/")
+for s in ((d.get("runs") or {}).get("steps") or []):
+    u = s.get("uses") if isinstance(s, dict) else None
+    if u and not u.startswith(ok):
+        print(u)
+PY
+  )"
+  if [ -z "$badowner" ]; then
+    _g "$name: every 'uses:' is an allowlisted owner (D21)"
+  else
+    _r "$name: non-allowlisted action owner — $badowner"
+  fi
+
+  # D20: any action that downloads a binary MUST verify it before executing it.
+  # D21 forces these bodies to curl their own tools instead of using a
+  # marketplace action, so the integrity check is the only thing standing
+  # between a substituted release asset and code execution on the runner.
+  # Added after a mutation deleting `sha256sum -c` survived the whole suite.
+  if printf '%s' "$body" | grep -qE 'curl .*(-o|--output|>)'; then
+    if printf '%s' "$body" | grep -qE 'sha256sum (-c|--check)'; then
+      _g "$name: downloads a binary and SHA-256 verifies it (D20)"
+    else
+      _r "$name: downloads a binary with NO checksum verification (D20)"
+    fi
   fi
 done
 
@@ -95,10 +145,20 @@ if [ -f "$QG" ]; then
   # D4: the job id renders the required context `call / quick-gates`.
   assert_contains "$qg" "  quick-gates:" "quick-gates: job id is 'quick-gates' (D4)"
 
-  # audit-trail's fork-PR false-pass guard needs full history at the PR head, and
-  # the shared checkout must satisfy the strictest consumer.
-  assert_contains "$qg" "fetch-depth: 0" "quick-gates: full history for audit-trail"
+  # The shared checkout must NOT pin a ref. On `pull_request` the default is the
+  # MERGE commit, which is what the v2 pre-commit/markdown-lint/links reusables
+  # lint. An earlier draft pinned `pull_request.head.sha` (copied from
+  # audit-trail), which lints the branch TIP — so a PR whose merge result is
+  # dirty but whose tip is clean would go green. Weaker, not stricter.
+  assert_absent "$qg" "ref: \${{ github.event.pull_request.head.sha }}" \
+    "quick-gates: no head.sha pin — lints the merge commit like v2"
   assert_contains "$qg" "persist-credentials: false" "quick-gates: no persisted creds"
+
+  # audit-trail is deliberately NOT consolidated here (PLAN-025 §3.2d): it needs
+  # label types the other checks must not have, a job-level event refusal (D31),
+  # and the D36 credential asymmetry. Three defenses for one provisioning cycle.
+  assert_absent "$qg" "actions/audit-trail" \
+    "quick-gates: does not absorb audit-trail (types/D31/D36 conflict)"
 
   # D7: this job runs pre-commit over the PR's own files — fork-code execution.
   # The public variant must stay ubuntu-latest; moving it to the self-hosted
@@ -117,6 +177,67 @@ if [ -f "$QG" ]; then
   fi
 else
   _r "quick-gates caller template missing"
+fi
+
+echo "== private variant (D1) =="
+# D1: install.sh --update resolves each surface through manifest.json's
+# visibility_variants. With no private variant it re-applies the label-less
+# generic, the ubuntu-latest default wins, and jobs QUEUE FOREVER on a private
+# repo — the defect ci/v2.1.0 shipped the variants to close.
+QGP=install/templates/workflows/quick-gates-private.yml
+if [ -f "$QGP" ]; then
+  qgp="$(cat "$QGP")"
+  assert_contains "$qgp" "self-hosted" "quick-gates-private: uses the self-hosted pool (D1/OPS-0049)"
+  assert_contains "$qgp" "ci-runner" "quick-gates-private: names the real pool label, not a placeholder"
+  # 'runner-self' was a placeholder shipped before ci/v1.9.0 and is NOT a
+  # registered label — a caller left on it queues forever.
+  assert_absent "$qgp" "runner-self" "quick-gates-private: not the dead 'runner-self' placeholder"
+else
+  _r "quick-gates-private variant missing — --update will revert private consumers to ubuntu-latest (D1)"
+fi
+
+echo "== actionlint knows the self-hosted labels (PLAN-025 §3.2e) =="
+# v3 callers carry a LITERAL runs-on with custom labels (v2 passed a JSON string
+# input, so actionlint never saw a label). Without this config every private
+# caller fails actionlint — here, in pre_push_check.sh, and on every consumer.
+AL=.github/actionlint.yaml
+if [ -f "$AL" ]; then
+  al="$(cat "$AL")"
+  assert_contains "$al" "ci-runner" "actionlint.yaml declares ci-runner"
+  assert_contains "$al" "single-use" "actionlint.yaml declares single-use"
+else
+  _r "no .github/actionlint.yaml — every private v3 caller fails the runner-label rule"
+fi
+
+echo "== every referenced action resolves =="
+# A caller naming an action that does not exist in the tree is a run-init
+# `startup_failure` on every consumer — the same invisible class as an
+# unmatched runner label, and nothing else in the suite catches it. The first
+# quick-gates draft referenced three actions that had not been written.
+missing=0
+while IFS= read -r ref; do
+  [ -n "$ref" ] || continue
+  act="${ref#vladm3105/aidoc-flow-ci/actions/}"; act="${act%@*}"
+  if [ -f "actions/$act/action.yml" ]; then
+    _g "resolves: actions/$act/action.yml"
+  else
+    _r "DANGLING: '$ref' has no actions/$act/action.yml"
+    missing=$((missing+1))
+  fi
+done < <(grep -rhoE 'vladm3105/aidoc-flow-ci/actions/[^@[:space:]]+@[^[:space:]]+' \
+           install/templates/workflows/ .github/workflows/ 2>/dev/null | sort -u)
+[ "$missing" -eq 0 ] || printf '  \033[33mnote\033[0m %d dangling reference(s) — the caller will startup_failure\n' "$missing"
+
+echo "== timeout is the SUM of absorbed budgets (PLAN-025 §3.2b) =="
+# v2: pre-commit 15 + markdownlint 10 + links 20 = 45. A consolidated job that
+# takes the MAX kills checks that already passed when the slowest one runs long.
+if [ -f "$QG" ]; then
+  tmo="$(grep -oE 'timeout-minutes: [0-9]+' "$QG" | grep -oE '[0-9]+' || echo 0)"
+  if [ "${tmo:-0}" -ge 45 ]; then
+    _g "quick-gates: timeout ${tmo} >= 45 (sum of absorbed budgets)"
+  else
+    _r "quick-gates: timeout ${tmo} < 45 — a slow links run would kill passed checks"
+  fi
 fi
 
 suite_summary "test_actions.sh"

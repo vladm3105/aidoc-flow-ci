@@ -1,0 +1,30 @@
+# actionlint configuration — declares this workspace's self-hosted runner labels.
+#
+# WHY THIS FILE IS NEW IN v3, AND WHY IT IS LOAD-BEARING (PLAN-025 §3.2e).
+#
+# Under ci/v2.x a private caller never named a runner label directly: it passed
+# a JSON STRING input (`runner_labels: '["self-hosted","ci-runner","single-use"]'`)
+# and the reusable did the `fromJSON`. actionlint therefore only ever saw
+# `runs-on: ${{ fromJSON(inputs.runner_labels) }}` — an expression, not a label —
+# and had nothing to validate.
+#
+# v3 replaces the reusables with composite actions, which run in the CALLER's
+# job. The caller now carries a literal `runs-on: ["self-hosted","ci-runner",
+# "single-use"]`, and actionlint's `runner-label` rule rejects any label it does
+# not know. Without this file EVERY private v3 caller fails:
+#   - canon's own `tests/test_lint.sh` (actionlints install/templates/workflows/*)
+#   - `scripts/pre_push_check.sh` check 3, on every consumer
+#   - any consumer running actionlint of its own
+#
+# So this must ship to consumers as part of the v3 install set, not just live
+# here. It is a distribution surface: manifest entry + install.sh fetch.
+#
+# The labels are the canonical private pool (`operations/scripts/ci-runner/
+# run-ephemeral.sh` registers exactly these). Adding a label here does NOT create
+# a runner — a job whose labels match no registered runner queues forever and
+# `timeout-minutes` cannot save it, because the clock starts when the job starts
+# (PLAN-025 D16). Keep this list in step with what is actually registered.
+self-hosted-runner:
+  labels:
+    - ci-runner
+    - single-use

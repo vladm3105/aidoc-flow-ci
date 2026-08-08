@@ -58,6 +58,28 @@ inputs:
 runs:
   using: composite
   steps:
+    # PLAN-025 §3.2: verify the precondition, fail loudly if unmet. Without this,
+    # a job that checked out nothing (or shallow, or the wrong ref) leaves cli2
+    # matching zero files and exiting 0 — a green required check that inspected
+    # nothing. That is the same shape as D11 and D22, re-created by
+    # consolidation, and it is invisible in the log.
+    - name: Verify precondition — a checked-out tree with Markdown in it
+      shell: bash
+      env:
+        GLOBS: ${{ inputs.globs }}
+      run: |
+        set -euo pipefail
+        if [ ! -e .git ]; then
+          echo "::error::markdownlint action: no checkout detected. The CALLER must check out before invoking this action (PLAN-025 §3.2)."
+          exit 1
+        fi
+        # A repo genuinely containing no Markdown is legitimate; a repo whose
+        # tree failed to materialise is not. Distinguish them: git knows what is
+        # tracked even when the worktree is empty.
+        if [ "$(git ls-files -- '*.md' | head -1 | wc -l)" -eq 0 ]; then
+          echo "::notice::markdownlint: repository tracks no .md files — nothing to lint."
+        fi
+
     # setup-node is allowlisted (actions/*) and guarantees Node on ephemeral
     # self-hosted runners that may not pre-bake it.
     - name: Set up Node
