@@ -26,7 +26,11 @@ inputs:
   pre-commit-version:
     description: 'Pinned pre-commit version. Pinned, not floating — a new release changing hook selection would land fleet-wide unannounced.'
     required: false
-    default: '4.0.1'
+    # v2 PARITY. An earlier draft of this port wrote 4.0.1 — a silent four-minor
+    # DOWNGRADE of the hook runner, in a file whose header claims a verbatim
+    # port, with stage-name and --hook-stage handling differing across 4.x.
+    # PLAN-023 cites 4.6.0 as canon's uniform precedent.
+    default: '4.6.0'
   extra-deps:
     description: 'Additional pip args (e.g. "-r tests/requirements.txt") for hooks needing project deps.'
     required: false
@@ -88,8 +92,18 @@ runs:
       run: |
         set -euo pipefail
         # env indirection (sec H4): RUN_STAGE via env, not source interpolation.
+        set +e
         if [ -n "$RUN_STAGE" ]; then
           timeout 900 pre-commit run --all-files --show-diff-on-failure --hook-stage "$RUN_STAGE"
         else
           timeout 900 pre-commit run --all-files --show-diff-on-failure
         fi
+        rc=$?
+        set -e
+        # A killed run is an infrastructure failure. Without this it surfaced as
+        # "hook failures", sending the reader to look for a lint problem that
+        # does not exist.
+        if [ "$rc" -eq 124 ]; then
+          echo "::error::pre-commit: timed out — infrastructure failure, not hook failures. Re-run."; exit 1
+        fi
+        exit "$rc"

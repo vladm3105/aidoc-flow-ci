@@ -98,7 +98,15 @@ runs:
       run: |
         set -euo pipefail
         args=(--no-progress --cache --max-cache-age 1d)
-        [ -f "${CONFIG}" ] && args+=(--config "${CONFIG}")
+        # An EXPLICITLY requested config that does not exist is an error, not a
+        # shrug. The prior incident was exactly this: the whole tolerance profile
+        # (accept 200/206/429, exclude_path, the 403/999 host excludes) vanished
+        # with nothing in the log. An EMPTY value still means "discover".
+        if [ -n "${CONFIG}" ] && [ ! -f "${CONFIG}" ]; then
+          echo "::error::links: config-file '${CONFIG}' was requested but does not exist. Refusing to run with lychee defaults — that silently drops the consumer's tolerance profile."
+          exit 1
+        fi
+        [ -n "${CONFIG}" ] && args+=(--config "${CONFIG}")
         [ "${MODE}" = "internal" ] && args+=(--offline)
         read -r -a path_args <<< "$PATHS"
         [ "${#path_args[@]}" -gt 0 ] || { echo "::error::paths input is empty"; exit 1; }
@@ -107,6 +115,13 @@ runs:
         # options (defense-in-depth against argument injection).
         timeout 1200 lychee "${args[@]}" -- "${path_args[@]}"
         rc=$?
+        # 124 is `timeout`'s own code: the run was KILLED, not completed. It must
+        # not ride the report-only path — `links-external` sets fail-on-error
+        # false, so a lychee that hangs for 20 minutes would otherwise report
+        # success. Infrastructure failure, always loud.
+        if [ "$rc" -eq 124 ]; then
+          echo "::error::links: lychee timed out — infrastructure failure, not a clean link check. Re-run."; exit 1
+        fi
         # fail-on-error=false (external/scheduled mode) never fails the job.
         [ "${FAIL}" = "true" ] || exit 0
         exit "${rc}"

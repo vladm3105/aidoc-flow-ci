@@ -44,6 +44,16 @@ name: quick-gates
 
 on:
   pull_request:
+  # POST-MERGE COVERAGE. Every v2 caller these replace fired on both
+  # `pull_request` and `push: main`, and dropping it was silent. Two losses:
+  # a merge that lands broken (admin merge, merge-queue skew) is never caught,
+  # and — the one that matters for the scanners — Code Scanning alerts are
+  # anchored to the DEFAULT BRANCH, so with no push-to-main run the SARIF
+  # baselines never refresh: fixed alerts stay open forever and new ones never
+  # appear outside PR context. It also makes the `push`/`workflow_dispatch` arms
+  # of the D3 concurrency allowlist below reachable rather than dead code.
+  push:
+    branches: [main]
 
 # D9: one job, one grant — a composite action has no declaration of its own, so
 # this is the whole ceiling. None of the three checks writes.

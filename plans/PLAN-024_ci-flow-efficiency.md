@@ -1,6 +1,6 @@
 # PLAN-024 — aidoc-flow-ci library optimization
 
-**Status:** Draft
+**Status:** Draft — no phase executed; superseded in part by PLAN-025 (D/E/F/G)
 **Owner:** canon (aidoc-flow-ci)
 **Scope:** this repo's own artifacts — reusable workflows, install templates,
 canonical scripts, `docs/REPO_STANDARDS.md`. Consumer repos and other projects
@@ -126,6 +126,7 @@ hundred assertions from a suite this repo tracks at 1,093. Remove the named
 blocks only.
 
 A3. **Rulebook surgery — corrected; an earlier draft had this backwards.**
+
 - **§20.2 needs almost nothing.** Rules 1–7 govern the two prompt files this
   repo ships for `ai-review` and never mention doc-maintainer (Claim 29). Only
   rule 8's Scope note is flow-bound. The claim that §20.2 was "derived from
@@ -142,6 +143,7 @@ A3. **Rulebook surgery — corrected; an earlier draft had this backwards.**
 
 A4. **MAJOR bump — `ci/v3.0.0` — and it carries three obligations the plan must
 discharge inside Phase A, not after it.**
+
 - **The MAJOR-bump smoke gate is circular as written.** `RELEASE_CHECKLIST.md`
   requires `litellm-smoke.yml` to pass with **both** canonical aliases including
   `ai-doc-maintainer` (Claim 30), and that alias is what A3 deletes. So Phase A
@@ -159,7 +161,8 @@ discharge inside Phase A, not after it.**
   Name it as a blocker with its owner rather than discovering it at tag time.
 
 A5. **Close 10 of the 11 defects, and carve one out.** Close #413, #409, #408,
-#406, #403, #391, #390, #389, #384, #372 as *not planned — flow eliminated*.
+\#406, #403, #391, #390, #389, #384, #372 as *not planned — flow eliminated*.
+
 - **#404 must NOT be closed.** Its defect — a scripts directory not cleared
   before fetch, so a committed package shadows the module at import time —
   **survives verbatim in `docs-sync`**, the flow A6 makes sole: `mkdir -p
@@ -398,6 +401,7 @@ G2. **Then drop four CI flows from the PR fan-out:**
 | `trivy-scan` | none | report-only; cannot fail by design, so nothing is lost that was ever enforced |
 
 G3. **Keep these, and the reasons are specific:**
+
 - **`pre-commit`** — the enforcement backstop. A local hook is bypassable with
   `--no-verify`; this is what catches that, and it is a required context in all
   four tiers (Claims 16, 20). **G2 increases its importance**, since it becomes
@@ -434,6 +438,7 @@ PLAN-014 in the same change; G did none of it.
 
 G5b. **The hook substitutions do not actually work.** Three independent
 mechanisms, any one of which is fatal:
+
 - **The merge de-dups on repo URL, and stamps the marker on a partial merge.**
   If a consumer already declares an upstream repo, canon's hook is **reported,
   never applied** — while the marker is written anyway, so bootstrap never

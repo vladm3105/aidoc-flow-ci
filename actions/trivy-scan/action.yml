@@ -88,8 +88,17 @@ runs:
           echo "::error::trivy-scan: trivy exited $rc — infrastructure/tool error (e.g. checks-bundle download failed), NOT a finding. Re-run."; exit 1
         fi
 
-        n=0
-        [ -s "$SARIF" ] && n=$(jq '[.runs[].results[]] | length' "$SARIF" 2>/dev/null || echo 0)
+        # rc==0 must mean a REAL scan happened. An absent or unparseable SARIF
+        # is an INFRASTRUCTURE failure (partial write, OOM, disk pressure on the
+        # --rm container), never "no findings". dep-scan and sast-scan both fail
+        # loud here; trivy was the only one of the three that swallowed it —
+        # `|| echo 0` turned a destroyed report into a green gate.
+        if [ ! -s "$SARIF" ]; then
+          echo "::error::trivy-scan: trivy exited 0 but produced no SARIF — infrastructure error, not a clean scan. Re-run."; exit 1
+        fi
+        if ! n=$(jq '[.runs[].results[]] | length' "$SARIF" 2>/dev/null); then
+          echo "::error::trivy-scan: SARIF is present but unparseable — a write/parse failure that may be MASKING findings. Treated as a failure, not clean."; exit 1
+        fi
         case "$n" in ''|*[!0-9]*) n=0 ;; esac
         if [ "$n" -gt 0 ]; then
           echo "::warning::trivy-scan: $n IaC/config misconfiguration finding(s) — see $SARIF / the Security tab."

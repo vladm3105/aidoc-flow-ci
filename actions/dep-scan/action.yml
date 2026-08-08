@@ -92,8 +92,8 @@ runs:
 
         # osv-scanner exit codes: 0 = scanned, no vulns · 1–126 = vulnerabilities found
         # · 127 = general error · 128 = no packages found · 129–255 = other errors.
-        # 124 is `timeout`'s own code and lands in the "other errors" arm below,
-        # which is correct: a timed-out scan is an infrastructure failure, not clean.
+        # 124 (`timeout`) is handled by its OWN arm below, BEFORE the 1-126
+        # vulnerability range it would otherwise fall into.
         if [ "$rc" -eq 0 ]; then
           echo "::notice::dep-scan: no known-vulnerable dependencies."
           summary "clean — packages scanned, no known vulnerabilities."
@@ -105,6 +105,13 @@ runs:
           if [ "$EXPECT_MANIFESTS" = "true" ] && [ "$FAIL" = "true" ]; then
             echo "::error::dep-scan: expected dependency manifests but found none — failing (zero-coverage on a blocking gate). Set expect-manifests:false for a dependency-free repo."; exit 1
           fi
+        elif [ "$rc" -eq 124 ]; then
+          # `timeout`'s own exit code. It falls INSIDE the 1-126 vulnerability
+          # range below, so without this arm a killed scan is read as findings —
+          # and with a partial SARIF and the default fail-on-findings:false it
+          # would EXIT 0 as a completed report-only scan. Infrastructure, not a
+          # finding, and not clean.
+          echo "::error::dep-scan: osv-scanner timed out (timeout 900) — infrastructure failure, not a clean or complete scan. Re-run."; exit 1
         elif [ "$rc" -ge 1 ] && [ "$rc" -le 126 ]; then
           # Vulnerability-result range: findings ARE expected. Cross-check the SARIF.
           n=0
@@ -125,6 +132,7 @@ runs:
             exit 1
           fi
         else
-          # 127 or 129–255 (including 124, timeout): genuine infrastructure/tool error.
+          # 127 or 129-255: genuine infrastructure/tool error. (124 is handled
+          # in its own arm above — it is inside the 1-126 range, not here.)
           echo "::error::dep-scan: osv-scanner exited $rc (tool/infrastructure error, not a finding). Re-run."; exit 1
         fi

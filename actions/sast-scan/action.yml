@@ -102,7 +102,22 @@ runs:
         # defaults (which still skip vendored dirs). A repo that needs a real exclusion
         # must express it gate-side (the ruleset / a future input), never via a
         # PR-mutable file.
-        find "$SCAN_PATH" -type f \( -name '.semgrepignore' -o -name '.semgreprc' \) -print -delete 2>/dev/null || true
+        # `-type f` MISSES A SYMLINK, and git stores symlinks natively (mode
+        # 120000). A PR commits `.semgrepignore` as a symlink to any file
+        # containing `*`; the strip skips it, semgrep follows the link, coverage
+        # goes to zero and the gate goes green — the very bypass D23 closes.
+        # REPRODUCED 2026-08-08. Also strip from the repo ROOT, because semgrep
+        # resolves the ignore file from CWD, not from SCAN_PATH.
+        find "$SCAN_PATH" \( -type f -o -type l \) \( -name '.semgrepignore' -o -name '.semgreprc' \) -print -delete 2>/dev/null || true
+        rm -f ./.semgrepignore ./.semgreprc
+        # D23 IS A GATE, NOT A BEST EFFORT. The `|| true` above keeps a partial
+        # failure from aborting the step, so the post-condition is what actually
+        # enforces it: if any ignore file still resolves, refuse to scan rather
+        # than scan with attacker-controlled coverage.
+        if find "$SCAN_PATH" \( -type f -o -type l \) \( -name '.semgrepignore' -o -name '.semgreprc' \) -print -quit 2>/dev/null | grep -q .; then
+          echo "::error::sast-scan: a PR-supplied semgrep ignore/rc file survived the strip — refusing to scan rather than accept attacker-controlled coverage (D23)."
+          exit 1
+        fi
 
         # Static AST scan. --metrics off = NO telemetry. Explicit --config (registry
         # ruleset), NEVER repo-local auto-discovery → a PR cannot inject rules. semgrep
@@ -148,10 +163,14 @@ runs:
     # Opt-in, default off, and `== 'true'` because a composite action's inputs
     # are STRINGS — a bare `${{ inputs.autofix-preview }}` is truthy for the
     # literal 'false'.
-    # v2 carried `continue-on-error: true` here so a preview could never fail the
-    # scan gate. Inside a composite action that attribute is undocumented
-    # (§3.2a), so the guarantee is enforced IN THE BODY instead: every command is
-    # `|| true`-guarded and the step ends `exit 0`. Do not rely on the attribute.
+    # A PREVIEW MUST NEVER FAIL THE SCAN GATE, and `exit 0` alone does NOT
+    # deliver that. `git diff | head -n 400` gives git SIGPIPE (141) once head
+    # closes the pipe; `pipefail` adopts it and `set -e` aborts the step BEFORE
+    # `exit 0` is reached. MEASURED: a small producer finishes first and hides
+    # this (`seq 1 1000` → 0), a real diff does not (`seq 1 5000000` → 141).
+    # v2 used `set -uo pipefail` — deliberately NO `-e` — plus
+    # `continue-on-error`. The attribute is undocumented inside a composite
+    # action (§3.2a), so v2's `set` line is what carries the guarantee here.
     - name: semgrep autofix preview (deterministic; NO push; best-effort)
       if: ${{ inputs.autofix-preview == 'true' }}
       shell: bash
@@ -159,7 +178,8 @@ runs:
         CONFIG: ${{ inputs.config }}
         SCAN_PATH: ${{ inputs.scan-path }}
       run: |
-        set -euo pipefail
+        # NEVER FAIL THE GATE — see the step comment: `-e` is omitted on purpose.
+        set -uo pipefail
         VENV="$RUNNER_TEMP/sgvenv"
         timeout 1200 "$VENV/bin/semgrep" scan --config "$CONFIG" --metrics off --autofix "$SCAN_PATH" >/dev/null 2>&1 || true
         if git diff --quiet 2>/dev/null; then

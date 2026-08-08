@@ -5,6 +5,55 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — OPS-0065 five-agent review of the v3 branch, ~90 findings folded
+
+Five diff-class-matched agents (code-reviewer, silent-failure-hunter,
+security-auditor, test-engineer, documentation-specialist) reviewed
+`git diff main...HEAD`. **The ported bodies held** — D20/D21/D24/D25/D26/D27
+verified present in the executed commands. Every serious finding was in what was
+added on top:
+
+- **`sast-scan`'s D23 strip was bypassable by symlink.** `find -type f` misses a
+  symlinked `.semgrepignore`; semgrep follows it, coverage goes to zero and the
+  gate goes green. Reproduced. Now strips symlinks and the repo root, and
+  **refuses to scan** if any ignore file survives. Same hole exists in
+  `.github/workflows/sast-scan.yml` (v2) and needs an upstream issue.
+- **`scanners` uploaded `sarif_file: .`** — the PR tree — so any committed
+  `*.sarif` was ingested under `security-events: write`, and dropping
+  `category:` made one upload replace all three analyses. Split into three
+  per-file, per-category uploads.
+- **All four callers had silently lost `push: branches: [main]`.** Beyond losing
+  post-merge lint, Code Scanning alerts anchor to the default branch, so the
+  scanners' SARIF baselines would never refresh.
+- **`scanners` public was `ubuntu-latest`** — a regression from v2, whose public
+  callers all pass the pool labels. Restored to self-hosted, which makes the
+  flow uniform-protected (PLAN-014 §1a) and removes the need for a `-private`
+  variant at all.
+- **`pre-commit` was silently downgraded 4.6.0 → 4.0.1.** Restored.
+- **`trivy` swallowed a missing or corrupt SARIF** as "clean" — the only one of
+  the three scanners that did. Now fails loud, matching dep-scan and sast-scan.
+- **`timeout` exit 124 was mislabelled** in markdownlint, pre-commit and links —
+  in links' report-only path it was swallowed entirely, so a hung weekly run
+  reported success. All three now treat it as infrastructure failure.
+- **An explicitly requested lychee config that does not exist** is now an error,
+  not a silent fallback to defaults.
+
+### Fixed — the test suite blessed eight mutations, and one gate could not fail
+
+`tests/test_lint.sh` appended its new composite-action shellcheck block **after**
+`suite_summary`, so its failures were uncounted and the script exited 0 — a gate
+added to close a coverage hole that structurally could not fail. Moving the
+summary last immediately surfaced a real error it had been hiding.
+
+`tests/test_actions.sh` asserted shape and presence, not behaviour. Deleting the
+`verdict` step from both `quick-gates` variants left a required gate that could
+never fail and the suite reported **112 passed, 0 failed**. Eight such mutations
+survived; all are now killed. The root cause recurred **six times**: assertions
+grepping a whole file matched the comment *documenting* the defense after the
+code was gone. Every YAML assertion now parses the structure — `runbody`,
+`stepwith`, `verdict_body`, `invoked_actions`, `perms_of` — and the whole-file
+variables are deleted.
+
 ### Added — v3 composite-action foundation (PLAN-025, branch `feat/v3-composite-actions`, NOT merged)
 
 **Not released, not merged, and not reachable by any consumer.** Recorded here
@@ -17,8 +66,11 @@ markers that must be removed at the tag cut.
   A `workflow_call` reusable always gets its own runner, so twelve PR checks cost
   twelve provisioning cycles — measured at ~167s for the audit-trail reusable to
   run a `grep` on `aidoc-flow-operations`, almost all provisioning. Composite
-  actions share the caller's job. Step bodies are **verbatim ports**; only the
-  packaging changed.
+  actions share the caller's job. Step bodies are ported with three named
+  carve-outs, not verbatim: a `timeout` wrapper, a checkout-precondition guard,
+  and — in `sast-scan`'s preview step only — v2's `set -uo pipefail`, which
+  omits `-e` on purpose so a SIGPIPE from `git diff | head` cannot fail the scan
+  gate.
 - **Five caller templates** — `quick-gates{,-private}` (pre-commit, markdownlint
   and links), `scanners{,-private}` (the three self-hosted scanners), and
   `links-external` (the weekly report-only half of the v2 links split). Both

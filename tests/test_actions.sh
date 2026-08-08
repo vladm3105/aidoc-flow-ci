@@ -13,7 +13,86 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; ROOT="$(cd "$HERE/.." && pwd)"
 # shellcheck source=tests/lib.sh
 . "$HERE/lib.sh"
-cd "$ROOT"
+cd "$ROOT" || exit 1
+
+# ─── PARSERS. Never `cat` a YAML file into a variable and grep it. ────────────
+#
+# Every file in this diff DOCUMENTS the defenses it implements, so a grep over
+# the whole file matches the comment after the code is gone. Measured across
+# this branch: SIX assertions passed against a deleted defense because the
+# header still named it — `--ignore-scripts`, `--no-call-analysis=all`,
+# `.semgrepignore`, `terraform`, `mode: internal`, `mode: external`. One
+# mutation survived TWO successive fixes.
+#
+# The rule, and the reason these helpers exist: AN ASSERTION ABOUT WHAT RUNS
+# MUST SEE ONLY WHAT RUNS. Parse the structure; never the prose around it.
+
+# `run:` scalars of an action, whole-line comments stripped.
+runbody() {
+  python3 - "$1" <<'PY_RB'
+import sys, re, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+for s in ((d.get("runs") or {}).get("steps") or []):
+    if isinstance(s, dict) and "run" in s:
+        for line in str(s["run"]).split("\n"):
+            if not re.match(r'\s*#', line):
+                print(line)
+PY_RB
+}
+
+# The value a caller passes for one input of one action step.
+# `<ABSENT>` = the step exists but omits the input (so a DEFAULT applies).
+# `<NOSTEP>` = the caller does not invoke that action at all — which is how a
+# whole check can be deleted from a consolidated gate without any grep noticing.
+stepwith() {
+  python3 - "$1" "$2" "$3" <<'PY_SW'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+for j in (d.get("jobs") or {}).values():
+    for s in (j.get("steps") or []):
+        if isinstance(s, dict) and ("/actions/%s@" % sys.argv[2]) in str(s.get("uses", "")):
+            print(str((s.get("with") or {}).get(sys.argv[3], "<ABSENT>"))); raise SystemExit(0)
+print("<NOSTEP>")
+PY_SW
+}
+
+# The verdict step's run: body, comments stripped. Empty = no verdict step,
+# which on a caller whose checks are all `continue-on-error` means the job
+# CANNOT FAIL.
+verdict_body() {
+  python3 - "$1" <<'PY_VB'
+import sys, re, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+for j in (d.get("jobs") or {}).values():
+    for s in (j.get("steps") or []):
+        if isinstance(s, dict) and s.get("name") == "verdict":
+            for line in str(s.get("run", "")).split("\n"):
+                if not re.match(r'\s*#', line):
+                    print(line)
+PY_VB
+}
+
+# Sorted action basenames a caller invokes — catches a silently dropped check.
+invoked_actions() {
+  python3 - "$1" <<'PY_IA'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+n = sorted(str(s["uses"]).split("/actions/")[1].split("@")[0]
+           for j in (d.get("jobs") or {}).values()
+           for s in (j.get("steps") or [])
+           if isinstance(s, dict) and "/actions/" in str(s.get("uses", "")))
+print(" ".join(n))
+PY_IA
+}
+
+# Exact permissions mapping — D9 is a CEILING, and a containment check cannot
+# express a ceiling: `assert_contains "contents: read"` still passes after
+# `pull-requests: write` is added beside it.
+perms_of() {
+  python3 -c "
+import yaml, json, sys
+print(json.dumps(yaml.safe_load(open(sys.argv[1])).get('permissions'), sort_keys=True))" "$1"
+}
 
 mapfile -t ACTIONS < <(find actions -name action.yml 2>/dev/null | sort)
 
@@ -82,7 +161,18 @@ if any(not isinstance(s, dict) for s in steps):
     print("BADSHAPE step-not-a-mapping"); raise SystemExit(0)
 runs = [s for s in steps if "run" in s]
 shells = [s for s in runs if s.get("shell") == "bash"]
-strict = [s for s in runs if "set -euo pipefail" in str(s.get("run", ""))]
+# D15 wants `set -euo pipefail`. ONE documented exception: a step whose
+# contract is "must never fail the gate" cannot carry `-e`, because a SIGPIPE
+# from `cmd | head` aborts it before its own `exit 0`. v2 used `set -uo
+# pipefail` there deliberately. Accept that form ONLY where the step opts in
+# with a NEVER-FAILS marker, so the exception is declared, not inferred.
+strict = []
+for s in runs:
+    b = str(s.get("run", ""))
+    if "set -euo pipefail" in b:
+        strict.append(s)
+    elif "set -uo pipefail" in b and "NEVER FAIL" in str(s.get("name", "")) + b:
+        strict.append(s)
 print("OK", len(runs), len(shells), len(strict))
 PY
   )" || parsed="CRASH"
@@ -123,16 +213,41 @@ PY
     _r "$name: non-allowlisted action owner — $badowner"
   fi
 
+  # §3.2: every action verifies its own precondition and fails LOUD. Asserted as
+  # the FIRST step: a guard placed after the tool has run cannot prevent the
+  # green-having-inspected-nothing shape it exists to stop. Deleting the guard
+  # entirely from an action previously survived the whole suite.
+  guard="$(python3 - "$a" <<'PY_G'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+steps = (d.get("runs") or {}).get("steps") or []
+if not steps or not isinstance(steps[0], dict):
+    print("NONE"); raise SystemExit(0)
+b = str(steps[0].get("run", ""))
+print("OK" if ("exit 1" in b and "::error::" in b and ".git" in b) else "NONE")
+PY_G
+  )"
+  assert_eq "$guard" "OK" "$name: FIRST step is a fail-loud checkout precondition guard (§3.2)"
+
   # D20: any action that downloads a binary MUST verify it before executing it.
   # D21 forces these bodies to curl their own tools instead of using a
   # marketplace action, so the integrity check is the only thing standing
   # between a substituted release asset and code execution on the runner.
   # Added after a mutation deleting `sha256sum -c` survived the whole suite.
-  if printf '%s' "$body" | grep -qE 'curl .*(-o|--output|>)'; then
-    if printf '%s' "$body" | grep -qE 'sha256sum (-c|--check)'; then
-      _g "$name: downloads a binary and SHA-256 verifies it (D20)"
+  # UNCONDITIONAL and on the COMMAND. The old form fired only `if` the body
+  # matched `curl .*-o`, so switching the fetch to wget RETIRED the check rather
+  # than failing it — verified: the lychee tarball lost its sha256sum and the
+  # whole suite stayed green.
+  rb="$(runbody "$a")"
+  dl=$(printf '%s
+' "$rb" | grep -cE '(^|[^[:alnum:]_])(curl|wget)([^[:alnum:]_]|$)' || true)
+  ck=$(printf '%s
+' "$rb" | grep -cE 'sha256sum (-c|--check)' || true)
+  if [ "$dl" -gt 0 ]; then
+    if [ "$ck" -ge 1 ]; then
+      _g "$name: $dl download(s), $ck checksum verification(s) in the COMMAND (D20)"
     else
-      _r "$name: downloads a binary with NO checksum verification (D20)"
+      _r "$name: $dl download(s) with NO checksum verification in the COMMAND (D20)"
     fi
   fi
 done
@@ -143,7 +258,7 @@ echo "== tool parity (PLAN-025 §3.3) =="
 # ignore semantics; a mismatch means local passes and CI reds, which trains
 # contributors to bypass hooks.
 if [ -f actions/markdownlint/action.yml ]; then
-  ml="$(cat actions/markdownlint/action.yml)"
+  ml="$(runbody actions/markdownlint/action.yml)"
   assert_contains "$ml" "markdownlint-cli2@" "markdownlint: pins cli2 with a version"
   # cli1 would appear as `markdownlint-cli@` — the `2` is what distinguishes them.
   assert_absent "$ml" "markdownlint-cli@" "markdownlint: does NOT use cli1"
@@ -252,7 +367,6 @@ fi
 
 echo "== scanners caller: the P3a defenses (D27, D35, verdict) =="
 SC=install/templates/workflows/scanners.yml
-SCP=install/templates/workflows/scanners-private.yml
 if [ -f "$SC" ]; then
   sc="$(cat "$SC")"
 
@@ -286,47 +400,15 @@ if [ -f "$SC" ]; then
   if [ "${tmo:-0}" -ge 50 ]; then _g "scanners: timeout ${tmo} >= 50 (sum of absorbed budgets)"
   else _r "scanners: timeout ${tmo} < 50 — a slow scanner would kill ones that passed"; fi
 
-  if command -v diff >/dev/null 2>&1 && [ -f "$SCP" ]; then
-    d="$(diff <(sed -E 's/^\s*runs-on:.*/RUNNER/' "$SCP" | sed -n '/^name:/,$p') \
-              <(sed -E 's/^\s*runs-on:.*/RUNNER/' "$SC"  | sed -n '/^name:/,$p') | grep -c '^[<>]' || true)"
-    assert_eq "$d" "0" "scanners public/private bodies identical below the header (drift guard)"
-  fi
-  [ -f "$SCP" ] || _r "scanners-private missing — --update reverts private consumers to ubuntu-latest (D1)"
+  # No drift guard and no -private assertion here: `scanners` is UNIFORM
+  # PROTECTED (PLAN-014 §1a) — one template, self-hosted on both visibilities —
+  # so there is no second file to drift from. The positive assertions that it
+  # stays that way live in the "callers invoke EXACTLY" block below.
 else
   _r "scanners caller template missing — P2's three scanner actions have no caller"
 fi
 
 echo "== scanner actions: the defenses that make them 100-line bodies =="
-# ASSERT ON THE EXECUTED COMMAND, NEVER ON THE FILE.
-#
-# Every one of these defenses is explained in its own action's header comment,
-# so `assert_contains "$(cat action.yml)" "--no-call-analysis=all"` passes even
-# after the flag is deleted from the command — the comment still says it. Two
-# mutations (M14 drop --no-call-analysis, M16 stop stripping .semgrepignore)
-# SURVIVED a version of this block written that way, and it is the fourth time
-# this session a grep has matched a key's own documentation.
-#
-# `runbody` returns the `run:` scalars with SHELL COMMENTS STRIPPED.
-#
-# Dropping the header was not enough: these bodies explain each flag on the line
-# above it, so `--no-call-analysis=all` survived deletion from the command
-# because the inline comment still named it. M14 survived TWO successive fixes
-# for this. The rule that finally holds: an assertion about what runs must see
-# only what runs.
-runbody() {
-  python3 - "$1" <<'PY'
-import sys, re, yaml
-d = yaml.safe_load(open(sys.argv[1])) or {}
-for s in ((d.get("runs") or {}).get("steps") or []):
-    if isinstance(s, dict) and "run" in s:
-        for line in str(s["run"]).split("\n"):
-            # Whole-line comments only. Trailing `# …` on a command line is left
-            # alone: stripping it needs shell-aware quote parsing, and a `#`
-            # inside a quoted string would corrupt the command we are asserting on.
-            if not re.match(r'\s*#', line):
-                print(line)
-PY
-}
 if [ -f actions/dep-scan/action.yml ]; then
   ds="$(runbody actions/dep-scan/action.yml)"
   assert_contains "$ds" "--no-call-analysis=all" "dep-scan: call analysis disabled in the COMMAND — it compiles source by default (D24)"
@@ -353,6 +435,132 @@ if [ -f actions/sast-scan/action.yml ]; then
   assert_contains "$ss" "--metrics off" "sast: no telemetry (D26)"
   assert_contains "$ss" '--config "$CONFIG"' "sast: explicit ruleset, never repo-local discovery (D26)"
 fi
+
+echo "== verdict steps fail closed, and evaluate every check (D6/§3.2c) =="
+# THE GATE-BYPASS CLASS. Deleting the verdict step from BOTH quick-gates variants
+# left every check `continue-on-error: true` with nothing to fail the job — the
+# required context could never fail — and the suite reported 112 passed, 0 failed.
+# Nothing asserted the verdict at all beyond `name: verdict` on `scanners`.
+for wf in quick-gates quick-gates-private scanners; do
+  f="install/templates/workflows/$wf.yml"
+  if [ ! -f "$f" ]; then _r "$wf: template missing"; continue; fi
+  vb="$(verdict_body "$f")"
+  if [ -z "$vb" ]; then
+    _r "$wf: NO verdict step — every check is continue-on-error, so the job can NEVER fail (D6/§3.2c)"
+    continue
+  fi
+  assert_contains "$vb" 'exit "$rc"' "$wf: verdict exits the collected code, not a constant"
+  # Fail CLOSED: the failure arm AND the unknown-outcome arm must each set rc=1.
+  # `skipped` matters most — P3a establishes that a skipped job SATISFIES a
+  # required context, so the same reasoning on a step would launder a crash green.
+  assert_eq "$(printf '%s' "$vb" | grep -c 'rc=1')" "2" \
+    "$wf: both the failure arm and the unknown-outcome arm set rc=1 (D6/CI-0026)"
+  # `rc=0` as the initialiser is correct; `rc=0` inside a case ARM is the
+  # mutation (a failing check laundered into a pass). Scope to the arms.
+  arms="$(printf '%s' "$vb" | grep -E '^\s*(success|failure|\*)\)' || true)"
+  assert_absent "$arms" "rc=0" "$wf: no verdict ARM resets rc to 0"
+
+  # Every check must be continue-on-error AND appear in the verdict loop; every
+  # loop entry must correspond to a real step. Either half missing re-opens the
+  # bypass: an unevaluated check can fail silently, a phantom entry reads a
+  # never-set var.
+  cov="$(python3 - "$f" <<'PY_COV'
+import sys, re, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+out = []
+for j in (d.get("jobs") or {}).values():
+    steps = j.get("steps") or []
+    checks = [s for s in steps if isinstance(s, dict) and "/actions/" in str(s.get("uses", ""))]
+    v = next((s for s in steps if isinstance(s, dict) and s.get("name") == "verdict"), None)
+    if v is None:
+        out.append("NOVERDICT"); continue
+    env, run = (v.get("env") or {}), str(v.get("run", ""))
+    m = re.search(r'for chk in ([^;]+); do', run)
+    loop = m.group(1).split() if m else []
+    for s in checks:
+        act = str(s["uses"]).split("/actions/")[1].split("@")[0]
+        if s.get("continue-on-error") is not True: out.append("NOTCOE:" + act)
+        if not s.get("id"): out.append("NOID:" + act); continue
+        key = next((k for k, val in env.items() if "steps.%s.outcome" % s["id"] in str(val)), None)
+        if key is None: out.append("UNGUARDED:" + s["id"])
+        elif key[2:] not in loop: out.append("NOTINLOOP:" + s["id"])
+    for w in loop:
+        if ("R_" + w) not in env: out.append("PHANTOM:" + w)
+print(" ".join(out) or "OK")
+PY_COV
+  )"
+  assert_eq "$cov" "OK" "$wf: every check is continue-on-error AND evaluated by the verdict (§3.2c)"
+done
+
+echo "== callers invoke EXACTLY the documented check set =="
+# Deleting a whole check step from a consolidated gate survived the suite: the
+# "every referenced action resolves" block checks references→files, never
+# files→references, so a gate can silently lose a third of its coverage.
+for wf in quick-gates quick-gates-private; do
+  f="install/templates/workflows/$wf.yml"; [ -f "$f" ] || continue
+  assert_eq "$(invoked_actions "$f")" "links markdownlint pre-commit" \
+    "$wf: invokes exactly the three §3.2 checks — no silent drop"
+done
+assert_eq "$(invoked_actions "$SC")" "dep-scan sast-scan trivy-scan" \
+  "scanners: invokes exactly the three P3a scanners"
+
+# UNIFORM PROTECTED (PLAN-014 §1a): self-hosted on public AND private, matching
+# the v2 callers, so a visibility flip is a no-op and D1 does NOT require a
+# split. Assert BOTH halves — the labels, and the absence of a variant — or a
+# future edit re-creates the ubuntu-latest regression this replaced.
+scrl="$(grep -E '^\s*runs-on:' "$SC" || true)"
+assert_contains "$scrl" "self-hosted" "scanners: self-hosted on public too (PLAN-014 §1a uniform-protected)"
+assert_contains "$scrl" "ci-runner"   "scanners: names the real pool label"
+if [ -f install/templates/workflows/scanners-private.yml ]; then
+  _r "scanners-private.yml exists — a uniform-protected flow must NOT have a visibility split (D1 does not apply)"
+else
+  _g "scanners: no -private variant, correct for a uniform-protected flow"
+fi
+
+echo "== caller inputs asserted from the PARSED mapping, never the file text =="
+for wf in quick-gates quick-gates-private; do
+  f="install/templates/workflows/$wf.yml"; [ -f "$f" ] || continue
+  assert_eq "$(stepwith "$f" links mode)"          "internal"     "$wf: links mode=internal (parsed)"
+  assert_eq "$(stepwith "$f" links config-file)"   ".lychee.toml" "$wf: links config-file (parsed)"
+  assert_eq "$(stepwith "$f" links fail-on-error)" "true"         "$wf: links is BLOCKING (parsed)"
+  assert_eq "$(stepwith "$f" links github-token)"  '${{ secrets.GITHUB_TOKEN }}' \
+    "$wf: token passed to links (no secrets context inside an action)"
+  assert_eq "$(stepwith "$f" markdownlint fail-on-findings)" "true" "$wf: markdownlint is BLOCKING (parsed)"
+done
+if [ -f "$LX" ]; then
+  assert_eq "$(stepwith "$LX" links mode)"          "external" "links-external: mode=external (parsed)"
+  assert_eq "$(stepwith "$LX" links fail-on-error)" "false"    "links-external: report-only (parsed)"
+  assert_eq "$(stepwith "$LX" links github-token)"  '${{ secrets.GITHUB_TOKEN }}' \
+    "links-external: token passed (D42)"
+fi
+
+echo "== permissions are a CEILING, not a containment (D9/D35) =="
+for wf in quick-gates quick-gates-private; do
+  f="install/templates/workflows/$wf.yml"; [ -f "$f" ] || continue
+  assert_eq "$(perms_of "$f")" '{"contents": "read"}' \
+    "$wf: permissions are EXACTLY contents:read (D9)"
+done
+assert_eq "$(perms_of "$SC")" '{"contents": "read", "security-events": "write"}' \
+  "scanners: exactly the two grants D35 needs"
+
+echo "== every -private variant takes the self-hosted pool (D1/OPS-0049) =="
+# Looped, not enumerated: `scanners-private` had no runner assertion at all, and
+# the drift guard sed's `runs-on:` away before diffing, so the runner line was
+# the one thing structurally excluded from comparison.
+# Scoped to callers carrying a LITERAL `runs-on:` — i.e. the v3 composite-action
+# callers. The v2 `-private` templates express the pool as a `runner_labels`
+# STRING INPUT to a reusable, which is why actionlint never saw a label there
+# (§3.2e) and why this shape check does not apply to them.
+for pv in install/templates/workflows/*-private.yml; do
+  [ -f "$pv" ] || continue
+  rl="$(grep -E '^\s*runs-on:' "$pv" || true)"
+  [ -n "$rl" ] || continue
+  b="$(basename "$pv")"
+  assert_contains "$rl" "self-hosted"   "$b: runs-on line is the self-hosted pool"
+  assert_contains "$rl" "ci-runner"     "$b: names the real pool label"
+  assert_absent   "$rl" "runner-self"   "$b: not the dead pre-v1.9.0 placeholder"
+  assert_absent   "$rl" "ubuntu-latest" "$b: never GitHub-hosted on a private repo"
+done
 
 echo "== private variant (D1) =="
 # D1: install.sh --update resolves each surface through manifest.json's

@@ -110,8 +110,18 @@ runs:
         # Report-only mode still prints ::error annotations; it only swallows
         # the non-zero exit. Kept as an env toggle rather than
         # `continue-on-error` so the behaviour is identical to the v2 reusable.
-        if [ "${FAIL}" = "true" ]; then
-          timeout 600 markdownlint-cli2 "${args[@]}" "${globlist[@]}"
-        else
-          timeout 600 markdownlint-cli2 "${args[@]}" "${globlist[@]}" || echo "::notice::markdownlint report-only — findings above do not block merge (fail-on-findings=false)"
+        set +e
+        timeout 600 markdownlint-cli2 "${args[@]}" "${globlist[@]}"
+        rc=$?
+        set -e
+        # 124 is `timeout`'s own code — the run was KILLED. Without this arm the
+        # report-only path swallowed it and MISLABELLED it as findings, and the
+        # blocking path reported a lint failure for an infrastructure one.
+        if [ "$rc" -eq 124 ]; then
+          echo "::error::markdownlint: timed out — infrastructure failure, not lint findings. Re-run."; exit 1
         fi
+        if [ "$rc" -ne 0 ] && [ "${FAIL}" != "true" ]; then
+          echo "::notice::markdownlint report-only — findings above do not block merge (fail-on-findings=false)"
+          rc=0
+        fi
+        exit "$rc"

@@ -1,6 +1,7 @@
 # PLAN-025 — `ci/v3.0.0` clean rebuild: composite-action architecture + new documentation set
 
-**Status:** Draft
+**Status:** In Progress — P1/P2/P3/P3a done, P8 core done (plan-status governance:
+execution started, so this is no longer Draft)
 **Owner:** canon (aidoc-flow-ci)
 **Origin:** founder directive 2026-08-08 — implement the target configuration as a
 new release built from scratch, archiving the existing flows so stale docs cannot
@@ -112,14 +113,15 @@ the port checklist *and* the rulebook.
 | D39 | Required-context → producer derivation (FT-18/FT-45) | Arming a required context nothing produces pins every PR forever. **v3 breaks the tool that does this** — see P8 | Claim 41 |
 | D40 | Rulesets are a second required-check surface | `apply-standards.sh` never touches them and admins are not bypass actors unless listed | Claim 40 |
 | D41 | CI-0021 targeted break-glass; CI-0023 "a fail-closed guard fails on faults, not on shapes" | CI-0014: an ai-review outage normalised `--admin` across seven repos for ~9 days | Claims 42, 43 |
-
 | D42 | The links internal/external split: offline+blocking on PRs, external+report-only weekly | External link rot is TIME-based, so blocking a PR on a third party's 429 is a false signal — but the check must still run. **This row was missing, and its absence produced two code defects**: the ported action defaulted to `external` and to a config path canon does not install, so the required PR gate would have made live network calls with the consumer's tolerance profile silently dropped | Claim 46 |
 | D43 | VERSION single-source pin discipline, and its `sync-version-refs:ignore` escape | `--check` is a **default-stage, always_run** pre-commit hook, so it gates every commit *and* canon's `call / Lint / format / security hooks`. A template pinning a tag that is not `VERSION` reds the branch — and the rewriter's suggested remedy points the pin at a tag where the target does not exist. Forward references need the markers (PLAN-004 BL-4, then CI-0024). **This row's absence made the branch red; see the Pass 4 log** | Claim 49 |
 | D44 | The F1 completeness guard (`tests/test_exerciser_inventory.sh`) | It derives its surface set from `manifest.json`, `workflow_call` reusables and `install\|scripts\|sync/*.sh`. **`actions/*/action.yml` is a new surface class it is structurally blind to** — exactly as the hook-block fragment was, which had to be named explicitly. P8 must add it, or v3's largest new surface is invisible to the completeness check | Claim 50 |
 | D45 | Per-check arming granularity — the staged-adoption ladder (`markdown-lint` is one of the caller templates feeding a required context, Claim 19) | A repo can arm `call / Lint / format / security hooks` while leaving `call / markdownlint` unarmed, which is the documented way a repo with existing markdown debt adopts *without bricking merges*. **Fusing three checks into one required context removes that ladder.** §6 says consolidation reduces jobs not coverage — true, but it does reduce *adoption granularity*, and P7 must handle repos that today arm a subset | Claim 51 |
 | D46 | The lychee cache (`actions/cache` restore + save, `if: always()`) | A documented design decision in the v2 reusable. The port kept `--cache --max-cache-age 1d` but dropped both cache steps, so the flag is a per-run no-op. Performance only — but an undocumented deviation under a plan whose §1 rests on verbatim porting is exactly what §2 exists to prevent | Claim 52 |
 
-**All 23 CARRIED. None dropped.** D21 and D27 additionally constrain the
+**All 27 CARRIED. None dropped.** (D20–D46; with §2's 19 that is 46 total —
+the figure §5, §8 and the handoff all use. An earlier line said 23, correct only
+while the table ended at D42.) D21 and D27 additionally constrain the
 architecture and are answered in §3.2a.
 
 **Three rows corrected 2026-08-08 after review flagged them as overstated —
@@ -226,7 +228,7 @@ ported check depends on at least one of these. **Resolved, not deferred:**
 | **Job-level `if:`** | D27 scanner fork guard; D31 audit-trail's event refusal | **Moves to the CALLER's job `if:`, never to a step.** A step-level skip runs *after* the job has already checked the fork's code out, which converts an admission guard into a no-op. The caller must therefore carry the guard, and `tests/` must assert it is present — a defense that moved to a file nothing checks is a defense that was dropped. |
 | **`permissions:`** | Every check (D9) | One grant per job, and for `scanners` it is the **union** of three (P3a split `secret-scan` out; this said four and `security` before that fold). §2 marks D9 carried; **structurally it is weakened** and this plan accepts that explicitly: those three already run on the same trust boundary, same pool, same event. It is not acceptable for `quick-gates`, which stays `contents: read` — no ported check there needs more. |
 | **`timeout-minutes`** | All | See §3.2b. |
-| **`secrets` context** | `links` passes `GITHUB_TOKEN` to lychee for github.com rate limits | The action takes it as an **input**; the caller passes `${{ secrets.GITHUB_TOKEN }}`. `quick-gates.yml` currently passes nothing — a defect on the branch (§6a). |
+| **`secrets` context** | `links` passes `GITHUB_TOKEN` to lychee for github.com rate limits | The action takes it as an **input**; the caller passes `${{ secrets.GITHUB_TOKEN }}`. `quick-gates.yml` currently passes nothing — a defect on the branch, since fixed. |
 | **`continue-on-error`** | D35, four SARIF uploads | **Must be verified on the target runner before P2 ships a scanner action.** If unsupported, a private consumer without GHAS turns a documented no-op 403 into a hard red on every PR. Until verified, the SARIF upload stays in a **caller step**, not inside the action. |
 | **Marketplace `uses:` (D21)** | All | Unchanged — the allowlist admits `vladm3105/aidoc-flow-ci/actions/*`, so the new packaging is itself permitted, but the bodies must stay hand-rolled `run:` blocks. No action may introduce a marketplace `uses:`; `tests/` asserts owner, not just SHA-pinning. |
 
@@ -709,6 +711,7 @@ It removes the rewrite risk §1 warns about, and §2 becomes a port checklist
 rather than a re-derivation exercise.
 
 **Landed:**
+
 - `actions/markdownlint/action.yml` — verbatim port of the v2 reusable's run
   body. Carries D5 (SHA-pinned `uses:`), D15 (`set -euo pipefail`), the
   env-not-interpolation injection defense, `noglob` glob collection, and
@@ -905,7 +908,7 @@ corrections.** All folded. This exhausts the three-pass circuit-breaker.
    (fusing three checks removes the documented staged-adoption ladder), and the
    dropped lychee cache.
 
-Minors folded: the stale `§6a` reference, a mis-numbered claim cite, the
+Minors folded: a mis-numbered claim cite, a mis-numbered claim cite, the
 implementation log's false "strictest-consumer checkout" claim, and the
 contradiction over whether `actions/audit-trail` is still pending P2 work
 (§3.2d says it stays a reusable — the port list said otherwise).

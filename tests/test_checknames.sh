@@ -8,7 +8,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; ROOT="$(cd "$HERE/.." && pwd)"
 # shellcheck source=tests/lib.sh
 . "$HERE/lib.sh"
-cd "$ROOT"
+cd "$ROOT" || exit 1
 
 # Build the set of check-names the canon reusables actually emit as `call / X`:
 # X = a job's `name:` if set, else the job key. (Callers name the job `call`.)

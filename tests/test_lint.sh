@@ -7,7 +7,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; ROOT="$(cd "$HERE/.." && pwd)"
 # shellcheck source=tests/lib.sh
 . "$HERE/lib.sh"
-cd "$ROOT"
+cd "$ROOT" || exit 1
 
 echo "== shellcheck (install/ sync/ scripts/ tests/) =="
 if command -v shellcheck >/dev/null 2>&1; then
@@ -59,9 +59,8 @@ else
   _g "codeql.yml does not pin the known-bad v4.36.1 tag object"
 fi
 
-suite_summary "lint"
 
-echo "== shellcheck reaches composite-action `run:` bodies (PLAN-025 P8) =="
+echo "== shellcheck reaches composite-action run: bodies (PLAN-025 P8) =="
 # actionlint delegates a workflow's embedded `run:` to shellcheck — but it cannot
 # parse an `action.yml`, so v3's composite actions had NO shell linting at all:
 # test_lint.sh's shellcheck glob covers `install sync scripts tests`, and its
@@ -72,7 +71,7 @@ echo "== shellcheck reaches composite-action `run:` bodies (PLAN-025 P8) =="
 # profile as the standalone-script pass above, so a body does not become
 # stricter or laxer by moving into an action.
 if command -v shellcheck >/dev/null 2>&1 && [ -d actions ]; then
-  tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT INT TERM
+  tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; trap 'rm -rf "$tmp"; exit 130' INT; trap 'rm -rf "$tmp"; exit 143' TERM
   n=0
   while IFS= read -r a; do
     python3 - "$a" "$tmp" <<'PY'
@@ -101,3 +100,10 @@ PY
   fi
 elif [ "${CI:-}" = "true" ]; then _r "shellcheck missing in CI"
 else printf '  \033[33mskip\033[0m shellcheck not installed\n'; fi
+
+# suite_summary MUST be the last statement. It prints the counts AND returns the
+# suite's exit status (`[ $T_FAIL -eq 0 ]`), so anything after it is excluded from
+# the count and replaces the exit status with its own. The composite-action
+# composite-action block below was appended after it and could not fail the suite:
+# a real shell defect printed FAIL, was not counted, and run.sh saw exit 0.
+suite_summary "lint"
