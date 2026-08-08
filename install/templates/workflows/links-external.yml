@@ -1,0 +1,64 @@
+# links-external — the WEEKLY, NON-BLOCKING half of the v2 links split.
+#
+# ── WHY THIS FILE EXISTS (PLAN-025 §2a D42) ──────────────────────────────────
+# The v2 `links` caller shipped TWO jobs against one reusable:
+#
+#   internal  if: github.event_name != 'schedule'
+#             mode: internal (--offline), fail-on-error: true   → PR-BLOCKING
+#   external  if: github.event_name == 'schedule' || workflow_dispatch
+#             mode: external,             fail-on-error: false  → REPORT-ONLY
+#
+# That split is a defense, not a convenience, and no §2 row named it until
+# review caught the omission. The reasoning:
+#
+#   - External link rot is TIME-based, not change-based. A PR did not break
+#     someone else's server, so blocking the PR on it is a false signal.
+#   - A blocking check that makes live network calls is flaky by construction:
+#     a 429, a slow host or a captive DNS resolver reds a PR that is fine.
+#   - But the external check still has to run, or dead outbound links accumulate
+#     silently. Weekly and non-blocking is the answer to both.
+#
+# `quick-gates` carries the INTERNAL half (offline, blocking). This carries the
+# external half. **A consumer that adopts quick-gates and deletes its v2
+# `links.yml` without also installing THIS file loses external link checking
+# entirely** — the exact silent-coverage-loss class PLAN-025 §2 exists to
+# prevent. The v3 install set ships both together.
+name: links-external
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'   # weekly, Monday 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# No allowlist gymnastics needed here (contrast quick-gates' D3 block): this job
+# feeds NO required context, and `schedule`/`workflow_dispatch` do not produce
+# the concurrent-run-at-the-same-head-SHA collision CI-0025 is about.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  links-external:
+    name: links-external
+    runs-on: ubuntu-latest
+    # Matches the v2 links reusable's own budget. External checking is the slow
+    # mode — it makes real network calls — so it gets the full 20.
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Every input explicit — a default that changes in a later release must
+      # not silently change what this reports.
+      - name: links (external, report-only)
+        uses: vladm3105/aidoc-flow-ci/actions/links@ci/v3.0.0
+        with:
+          mode: external
+          fail-on-error: 'false'
+          config-file: .lychee.toml
+          github-token: ${{ secrets.GITHUB_TOKEN }}

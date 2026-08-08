@@ -91,10 +91,23 @@ jobs:
       - name: markdownlint
         uses: vladm3105/aidoc-flow-ci/actions/markdownlint@ci/v3.0.0
 
-      # links takes the token as an INPUT: the `secrets` context is not
-      # available inside a composite action, and without it lychee hits
-      # github.com anonymous rate limits (PLAN-025 §3.2a).
+      # EVERY input passed explicitly, none left to a default. This is a
+      # REQUIRED gate; a default that changes in a later release would change
+      # what the gate does silently. An earlier draft passed only the token and
+      # inherited `mode: external` + `fail-on-error: true`, which would have made
+      # the blocking PR check do live external network link-checking.
+      #
+      # `mode: internal` (--offline) is the v2 PR-blocking posture. External link
+      # rot is time-based, not change-based, so it belongs on the weekly
+      # `links-external.yml` caller, non-blocking — NOT here.
+      #
+      # links takes the token as an INPUT: the `secrets` context is not available
+      # inside a composite action, and without it lychee hits github.com
+      # anonymous rate limits (PLAN-025 §3.2a).
       - name: links
         uses: vladm3105/aidoc-flow-ci/actions/links@ci/v3.0.0
         with:
+          mode: internal
+          fail-on-error: 'true'
+          config-file: .lychee.toml
           github-token: ${{ secrets.GITHUB_TOKEN }}

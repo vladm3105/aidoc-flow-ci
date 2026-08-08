@@ -112,8 +112,33 @@ the port checklist *and* the rulebook.
 | D40 | Rulesets are a second required-check surface | `apply-standards.sh` never touches them and admins are not bypass actors unless listed | Claim 40 |
 | D41 | CI-0021 targeted break-glass; CI-0023 "a fail-closed guard fails on faults, not on shapes" | CI-0014: an ai-review outage normalised `--admin` across seven repos for ~9 days | Claims 42, 43 |
 
-**All 21 CARRIED. None dropped.** D21 and D27 additionally constrain the
+| D42 | The links internal/external split: offline+blocking on PRs, external+report-only weekly | External link rot is TIME-based, so blocking a PR on a third party's 429 is a false signal — but the check must still run. **This row was missing, and its absence produced two code defects**: the ported action defaulted to `external` and to a config path canon does not install, so the required PR gate would have made live network calls with the consumer's tolerance profile silently dropped | Claim 46 |
+
+**All 23 CARRIED. None dropped.** D21 and D27 additionally constrain the
 architecture and are answered in §3.2a.
+
+**Three rows corrected 2026-08-08 after review flagged them as overstated —
+an overstated defense becomes a `RULES.md` rule canon itself violates:**
+
+- **D20** says "every downloaded tool binary". Scope it to **curl'd release
+  artifacts**: `semgrep` is a version-pinned `pip install` and
+  `markdownlint-cli2` a version-pinned `npm install`, neither checksum-verified,
+  and pretending otherwise makes the rule immediately false.
+- **D36** says `persist-credentials: false` everywhere *except* audit-trail.
+  `standards-drift-self.yml` also checks out with no `with:` block at all. The
+  rule is "omit it only where a later step needs the credential, and say why" —
+  not "audit-trail is the sole exception".
+- **D37** calls `check-precommit-hooks.sh` a detector that *enforces*. It is
+  **advisory, not fatal** — it warns. It surfaces the D11 condition; it does not
+  prevent it. P4 must decide whether v3 promotes it to fatal, since P4 rewrites
+  the file it inspects.
+
+**Two decisions still owed a row, recorded so the next pass starts from them:**
+CI-0026 (*a fail-closed guard that cannot fail open is only a cost*) is the
+direct counterweight to §3.2c's verdict step and is folded there rather than as
+a row; and CI-0007 defers a runner-label rename **to a future major** — v3 *is*
+that major, and §3.2e now bakes the current labels into a file shipped to ten
+repos, so that deferral needs an explicit take-it-or-leave-it in P8.
 
 ## 3. Target architecture
 
@@ -186,9 +211,30 @@ v2 per-check: `pre-commit` 15, `markdown-lint` 10, `links` **20**, `audit-trail`
 including the three checks that already passed.
 
 **Rule: a consolidated job's timeout is the SUM of the checks it absorbs, not the
-max and never a round number picked by eye.** `quick-gates` → 55.
-`security` → 65. Padding is cheaper than a false red; the runner is released on
-completion either way, so a high ceiling costs nothing when jobs pass.
+max and never a round number picked by eye.**
+
+**Numbers corrected 2026-08-08** — the first version said 55 and 65, which
+predated §3.2d (audit-trail, 10, split out) and P3a (`secret-scan`, 15, split
+out). Current:
+
+| Job | Absorbs | Ceiling |
+| --- | --- | --- |
+| `quick-gates` | pre-commit 15 + markdownlint 10 + links 20 | **45** |
+| `scanners` | dep-scan 15 + sast-scan 20 + trivy 15 | **50** |
+
+**And the "a high ceiling costs nothing" claim was wrong on the pool.**
+Concurrency is one job per supervisor instance, so a hung `quick-gates` holds a
+slot for 45 minutes and serialises the rest of the PR behind it. Summing is
+still right for the *job* ceiling — a job-level number below any single check
+kills work that already passed — but it does not restore the four per-check
+budgets, and the job ceiling is now the only thing catching a hang.
+
+**Consequence to carry into P2:** each action should wrap its long-running
+command in `timeout <n>` so a single hung tool fails that check rather than
+consuming the whole job's budget. Not yet implemented.
+
+*(D16 does not undercut any of this. D16 is about jobs that never start; a
+ceiling cannot fire on a queued job. This is about jobs that run.)*
 
 ### 3.2c Failure sequencing: a composite step failure aborts the job
 
@@ -197,12 +243,34 @@ markdownlint error means the PR never learns its links are broken — and under
 §3.4's graduation the first blocking scanner prevents the other three from
 running or uploading SARIF.
 
-**Decision: collect, then fail.** Each action records its verdict and returns
-success; a final `verdict` step in the caller fails the job if any recorded
-verdict failed. This preserves v2's all-verdicts-at-once property, which is the
-thing that makes a consolidated job tolerable to work with. It is also the D6
-fail-closed shape: the verdict step must fail closed if a verdict file is
-missing, or a crashed action reads as a pass.
+**Corrected 2026-08-08 — the first version of this was not implementable, and
+the shipped actions do the opposite of what it said.** It proposed that each
+action "record its verdict and return success". That would require rewriting
+every ported body to swallow its own exit — contradicting the verbatim-port
+principle §1 rests on — and it still could not cover an infrastructure failure
+in an action's *install* step (`npm install`, `pip install`, the lychee curl),
+which aborts before any verdict could be written.
+
+**Decision: collect at the CALLER, not inside the actions.** Each `uses:` step
+takes an `id:` and `continue-on-error: true`; a final step with `if: always()`
+reads `steps.<id>.outcome` and fails the job if any is `failure`. The action
+bodies stay verbatim.
+
+Two constraints on that shape, both load-bearing:
+
+- **`continue-on-error` is supported on a job step**, which is where this puts
+  it. §3.2a defers it *inside* a composite action as unverified — these are not
+  the same surface, and the distinction is what makes this implementable.
+- **The verdict step must fail closed** (D6, and CI-0026: *a fail-closed guard
+  that cannot fail open is only a cost*). An `outcome` that is neither `success`
+  nor `failure` — `cancelled`, or a step that never ran — must fail, not pass.
+  `skipped` in particular must fail here, because a skipped *job* satisfies a
+  required context (P3a) and the same reasoning applied to a step would launder
+  a crash into a green gate.
+
+**Not yet implemented.** The shipped `quick-gates` has no `id:`/verdict step, so
+today a `pre-commit` failure still hides markdownlint and links. Tracked as the
+next P3 task, not as done.
 
 ### 3.2e A new distribution artifact: `.github/actionlint.yaml`
 
@@ -218,10 +286,21 @@ private v3 caller fails the lint**: canon's own `test_lint.sh`,
 `pre_push_check.sh` check 3 on every consumer, and any consumer's own actionlint.
 
 `.github/actionlint.yaml` declaring `ci-runner` and `single-use` fixes it, and
-**must ship to consumers** — manifest entry plus `install.sh` fetch, added to
-P8. Note the file declares labels; it does not create runners. A job whose
-labels match no registered runner queues forever and `timeout-minutes` cannot
-save it (D16), so the list must stay in step with what is actually registered.
+**must ship to consumers**: `scripts/pre_push_check.sh` actionlints every
+installed `.github/workflows/*.yml` on every consumer push, and actionlint
+resolves its config from the consumer's own project root — so without the file
+there, every private consumer's pre-push hook fails on its own quick-gates.
+
+**Shipping it needs a source path, which the first draft omitted.**
+`install.sh` fetches from `install/templates/`, so every shipped dotfile has a
+template copy (`.lychee.toml`, `.markdownlint.json` both do). P8 must create
+`install/templates/actionlint.yaml` mapped to consumer path
+`.github/actionlint.yaml`, and accept the second-copy drift risk that
+`scripts/pre_push_check.sh` ↔ `install/templates/pre_push_check.sh` already has.
+
+Note the file declares labels; it does not create runners. A job whose labels
+match no registered runner queues forever and `timeout-minutes` cannot save it
+(D16), so the list must stay in step with what is actually registered.
 
 ### 3.2d The `types:` conflict — resolved by splitting audit-trail back out
 
@@ -235,6 +314,16 @@ satisfies both.**
 range — the cheapest check in the set — and it carries the most trigger-specific
 requirements (D31, D32) plus the D36 credential asymmetry. Consolidating it buys
 one provisioning cycle and costs three defenses.
+
+**The split is MANDATORY, not an economy — and the runner-minutes argument above
+is the weaker reason.** Stated 2026-08-08 after review, because as first written
+this section invited someone to reverse the decision later on cost grounds.
+
+Adding `labeled`/`unlabeled` to a consolidated job whose `if:` skips those events
+makes the job report **`skipped`** — and P3a establishes that a skipped job
+**satisfies** a required context. So a red `quick-gates` could be laundered green
+by applying any label to the PR. That is not a cost trade-off; it is a gate
+bypass reachable by anyone who can label.
 
 **Revised target: `quick-gates` = pre-commit + markdownlint + links.**
 **12 → 6 jobs**, not 5 and not 4. Each successive count has moved in the same
@@ -365,15 +454,26 @@ nothing in the toolchain knows about them.** This is a phase the first draft
 omitted entirely; without it v3 cannot be installed, updated, drift-checked or
 context-mapped.
 
-- **`install/required-context-map.py`** considers only workflows declaring
-  `workflow_call`, and matches a caller's **job-level** `uses:` (Claim 41). A job
-  whose steps are composite actions has no job-level `uses:`, so
-  `quick-gates` resolves to `?` — which `tests/test_required_contexts.sh`
-  reports as latent and fails. Teach it the step-level shape.
-- **`tests/test_checknames.sh`** builds its emitted-name set the same way; both
-  new contexts would flag as having no producer. Three assertions hardcode
-  `call / verify`, `call / Lint / format / security hooks` and `call / gitleaks`
-  to their v2 reusables.
+- **`install/required-context-map.py` — and the failure mode is BACKWARDS from
+  what this plan first claimed, in the reassuring direction.** It considers only
+  workflows declaring `workflow_call` and matches a caller's **job-level**
+  `uses:` (Claim 41). The first draft said a v3 context "resolves to `?` … and
+  fails". It does not: the tool classifies any context without `" / "` as
+  `?non-call`, and `tests/test_required_contexts.sh` treats `?non-call` as a
+  **PASS** — "no canon producer expected" (Claim 45).
+
+  So every bare v3 context resolves **green and unvalidated**, and
+  **P7 step 5 — the step whose entire purpose is catching a context armed
+  against nothing — catches nothing.** A tool that reports success on the case it
+  exists to detect is worse than no tool: P7 would read as verified.
+
+  Teach it that a plain job emits its job name, and that a repo's armed contexts
+  must each map to a producer *whatever their shape*.
+- **`tests/test_checknames.sh`** builds its emitted-name set the same way, and
+  its `case` **`continue`s on every context that is not `call / …`** — so it
+  validates zero v3 contexts, not merely the three it hardcodes (`call / verify`,
+  `call / Lint / format / security hooks`, `call / gitleaks`). Both the skip and
+  the hardcoding need fixing.
 - **`manifest.json`** has no schema for an `actions/` surface, and every v3
   caller needs `path`/`template`/`visibility_variants`/`safe_to_replace`/
   `auto_install`. **`quick-gates.yml` is unmanifested today** — the exact defect
@@ -505,6 +605,10 @@ governance.
 | 42 | CI-0021 defines a targeted break-glass so an outage does not normalise --admin | `CI-0021` | docs/REPO_STANDARDS.md:1799 |
 | 43 | CI-0023 records that a fail-closed guard fails on faults, not on shapes | `CI-0023` | docs/REPO_STANDARDS.md:2003 |
 | 44 | apply-standards PUTs the tier branch-protection file as one whole payload | `branch-protection-` | install/apply-standards.sh:701 |
+| 45 | A bare context is classified ?non-call and the suite treats that as a PASS | `?non-call` | tests/test_required_contexts.sh:43 |
+| 46 | The v2 links caller splits blocking-internal from scheduled-external | `mode: internal` | install/templates/workflows/links.yml:33 |
+| 47 | A caller job that `uses:` a reusable is keyed `call`, which is where the context prefix comes from | `Callers name the job` | tests/test_checknames.sh:14 |
+| 48 | A plain job emits its own job name as the context — canon's own `suite` | `suite:` | .github/workflows/tests.yml:29 |
 
 ## Implementation log
 
@@ -612,3 +716,56 @@ Folded:
 **Result:** all load-bearing findings folded. §2 is now 41 rows; the plan gained
 three phases. **Not ready** — §2a, §3.2a–e, P3a, P8 and P9 are all new since the
 last independent pass and are themselves unreviewed.
+
+### Pass 3 - 2026-08-08 - independent (the new material)
+
+**23 findings, 12 load-bearing**, on §2a/§3.2a–e/P3a/P8/P9 and the branch code.
+Author verified the two decisive findings at source before folding. All folded.
+
+1. **`call / quick-gates` is not a context this job can emit — and P7 armed it.**
+   `call / X` is not a convention; it is `<caller-job-key> / <callee-job-name>`,
+   produced only by a job whose body is `uses:` a reusable (Claim 47). A plain
+   job emits its own name — canon's live protection carries bare `suite` from
+   `tests.yml` (Claim 48) beside `call / markdownlint` from a caller keyed
+   `call`. The plan said `call / quick-gates` in five places **including P7 step
+   2**, which arms it in live protection: a context nothing emits pins every PR
+   forever. **Third required-context near-miss in this project, and the second
+   caused by reading a convention instead of the live surface.** Corrected in the
+   plan, both templates and the test.
+2. **P8's premise was backwards, in the reassuring direction.** A bare context
+   classifies as `?non-call`, which `test_required_contexts.sh` treats as a
+   **PASS** (Claim 45), and `test_checknames.sh` `continue`s on anything not
+   `call / …`. So v3 contexts resolve green and unvalidated, and **P7 step 5 —
+   the step whose purpose is catching a context armed against nothing — catches
+   nothing.** A tool reporting success on the case it exists to detect is worse
+   than no tool.
+3. **D42 was missing, and its absence had already produced two code defects.**
+   The v2 links split (offline+blocking on PRs, external+report-only weekly) is a
+   defense no row named. The ported action defaulted to `external` and to
+   `lychee.toml` where canon installs `.lychee.toml` — so the required PR gate
+   would have made **live external network calls, blocking, with the consumer's
+   whole tolerance profile silently dropped**. Both fixed; `links-external.yml`
+   added, since a consumer adopting quick-gates and deleting its v2 `links.yml`
+   would otherwise lose external checking entirely.
+4. **§3.2c was not implementable and the shipped code did the opposite.** Rewritten
+   as caller-side `id:` + `continue-on-error` + `if: always()` verdict — which is
+   a job step, where the attribute *is* supported, unlike inside an action.
+   Marked NOT yet implemented rather than described as done.
+5. **§3.2b's numbers were stale** (55/65 → 45/50) and "a high ceiling costs
+   nothing" was false on a serial pool.
+6. **§3.2d's stated reason was the weaker one.** The real disqualifier: a job
+   that skips an event reports `skipped`, which *satisfies* a required context —
+   so a red quick-gates could be laundered green by applying any label. Gate
+   bypass, not economy.
+7. **The suite still failed open** — a raising extractor gave `assert_eq "" ""`
+   → pass, and a scalar `steps:` gave 0/0/0. Now emits an OK/BADSHAPE sentinel
+   and validates its own output shape. Verified with two shape mutations.
+8. **Three §2a rows were overstated** (D20, D36, D37) — an overstated defense
+   becomes a rule canon itself violates. Scoped down.
+9. §3.2e gained the `install/templates/` source path it needs to be shippable.
+
+**Result:** all 12 load-bearing findings folded; 52 assertions, 0 failed. **Not
+ready.** Three items are explicitly deferred with owners rather than fixed: the
+§3.2c verdict step is unimplemented, per-check `timeout` wrappers are
+unimplemented, and P8's tooling work is unstarted — so **P7 must not run**, since
+its step-5 validation is currently a no-op.

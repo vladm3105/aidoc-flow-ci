@@ -198,6 +198,33 @@ else
   _r "quick-gates caller template missing"
 fi
 
+echo "== links posture: internal blocks, external is weekly and report-only (D42) =="
+# The v2 split is a defense: external link rot is TIME-based, so blocking a PR on
+# a third party's 429 is a false signal — but the check must still run. An
+# earlier draft defaulted the action to mode=external and passed nothing from
+# quick-gates, which would have made the REQUIRED gate do live network calls.
+LA=actions/links/action.yml
+if [ -f "$LA" ]; then
+  la="$(cat "$LA")"
+  assert_contains "$la" "default: 'internal'" "links action: defaults to internal (offline), not external"
+  assert_contains "$la" "default: '.lychee.toml'" "links action: default config path is the one canon installs"
+fi
+if [ -f "$QG" ]; then
+  # Explicit beats inherited on a required gate.
+  assert_contains "$qg" "mode: internal" "quick-gates: passes mode explicitly"
+  assert_contains "$qg" "config-file: .lychee.toml" "quick-gates: passes the config path explicitly"
+  assert_contains "$qg" "github-token:" "quick-gates: passes the token (no secrets context inside an action)"
+fi
+LX=install/templates/workflows/links-external.yml
+if [ -f "$LX" ]; then
+  lx="$(cat "$LX")"
+  assert_contains "$lx" "schedule:" "links-external: is scheduled"
+  assert_contains "$lx" "mode: external" "links-external: checks external URLs"
+  assert_contains "$lx" "fail-on-error: 'false'" "links-external: report-only, never blocking"
+else
+  _r "links-external.yml missing — adopting quick-gates would drop external link checking entirely (D42)"
+fi
+
 echo "== private variant (D1) =="
 # D1: install.sh --update resolves each surface through manifest.json's
 # visibility_variants. With no private variant it re-applies the label-less

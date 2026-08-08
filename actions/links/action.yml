@@ -32,13 +32,21 @@ inputs:
     required: false
     default: '.'
   mode:
-    description: '"internal" adds --offline (no network); anything else checks external links too.'
+    description: '"internal" adds --offline (no network, PR-blocking); "external" checks external URLs (scheduled, non-blocking).'
     required: false
-    default: 'external'
+    # v2 parity: the BLOCKING PR job is internal/offline. An earlier draft
+    # defaulted to `external`, which would have made the required PR gate do
+    # live network link-checking — flaky by construction and blocking.
+    default: 'internal'
   config-file:
-    description: 'Path to a lychee.toml. Applied only if the file exists.'
+    description: 'Path to the consumer lychee config. Applied only if the file exists.'
     required: false
-    default: 'lychee.toml'
+    # v2 parity AND the path canon actually installs (manifest.json ships
+    # `.lychee.toml`). An earlier draft said `lychee.toml`: the guard is
+    # `[ -f "$CONFIG" ]`, so the file was silently not found and the consumer's
+    # whole tolerance profile — accept 200/206/429, exclude_path, the 403/999
+    # host excludes — was dropped without a word in the log.
+    default: '.lychee.toml'
   fail-on-error:
     description: 'Fail the step on broken links. Scheduled/external runs typically set false.'
     required: false
