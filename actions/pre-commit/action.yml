@@ -89,7 +89,7 @@ runs:
         set -euo pipefail
         # env indirection (sec H4): RUN_STAGE via env, not source interpolation.
         if [ -n "$RUN_STAGE" ]; then
-          pre-commit run --all-files --show-diff-on-failure --hook-stage "$RUN_STAGE"
+          timeout 900 pre-commit run --all-files --show-diff-on-failure --hook-stage "$RUN_STAGE"
         else
-          pre-commit run --all-files --show-diff-on-failure
+          timeout 900 pre-commit run --all-files --show-diff-on-failure
         fi

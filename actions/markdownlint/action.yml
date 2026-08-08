@@ -111,7 +111,7 @@ runs:
         # the non-zero exit. Kept as an env toggle rather than
         # `continue-on-error` so the behaviour is identical to the v2 reusable.
         if [ "${FAIL}" = "true" ]; then
-          markdownlint-cli2 "${args[@]}" "${globlist[@]}"
+          timeout 600 markdownlint-cli2 "${args[@]}" "${globlist[@]}"
         else
-          markdownlint-cli2 "${args[@]}" "${globlist[@]}" || echo "::notice::markdownlint report-only — findings above do not block merge (fail-on-findings=false)"
+          timeout 600 markdownlint-cli2 "${args[@]}" "${globlist[@]}" || echo "::notice::markdownlint report-only — findings above do not block merge (fail-on-findings=false)"
         fi

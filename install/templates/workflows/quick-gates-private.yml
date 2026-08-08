@@ -102,7 +102,18 @@ jobs:
       # REQUIRED gate: a default that changes in a later release would change
       # what the gate does, silently. The rule was applied to `links` first and
       # not to its siblings — which is how the markdownlint globs went missing.
+      # §3.2c COLLECT-THEN-FAIL. `id:` + `continue-on-error: true` on every check,
+      # then one verdict step. Without this, a composite step failure aborts the
+      # job and the FIRST failing check hides the rest — in v2's job-per-check
+      # model every verdict arrived together, and losing that is what makes a
+      # consolidated job unpleasant to work with.
+      #
+      # `continue-on-error` is supported HERE because these are job steps.
+      # §3.2a defers it INSIDE a composite action as unverified; the two are
+      # different surfaces, and that distinction is what makes this shape work.
       - name: Lint / format / security hooks
+        id: precommit
+        continue-on-error: true
         uses: vladm3105/aidoc-flow-ci/actions/pre-commit@ci/v3.0.0
         with:
           config-path: .pre-commit-config.yaml
@@ -113,6 +124,8 @@ jobs:
       # nothing and inherited the bare `**/*.md` default, dropping all three —
       # the same silent-default defect the final review caught on `links`.
       - name: markdownlint
+        id: markdownlint
+        continue-on-error: true
         uses: vladm3105/aidoc-flow-ci/actions/markdownlint@ci/v3.0.0
         with:
           globs: |
@@ -136,6 +149,8 @@ jobs:
       # inside a composite action, and without it lychee hits github.com
       # anonymous rate limits (PLAN-025 §3.2a).
       - name: links
+        id: links
+        continue-on-error: true
         uses: vladm3105/aidoc-flow-ci/actions/links@ci/v3.0.0
         with:
           mode: internal
@@ -143,3 +158,33 @@ jobs:
           config-file: .lychee.toml
           github-token: ${{ secrets.GITHUB_TOKEN }}
       # sync-version-refs:ignore-end
+
+      # THE VERDICT. Fails CLOSED (D6, and CI-0026: a fail-closed guard that
+      # cannot fail open is only a cost). Any outcome that is not exactly
+      # `success` fails the job — including `skipped` and `cancelled`, and
+      # including the empty string a step that never ran produces.
+      #
+      # `skipped` matters specifically: P3a establishes that a skipped JOB
+      # satisfies a required context, so treating a skipped STEP as a pass would
+      # launder a crashed check into a green gate by the same mechanism.
+      #
+      # `if: always()` so a cancelled or failed predecessor still reaches this.
+      - name: verdict
+        if: always()
+        shell: bash
+        env:
+          R_PRECOMMIT: ${{ steps.precommit.outcome }}
+          R_MARKDOWNLINT: ${{ steps.markdownlint.outcome }}
+          R_LINKS: ${{ steps.links.outcome }}
+        run: |
+          set -euo pipefail
+          rc=0
+          for chk in PRECOMMIT MARKDOWNLINT LINKS; do
+            var="R_${chk}"; out="${!var-}"
+            case "$out" in
+              success) printf '  %-14s %s\n' "$chk" "pass" ;;
+              failure) printf '::error::%s failed\n' "$chk"; rc=1 ;;
+              *)       printf '::error::%s did not report a verdict (outcome=%s) — failing closed\n' "$chk" "${out:-<empty>}"; rc=1 ;;
+            esac
+          done
+          exit "$rc"
