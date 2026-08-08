@@ -225,6 +225,31 @@ else
   _r "links-external.yml missing — adopting quick-gates would drop external link checking entirely (D42)"
 fi
 
+echo "== forward pins are marker-guarded (blocker found in the final review) =="
+# `sync-version-refs --check` is a DEFAULT-STAGE, always_run pre-commit hook, so
+# it runs on every commit AND inside canon's `call / Lint / format / security
+# hooks` required context. A v3 template pinning `@ci/v3.0.0` while VERSION is
+# ci/v2.16.0 reports STALE and reds the branch. Worse, the rewriter's suggested
+# remedy would point the pin at a tag where `actions/` does not exist.
+# These are forward references (FT-21 shape) and need the ignore markers.
+for tpl in install/templates/workflows/quick-gates.yml \
+           install/templates/workflows/quick-gates-private.yml \
+           install/templates/workflows/links-external.yml; do
+  [ -f "$tpl" ] || continue
+  b="$(basename "$tpl")"
+  if grep -q 'vladm3105/aidoc-flow-ci/actions/.*@ci/v' "$tpl"; then
+    if grep -q 'sync-version-refs:ignore-start' "$tpl" && grep -q 'sync-version-refs:ignore-end' "$tpl"; then
+      _g "$b: forward pin is inside ignore markers"
+    else
+      _r "$b: pins a v3 action with NO ignore markers — sync-version-refs --check will red the branch"
+    fi
+  fi
+done
+if command -v bash >/dev/null && [ -x scripts/sync-version-refs.sh ]; then
+  assert_ok "bash scripts/sync-version-refs.sh --check >/dev/null 2>&1" \
+    "sync-version-refs --check passes (the gate that blocks the branch)"
+fi
+
 echo "== private variant (D1) =="
 # D1: install.sh --update resolves each surface through manifest.json's
 # visibility_variants. With no private variant it re-applies the label-less
@@ -233,11 +258,46 @@ echo "== private variant (D1) =="
 QGP=install/templates/workflows/quick-gates-private.yml
 if [ -f "$QGP" ]; then
   qgp="$(cat "$QGP")"
-  assert_contains "$qgp" "self-hosted" "quick-gates-private: uses the self-hosted pool (D1/OPS-0049)"
-  assert_contains "$qgp" "ci-runner" "quick-gates-private: names the real pool label, not a placeholder"
+
+  # Assert the LABEL LINE, not the file. `assert_contains "$qgp" "self-hosted"`
+  # is satisfied by the header comment that explains the private variant, so it
+  # would survive a revert of runs-on: to ubuntu-latest — the same
+  # grep-the-key's-own-documentation failure this suite already fixed for D21.
+  runsline="$(grep -E '^\s*runs-on:' "$QGP" || true)"
+  assert_contains "$runsline" "self-hosted" "quick-gates-private: runs-on line uses the self-hosted pool (D1/OPS-0049)"
+  assert_contains "$runsline" "ci-runner" "quick-gates-private: runs-on names the real pool label"
   # 'runner-self' was a placeholder shipped before ci/v1.9.0 and is NOT a
   # registered label — a caller left on it queues forever.
-  assert_absent "$qgp" "runner-self" "quick-gates-private: not the dead 'runner-self' placeholder"
+  assert_absent "$runsline" "runner-self" "quick-gates-private: not the dead 'runner-self' placeholder"
+
+  # The private variant carries D3, D4, D9 and the checkout posture exactly as
+  # the public one does, and NOTHING else in the repo reaches it:
+  # test_contract.sh's caller checks key off `runner_labels` (v3 uses a literal
+  # runs-on, so they skip), and its CI-0025 evaluator builds its set from
+  # required-context-map.py, which only sees jobs whose body is `uses:` a
+  # reusable. Per §3.2a, a defense that moved to a file nothing checks is a
+  # defense that was dropped — so assert the two files are identical apart from
+  # the documented runner line and header block.
+  assert_contains "$qgp" 'contains(fromJSON(' "quick-gates-private: §23 allowlist (D3)"
+  assert_absent "$qgp" "cancel-in-progress: true" "quick-gates-private: no blanket cancel (D3)"
+  assert_contains "$qgp" "  quick-gates:" "quick-gates-private: same job id, same context (D4)"
+  assert_contains "$qgp" "persist-credentials: false" "quick-gates-private: no persisted creds"
+  assert_absent "$qgp" "ref: \${{ github.event.pull_request.head.sha }}" \
+    "quick-gates-private: no head.sha pin — merge-commit parity"
+  assert_contains "$qgp" "contents: read" "quick-gates-private: least-privilege grant (D9)"
+
+  # Drift guard: normalise the two known deltas and require the rest to match.
+  # Without this the variants diverge silently, which is what regenerating one
+  # by script was meant to prevent — and a script can be run once and forgotten.
+  if command -v diff >/dev/null 2>&1; then
+    d="$(diff <(sed -E 's/^\s*runs-on:.*/RUNNER/' "$QGP" | sed -n '/^name:/,$p') \
+              <(sed -E 's/^\s*runs-on:.*/RUNNER/' "$QG"  | sed -n '/^name:/,$p') | grep -c '^[<>]' || true)"
+    assert_eq "$d" "0" "quick-gates public/private bodies identical below the header (drift guard)"
+  fi
+
+  if command -v actionlint >/dev/null 2>&1; then
+    assert_ok "actionlint '$QGP' >/dev/null 2>&1" "quick-gates-private: actionlint clean (needs .github/actionlint.yaml)"
+  fi
 else
   _r "quick-gates-private variant missing — --update will revert private consumers to ubuntu-latest (D1)"
 fi

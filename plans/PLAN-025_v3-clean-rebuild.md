@@ -113,6 +113,10 @@ the port checklist *and* the rulebook.
 | D41 | CI-0021 targeted break-glass; CI-0023 "a fail-closed guard fails on faults, not on shapes" | CI-0014: an ai-review outage normalised `--admin` across seven repos for ~9 days | Claims 42, 43 |
 
 | D42 | The links internal/external split: offline+blocking on PRs, external+report-only weekly | External link rot is TIME-based, so blocking a PR on a third party's 429 is a false signal — but the check must still run. **This row was missing, and its absence produced two code defects**: the ported action defaulted to `external` and to a config path canon does not install, so the required PR gate would have made live network calls with the consumer's tolerance profile silently dropped | Claim 46 |
+| D43 | VERSION single-source pin discipline, and its `sync-version-refs:ignore` escape | `--check` is a **default-stage, always_run** pre-commit hook, so it gates every commit *and* canon's `call / Lint / format / security hooks`. A template pinning a tag that is not `VERSION` reds the branch — and the rewriter's suggested remedy points the pin at a tag where the target does not exist. Forward references need the markers (PLAN-004 BL-4, then CI-0024). **This row's absence made the branch red; see the Pass 4 log** | Claim 49 |
+| D44 | The F1 completeness guard (`tests/test_exerciser_inventory.sh`) | It derives its surface set from `manifest.json`, `workflow_call` reusables and `install\|scripts\|sync/*.sh`. **`actions/*/action.yml` is a new surface class it is structurally blind to** — exactly as the hook-block fragment was, which had to be named explicitly. P8 must add it, or v3's largest new surface is invisible to the completeness check | Claim 50 |
+| D45 | Per-check arming granularity — the staged-adoption ladder | A repo can arm `call / Lint / format / security hooks` while leaving `call / markdownlint` unarmed, which is the documented way a repo with existing markdown debt adopts *without bricking merges*. **Fusing three checks into one required context removes that ladder.** §6 says consolidation reduces jobs not coverage — true, but it does reduce *adoption granularity*, and P7 must handle repos that today arm a subset | Claim 51 |
+| D46 | The lychee cache (`actions/cache` restore + save, `if: always()`) | A documented design decision in the v2 reusable. The port kept `--cache --max-cache-age 1d` but dropped both cache steps, so the flag is a per-run no-op. Performance only — but an undocumented deviation under a plan whose §1 rests on verbatim porting is exactly what §2 exists to prevent | Claim 52 |
 
 **All 23 CARRIED. None dropped.** D21 and D27 additionally constrain the
 architecture and are answered in §3.2a.
@@ -158,31 +162,53 @@ The rebuild ships the lightweight checks as **composite actions** and keeps
 reusable workflows only where a separate runner, a separate permission set or a
 separate trust boundary is actually required.
 
-### 3.2 CI: 12 PR jobs → 4
+### 3.2 CI: 12 PR jobs → 6
 
-**Corrected during implementation 2026-08-08: 12 → 5 jobs, not 4.** Only checks
+**Restated as the folds landed — the count moved 4 → 5 → 6.** Only checks
 sharing a **trigger** can share a job. `composition` fires on
 `pull_request_review` + `workflow_run`, never `pull_request` (Claim 21), so it
 **cannot** join `quick-gates` and stays its own workflow. An earlier draft of
 this table listed it inside `quick-gates`; that was wrong.
 
-| Job | Composite actions it runs | Trigger | Required context |
+**This table is the CURRENT one. 12 → 6 PR jobs.** It was restated twice as the
+folds landed (4, then 5, then 6); §3.2d records why each move happened, and any
+"→ 4" or "→ 5" elsewhere in this document is superseded by this table.
+
+| Job | Runs | Trigger | Required context |
 | --- | --- | --- | --- |
-| `quick-gates` | pre-commit `--all-files`, audit-trail verify, markdownlint (cli2), links | `pull_request` | `quick-gates` |
-| `security` | gitleaks (full history), osv-scanner, trivy, semgrep | `pull_request` | `security` |
+| `quick-gates` | pre-commit `--all-files`, markdownlint (cli2), links (internal/offline) | `pull_request` | `quick-gates` |
+| `scanners` | osv-scanner, trivy, semgrep — self-hosted, fork-guarded | `pull_request` | `scanners` |
+| `secret-scan` | gitleaks (full history) — `ubuntu-latest`, **fork-visible** | `pull_request` | `call / gitleaks` *(unchanged)* |
+| `audit-trail` | OPS-0069 phrase check — needs its own `types:` (D32) and event refusal (D31) | `pull_request` + label types | `call / verify` *(unchanged)* |
 | `composition` | unchanged — different trigger, cannot consolidate | `pull_request_review`, `workflow_run` | `call / composition` |
 | `ai-review` | unchanged — separate runner, own trust gate | `pull_request_target` | `call / ai-review` |
 | `auto-merge` | unchanged — event-driven, no PR cost | `workflow_run` | none |
 
-**Checkout is the caller's, and it must satisfy the STRICTEST consumer.**
-Composite actions share the job's working tree, so `quick-gates` checks out once
-for all four. `audit-trail` needs `fetch-depth: 0` at
-`github.event.pull_request.head.sha` — its full-history fork-PR false-pass guard
-(Claim 22) — so the shared checkout takes those settings. **Each action must
-verify the precondition it depends on and fail loudly if unmet**, rather than
-assume it: a consolidated job that silently checked out shallow would weaken the
-check while still reporting green, which is the exact defect class §2 exists to
-prevent.
+Only **two** contexts are new (`quick-gates`, `scanners`), so P7's irreversible
+migration touches two names, not five. `secret-scan`, `audit-trail`,
+`composition` and `ai-review` keep their existing contexts and need **no P7
+step at all** — which is a large reduction in the risk P7 carries.
+
+**Checkout is the caller's — and "strictest consumer" was the WRONG rule.**
+Corrected 2026-08-08; the paragraph here previously mandated `fetch-depth: 0` at
+`github.event.pull_request.head.sha`, and P2 would have been implemented from
+it.
+
+On `pull_request` the default checkout ref is the **merge commit**, which is what
+the v2 `pre-commit`, `markdown-lint` and `links` reusables lint. Pinning
+`head.sha` lints the branch **tip** instead — so a PR whose merge result is dirty
+but whose tip is clean goes green. That is weaker, not stricter. `audit-trail`
+was the only check that genuinely needed the head SHA and full history, and
+§3.2d removes it from this job, so the requirement leaves with it.
+
+**The shipped caller therefore takes the DEFAULT ref and no `fetch-depth`**, and
+`tests/test_actions.sh` asserts the `head.sha` pin is *absent*. Three actions
+share that one checkout, not four.
+
+**Each action must still verify the precondition it depends on and fail loudly
+if unmet**, rather than assume it: a job that checked out nothing would leave
+every tool matching zero files and exiting 0 — a green required check that
+inspected nothing, which is the D11/D22 shape re-created by consolidation.
 
 `links` also carries a `schedule` trigger. That is unaffected — the scheduled
 caller invokes the same composite action in its own small workflow.
@@ -368,7 +394,7 @@ Two rules that make the local layer real rather than decorative:
 - `ai-review` unchanged.
 
 Net: ~12 checks (three unable to fail) → **~20 checks, all able to fail**, on
-**4 PR jobs instead of 12**.
+**6 PR jobs instead of 12** (§3.2 table — this said 4 before the §3.2d and P3a splits).
 
 ## 4. Documentation set
 
@@ -609,6 +635,10 @@ governance.
 | 46 | The v2 links caller splits blocking-internal from scheduled-external | `mode: internal` | install/templates/workflows/links.yml:33 |
 | 47 | A caller job that `uses:` a reusable is keyed `call`, which is where the context prefix comes from | `Callers name the job` | tests/test_checknames.sh:14 |
 | 48 | A plain job emits its own job name as the context — canon's own `suite` | `suite:` | .github/workflows/tests.yml:29 |
+| 49 | sync-version-refs globs every caller template into TARGETS, so a v3 pin reads as stale | `install/templates/workflows` | scripts/sync-version-refs.sh:69 |
+| 50 | The exerciser completeness guard derives its surface set from the manifest and reusables | `manifest` | tests/test_exerciser_inventory.sh:8 |
+| 51 | markdown-lint is adoptable per repo precisely so existing lint debt does not brick merges | `lint debt` | install/templates/workflows/markdown-lint.yml:12 |
+| 52 | The v2 links reusable saves a lychee cache, which the port dropped | `actions/cache/save` | .github/workflows/links.yml:24 |
 
 ## Implementation log
 
@@ -645,14 +675,20 @@ mutations, all killed, baseline restored green afterwards:
 
 **Correction found during implementation, folded into §3.2:** `composition`
 fires on `pull_request_review` + `workflow_run`, never `pull_request`
-(Claim 21), so it **cannot** share `quick-gates`' job. Target is **12 → 5 jobs,
-not 4**. An earlier draft of §3.2 had it inside `quick-gates`; that would have
-consolidated a check into a job whose trigger never fires for it.
+(Claim 21), so it **cannot** share `quick-gates`' job — consolidating a check
+into a job whose trigger never fires for it. The count moved 4 → 5 → **6** as
+later folds split `audit-trail` (§3.2d) and `secret-scan` (P3a) out as well.
 
-**Remaining in P2 (mechanical ports, bodies already proven):**
-`actions/pre-commit` (33-line body), `actions/links` (66), `actions/audit-trail`
-(135 — needs the checkout-precondition guard §3.2 requires), then the `security`
-job's four. `composition` (403 lines) is **not** ported — it stays a reusable.
+**Remaining in P2 — reduced by the folds.** `actions/pre-commit` and
+`actions/links` are **done**. Still to port: the three self-hosted scanners
+(osv-scanner, trivy, semgrep) for the `scanners` job.
+
+**Two flows are deliberately NOT ported and stay reusables:** `composition`
+(403 lines, different trigger) and `audit-trail`. An earlier version of this
+list carried `actions/audit-trail` as pending P2 work, contradicting §3.2d —
+porting it to a composite inside its own single-job workflow saves **zero**
+provisioning cycles and costs the three defenses §3.2d enumerates. It stays as
+it is. `secret-scan` likewise stays its own reusable per P3a.
 
 ## Review log
 
@@ -769,3 +805,60 @@ ready.** Three items are explicitly deferred with owners rather than fixed: the
 §3.2c verdict step is unimplemented, per-check `timeout` wrappers are
 unimplemented, and P8's tooling work is unstarted — so **P7 must not run**, since
 its step-5 validation is currently a no-op.
+
+### Pass 4 - 2026-08-08 - independent (FINAL, OPS-0066 cap reached)
+
+**Verdict: NOT-READY — one hard merge blocker plus four load-bearing
+corrections.** All folded. This exhausts the three-pass circuit-breaker.
+
+1. **MERGE BLOCKER, and it was red on the branch.** `sync-version-refs --check`
+   globs every caller template into TARGETS (Claim 49) and is a **default-stage,
+   `always_run` pre-commit hook** — so it gates every commit *and* canon's own
+   `call / Lint / format / security hooks` required context. All three v3
+   templates pin `@ci/v3.0.0` while `VERSION` is `ci/v2.16.0`, so all three read
+   STALE. Verified by running it. **And the failure message's remedy #1 would
+   have rewritten the pins to `@ci/v2.16.0`, a tag at which `actions/` does not
+   exist** — a `startup_failure` on every consumer. Fixed with the documented
+   remedy #2 (`sync-version-refs:ignore` markers), carrying a note to remove them
+   at the tag cut. This is the FT-21 chicken-and-egg shape. **D43 added** — the
+   row's absence is what let it through.
+2. **§3.2's normative checkout paragraph still mandated `fetch-depth: 0` at
+   `head.sha`** — the posture the branch had already rejected as *weaker, not
+   stricter*, and the paragraph P2 would be implemented from. Rewritten to match
+   the shipped caller and §3.2d.
+3. **§3.2's job table and the headline count were stale in three places** (4 / 5
+   / 6 all live in normative prose). Table rewritten to the current six-job
+   model, with the useful consequence made explicit: only **two** contexts are
+   new, so P7 touches two names, not five.
+4. **`quick-gates` silently dropped markdown-lint's `!node_modules !vendor
+   !.git`** — the same silent-default shape as the `links` defect, on the very
+   file that states "EVERY input passed explicitly". Now explicit on all three
+   steps.
+5. **The private variant had three greps and nothing else.** `test_contract.sh`
+   skips it (its caller checks key off `runner_labels`; v3 uses a literal
+   `runs-on:`), and its CI-0025 evaluator builds from `required-context-map.py`,
+   which only sees reusable callers. Added the full assertion set plus a
+   public/private drift guard, and fixed the D1 assertions to read the
+   **`runs-on` line** rather than the file — the old form was satisfiable by the
+   header comment that explains the variant.
+6. **§2 was short four more rows** (D43–D46): the VERSION pin discipline, the F1
+   completeness guard's blindness to `actions/`, per-check arming granularity
+   (fusing three checks removes the documented staged-adoption ladder), and the
+   dropped lychee cache.
+
+Minors folded: the stale `§6a` reference, a mis-numbered claim cite, the
+implementation log's false "strictest-consumer checkout" claim, and the
+contradiction over whether `actions/audit-trail` is still pending P2 work
+(§3.2d says it stays a reusable — the port list said otherwise).
+
+**Author note on process:** while reverting a mutation I ran `git checkout` on a
+file with *uncommitted fixes*, destroying them — the exact trap recorded in this
+project's memory. Caught by the suite going red, restored by re-applying, not by
+another checkout.
+
+**Result:** all load-bearing findings folded. 64 assertions, 0 failed; the merge
+blocker is cleared and `sync-version-refs --check` passes. **Still NOT READY** —
+the three deferrals from Pass 3 stand (§3.2c verdict step, per-check timeouts,
+P8), and **P7 must not run**. The branch is now safe to land as an incomplete
+foundation: the templates are unmanifested, so `install.sh` cannot ship them and
+no consumer can reach them.

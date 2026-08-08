@@ -91,11 +91,36 @@ jobs:
         with:
           persist-credentials: false
 
+      # sync-version-refs:ignore-start
+      # ^ FORWARD REFERENCE, not a stale pin. `ci/v3.0.0` does not exist yet, and
+      # `actions/` does not exist at ci/v2.16.0 — so the rewriter's remedy #1 would
+      # point these at a tag where the action is absent: a startup_failure on every
+      # consumer. The markers are the documented remedy #2 for a reference that must
+      # NOT track VERSION. REMOVE THEM AT THE v3.0.0 TAG CUT, when the pin becomes
+      # current and should track VERSION again. (FT-21 chicken-and-egg shape.)
+      # EVERY input explicit on every step, none left to a default. This is a
+      # REQUIRED gate: a default that changes in a later release would change
+      # what the gate does, silently. The rule was applied to `links` first and
+      # not to its siblings — which is how the markdownlint globs went missing.
       - name: Lint / format / security hooks
         uses: vladm3105/aidoc-flow-ci/actions/pre-commit@ci/v3.0.0
+        with:
+          config-path: .pre-commit-config.yaml
 
+      # The exclusions are v2 parity and load-bearing: without them cli2 walks
+      # `node_modules`, `vendor` and `.git`, so any repo with dependencies gets a
+      # slow scan and findings in files nobody owns. An earlier draft passed
+      # nothing and inherited the bare `**/*.md` default, dropping all three —
+      # the same silent-default defect the final review caught on `links`.
       - name: markdownlint
         uses: vladm3105/aidoc-flow-ci/actions/markdownlint@ci/v3.0.0
+        with:
+          globs: |
+            **/*.md
+            !node_modules
+            !vendor
+            !.git
+          fail-on-findings: 'true'
 
       # EVERY input passed explicitly, none left to a default. This is a
       # REQUIRED gate; a default that changes in a later release would change
@@ -117,3 +142,4 @@ jobs:
           fail-on-error: 'true'
           config-file: .lychee.toml
           github-token: ${{ secrets.GITHUB_TOKEN }}
+      # sync-version-refs:ignore-end
