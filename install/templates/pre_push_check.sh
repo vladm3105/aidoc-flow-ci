@@ -203,10 +203,18 @@ else
     audit_ok=0
     for phrase in "Multi-agent self-review per OPS-0065" \
                   "Self-review skipped per founder OK"; do
-      if echo "$push_msgs" | grep -qF "$phrase"; then
-        audit_ok=1
-        break
-      fi
+      # CI-0033: `case`, not `echo … | grep -qF`. `grep -q` exits on first
+      # match, the writer takes EPIPE, and `set -o pipefail` turns that MATCH
+      # into a non-zero pipeline status — a false "phrase missing" that grows
+      # more likely as the push range grows. This bit the CI twin of this very
+      # check on PR #416 (#417). A quoted expansion in a case pattern is a
+      # literal, so this is `grep -F` semantics with no status to invert.
+      case "$push_msgs" in
+        *"$phrase"*)
+          audit_ok=1
+          break
+          ;;
+      esac
     done
   fi
 fi

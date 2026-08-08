@@ -5,6 +5,60 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — the OPS-0069 audit-trail gate reported a false negative on a PR whose evidence was present (#417, CI-0033)
+
+- **`grep -q` matched, and the gate recorded a miss.** `call / verify` failed PR
+  #416 with `no OPS-0069 phrase found`, deterministically, while the phrase was
+  present twice in the range and the local `pre_push_check.sh` exited 0 on the
+  same two SHAs. `grep -q` exits on first match, `echo` took `EPIPE` mid-write,
+  and `set -o pipefail` handed the pipeline that 141. The runner log names it:
+  `line 103: echo: write error: Broken pipe`, where line 103 is
+  `if echo "$push_msgs" | grep -qF "$phrase"`.
+- **Substring tests are now bash `case`** — no fork, so no exit status to
+  invert — on all four OPS-0069 surfaces: `audit-trail-check.yml` (the phrase
+  loop, the `[skip-audit-trail]` body probe and the no-jq label fallback),
+  `scripts/pre_push_check.sh`, `install/templates/pre_push_check.sh`, and
+  `assert_contains`/`assert_absent` in `tests/lib.sh`. The commit range is
+  materialised once and every probe reads that one string.
+- **The escape hatch the error message recommends was inverted too.** The
+  `[skip-audit-trail]` body-marker probe was its own `git log … | grep -qF`, so
+  the two-signal override failed at the same sizes the gate did. In `tests/lib.sh`
+  the inversion turns `assert_absent` into a **silent pass** — lost coverage
+  with no red.
+- **Size-dependent, which is why both its review and the issue cleared it** — the
+  measurements, the reachability and the scope still outstanding are in
+  `DECISIONS.md` **CI-0033**; the rule is `REPO_STANDARDS` **§27**.
+- **Eleven further decisions across canon carried the same construct, and every
+  one of them fails OPEN when it inverts** — one measured, the rest latent
+  because their writer is a `printf` builtin that cannot invert at its current
+  size. `ai-review.yml` (the PLAN-012 §4.4 autofix symlink-escape guard —
+  **measured** missing the symlink 4/5 at 401 staged files, its writer being
+  `git diff --raw`; plus two deny-floor path checks), `composition.yml` (break-glass + separation-of-duties),
+  `secret-scan.yml` (three config-canary branches, into the exact fail-open its
+  own comment warns of), `ft30-dry-run.sh`, `release.sh`, `sync-version-refs.sh`.
+  The reported instance is the only one that failed *closed*, and the only one
+  anyone noticed. Closes
+  [#418](https://github.com/vladm3105/aidoc-flow-ci/issues/418).
+- **Without `jq` the gate now REFUSES the `skip-audit-trail` override instead of
+  approximating it.** Whether a label is present is an authorization decision,
+  and the only jq-free way to make it is a substring test over JSON-escaped
+  text — which a label named `", "skip-audit-trail` defeats. The gate still runs
+  and can still pass on the phrase; only the exemption is withheld, with a
+  warning naming the cause. No behaviour change in practice: that branch was
+  unreachable before (`toJSON` pretty-prints, and the regex required the label
+  to abut a `,` or `]`), and every runner in scope ships `jq`.
+- Tests: `tests/test_sigpipe_guard.sh` — 60 assertions. The shipped `run:` block
+  is extracted from the workflow and executed against a 4 MB commit range (pass,
+  fail-closed, both override signals, the `skip-audit-trail-later` prefix case,
+  and the no-jq path against the pretty-printed `toJSON` shape GitHub really
+  sends). The structural half **globs the scope §27 declares** — 33 files, not a
+  hand-written list — and catches `--quiet`, `-F -q` and `-m1` as well as `-q`.
+  Mutation-tested, each measured against this test: reverting the phrase loop
+  reds 4 assertions, the no-jq refusal 6, all four OPS-0069 surfaces 9, and
+  running it against the whole pre-fix tree reds 15.
+- **No consumer is fixed until the next tag** — callers pin
+  `audit-trail-check.yml@ci/v<tag>`, so PR #416 remains `--admin`-only.
+
 ### Fixed — the `doc-maintainer` planner offered the model files it would then reject (#360, PLAN-021 PR-D)
 
 - **The inventory is now the allowlisted set, filtered before it is truncated.**

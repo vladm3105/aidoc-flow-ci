@@ -50,7 +50,8 @@ VER_RE='^ci/v[0-9]+\.[0-9]+\.[0-9]+$'
 
 require_version_arg() {
   [ -n "${1:-}" ] || die "usage: release.sh $2 <ci/vX.Y.Z> ${3:-}"
-  printf '%s' "$1" | grep -qE "$VER_RE" || die "version must match ci/vX.Y.Z (got '$1')"
+  # CI-0033 §27: bash regex test, no pipeline status to invert.
+  [[ "$1" =~ $VER_RE ]] || die "version must match ci/vX.Y.Z (got '$1')"
 }
 
 current_version() { tr -d '[:space:]' < VERSION; }

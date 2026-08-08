@@ -2165,6 +2165,106 @@ prerequisite). **CI-0031 is deliberately skipped** — it is reserved by PLAN-02
 PR-0, which already cites it in three places; per the ordering rule at the top of
 this file it is filled in place when that plan lands.
 
+---
+
+## CI-0033: A gate must not decide on the exit status of a pipeline into `grep -q` (2026-08-08)
+
+**Context**
+
+`call / verify` — the required OPS-0069 audit-trail context — failed PR #416
+with `no OPS-0069 phrase found in any commit in the PR range`. The phrase was
+present twice in the range, `pre_push_check.sh` exited 0 on the same two SHAs,
+and the failure was deterministic across reruns. Issue #417 verified every input
+the check reads (base SHA, head SHA, commit count, bot exemption, labels) and
+could not account for it; it explicitly tested and **ruled out** the SIGPIPE
+mechanism.
+
+The runner log settles it. Immediately before the error:
+
+```text
+line 103: echo: write error: Broken pipe
+```
+
+Line 103 of the generated step script is `if echo "$push_msgs" | grep -qF
+"$phrase"; then`. `grep -q` exited on matching at byte 703; `echo` was still
+writing the 38,744-byte range and took `EPIPE`; `set -o pipefail` handed the
+pipeline that 141. **The grep matched and the gate recorded a miss.**
+
+The reason it survived its review (`e827ab8`, 2026-07-07, PLAN-002 PR-U3 #64,
+whose commit message records `code-reviewer + security-auditor`) and then a
+dedicated investigation a month later is that
+the inversion is **size-dependent**. Measured on the dev host: 0/200 false
+negatives at the real 38 KB payload, 50/50 at 256 KB and above. The runner's
+threshold is lower. A local reproduction at the real size therefore returns a
+clean negative and proves nothing.
+
+Same shape, same file, on the escape hatch the error message recommends: the
+`[skip-audit-trail]` body-marker probe was its own `git log … | grep -qF`, so
+the two-signal override inverted at the same sizes the gate did. `assert_absent`
+in `tests/lib.sh` inverts to a **silent pass**, i.e. lost coverage with no red.
+
+**Decision**
+
+1. **A pipeline whose exit status is a decision must decide on captured output,
+   or not be a pipeline.** For substring tests, bash `case` — no fork, no status
+   to invert, `grep -F` semantics from the quoted expansion.
+2. Applied to all four OPS-0069 surfaces: `audit-trail-check.yml` (three sites),
+   `scripts/pre_push_check.sh`, `install/templates/pre_push_check.sh`,
+   `tests/lib.sh`. The range is now materialised once and every probe reads that
+   one string.
+3. `grep -q` reading a file stays legal — no writer, no signal. The banned
+   construct is an early-exiting reader on the RIGHT of a pipe: `grep -q`,
+   `grep --quiet`, `grep -m<N>`, and by the same mechanism `head -N` and
+   `sed …q`. The guard's regex covers the `grep` family; `head`/`sed` are named
+   here because `| head -1` for DISPLAY is legitimate and must not be banned
+   wholesale — what matters is whether a DECISION reads the pipeline's status,
+   or whether `set -e` can kill the step before the diagnostic it precedes.
+4. Enforced by `tests/test_sigpipe_guard.sh`: the shipped `run:` block is
+   extracted and executed against a 4 MB commit range, plus a structural ban
+   that **globs the scope §27.2 declares** — 33 files, not a hand-written list.
+   Mutation-tested against that test: reverting the phrase loop reds 4
+   assertions, the no-jq fallback 2, all four OPS-0069 surfaces 9, and running
+   it against the whole pre-fix tree reds 15.
+
+**Consequences**
+
+- **No consumer is fixed by this until the next tag.** Callers pin
+  `audit-trail-check.yml@ci/v<tag>`, so every repo runs the defective copy until
+  `ci/v2.17.0`/`ci/v3.0.0` ships. PR #416 stays `--admin`-only.
+- The blast radius is every OPS-0069 gate in the workspace, and it grows with PR
+  size — large PRs are exactly where the review evidence matters most.
+- No exemption was consumed. The two-signal override was **not** used on #416;
+  it would have hidden the defect, and it was inverted too.
+- **The ban is construct-based, so it indicted sites well beyond the reported
+  one, and those were converted here rather than deferred.** Eleven further
+  decisions across `ai-review.yml`, `composition.yml`, `secret-scan.yml`,
+  `ft30-dry-run.sh`, `release.sh` and `sync-version-refs.sh`. **Every one of them
+  fails OPEN when it inverts** — one measured (`git diff --raw`, 4/5 at 401
+  staged files), the rest latent, their writer being a `printf` builtin that
+  cannot invert at its current size. The reported instance is the only one that
+  failed CLOSED, and it is the only one anybody noticed. That asymmetry is the finding: a gate that
+  wrongly reds gets diagnosed in a day; a guard that wrongly greens does not get
+  diagnosed at all.
+- The sharpest was `ai-review.yml`'s autofix symlink-escape guard (PLAN-012
+  §4.4), measured missing the symlink 5/5 at 400 staged files. Filed as
+  [#418](https://github.com/vladm3105/aidoc-flow-ci/issues/418) when the scope
+  looked separable, then folded in once review established it was the same
+  defect inside the scope §27.2 declares mandatory; **#418 closes with this
+  change.**
+- **The guard globs the declared scope instead of listing files.** The first
+  draft guarded four hand-listed files while §27.2 declared four directories —
+  which is precisely how these sites stayed invisible. A guard narrower than its
+  rule reports a compliance that does not exist.
+
+**Origin**
+
+Issue [#417](https://github.com/vladm3105/aidoc-flow-ci/issues/417), from the
+`call / verify` failure on PR #416 (run 31279465250, 2026-08-08). Rulebook:
+`docs/REPO_STANDARDS.md` §27. The general trap was already recorded in
+`CLAUDE.md` § "Bash, where the fix quietly creates the next bug"; what is new is
+that it reached a required gate and that a correct-looking local test cannot
+detect it.
+
 <!-- Append new entries above this line (or into a previously reserved ID
 slot — see the ordering rule at the top); append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
