@@ -94,7 +94,7 @@ the port checklist *and* the rulebook.
 | D20 | SHA-256 verify every downloaded tool binary before executing it | A substituted release tarball executes on the runner. D5 covers `uses:` pins only, not curl'd binaries | Claim 22 |
 | D21 | Allowed-actions policy: only `actions/*`, `github/*`, `vladm3105/*`; `verified_allowed: false` | A marketplace action is a `startup_failure` with a web-UI-only message `actionlint` cannot catch. **This is why the checks are 100-line `run:` bodies and not thin wrappers** — the single biggest constraint on how a v3 action may be written | Claims 23, 24 |
 | D22 | `secret-scan` config canary | A consumer `.gitleaks.toml` with an `[allowlist]` but no rules scans nothing and exits 0 — a green required check that scanned nothing. Plants a credential at a randomized path (a fixed one could be allowlisted away) | Claim 25 |
-| D23 | `sast-scan` strips PR-supplied `.semgrepignore`/`.semgreprc` | A PR committing `.semgrepignore: *` is a **verified full SAST-gate bypass**. The gate, not the scanned PR, decides coverage | Claim 26 |
+| D23 | `sast-scan` strips PR-supplied `.semgrepignore`/`.semgreprc` — **including symlinks, from the repo root, with a post-condition that refuses to scan if one survives** | A PR committing `.semgrepignore: *` is a **verified full SAST-gate bypass**. The gate, not the scanned PR, decides coverage. **The v2 strip this was ported from uses `-type f`, which misses a symlink — reproduced 2026-08-08, so v2 still carries the hole and needs an upstream issue.** | Claim 26 |
 | D24 | `dep-scan` passes `--no-call-analysis=all` | osv-scanner's Go call-analysis is **on by default** and compiles source — arbitrary code execution at scan time on the self-hosted pool | Claim 27 |
 | D25 | `trivy` restricted to `dockerfile,kubernetes,cloudformation,azure-arm` | terraform/helm fetch PR-controlled remote sources; a `.tf` `module { source = "https://…" }` makes the runner clone an attacker-chosen URL. `--tf-exclude-downloaded-modules` does **not** prevent the fetch | Claim 28 |
 | D26 | `semgrep` uses an explicit `--config`, never repo-local auto-discovery; `--metrics off` | A PR injecting its own rules; telemetry from private repos | Claim 29 |
@@ -413,7 +413,7 @@ A rebuilt set, written for an adopter who has never seen v2:
 | --- | --- |
 | `docs/v3/ARCHITECTURE.md` | `architecture.md`, parts of `WORKFLOWS.md` |
 | `docs/v3/ADOPT.md` | `AI_CI_DEPLOYMENT.md`, `install/README.md`, `UPDATE_GUIDE.md` |
-| `docs/v3/FLOWS.md` | `WORKFLOWS.md` — the 4-job model and every composite action |
+| `docs/v3/FLOWS.md` | `WORKFLOWS.md` — the **6-job** model (§3.2) and every composite action |
 | `docs/v3/LOCAL.md` | *(new — the local layer has no doc today)* |
 | `docs/v3/SECURITY.md` | `security.md` |
 | `docs/v3/RUNNERS.md` | `runners.md` |
@@ -480,7 +480,7 @@ were never P3's work:
 | Template | Emits | Notes |
 | --- | --- | --- |
 | `quick-gates{,-private}` | `quick-gates` | pre-commit + markdownlint + links |
-| `scanners{,-private}` | `scanners` | the three self-hosted scanners, job-level fork guard |
+| `scanners` | `scanners` | the three self-hosted scanners, job-level fork guard. **ONE template, no `-private`** — uniform-protected (PLAN-014 §1a), self-hosted on both visibilities, so a flip is a no-op and D1 does not apply |
 | `links-external` | *(none — not required)* | the weekly report-only half, D42 |
 
 D3's allowlist and D4's job-id discipline apply to every one; both consolidating
@@ -742,8 +742,9 @@ later folds split `audit-trail` (§3.2d) and `secret-scan` (P3a) out as well.
 
 **P2 COMPLETE 2026-08-08.** All six composite actions are ported:
 `markdownlint`, `pre-commit`, `links`, `dep-scan`, `trivy-scan`, `sast-scan`.
-P3 complete too — `quick-gates{,-private}`, `scanners{,-private}` and
-`links-external`, all manifested and inventoried.
+P3 complete too — **four** templates: `quick-gates{,-private}`, `scanners`
+(uniform-protected, no split) and `links-external`, all manifested and
+inventoried.
 
 **Two flows are deliberately NOT ported and stay reusables:** `composition`
 (403 lines, different trigger) and `audit-trail`. An earlier version of this
@@ -986,20 +987,25 @@ per-check timeouts) · **P8 core — which unblocks P7**.
 
 | # | Blocker | Owner |
 | --- | --- | --- |
-| ~~1~~ | ~~P2 incomplete~~ — **DONE 2026-08-08.** All six actions ported; `scanners{,-private}` caller added with the D27 job-level fork guard, D35 best-effort SARIF and a collect-then-fail verdict | ✅ |
+| ~~1~~ | ~~P2 incomplete~~ — **DONE 2026-08-08.** All six actions ported; the `scanners` caller added with the D27 job-level fork guard, per-category SARIF uploads and a collect-then-fail verdict | ✅ |
 | 2 | **P5 not started** — the whole v3 documentation set, plus the §2→`RULES.md` mapping §4.4 requires | build |
 | 3 | **P6** — release mechanics: `MIGRATION_v3.0.0.md`, the MAJOR-bump LiteLLM smoke, and the 🔴 **founder-executed FT-30 cold-start dry run**, which is owed before any tag | **founder** |
 | 4 | **P7** — the per-repo required-context migration. Now *unblocked* by P8, but still the only irreversible phase | founder + build |
 | 5 | **P9 not started** — rollback. Ten repos hand-run with no script is not a plan | build |
-| 6 | **P8 remainder** — `deploy-ci-wizard.sh`, and D44 (the exerciser guard cannot see `actions/` as a surface class) | build |
+| 6 | **P8 remainder** — `deploy-ci-wizard.sh` and the `auto_install` move. (D44 is folded into blocker 8, where the measurement for it lives.) | build |
 | 7 | **PLAN-024 Phases A/B/C ship first** (§7) — building v3 around `doc-maintainer` while it is being deleted wastes the work | build |
+| 8 | **The OPS-0065 medium/low tail is unfolded** (Pass 8). Named so it is not lost: the `pre-commit` D11 guard only checks that the config *exists*, not that any hook was *selected* — the original incident had a config present and zero hooks matching; `links-external` is report-only with **no report** (no summary, no warning, no issue); `markdownlint`'s guard reads `git ls-files` (the index) while cli2 globs the worktree, so a sparse checkout diverges them; and the completeness guard still cannot see `actions/` as a surface class (D44) — adding a bogus seventh action raised the suite count by 7 and tripped nothing | build |
 
 ### The honest caveat on process
 
-Four independent passes found **45 → 23 → 12 → 5** load-bearing findings. The
+**Three** independent plan passes (Pass 1 is an author pass) found **45**, then
+**12**, then **5** load-bearing findings — the earlier "45 → 23 → 12 → 5" both
+miscounted the passes and double-counted Pass 3, whose 23 was a total of which 12
+were load-bearing. Separately, the five-agent OPS-0065 **code** review of the
+branch returned ~90 findings. The
 rate is falling and the last pass produced one merge blocker rather than a
 design reversal, which is the right direction. But **every pass has still found
-something a consumer would have felt**, and three of the four found a
+something a consumer would have felt**, and three of the three found a
 required-context defect specifically.
 
 **The OPS-0066 cap is spent.** Before release this needs either a founder waiver
@@ -1078,3 +1084,66 @@ surface a contradiction; querying it does. Worth doing at each wrap.
 
 **Result:** §5 reconciled. Suite unchanged at 1236 passed, 0 failed. Status
 unchanged: **NOT READY**, blockers 2–7 open, new material unreviewed.
+
+### Pass 8 - 2026-08-08 - OPS-0065 five-agent CODE review (not a plan pass)
+
+Distinct from the plan-review passes above: this reviewed
+`git diff main...HEAD`, not the document. Five diff-class-matched agents
+(code-reviewer, silent-failure-hunter, security-auditor, test-engineer,
+documentation-specialist), **~90 findings**. Load-bearing ones folded; the
+medium/low tail is not, and is listed in §8.
+
+**The ports held.** D20/D21/D24/D25/D26/D27 were each verified present in the
+*executed commands*, checksums ordered before execution, and zero `${{ }}`
+interpolation in any `run:` body. §1's verbatim-port discipline was the right
+call and is the reason this review found no defect in a ported body.
+
+**Everything serious was in what was added on top.** In severity order:
+
+1. **D23 was bypassable by symlink** — `find -type f` misses a symlinked
+   `.semgrepignore`, semgrep follows it, coverage goes to zero. Reproduced. The
+   §2a row now states the strengthened form, and records that **v2 still has the
+   hole**.
+2. **`sarif_file: .`** uploaded the PR tree under `security-events: write`, and
+   dropping `category:` made one upload replace all three analyses.
+3. **All four callers had silently lost `push: main`** — Code Scanning alerts
+   anchor to the default branch, so the scanners' baselines would never refresh.
+4. **`scanners` public was `ubuntu-latest`** — a regression from v2. Two
+   reviewers proposed **opposite** fixes; adjudicated from the v2 templates,
+   which all pass the pool labels on public. Restored to self-hosted, which makes
+   the flow uniform-protected and **removes the `-private` variant entirely**.
+5. **`pre-commit` silently downgraded 4.6.0 → 4.0.1.**
+6. **The autofix preview's `exit 0` did not deliver its stated guarantee** —
+   SIGPIPE from `git diff | head` aborts under `set -e` first.
+
+**The test suite was the worst of it, and that is the finding to carry.** It
+asserted shape and presence, not behaviour:
+
+- Deleting the `verdict` step from both `quick-gates` variants left a required
+  gate that **can never fail**, and the suite reported *112 passed, 0 failed*.
+  Eight such mutations survived; all now killed.
+- `tests/test_lint.sh` appended its new block **after** `suite_summary`, so a
+  gate added to close a coverage hole **structurally could not fail**. Moving the
+  summary last immediately surfaced a real error it had been hiding.
+- The whole-file-grep bug recurred **six times** — assertions matched the comment
+  *documenting* a defense after the code was deleted. Every YAML assertion now
+  parses structure.
+
+**Two calibration notes, both worth more than any single finding.**
+
+*Agents are not oracles.* One agent **disproved** the SIGPIPE finding two others
+reported; it was wrong, using the same too-small fixture the author had first
+used (`seq 1 1000` finishes before `head` closes the pipe; `seq 1 5000000` exits
+141). Three of the five produced at least one finding that had to be disproved or
+re-scoped. **Two reviewer-suggested assertions were folded verbatim and both were
+wrong** — `rc=0` matched a legitimate initialiser, and the v2 `-private`
+templates carry no literal `runs-on:`.
+
+*A verification narrower than its claim is a false claim.* The handoff asserted
+"local checks 5/5 exit 0" from a gate loop the author built, which linted two
+markdown files at `-S error`; `pre_push_check.sh` lints **every** changed `.md`
+at `-S warning`, and three of its five checks were failing.
+
+**Result:** load-bearing findings folded; suite 16/1278/0; `pre_push_check`
+checks 1–4 pass. **Still NOT READY** — §8 blockers 2–7 stand, the medium/low
+review tail is unfolded, and the branch is unpushed.
