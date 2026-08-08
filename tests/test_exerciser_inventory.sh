@@ -111,6 +111,32 @@ for frag in install/templates/pre-commit-hook-block.yaml; do
   else _r "fragment MISSING from inventory: $frag"; fi
 done
 
+echo ""
+echo "== every COMPOSITE ACTION is accounted for (D44) =="
+# `actions/*/action.yml` is a surface CLASS this guard was structurally blind
+# to: it derives its set from manifest `files[].path`, `workflow_call`
+# reusables, and install|scripts|sync/*.sh — and a composite action is none of
+# those. Measured: adding a seventh, entirely unaccounted-for action raised the
+# suite's own count by 7 passing assertions and tripped nothing here.
+#
+# Discovered, not enumerated. A roster (as used for fragments above) would need
+# hand-maintenance and is the F1 failure mode this file exists to prevent, and
+# actions are added often enough for that to rot.
+missing_actions=0
+found_actions=0
+while IFS= read -r a; do
+  [ -n "$a" ] || continue
+  found_actions=$((found_actions+1))
+  if in_inventory "$a"; then _g "action listed: $a"
+  else _r "composite action MISSING from inventory: $a"; missing_actions=1; fi
+done < <(cd "$ROOT" && find actions -name action.yml 2>/dev/null | sort)
+# Fail closed: `actions/` exists in this repo, so finding zero means the walk
+# broke, not that there is nothing to check.
+if [ -d "$ROOT/actions" ] && [ "$found_actions" -eq 0 ]; then
+  _r "actions/ exists but the walk found no action.yml — the discovery broke"
+fi
+assert_eq "$missing_actions" "0" "all composite actions are in the inventory (D44)"
+
 # ---------------------------------------------------------------------------
 # 4. Reverse guard: every UNEXERCISED row names an FT (or an explicit
 #    'accepted'). An unexercised surface with no owner is the gap that must not

@@ -994,7 +994,7 @@ per-check timeouts) · **P8 core — which unblocks P7**.
 | 5 | **P9 not started** — rollback. Ten repos hand-run with no script is not a plan | build |
 | 6 | **P8 remainder** — `deploy-ci-wizard.sh` and the `auto_install` move. (D44 is folded into blocker 8, where the measurement for it lives.) | build |
 | 7 | **PLAN-024 Phases A/B/C ship first** (§7) — building v3 around `doc-maintainer` while it is being deleted wastes the work | build |
-| 8 | **The OPS-0065 medium/low tail is unfolded** (Pass 8). Named so it is not lost: the `pre-commit` D11 guard only checks that the config *exists*, not that any hook was *selected* — the original incident had a config present and zero hooks matching; `links-external` is report-only with **no report** (no summary, no warning, no issue); `markdownlint`'s guard reads `git ls-files` (the index) while cli2 globs the worktree, so a sparse checkout diverges them; and the completeness guard still cannot see `actions/` as a surface class (D44) — adding a bogus seventh action raised the suite count by 7 and tripped nothing | build |
+| ~~8~~ | ~~OPS-0065 medium/low tail~~ — **FOLDED 2026-08-08 (cycle 2).** The D11 guard now counts hooks *selected at the runner's stage* and refuses at zero (verified against the reproduced manual-only config); `links-external` gained a report step that warns and writes a summary without failing; `markdownlint`'s guard compares the index against the worktree and errors on a sparse checkout; **D44 closed** — the completeness guard discovers `actions/*/action.yml` and all six now carry inventory rows (mutation-verified: an unaccounted action fails it) | ✅ |
 
 ### The honest caveat on process
 
@@ -1147,3 +1147,33 @@ at `-S warning`, and three of its five checks were failing.
 **Result:** load-bearing findings folded; suite 16/1278/0; `pre_push_check`
 checks 1–4 pass. **Still NOT READY** — §8 blockers 2–7 stand, the medium/low
 review tail is unfolded, and the branch is unpushed.
+
+### Pass 9 - 2026-08-08 - author (OPS-0065 fold, cycle 2)
+
+Second fold cycle under OPS-0066. The medium/low tail §8 blocker 8 named is now
+folded; the blocker is struck.
+
+| Item | Fix |
+| --- | --- |
+| **D11 guard did not catch D11** | It checked the config *existed*. In the original incident the config was present and selected **zero hooks at the runner's stage**, so `--all-files` matched nothing and exited 0. The guard now resolves hook stages (hook `stages` → repo `default_stages` → unqualified) and **refuses at zero**. Verified against the reproduced manual-only config, and against canon's own (4 hooks) and framework's (19) to confirm no false positive. |
+| **`links-external` reported nothing** | A report-only job with no report is not a check — the header justified the file by "dead links accumulate silently", which they did, now under a green weekly tick. Added an `if: always()` report step: `::warning::` + job summary on failure, and an explicit UNKNOWN arm for any non-success outcome. It still never fails, which is correct: external rot is time-based and not caused by any PR. |
+| **`markdownlint` guard measured the index** | `git ls-files` reads the index; cli2 globs the worktree. A sparse or partial checkout diverges them, and the guard could not tell that from a healthy tree. It now compares the two and errors when tracked Markdown is not on disk. |
+| **D44 — the completeness guard was blind to `actions/`** | It derives its surface set from the manifest, `workflow_call` reusables and `install\|scripts\|sync/*.sh`; a composite action is none of those. Now **discovered, not enumerated** (a roster is the F1 failure mode this file exists to prevent), and fails closed if `actions/` exists but the walk finds nothing. All six actions gained inventory rows. Mutation-verified: an unaccounted seventh action fails the guard, where before it raised the suite count by 7 and tripped nothing. |
+
+**One self-inflicted defect worth recording.** The first D11 implementation put a
+Python heredoc inside a YAML block scalar at column 0, silently corrupting
+`action.yml`. Restoring from HEAD was correct **here** and is worth
+distinguishing from the recorded `git checkout` trap: that trap is about
+destroying an uncommitted *fix*, and in this case the only uncommitted change
+*was* the breakage — verified before restoring, not assumed. The re-implementation
+avoids the nested heredoc entirely.
+
+**A false positive in my own test harness, too:** the first attempt to drive the
+guard mangled its path via a bash substitution, so both cases exited 1 — which
+read as "the guard works". Both were `FileNotFoundError`. Extracting the guard
+source to a file and running it directly is what produced the real result.
+
+**Result:** cycle 2 complete; §8 blocker 8 struck. Suite **16 suites, 1285
+passed, 0 failed**; `pre_push_check` checks 1–4 pass. **Still NOT READY** —
+blockers 2–7 stand (P5 docs, P6 release + the 🔴 FT-30 dry run, P7, P9 rollback,
+P8 remainder, PLAN-024 A/B/C first).

@@ -73,11 +73,18 @@ runs:
           echo "::error::markdownlint action: no checkout detected. The CALLER must check out before invoking this action (PLAN-025 §3.2)."
           exit 1
         fi
-        # A repo genuinely containing no Markdown is legitimate; a repo whose
-        # tree failed to materialise is not. Distinguish them: git knows what is
-        # tracked even when the worktree is empty.
-        if [ "$(git ls-files -- '*.md' | head -1 | wc -l)" -eq 0 ]; then
+        # A repo genuinely containing no Markdown is legitimate; a tree that
+        # failed to materialise is not. The INDEX is not the worktree — cli2
+        # globs the filesystem while `git ls-files` reads the index, and a
+        # sparse or partial checkout diverges them. Comparing the two is what
+        # distinguishes "no Markdown" from "Markdown that is not on disk".
+        indexed=$(git ls-files -- '*.md' | wc -l)
+        ondisk=$(git ls-files -- '*.md' | while IFS= read -r f; do [ -f "$f" ] && printf '.'; done | wc -c)
+        if [ "$indexed" -eq 0 ]; then
           echo "::notice::markdownlint: repository tracks no .md files — nothing to lint."
+        elif [ "$ondisk" -lt "$indexed" ]; then
+          echo "::error::markdownlint: $indexed .md file(s) are tracked but only $ondisk are on disk — a sparse or partial checkout. cli2 globs the FILESYSTEM, so it would lint only what materialised and report success on the rest."
+          exit 1
         fi
 
     # setup-node is allowlisted (actions/*) and guarantees Node on ephemeral

@@ -65,6 +65,12 @@ runs:
           echo "::error::pre-commit action: ${CONFIG_PATH} not found. Refusing to report success without inspecting anything (PLAN-025 D11)."
           exit 1
         fi
+        # D11 PROPER. That the config EXISTS does not catch D11 — in the original
+        # incident the config was present and simply selected no hooks at the
+        # stage this runner uses, so `pre-commit run --all-files` matched zero
+        # hooks and exited 0: a green required check that inspected nothing.
+        # Count what would actually be selected, and refuse at zero.
+        python3 -c 'import sys,yaml; cfg=yaml.safe_load(open(sys.argv[1])) or {}; want=sys.argv[2]; ds=cfg.get("default_stages"); n=sum(1 for r in (cfg.get("repos") or []) for h in (r.get("hooks") or []) if (h.get("stages", ds) is None or want in h.get("stages", ds))); print("pre-commit: %d hook(s) selected at stage %r" % (n, want)); sys.exit(0) if n else (print("::error::pre-commit action: %s selects ZERO hooks at stage %r. `pre-commit run --all-files` would exit 0 having inspected nothing — a green required check that checked nothing (PLAN-025 D11). Add a hook at that stage, or set run-stage to one that has hooks." % (sys.argv[1], want)) or sys.exit(1))' "$CONFIG_PATH" "${RUN_STAGE:-pre-commit}"
 
     - name: Set up Python
       uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0

@@ -84,12 +84,42 @@ jobs:
       # NOT track VERSION. REMOVE THEM AT THE v3.0.0 TAG CUT, when the pin becomes
       # current and should track VERSION again. (FT-21 chicken-and-egg shape.)
       - name: links (external, report-only)
+        id: links
+        continue-on-error: true
         uses: vladm3105/aidoc-flow-ci/actions/links@ci/v3.0.0
         with:
           mode: external
           fail-on-error: 'false'
           config-file: .lychee.toml
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # A REPORT-ONLY JOB WITH NO REPORT IS NOT A CHECK. This file's own header
+      # justifies its existence with "the external check still has to run, or
+      # dead outbound links accumulate silently" — but with `fail-on-error:
+      # false`, no summary and no annotation, they accumulate silently anyway,
+      # now with a green weekly checkmark on top. The job still must not FAIL
+      # (external rot is not this repo's defect), so the signal is a warning
+      # plus a job-summary line.
+      - name: report
+        if: always()
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.links.outcome }}
+        run: |
+          set -euo pipefail
+          case "$OUTCOME" in
+            success)
+              echo "links-external: no dead outbound links." >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+              ;;
+            failure)
+              echo "::warning::links-external: dead outbound link(s) found — see the job log. Not blocking (external rot is time-based, not caused by any PR), but it needs a human."
+              echo "⚠️ links-external: dead outbound link(s) found — see the job log." >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+              ;;
+            *)
+              echo "::warning::links-external: the check did not report a verdict (outcome=${OUTCOME:-<empty>}) — treat as UNKNOWN, not clean."
+              echo "⚠️ links-external: no verdict (outcome=${OUTCOME:-<empty>}) — unknown, not clean." >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+              ;;
+          esac
       # sync-version-refs:ignore-end
 
       # `if: always()` so a failed or timed-out lychee still persists what it
