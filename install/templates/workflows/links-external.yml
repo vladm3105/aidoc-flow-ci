@@ -53,6 +53,27 @@ jobs:
         with:
           persist-credentials: false
 
+      # D46 — the lychee cache, restored HERE and deliberately not in
+      # `quick-gates`. The v2 reusable shipped restore + save as a documented
+      # design decision; the composite port kept `--cache --max-cache-age 1d`
+      # while dropping both steps, leaving the flag a per-run no-op.
+      #
+      # Scoped to the external caller on purpose: `quick-gates` runs lychee with
+      # `mode: internal` (`--offline`), which makes no network calls, so a cache
+      # buys nothing there. The cache exists to avoid re-fetching third-party
+      # URLs — which only this caller does.
+      #
+      # `actions/cache` is allowlisted (`actions/*`, D21) and SHA-pinned (D5).
+      - name: Restore lychee cache
+        id: cache-restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .lycheecache
+          key: lychee-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            lychee-${{ github.ref_name }}-
+            lychee-
+
       # Every input explicit — a default that changes in a later release must
       # not silently change what this reports.
       # sync-version-refs:ignore-start
@@ -64,9 +85,19 @@ jobs:
       # current and should track VERSION again. (FT-21 chicken-and-egg shape.)
       - name: links (external, report-only)
         uses: vladm3105/aidoc-flow-ci/actions/links@ci/v3.0.0
-      # sync-version-refs:ignore-end
         with:
           mode: external
           fail-on-error: 'false'
           config-file: .lychee.toml
           github-token: ${{ secrets.GITHUB_TOKEN }}
+      # sync-version-refs:ignore-end
+
+      # `if: always()` so a failed or timed-out lychee still persists what it
+      # learned — the next weekly run should not re-fetch every URL because this
+      # one hit a single bad host.
+      - name: Save lychee cache
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .lycheecache
+          key: ${{ steps.cache-restore.outputs.cache-primary-key }}

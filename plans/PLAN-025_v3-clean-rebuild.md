@@ -43,9 +43,10 @@ row, **carried** or **dropped + why**.
 >
 > - **D7 binds `quick-gates`.** It runs `pre-commit` against the PR's own files,
 >   which is fork-code execution — so on a public repo `quick-gates` **must** be
->   `ubuntu-latest`. Only `security` and `ai-review` may take the self-hosted
->   pool there.
-> - **D1 therefore still applies.** Because `quick-gates` and `security` want
+>   `ubuntu-latest`. Only `scanners` and `ai-review` may take the self-hosted
+>   pool there. *(Said `security` when signed off; P3a later split that job into
+>   `scanners` + `secret-scan` — see §5 P3a.)*
+> - **D1 therefore still applies.** Because `quick-gates` and `scanners` want
 >   different runner labels by visibility, the v3 callers still need
 >   `-public`/`-private` variants, or `install.sh --update` re-creates the
 >   queue-forever defect on private consumers.
@@ -62,7 +63,7 @@ row, **carried** or **dropped + why**.
 | D8 | `gitleaks git`, not `gitleaks dir` | Working-tree-only scanning misses history (CI-0016) | Claim 8 |
 | D9 | Callee `permissions:` are an intersection ceiling | A callee capped at `read` can never be raised by a caller; the step dies under `pipefail` (CI-0015) | Claim 9 |
 | D10 | Hook-block marker version as refresh key | An adopted consumer freezes forever; canon changes never reach it | Claim 10 |
-| D11 | Commit-stage hooks must exist in the fragment | Otherwise `--all-files` matches zero hooks and the required check "exited 0 while inspecting nothing" | Claim 11 |
+| D11 | Commit-stage hooks must exist in the fragment | Otherwise `--all-files` (Claim 20) matches zero hooks and the required check "exited 0 while inspecting nothing" | Claim 11 |
 | D12 | `dep-scan` zero-coverage guard | A scanner that finds no manifests must fail loud, not report clean | Claim 12 |
 | D13 | Own scanners are MUST-HAVE (founder, PLAN-014) | Deleting them cancels a founder-owned graduation step | Claim 13 |
 | D14 | `fail-on-findings` is a *default*, and the flow honours it with `exit 1` | Treating report-only as "cannot fail" | Claim 14 |
@@ -115,7 +116,7 @@ the port checklist *and* the rulebook.
 | D42 | The links internal/external split: offline+blocking on PRs, external+report-only weekly | External link rot is TIME-based, so blocking a PR on a third party's 429 is a false signal — but the check must still run. **This row was missing, and its absence produced two code defects**: the ported action defaulted to `external` and to a config path canon does not install, so the required PR gate would have made live network calls with the consumer's tolerance profile silently dropped | Claim 46 |
 | D43 | VERSION single-source pin discipline, and its `sync-version-refs:ignore` escape | `--check` is a **default-stage, always_run** pre-commit hook, so it gates every commit *and* canon's `call / Lint / format / security hooks`. A template pinning a tag that is not `VERSION` reds the branch — and the rewriter's suggested remedy points the pin at a tag where the target does not exist. Forward references need the markers (PLAN-004 BL-4, then CI-0024). **This row's absence made the branch red; see the Pass 4 log** | Claim 49 |
 | D44 | The F1 completeness guard (`tests/test_exerciser_inventory.sh`) | It derives its surface set from `manifest.json`, `workflow_call` reusables and `install\|scripts\|sync/*.sh`. **`actions/*/action.yml` is a new surface class it is structurally blind to** — exactly as the hook-block fragment was, which had to be named explicitly. P8 must add it, or v3's largest new surface is invisible to the completeness check | Claim 50 |
-| D45 | Per-check arming granularity — the staged-adoption ladder | A repo can arm `call / Lint / format / security hooks` while leaving `call / markdownlint` unarmed, which is the documented way a repo with existing markdown debt adopts *without bricking merges*. **Fusing three checks into one required context removes that ladder.** §6 says consolidation reduces jobs not coverage — true, but it does reduce *adoption granularity*, and P7 must handle repos that today arm a subset | Claim 51 |
+| D45 | Per-check arming granularity — the staged-adoption ladder (`markdown-lint` is one of the caller templates feeding a required context, Claim 19) | A repo can arm `call / Lint / format / security hooks` while leaving `call / markdownlint` unarmed, which is the documented way a repo with existing markdown debt adopts *without bricking merges*. **Fusing three checks into one required context removes that ladder.** §6 says consolidation reduces jobs not coverage — true, but it does reduce *adoption granularity*, and P7 must handle repos that today arm a subset | Claim 51 |
 | D46 | The lychee cache (`actions/cache` restore + save, `if: always()`) | A documented design decision in the v2 reusable. The port kept `--cache --max-cache-age 1d` but dropped both cache steps, so the flag is a per-run no-op. Performance only — but an undocumented deviation under a plan whose §1 rests on verbatim porting is exactly what §2 exists to prevent | Claim 52 |
 
 **All 23 CARRIED. None dropped.** D21 and D27 additionally constrain the
@@ -257,7 +258,9 @@ budgets, and the job ceiling is now the only thing catching a hang.
 
 **Consequence to carry into P2:** each action should wrap its long-running
 command in `timeout <n>` so a single hung tool fails that check rather than
-consuming the whole job's budget. Not yet implemented.
+consuming the whole job's budget. **DONE 2026-08-08** — `timeout 900` on
+pre-commit, `600` on markdownlint, `1200` on lychee, each matching the v2
+reusable's own budget.
 
 *(D16 does not undercut any of this. D16 is about jobs that never start; a
 ceiling cannot fire on a queued job. This is about jobs that run.)*
@@ -294,9 +297,11 @@ Two constraints on that shape, both load-bearing:
   required context (P3a) and the same reasoning applied to a step would launder
   a crash into a green gate.
 
-**Not yet implemented.** The shipped `quick-gates` has no `id:`/verdict step, so
-today a `pre-commit` failure still hides markdownlint and links. Tracked as the
-next P3 task, not as done.
+**DONE 2026-08-08.** `quick-gates` carries `id:` + `continue-on-error: true` on
+all three checks and a final `if: always()` verdict step. The verdict fails
+closed on any outcome that is not exactly `success` — `skipped` included, since
+P3a establishes that a skipped job satisfies a required context and the same
+reasoning applied to a step would launder a crash into a green gate.
 
 ### 3.2e A new distribution artifact: `.github/actionlint.yaml`
 
@@ -476,11 +481,18 @@ the job level (§3.2a).
 **P5 — Documentation set.** §4, including the §2→RULES mapping.
 
 **P8 — Tooling and distribution. Canon has never shipped a composite action, and
-nothing in the toolchain knows about them.** This is a phase the first draft
-omitted entirely; without it v3 cannot be installed, updated, drift-checked or
+nothing in the toolchain knows about them.** A phase the first draft omitted
+entirely; without it v3 cannot be installed, updated, drift-checked or
 context-mapped.
 
-- **`install/required-context-map.py` — and the failure mode is BACKWARDS from
+> **CORE DONE 2026-08-08 — P7 IS UNBLOCKED.** The context-map false green is
+> fixed and verified end to end: with a scratch tier requiring both, the map now
+> resolves `quick-gates` → `quick-gates.yml` and returns `?` for a context
+> nothing produces. Manifest entries, the actionlint template source and the
+> `actions/` lint coverage all landed. **One item remains** — see D44 at the
+> bottom of this phase.
+
+- ✅ **`install/required-context-map.py` — and the failure mode is BACKWARDS from
   what this plan first claimed, in the reassuring direction.** It considers only
   workflows declaring `workflow_call` and matches a caller's **job-level**
   `uses:` (Claim 41). The first draft said a v3 context "resolves to `?` … and
@@ -495,30 +507,36 @@ context-mapped.
 
   Teach it that a plain job emits its job name, and that a repo's armed contexts
   must each map to a producer *whatever their shape*.
-- **`tests/test_checknames.sh`** builds its emitted-name set the same way, and
+- ✅ **`tests/test_checknames.sh`** builds its emitted-name set the same way, and
   its `case` **`continue`s on every context that is not `call / …`** — so it
   validates zero v3 contexts, not merely the three it hardcodes (`call / verify`,
   `call / Lint / format / security hooks`, `call / gitleaks`). Both the skip and
   the hardcoding need fixing.
-- **`manifest.json`** has no schema for an `actions/` surface, and every v3
+- ✅ **`manifest.json`** has no schema for an `actions/` surface, and every v3
   caller needs `path`/`template`/`visibility_variants`/`safe_to_replace`/
   `auto_install`. **`quick-gates.yml` is unmanifested today** — the exact defect
   the manifest itself records for audit-trail, which "shipped as a template but
   NOT manifested until 2026-07-16, so manifest-driven tooling skipped it
   entirely."
-- **`tests/test_lint.sh`** yamllints and actionlints `.github/workflows/` and
+- ✅ **`tests/test_lint.sh`** yamllints and actionlints `.github/workflows/` and
   `install/templates/workflows/` only. P2 moves the majority of canon's shell
   into `actions/*/action.yml`, **where none of the three linters reach it** —
   while §3.4 makes "actionlint becomes enforced" a headline of v3. Extend the
   globs; note actionlint does not validate `action.yml` as a workflow, so the
   embedded-shell delegation needs a different invocation.
-- **`scripts/sync-version-refs.sh`** rewrites every `uses: …@ci/vX.Y.Z` in
+- ✅ **`scripts/sync-version-refs.sh`** rewrites every `uses: …@ci/vX.Y.Z` in
   `install/templates/workflows/*.yml` to the `VERSION` value, so a v2 patch cut
   while v3 templates sit in-tree rewrites their `@ci/v3.0.0` pins to the v2 tag.
   (`--repin`'s regexes *do* match `…/actions/x@ci/v…`, so re-pinning composites
   works — that half is fine.)
-- **`install/deploy-ci-wizard.sh`** is the adoption surface and gets no mention.
-- **`auto_install`** currently marks `pre-commit.yml` as the bootstrap tier's
+- ⬜ **`install/deploy-ci-wizard.sh`** is the adoption surface and gets no mention.
+- ⬜ **D44 — `tests/test_exerciser_inventory.sh` still cannot see `actions/*/action.yml`
+  as a surface CLASS.** It notices them only via the manifest entries that happen to
+  reference them, so an action added without a manifest row is invisible to the
+  completeness guard. **This is the last P8 item.** (The guard did fire correctly on
+  the three new manifest surfaces missing from `EXERCISER_INVENTORY.md` — that half
+  works.)
+- ⬜ **`auto_install`** currently marks `pre-commit.yml` as the bootstrap tier's
   only gate; folding it into `quick-gates` moves that flag.
 
 **P9 — Rollback.** P7 is irreversible per repo and has no stated undo. Define
@@ -862,3 +880,94 @@ the three deferrals from Pass 3 stand (§3.2c verdict step, per-check timeouts,
 P8), and **P7 must not run**. The branch is now safe to land as an incomplete
 foundation: the templates are unmanifested, so `install.sh` cannot ship them and
 no consumer can reach them.
+
+### Pass 5 - 2026-08-08 - author (post-implementation reconciliation)
+
+**Not an independent pass** — the OPS-0066 cap was reached at Pass 4. This
+reconciles the document against what has since been built, and records an
+author consistency sweep. A fourth independent pass needs a founder waiver.
+
+**All three Pass-3/4 deferrals are now DONE:**
+
+| Deferral | State |
+| --- | --- |
+| §3.2c collect-then-fail verdict step | ✅ `id:` + `continue-on-error:` on all three checks, `if: always()` verdict failing closed on any outcome that is not exactly `success` |
+| §3.2b per-check timeouts | ✅ `timeout 900/600/1200`, each matching the v2 reusable's own budget |
+| P8 tooling | ✅ **core done — P7 is unblocked.** Two items remain (wizard, D44) |
+
+**P8's headline result:** `required-context-map.py` returned a **false green** on
+every bare context, and `test_required_contexts.sh` scored it as a pass. P7 step
+5 would have reported success on precisely the case it exists to detect. Fixed
+and verified end to end — a scratch tier requiring both now resolves
+`quick-gates` → `quick-gates.yml` and returns `?` for a context nothing
+produces. `?non-call` is retired and fails if it reappears.
+
+**Author consistency sweep — three defects found in this document and fixed:**
+
+1. **D46 was a §2 row with no implementation.** The lychee cache was listed as a
+   carried defense and never restored, so the row asserted something false — an
+   inventory that lies is worse than one that is short. Restored in
+   `links-external.yml` and **deliberately not** in `quick-gates`: the latter
+   runs lychee `--offline`, where a network cache buys nothing.
+2. **The P1 sign-off still named a `security` job** that P3a had split into
+   `scanners` + `secret-scan`. Reconciled, with the supersession noted inline
+   rather than silently rewritten.
+3. **Claims 19 and 20 were orphans** — ledger rows nothing cited. Wired into D45
+   and D11, the rows that actually rest on them. Orphan count is now zero.
+
+**Suite: 16 suites, 1183 passed, 0 failed.** `test_actions.sh` 64 assertions;
+13 mutations run across the session, 13 caught.
+
+**Two harness catches worth recording**, because they are the first defects this
+session found *without* a review pass: the F1 completeness guard failed on the
+three new manifest surfaces missing from `EXERCISER_INVENTORY.md` (D44 working
+as described), and the public/private drift guard failed when `quick-gates` was
+updated and its private sibling was not.
+
+**Result:** document reconciled with the tree; three self-found defects fixed.
+**Still NOT READY** — see §8.
+
+## 8. Readiness — what is left, stated plainly
+
+**NOT READY to release. Ready to keep building, and the branch is safe to land.**
+
+### Done
+
+P1 (inventory signed off, 46 defenses, all carried) · P2 in part (three of six
+composite actions: `markdownlint`, `pre-commit`, `links`) · P3 in part
+(`quick-gates` + private variant + `links-external`, with the verdict step and
+per-check timeouts) · **P8 core — which unblocks P7**.
+
+### Blocking release
+
+| # | Blocker | Owner |
+| --- | --- | --- |
+| 1 | **P2 incomplete** — the three self-hosted scanner actions (osv-scanner, trivy, semgrep) for the `scanners` job are not ported | build |
+| 2 | **P5 not started** — the whole v3 documentation set, plus the §2→`RULES.md` mapping §4.4 requires | build |
+| 3 | **P6** — release mechanics: `MIGRATION_v3.0.0.md`, the MAJOR-bump LiteLLM smoke, and the 🔴 **founder-executed FT-30 cold-start dry run**, which is owed before any tag | **founder** |
+| 4 | **P7** — the per-repo required-context migration. Now *unblocked* by P8, but still the only irreversible phase | founder + build |
+| 5 | **P9 not started** — rollback. Ten repos hand-run with no script is not a plan | build |
+| 6 | **P8 remainder** — `deploy-ci-wizard.sh`, and D44 (the exerciser guard cannot see `actions/` as a surface class) | build |
+| 7 | **PLAN-024 Phases A/B/C ship first** (§7) — building v3 around `doc-maintainer` while it is being deleted wastes the work | build |
+
+### The honest caveat on process
+
+Four independent passes found **45 → 23 → 12 → 5** load-bearing findings. The
+rate is falling and the last pass produced one merge blocker rather than a
+design reversal, which is the right direction. But **every pass has still found
+something a consumer would have felt**, and three of the four found a
+required-context defect specifically.
+
+**The OPS-0066 cap is spent.** Before release this needs either a founder waiver
+for a fifth pass, or — better — a fresh plan for the remaining phases, reviewed
+on its own budget. Calling this ready on the strength of an author sweep would
+be the one move the whole document argues against.
+
+### What is safe right now
+
+The branch can merge as a foundation. Nothing on it is reachable by a consumer:
+`install.sh` ships only what the manifest lists, the three new templates pin a
+tag that does not exist yet (marker-guarded so `sync-version-refs` stays green),
+and canon self-runs none of them — the FT-21 constraint means canon cannot adopt
+its own composite actions until the `ci/v3.0.0` tag exists.
+
