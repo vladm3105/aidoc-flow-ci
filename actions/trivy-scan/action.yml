@@ -115,4 +115,3 @@ runs:
           echo "::notice::trivy-scan: no IaC/config misconfigurations reported. NOTE: this also fires when there were no config files to scan — trivy config cannot distinguish the two, so this is NOT a coverage guarantee. If this repo has Dockerfiles/IaC, verify scan-path."
           summary "no misconfigurations reported (also fires when nothing was scanned — not a coverage guarantee)."
         fi
-

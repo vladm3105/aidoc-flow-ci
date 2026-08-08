@@ -47,9 +47,15 @@ That refusal was correct while the review was outstanding, and the earlier
 commits say so in their messages rather than carrying the phrase. The full
 sequence, for whoever picks this up:
 
-0. **Run `bash scripts/pre_push_check.sh` first** and fix whatever checks 1–4
-   report. They are not implied by the suite being green: the suite and the gate
-   lint different file sets at different severities.
+0. **Run BOTH `bash scripts/pre_push_check.sh` AND `pre-commit run --all-files`,
+   and fix whatever they report.** Neither is implied by the suite being green,
+   and *they do not cover each other*: `pre_push_check` runs markdownlint,
+   yamllint, actionlint and shellcheck; the **pre-commit hooks are a separate
+   set** (`end-of-file-fixer`, `trim trailing whitespace`, `check-yaml`,
+   `sync-version-refs`) that CI runs via the `pre-commit` reusable and
+   `pre_push_check` never invokes. This gap has now cost two rounds — a
+   handoff claiming "5/5 exit 0", and a red CI on PR #416 for one trailing
+   blank line.
 1. Dispatch the OPS-0065 review on the branch diff (`git diff main...HEAD`).
 2. Fold whatever it finds — and re-run the gate after folding, since a fold
    edits the files the gate reads.
