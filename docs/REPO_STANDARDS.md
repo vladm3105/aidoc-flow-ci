@@ -2701,3 +2701,129 @@ Declining the symlink does not address it —
 
 **Origin:** issue #387, filed from `vladm3105/llm-router`. Recorded as CI-0032.
 Labels in §5.4 (#386).
+
+## 27. A gate must not decide on the exit status of a pipeline into `grep -q`
+
+> **§26 is intentionally absent.** It is reserved by §24's closing note for
+> PLAN-023 PR-1, which already plans to renumber eleven `§24` forward references
+> onto it. CI-0033 took the next free number instead of that reservation, so
+> nothing in PLAN-023 has to move; PR-1 fills §26 above this section when it
+> lands. Do not renumber this section to close the gap.
+
+`grep -q` exits the instant it matches. Its writer is then killed by `SIGPIPE`
+or gets `EPIPE` (exit 141), and under `set -o pipefail` **that 141 becomes the
+pipeline's status**. So this reads as "not found" precisely when the string
+_was_ found:
+
+```bash
+if echo "$haystack" | grep -qF "$needle"; then   # WRONG on a load-bearing gate
+```
+
+**What decides the outcome is whether the writer has finished issuing its
+`write(2)` calls when `grep` leaves — NOT the payload size.** This is the part
+that is easy to get wrong, so it is stated with the measurement:
+
+| writer | payload | inversions |
+| --- | --- | --- |
+| `echo` — bash builtin, one `write(2)` | 8 KB | 0/20 |
+| `echo` | 40 KB | 0/20 |
+| a process emitting one line per record | 8 KB | **18/20** |
+| a process emitting one line per record | 17 KB | **20/20** |
+
+A single-`write` builtin under the pipe buffer genuinely cannot invert — the
+write completes before `grep` is ever scheduled. **A multi-write writer inverts
+at a fraction of the buffer**, because `grep` can exit between two of its
+writes. `git log`, `git diff --raw`, `git branch` and any loop are multi-write.
+
+So there is no safe size, and **"the payload is small" is not a justification**
+— it is only valid together with "and the writer emits it in one call". Even for
+a single-`write` builtin the margin is environmental: the origin incident was a
+38 KB `echo` that was clean 200/200 on a dev host and inverted in the runner,
+where pipe capacity and bash's buffering differ. **The same command is correct
+on a laptop and wrong on a runner.**
+
+### 27.1 The rule
+
+**Any pipeline whose exit status is a decision must decide on captured OUTPUT,
+or use no pipeline at all.** For a substring test, use bash's `case` — it forks
+nothing, so there is no status to invert:
+
+```bash
+case "$haystack" in
+  *"$needle"*) found=1 ;;                        # quoted expansion = literal, i.e. grep -F
+esac
+```
+
+Where a real regex is needed, capture first and test the capture
+(`out="$(printf '%s' "$h" | grep -E … || true)"; [ -n "$out" ]`).
+
+`grep -q` reading a **file** or a process-substitution is unaffected — there is
+no writer in the pipeline to signal. The banned construct is specifically
+`… | grep -q…`.
+
+### 27.2 Scope — where this is mandatory
+
+Mandatory on anything whose result gates a merge, a push, a release or a
+security decision: the reusables in `.github/workflows/`, `scripts/`,
+`install/templates/`, and the `tests/lib.sh` assertion helpers. `assert_absent`
+is the sharpest case — the inversion turns it into a **silent pass**, so a
+suite loses coverage without a single red.
+
+**`tests/test_sigpipe_guard.sh` enforces exactly this scope — it globs it, it
+does not carry a hand-written file list.** That is deliberate: CI-0033's first
+draft guarded four hand-listed files while the rule declared four _directories_,
+and the gap is what had let the sites below sit unflagged for a year. A guard
+narrower than the rule it enforces reports compliance the rule does not have.
+
+Converted under CI-0033, beyond the four OPS-0069 surfaces that prompted it.
+**The writer column is the one that matters, and it is stated as measured or as
+theoretical — never blurred.** A row whose writer is a bash builtin is a
+_latent_ instance: correct today, and banned anyway because the construct is
+one refactor away from a real writer.
+
+| Site | Writer in the pipeline | Status |
+| --- | --- | --- |
+| `ai-review.yml` — autofix symlink-escape guard | `git diff --cached --raw` — **multi-write** | **MEASURED fail-open**: missed the symlink 4/5 at 401 staged files (#418) |
+| `ft30-dry-run.sh` | `git branch -r --contains` — **multi-write** | fail-open, same class, unmeasured |
+| `ai-review.yml` ×2 — deny-floor path checks | `printf` builtin, one path | latent — cannot invert at this size |
+| `composition.yml` ×2 — break-glass + separation-of-duties | `printf` builtin | latent — 0/20 inversions at 300 KB and 5 MB |
+| `secret-scan.yml` ×3 — config canary | `printf` builtin | latent, but into the exact case its own comment warns of |
+| `release.sh`, `sync-version-refs.sh` | `printf` builtin, version string | latent |
+
+For contrast, the two writers that were measured to invert: `git log` at
+20,760 bytes → 3/20, and `git diff --raw` at 401 files → 4/5.
+
+**Direction ranks the work, not size.** The audit-trail instance failed _closed_
+— loud, blocking, diagnosed in a day. Every site in that table fails _open_: a
+false green that nothing surfaces. That asymmetry, not the measured/latent
+split, is why they were converted here rather than deferred.
+
+Two known sites are **out of scope and stay unconverted**: `install/install.sh`
+and `install/deploy-ci-wizard.sh`. Neither gates anything — they are the
+bootstrap and an interactive wizard — and both read short `gh` API listings. The
+allowlist in the guard carries one further entry,
+`install/templates/runner/build-image.sh`, whose pipeline runs inside `sh -c` in
+a container with no `pipefail`, so the writer's `EPIPE` cannot reach the
+decision. An allowlist entry is a claim that must stay true, not a way to
+silence a hit.
+
+### 27.3 Why review did not catch it
+
+The line entered on 2026-07-07 in `e827ab8` (PLAN-002 PR-U3, #64), under a
+two-agent review its own commit message records as
+`code-reviewer + security-auditor`, and first produced a visible failure on
+2026-08-08. The issue that reported that failure then investigated the mechanism
+directly and **explicitly ruled it out**.
+
+Both were reasoning correctly from a local reproduction that could not fail: at
+the payload size in question the shape is sound on a dev host. **A negative
+result from a size-dependent test is not evidence of absence** — reproduce at a
+size well past any pipe buffer, or read the runner log, which names it directly
+(`echo: write error: Broken pipe`).
+
+Enforced by `tests/test_sigpipe_guard.sh`, which runs the shipped `run:` block
+against a 4 MB commit range and separately bans the construct from the four
+surfaces above.
+
+**Origin:** issue [#417](https://github.com/vladm3105/aidoc-flow-ci/issues/417),
+a false negative from `call / verify` on PR #416. Recorded as CI-0033.

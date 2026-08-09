@@ -263,6 +263,19 @@ has settled — measured, reproduced, and not expected to change.
 
 ### Gates that measure the wrong thing
 
+- **`pre_push_check.sh` and `pre-commit` do NOT cover each other — run BOTH.**
+  `pre_push_check` runs markdownlint, yamllint, actionlint and shellcheck;
+  the hook set (`end-of-file-fixer`, `trim trailing whitespace`, `check-yaml`,
+  `sync-version-refs`) runs only via `pre-commit`, which CI invokes through the
+  `pre-commit` reusable and `pre_push_check` never calls. Neither is implied by
+  a green suite. This has cost three rounds — a handoff claiming "5/5 exit 0",
+  and a red CI on PR #416 for one trailing blank line. **The general form is the
+  lesson: a verification narrower than its claim is a false claim.**
+- **`pre_push_check.sh` only lints files in the COMMITTED range** (`origin/main..HEAD`).
+  Staged-but-uncommitted work reports `no changed files vs base — skipping
+  mechanical linters` and the gate passes having linted nothing. Commit (or
+  amend) before trusting it; measured on #420, where it linted 1 workflow of 4.
+
 - **`pre_push_check.sh` matches a PHRASE, not the work.** A commit body reading
   `Multi-agent self-review per OPS-0065: skipped` satisfies the gate while
   declaring the opposite — it is `grep -qF` on the prefix (`:211-213`). The gate

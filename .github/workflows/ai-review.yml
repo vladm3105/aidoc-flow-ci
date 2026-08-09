@@ -1709,7 +1709,8 @@ jobs:
             case "$p" in
               /*|*..*) escalate "the fix diff targets an out-of-tree path ($p) — rejected, human required" ;;
             esac
-            printf '%s\n' "$p" | grep -qE "$DENY_RE" && escalate "the fix diff targets a governance-locked path ($p) — rejected, human required"
+            # CI-0033 §27: bash regex test, no pipeline whose status could invert.
+            [[ "$p" =~ $DENY_RE ]] && escalate "the fix diff targets a governance-locked path ($p) — rejected, human required"
           done <<< "$TARGETS"
 
           # 5) Apply (3-way for resilience) with git hooks disabled. Failure → escalate.
@@ -1726,14 +1727,39 @@ jobs:
           fi
           BAD=""
           while IFS= read -r -d '' p; do
-            case "$p" in /*|*..*) BAD="$p (out-of-tree)" ;; esac
-            printf '%s\n' "$p" | grep -qE "$DENY_RE" && BAD="$p (deny-floor)"
+            case "$p" in
+              /*|*..*) BAD="$p (out-of-tree)" ;;
+              # A NUL-delimited path may legally contain a newline, and that is a
+              # deny-floor BYPASS against any whole-string matcher: `grep -qE`
+              # tested each LINE, so `foo<LF>.github/evil` matched `(^|/)\.github/`
+              # on line 2, while bash `=~` anchors `^` to the whole string and does
+              # not. Measured — old: blocked, new: allowed through. The pre-apply
+              # check above cannot cover it either (`git apply --numstat` C-quotes
+              # the path to one line, which neither engine matches), so this arm is
+              # the only layer that sees it. Refusing outright is stronger than the
+              # per-line behaviour it restores, and a newline in a path staged by an
+              # automated fixer has no legitimate use here.
+              *$'\n'*) BAD="$(printf '%q' "$p") (newline in path)" ;;
+            esac
+            # CI-0033 §27: bash regex test, no pipeline whose status could invert.
+            # Safe only because the newline case is refused above.
+            [[ "$p" =~ $DENY_RE ]] && BAD="$p (deny-floor)"
           done < <(git diff --cached --name-only -z)
           [ -n "$BAD" ] && escalate "a staged path is not permitted ($BAD) — rejected, human required"
           # Reject any staged SYMLINK (new mode 120000) — a symlink can later redirect a
           # write outside the tree / into a locked path (PLAN-012 §4.4). The raw meta line
           # `:<oldmode> <newmode> ...` only appears at a record start, so this is path-safe.
-          if git diff --cached --raw | grep -qE '^:[0-7]+ 120000 '; then
+          # CI-0033 / REPO_STANDARDS §27: capture, then test the CAPTURE. The
+          # previous `git diff --cached --raw | grep -qE …` decided on the
+          # pipeline's status, and `grep -q` exits on match while `git diff` is
+          # still writing — so `pipefail` returned 141 and the `if` went FALSE.
+          # That direction is fail-OPEN: the symlink was matched and then let
+          # through. Measured on a staged set with the symlink first: 0/5 missed
+          # at 200 files, 5/5 missed at 400. `grep` here reads to EOF, so there
+          # is no early exit and nothing to invert; `|| true` absorbs grep's
+          # exit 1 on no-match under `set -e`, and `-n` makes the decision.
+          staged_symlinks="$(git diff --cached --raw | grep -E '^:[0-7]+ 120000 ' || true)"
+          if [ -n "$staged_symlinks" ]; then
             escalate "the fix stages a symlink — rejected (symlink-escape guard), human required"
           fi
 

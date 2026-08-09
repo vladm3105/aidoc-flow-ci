@@ -92,7 +92,8 @@ if [ ! -f "$VERSION_FILE" ]; then
   exit 2
 fi
 TAG="$(tr -d '[:space:]' < "$VERSION_FILE")"
-if ! printf '%s' "$TAG" | grep -qE '^ci/v[0-9]+\.[0-9]+\.[0-9]+$'; then
+# CI-0033 §27: bash regex test, no pipeline status to invert.
+if [[ ! "$TAG" =~ ^ci/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "sync-version-refs: VERSION content '$TAG' is not a valid ci/vX.Y.Z tag" >&2
   exit 2
 fi

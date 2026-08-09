@@ -159,6 +159,22 @@ jobs:
           RANGE="${BASE_SHA}..${HEAD_SHA}"
           echo "audit-trail: range=$RANGE"
 
+          # --- CI-0033: materialise the range ONCE, and never pipe it ---
+          # Every membership test below is a pure-bash `case` against this
+          # string. Piping it into `grep -q` is the SIGPIPE inversion that made
+          # this gate emit a FALSE NEGATIVE on PR #416 (issue #417): `grep -q`
+          # exits the instant it matches, the writer takes EPIPE (exit 141), and
+          # `set -o pipefail` hands the pipeline that 141 — so a MATCH is read as
+          # a miss. The runner log proves it: `line 103: echo: write error:
+          # Broken pipe` immediately before "no OPS-0069 phrase found".
+          #
+          # It is SIZE-DEPENDENT, which is why it survived review: at the 38 KB
+          # range of PR #416 it fires in the runner and not on a dev laptop, so
+          # "I tested the real payload and it matched" is not evidence of
+          # absence. `case` has no pipe, no subprocess and no exit status to
+          # invert. Do NOT reintroduce a pipeline here — see REPO_STANDARDS §27.
+          push_msgs="$(git log --format=%B "$RANGE")"
+
           # --- F2-sec fold: revert exemption REMOVED CI-side ---
           # Local pre-push hook still exempts revert-only ranges for
           # developer convenience, but subject prefix `Revert "` is
@@ -170,19 +186,36 @@ jobs:
           # substring false-positive on skip-audit-trail-later etc.).
           has_label=0
           if command -v jq >/dev/null 2>&1; then
-            if echo "$PR_LABELS" | jq -e 'index("skip-audit-trail") != null' >/dev/null 2>&1; then
+            # Herestring, not `echo … | jq`. jq drains its input so it cannot
+            # invert today, but §27.1 bans deciding on ANY pipeline's status and
+            # canon must not be the first thing to violate a rule it ships.
+            if jq -e 'index("skip-audit-trail") != null' >/dev/null 2>&1 <<<"$PR_LABELS"; then
               has_label=1
             fi
           else
-            # Fallback: stricter regex requiring closing quote.
-            if echo "$PR_LABELS" | grep -qE '(^|,)"skip-audit-trail"(,|])'; then
-              has_label=1
-            fi
+            # No jq: REFUSE THE OVERRIDE rather than approximate it. Whether a
+            # label is present is an authorization decision, and the only
+            # jq-free way to make it is a substring test over JSON-escaped text
+            # — which a label named `", "skip-audit-trail` defeats, because it
+            # encodes to a string that genuinely contains `"skip-audit-trail"`.
+            #
+            # Leaving has_label=0 is fail-closed in the direction that matters:
+            # the gate still runs, and it can still PASS on the phrase. All that
+            # is unavailable is the exemption, which is the part that must not be
+            # guessed. A missing tool is an infrastructure condition, not a
+            # reason to approximate an authorization check.
+            #
+            # This costs nothing today — every runner in scope ships jq. Note
+            # the branch it replaces was DEAD, not merely weaker: the regex
+            # `(^|,)"skip-audit-trail"(,|])` required the label to abut a `,` or
+            # `]`, and `toJSON` pretty-prints one indented label per line, so it
+            # never matched and the override was already unreachable without jq.
+            echo "::warning::audit-trail: jq not found — the skip-audit-trail override is unavailable on this runner and will NOT be honoured. The phrase check still runs. Install jq on the runner image to restore it."
           fi
           has_body_marker=0
-          if git log --format=%B "$RANGE" 2>/dev/null | grep -qF '[skip-audit-trail]'; then
-            has_body_marker=1
-          fi
+          case "$push_msgs" in
+            *'[skip-audit-trail]'*) has_body_marker=1 ;;
+          esac
           if [ "$has_label" = 1 ] && [ "$has_body_marker" = 1 ]; then
             echo "::notice::audit-trail: two-signal override (skip-audit-trail label + body marker) — SKIPPED per PLAN-002 §4.6."
             exit 0
@@ -203,14 +236,19 @@ jobs:
             echo "::error::audit-trail: PR range ($RANGE) has 0 commits — a PR with no commits should not merge."
             exit 1
           fi
-          push_msgs="$(git log --format=%B "$RANGE")"
+          # `push_msgs` was materialised above, before the two-signal override.
           audit_ok=0
           for phrase in "Multi-agent self-review per OPS-0065" \
                         "Self-review skipped per founder OK"; do
-            if echo "$push_msgs" | grep -qF "$phrase"; then
-              audit_ok=1
-              break
-            fi
+            # CI-0033: `case`, not `echo … | grep -qF`. A quoted expansion in a
+            # case pattern is a literal, so this is exactly `grep -F` semantics
+            # with no pipeline whose status could be inverted by SIGPIPE.
+            case "$push_msgs" in
+              *"$phrase"*)
+                audit_ok=1
+                break
+                ;;
+            esac
           done
           if [ "$audit_ok" -ne 1 ]; then
             echo "::error::audit-trail: no OPS-0069 phrase found in any commit in the PR range ($RANGE)."
