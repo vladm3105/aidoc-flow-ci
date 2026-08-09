@@ -2742,6 +2742,32 @@ a single-`write` builtin the margin is environmental: the origin incident was a
 where pipe capacity and bash's buffering differ. **The same command is correct
 on a laptop and wrong on a runner.**
 
+**EPIPE is not the only way `pipefail` poisons the decision — the writer's own
+exit status does it too, and deterministically.** Everything above frames the
+hazard as the reader signalling the writer, which makes it tempting to clear a
+site by reasoning about `write(2)` counts. That reasoning is necessary and not
+sufficient: `pipefail` returns the _rightmost non-zero_ status from **any** stage,
+so a writer that exits non-zero for reasons of its own inverts the verdict with
+no race at all. `find … -print -quit` is the reproduced case (§27.2's table) — it
+returns non-zero when a traversal error is recorded before it quits, _while still
+printing the match_, so the pipeline reads "not found" on output that contains
+the find. `git`, `jq` and `grep` itself all have non-zero exits that mean
+something other than "no match".
+
+**Note what that case does _not_ license: a repeatability claim.** Whether the
+error is reached before the match depends on `readdir` order, which is not
+alphabetical and not under your control — the same directory contents were
+observed inverting and not inverting. A ratio like the `18/20` rows above comes
+from repeated trials of one configuration; **do not write one observation in that
+notation.** It reads as a measured rate and is not one. The correct statement is
+that the inversion is reachable and its trigger is not yours to control, which is
+sufficient to ban the construct and is all that was established.
+
+**So the taxonomy below is keyed on the writer for EPIPE only.** A row marked
+EPIPE-latent is not thereby safe; it is safe only if the writer also cannot exit
+non-zero. This is why §27.1 is stated over a pipeline's _status_ rather than over
+SIGPIPE.
+
 ### 27.1 The rule
 
 **Any pipeline whose exit status is a decision must decide on captured OUTPUT,
@@ -2764,10 +2790,52 @@ no writer in the pipeline to signal. The banned construct is specifically
 ### 27.2 Scope — where this is mandatory
 
 Mandatory on anything whose result gates a merge, a push, a release or a
-security decision: the reusables in `.github/workflows/`, `scripts/`,
-`install/templates/`, and the `tests/lib.sh` assertion helpers. `assert_absent`
-is the sharpest case — the inversion turns it into a **silent pass**, so a
-suite loses coverage without a single red.
+security decision: the reusables in `.github/workflows/`, the composite actions
+in `actions/`, `scripts/`, `install/templates/`, and the `tests/lib.sh`
+assertion helpers. `assert_absent` is the sharpest case — the inversion turns it
+into a **silent pass**, so a suite loses coverage without a single red.
+
+**`actions/` was added to this scope after the fact, and the reason generalises.**
+The composite actions were being written on `feat/v3-composite-actions` while
+this section was being written on `main`; neither branch could see the other, so
+the surface v3 makes _primary_ entered canon outside the rule and outside its
+guard. **A scope written against the tree you can see is narrower than the rule
+the moment a parallel branch adds a surface.**
+
+Two corrections that came out of closing it, both worth more than the fix:
+
+- **This clause names DIRECTORIES; the guard must glob all of each, not one
+  extension or one depth.** It globbed `install/templates/**/*.sh` — four files —
+  while 31 `*.yml` templates under the same declared directory went unscanned.
+  Those are what lands in every consumer repo on the next tag. The narrower
+  spellings were each measured to pass a planted construct:
+  `ls .github/workflows/*.yml` missed a `.yaml` sibling, and `ls scripts/*.sh`
+  missed anything below `scripts/`. **The globbed extension set is part of this
+  contract, not an implementation detail:** `*.sh`, `*.bash`, `*.yml`, `*.yaml`,
+  at any depth, in each of the four directories, plus `tests/lib.sh`. Widen the
+  guard and this sentence together, or the rulebook claims a coverage the guard
+  does not have — which is the failure this whole clause is about.
+- **A check derived from the thing it checks cannot detect that thing's own
+  truncation. This took three attempts, and each fix reproduced the defect one
+  level up.** (1) A glob of `actions/*/action.yml` was "verified" against a
+  counter carrying the _same_ depth-2 and `.yml`-only assumptions, so both sides
+  missed `action.yaml` and `actions/a/b/action.yml` identically and the assertion
+  read green. (2) The replacement floor was asserted on the guard's own private
+  enumeration rather than on the array actually iterated, so deleting the one
+  line that copied it into scope left six action files unscanned — 111 passed, 0
+  failed. (3) The per-surface floors were then driven by the surface _list_, so
+  deleting an entry deleted its own floor: 111 passed, 0 failed again.
+  **The invariant that finally held: every check must be anchored to something
+  the mutation cannot also edit** — the iterated array, a separate enumeration,
+  or a literal pin. Three now exist, deliberately overlapping: the surface list
+  is pinned to a literal, each surface is counted against `GUARDED` itself, and
+  an **independent** oracle over a different file set requires every action canon
+  `uses:` to resolve to a guarded file.
+
+**An oracle must be asserted non-empty.** That cross-check first matched
+`./actions/…` while every caller writes `<owner>/<repo>/actions/…@<tag>`, so it
+examined nothing and printed nothing. A count assertion is what turns a vacuous
+oracle into a red.
 
 **`tests/test_sigpipe_guard.sh` enforces exactly this scope — it globs it, it
 does not carry a hand-written file list.** That is deliberate: CI-0033's first
@@ -2789,6 +2857,7 @@ one refactor away from a real writer.
 | `composition.yml` ×2 — break-glass + separation-of-duties | `printf` builtin | latent — 0/20 inversions at 300 KB and 5 MB |
 | `secret-scan.yml` ×3 — config canary | `printf` builtin | latent, but into the exact case its own comment warns of |
 | `release.sh`, `sync-version-refs.sh` | `printf` builtin, version string | latent |
+| `actions/sast-scan/action.yml` — D23 ignore-file post-condition | `find … -print -quit` — one write, then exits | **REPRODUCED fail-open — by the writer's own exit status, not by EPIPE.** `find -quit` returns non-zero when a traversal error is recorded before it quits, _while still printing the match_; `pipefail` takes that over `grep`'s 0 and the gate proceeds. Reachable, not certain: it turns on `readdir` order. EPIPE-latent (one write, so `grep` cannot leave first) |
 
 For contrast, the two writers that were measured to invert: `git log` at
 20,760 bytes → 3/20, and `git diff --raw` at 401 files → 4/5.

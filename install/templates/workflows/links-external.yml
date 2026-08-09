@@ -1,0 +1,133 @@
+# links-external — the WEEKLY, NON-BLOCKING half of the v2 links split.
+#
+# ── WHY THIS FILE EXISTS (PLAN-025 §2a D42) ──────────────────────────────────
+# The v2 `links` caller shipped TWO jobs against one reusable:
+#
+#   internal  if: github.event_name != 'schedule'
+#             mode: internal (--offline), fail-on-error: true   → PR-BLOCKING
+#   external  if: github.event_name == 'schedule' || workflow_dispatch
+#             mode: external,             fail-on-error: false  → REPORT-ONLY
+#
+# That split is a defense, not a convenience, and no §2 row named it until
+# review caught the omission. The reasoning:
+#
+#   - External link rot is TIME-based, not change-based. A PR did not break
+#     someone else's server, so blocking the PR on it is a false signal.
+#   - A blocking check that makes live network calls is flaky by construction:
+#     a 429, a slow host or a captive DNS resolver reds a PR that is fine.
+#   - But the external check still has to run, or dead outbound links accumulate
+#     silently. Weekly and non-blocking is the answer to both.
+#
+# `quick-gates` carries the INTERNAL half (offline, blocking). This carries the
+# external half. **A consumer that adopts quick-gates and deletes its v2
+# `links.yml` without also installing THIS file loses external link checking
+# entirely** — the exact silent-coverage-loss class PLAN-025 §2 exists to
+# prevent. The v3 install set ships both together.
+name: links-external
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'   # weekly, Monday 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# No allowlist gymnastics needed here (contrast quick-gates' D3 block): this job
+# feeds NO required context, and `schedule`/`workflow_dispatch` do not produce
+# the concurrent-run-at-the-same-head-SHA collision CI-0025 is about.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  links-external:
+    name: links-external
+    runs-on: ubuntu-latest
+    # Matches the v2 links reusable's own budget. External checking is the slow
+    # mode — it makes real network calls — so it gets the full 20.
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # D46 — the lychee cache, restored HERE and deliberately not in
+      # `quick-gates`. The v2 reusable shipped restore + save as a documented
+      # design decision; the composite port kept `--cache --max-cache-age 1d`
+      # while dropping both steps, leaving the flag a per-run no-op.
+      #
+      # Scoped to the external caller on purpose: `quick-gates` runs lychee with
+      # `mode: internal` (`--offline`), which makes no network calls, so a cache
+      # buys nothing there. The cache exists to avoid re-fetching third-party
+      # URLs — which only this caller does.
+      #
+      # `actions/cache` is allowlisted (`actions/*`, D21) and SHA-pinned (D5).
+      - name: Restore lychee cache
+        id: cache-restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .lycheecache
+          key: lychee-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            lychee-${{ github.ref_name }}-
+            lychee-
+
+      # Every input explicit — a default that changes in a later release must
+      # not silently change what this reports.
+      # sync-version-refs:ignore-start
+      # ^ FORWARD REFERENCE, not a stale pin. `ci/v3.0.0` does not exist yet, and
+      # `actions/` does not exist at ci/v2.16.0 — so the rewriter's remedy #1 would
+      # point these at a tag where the action is absent: a startup_failure on every
+      # consumer. The markers are the documented remedy #2 for a reference that must
+      # NOT track VERSION. REMOVE THEM AT THE v3.0.0 TAG CUT, when the pin becomes
+      # current and should track VERSION again. (FT-21 chicken-and-egg shape.)
+      - name: links (external, report-only)
+        id: links
+        continue-on-error: true
+        uses: vladm3105/aidoc-flow-ci/actions/links@ci/v3.0.0
+        with:
+          mode: external
+          fail-on-error: 'false'
+          config-file: .lychee.toml
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # A REPORT-ONLY JOB WITH NO REPORT IS NOT A CHECK. This file's own header
+      # justifies its existence with "the external check still has to run, or
+      # dead outbound links accumulate silently" — but with `fail-on-error:
+      # false`, no summary and no annotation, they accumulate silently anyway,
+      # now with a green weekly checkmark on top. The job still must not FAIL
+      # (external rot is not this repo's defect), so the signal is a warning
+      # plus a job-summary line.
+      - name: report
+        if: always()
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.links.outcome }}
+        run: |
+          set -euo pipefail
+          case "$OUTCOME" in
+            success)
+              echo "links-external: no dead outbound links." >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+              ;;
+            failure)
+              echo "::warning::links-external: dead outbound link(s) found — see the job log. Not blocking (external rot is time-based, not caused by any PR), but it needs a human."
+              echo "⚠️ links-external: dead outbound link(s) found — see the job log." >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+              ;;
+            *)
+              echo "::warning::links-external: the check did not report a verdict (outcome=${OUTCOME:-<empty>}) — treat as UNKNOWN, not clean."
+              echo "⚠️ links-external: no verdict (outcome=${OUTCOME:-<empty>}) — unknown, not clean." >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+              ;;
+          esac
+      # sync-version-refs:ignore-end
+
+      # `if: always()` so a failed or timed-out lychee still persists what it
+      # learned — the next weekly run should not re-fetch every URL because this
+      # one hit a single bad host.
+      - name: Save lychee cache
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .lycheecache
+          key: ${{ steps.cache-restore.outputs.cache-primary-key }}

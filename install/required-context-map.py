@@ -64,6 +64,19 @@ for f in sorted(glob.glob(os.path.join(ROOT, ".github/workflows/*.yml"))):
 # job-key half is checked, not dropped.
 tmpl_to_reusable = {}
 reusable_to_jobkeys = {}
+# PLAN-025 P8: a caller template may now emit a context WITHOUT calling a
+# reusable at all. A job whose steps are composite actions is a PLAIN job, and a
+# plain job's check run is named `<name:>` (or the job key) with NO `<jobkey> / `
+# prefix — the prefix exists only because a reusable call surfaces as
+# `<caller-job-key> / <callee-job-name>`. Canon's own `main` demonstrates both
+# shapes side by side: bare `suite` from tests.yml, `call / markdownlint` from a
+# caller keyed `call`.
+#
+# Without this map the v3 contexts fell through to the `?non-call` branch below,
+# which the suite treated as a PASS — so a context armed against nothing would
+# have reported green. That is the F2 class the whole script exists to detect,
+# reintroduced by a new packaging shape.
+plainjob_to_tmpl = {}
 USES = re.compile(r"aidoc-flow-ci/\.github/workflows/([A-Za-z0-9._-]+\.yml)")
 for f in sorted(glob.glob(os.path.join(ROOT, "install/templates/workflows/*.yml"))):
     try:
@@ -75,6 +88,11 @@ for f in sorted(glob.glob(os.path.join(ROOT, "install/templates/workflows/*.yml"
         uses = jb.get("uses") if isinstance(jb, dict) else None
         m = USES.search(uses) if isinstance(uses, str) else None
         if not m:
+            # A plain job: it emits its own name. `setdefault` + sorted() glob so
+            # a collision between two templates resolves deterministically by
+            # filename, matching the reusable map's convention above.
+            if isinstance(jb, dict):
+                plainjob_to_tmpl.setdefault(jb.get("name", jk), tb)
             continue
         reu = m.group(1)
         tmpl_to_reusable.setdefault(tb, reu)
@@ -108,8 +126,20 @@ for tpl in sorted(glob.glob(os.path.join(ROOT, "install/templates/branch-protect
     d = json.load(open(tpl, encoding="utf-8"))
     for ctx in (d.get("required_status_checks") or {}).get("contexts", []):
         if " / " not in ctx:
-            # a bare (non-reusable) context — repo-local, no canon producer to map.
-            print("%s\t%s\t?non-call" % (tier, ctx))
+            # PLAN-025 P8. A bare context is emitted by a PLAIN job — which since
+            # v3 is a shape canon ships, not only a repo-local one. Resolve it
+            # against the plain-job map.
+            #
+            # THIS BRANCH USED TO PRINT `?non-call` UNCONDITIONALLY, and the
+            # suite scored that as a pass ("no canon producer expected"). That
+            # was defensible while every canon caller was a reusable wrapper; it
+            # became a hole the moment canon shipped a plain job, because the
+            # tool would bless a context it had not checked. An unresolved bare
+            # context now returns `?` like any other orphan: if a canon
+            # branch-protection template requires a context, canon must ship
+            # something that produces it, whatever the packaging.
+            cons = tmpl_to_consumer.get(plainjob_to_tmpl.get(ctx, ""), None)
+            print("%s\t%s\t%s" % (tier, ctx, cons or "?"))
             continue
         jobid, name = ctx.split(" / ", 1)
         reu = name_to_reusable.get(name)

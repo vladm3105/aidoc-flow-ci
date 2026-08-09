@@ -35,7 +35,10 @@
     {
       "path": ".github/workflows/composition.yml",
       "template": "workflows/composition-public.yml",
-      "visibility_variants": {"public": "workflows/composition-public.yml", "private": "workflows/composition-private.yml"},
+      "visibility_variants": {
+        "public": "workflows/composition-public.yml",
+        "private": "workflows/composition-private.yml"
+      },
       "substitute": [],
       "safe_to_replace": true,
       "auto_install": true
@@ -43,7 +46,10 @@
     {
       "path": ".github/workflows/audit-trail.yml",
       "template": "workflows/audit-trail-public.yml",
-      "visibility_variants": {"public": "workflows/audit-trail-public.yml", "private": "workflows/audit-trail-private.yml"},
+      "visibility_variants": {
+        "public": "workflows/audit-trail-public.yml",
+        "private": "workflows/audit-trail-private.yml"
+      },
       "substitute": [],
       "safe_to_replace": true,
       "_note": "OPS-0069 gate. Shipped as a template but NOT manifested until 2026-07-16, so manifest-driven tooling (install.sh --update, sync/check-drift.sh) skipped it entirely. auto_install=false matches every non-bootstrap surface (bootstrap installs only ai-review+composition); adoption is via deploy-ci-wizard. Absence is therefore NOT evidence of consumer choice for this surface the way it is for optional ones — nothing currently checks that.",
@@ -52,7 +58,10 @@
     {
       "path": ".github/workflows/auto-merge-ai-prs.yml",
       "template": "workflows/auto-merge-ai-prs-public.yml",
-      "visibility_variants": {"public": "workflows/auto-merge-ai-prs-public.yml", "private": "workflows/auto-merge-ai-prs-private.yml"},
+      "visibility_variants": {
+        "public": "workflows/auto-merge-ai-prs-public.yml",
+        "private": "workflows/auto-merge-ai-prs-private.yml"
+      },
       "substitute": [],
       "safe_to_replace": true,
       "auto_install": false
@@ -122,7 +131,10 @@
     {
       "path": ".github/workflows/labeler.yml",
       "template": "workflows/labeler.yml",
-      "visibility_variants": {"public": "workflows/labeler.yml", "private": "workflows/labeler-private.yml"},
+      "visibility_variants": {
+        "public": "workflows/labeler.yml",
+        "private": "workflows/labeler-private.yml"
+      },
       "substitute": [],
       "safe_to_replace": true,
       "auto_install": false
@@ -130,7 +142,10 @@
     {
       "path": ".github/workflows/links.yml",
       "template": "workflows/links.yml",
-      "visibility_variants": {"public": "workflows/links.yml", "private": "workflows/links-private.yml"},
+      "visibility_variants": {
+        "public": "workflows/links.yml",
+        "private": "workflows/links-private.yml"
+      },
       "substitute": [],
       "safe_to_replace": true,
       "auto_install": false
@@ -139,7 +154,10 @@
       "_note": "PLAN-015 B2: server-side canon drift detector, thin caller over the reusable .github/workflows/standards-drift.yml. auto_install=false (opt-in; adoption via deploy-ci-wizard / the Task 8 arming runbook). Set tier per REPO_STANDARDS §1 after install. Not to be confused with canon's own standards-drift-self.yml.",
       "path": ".github/workflows/standards-drift.yml",
       "template": "workflows/standards-drift.yml",
-      "visibility_variants": {"public": "workflows/standards-drift.yml", "private": "workflows/standards-drift-private.yml"},
+      "visibility_variants": {
+        "public": "workflows/standards-drift.yml",
+        "private": "workflows/standards-drift-private.yml"
+      },
       "substitute": [],
       "safe_to_replace": true,
       "auto_install": false
@@ -147,7 +165,10 @@
     {
       "path": ".github/workflows/markdown-lint.yml",
       "template": "workflows/markdown-lint.yml",
-      "visibility_variants": {"public": "workflows/markdown-lint.yml", "private": "workflows/markdown-lint-private.yml"},
+      "visibility_variants": {
+        "public": "workflows/markdown-lint.yml",
+        "private": "workflows/markdown-lint-private.yml"
+      },
       "substitute": [],
       "safe_to_replace": true,
       "auto_install": false
@@ -155,7 +176,10 @@
     {
       "path": ".github/workflows/pre-commit.yml",
       "template": "workflows/pre-commit.yml",
-      "visibility_variants": {"public": "workflows/pre-commit.yml", "private": "workflows/pre-commit-private.yml"},
+      "visibility_variants": {
+        "public": "workflows/pre-commit.yml",
+        "private": "workflows/pre-commit-private.yml"
+      },
       "substitute": [],
       "safe_to_replace": true,
       "_note": "PLAN-018 F2: auto_install=true — this caller emits `call / Lint / format / security hooks`, a REQUIRED status check on every tier that has required checks at all, and the bootstrap tier's only one. It is the sole exception to the auto_install=false-for-every-non-bootstrap-surface rule, because without a producer, armed protection pins every PR on a check that never reports. Naming is ASYMMETRIC (public variant is the bare name) — see REPO_STANDARDS.md §16.9.",
@@ -164,7 +188,46 @@
     {
       "path": ".github/workflows/secret-scan.yml",
       "template": "workflows/secret-scan.yml",
-      "visibility_variants": {"public": "workflows/secret-scan.yml", "private": "workflows/secret-scan-private.yml"},
+      "visibility_variants": {
+        "public": "workflows/secret-scan.yml",
+        "private": "workflows/secret-scan-private.yml"
+      },
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": false
+    },
+    {
+      "path": ".github/workflows/quick-gates.yml",
+      "template": "workflows/quick-gates.yml",
+      "_note": "PLAN-025 v3: consolidates pre-commit + markdownlint + links into ONE job via composite actions, so three checks share one runner instead of paying three provisioning cycles. Emits the BARE context `quick-gates` — a plain job has no `<jobkey> / ` prefix (that shape comes only from a reusable call). visibility_variants are REQUIRED here: the job carries a literal `runs-on:`, so without a private variant `--update` re-applies the label-less generic and private jobs queue forever (D1).",
+      "visibility_variants": {
+        "public": "workflows/quick-gates.yml",
+        "private": "workflows/quick-gates-private.yml"
+      },
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": false
+    },
+    {
+      "path": ".github/workflows/scanners.yml",
+      "template": "workflows/scanners.yml",
+      "_note": "PLAN-025 P3a: consolidates dep-scan + trivy-scan + sast-scan into ONE job. secret-scan is deliberately NOT here — it is ubuntu-latest and fork-VISIBLE, and a merged job would report `skipped` on fork PRs, which SATISFIES a required context, so gitleaks would go green having never run. Emits the BARE context `scanners`. UNIFORM PROTECTED (PLAN-014 §1a): self-hosted on public and private alike, matching the v2 callers — so a visibility flip is a no-op and NO visibility_variants are needed (the PLAN-013 AI-flows precedent).",
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": false
+    },
+    {
+      "path": ".github/workflows/links-external.yml",
+      "template": "workflows/links-external.yml",
+      "_note": "PLAN-025 D42: the weekly, NON-BLOCKING half of the v2 links split. quick-gates carries the internal/offline half. Ship BOTH — a consumer adopting quick-gates and deleting its v2 links.yml would otherwise lose external link checking entirely. No visibility_variants: ubuntu-latest on both, no fork-code execution, so a visibility flip is a no-op.",
+      "substitute": [],
+      "safe_to_replace": true,
+      "auto_install": false
+    },
+    {
+      "path": ".github/actionlint.yaml",
+      "template": "actionlint.yaml",
+      "_note": "PLAN-025 §3.2e: declares the self-hosted runner labels. NEW IN v3 and load-bearing. Under v2 a private caller passed labels as a JSON STRING input and the reusable did the fromJSON, so actionlint only ever saw an expression. v3 callers carry a literal `runs-on: [\"self-hosted\",\"ci-runner\",\"single-use\"]`, and actionlint's runner-label rule rejects labels it does not know — so without this file every private v3 caller fails `scripts/pre_push_check.sh` check 3 on the consumer. Declaring a label does NOT create a runner: a job whose labels match no registered runner queues forever and timeout-minutes cannot save it (D16).",
       "substitute": [],
       "safe_to_replace": true,
       "auto_install": false
@@ -208,14 +271,18 @@
     {
       "path": ".github/ai-review/config.json",
       "template": "config.json.template",
-      "substitute": ["CODEOWNER_HANDLE"],
+      "substitute": [
+        "CODEOWNER_HANDLE"
+      ],
       "safe_to_replace": false,
       "auto_install": true
     },
     {
       "path": ".github/CODEOWNERS",
       "template": "CODEOWNERS.template",
-      "substitute": ["CODEOWNER_HANDLE"],
+      "substitute": [
+        "CODEOWNER_HANDLE"
+      ],
       "safe_to_replace": false,
       "auto_install": true
     },
@@ -236,7 +303,10 @@
     {
       "path": "CLAUDE.md",
       "template": "CLAUDE.md.template",
-      "substitute": ["CANON_OPERATIONS_URL", "CANON_CI_URL"],
+      "substitute": [
+        "CANON_OPERATIONS_URL",
+        "CANON_CI_URL"
+      ],
       "safe_to_replace": false,
       "auto_install": true
     }

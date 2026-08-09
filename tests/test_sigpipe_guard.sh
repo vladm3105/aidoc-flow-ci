@@ -214,16 +214,95 @@ code_only() { sed -E 's/^[[:space:]]*#.*$//' "$1"; }
 #   … | grep --quiet     (long form)
 #   … | grep -F -q       (q outside the first option cluster)
 #   … | grep -m1         (exits after N matches — same mechanism, no -q at all)
-BANNED_RE='\|[[:space:]]*grep([[:space:]]+-[^|]*)?[[:space:]]+(-[a-zA-Z]*q|--quiet|-m[[:space:]]*[0-9])'
+#   … | grep --max-count=1  (long form of -m; measured to evade the -m branch)
+#   … | grep --silent    (GNU documents it as an exact synonym for -q)
+# NOT banned, and the reason is recorded so it is not re-litigated: `grep -l`
+# also stops at the first match per input, but its output is the FILENAME, so a
+# `… | grep -l` on a pipe is `(standard input)` — a shape with no legitimate use
+# here and no instance in the tree. It is left out rather than guessed at.
+BANNED_RE='\|[[:space:]]*grep([[:space:]]+-[^|]*)?[[:space:]]+(-[a-zA-Z]*q|--quiet|--silent|-m[[:space:]]*[0-9]|--max-count[[:space:]=]*[0-9])'
 
 # SCOPE = what §27.2 declares mandatory, not a hand-listed four. A guard whose
 # list is narrower than the rule it enforces is why ai-review.yml and
 # secret-scan.yml sat unflagged through this defect's whole lifetime.
+# §27.2 declares four DIRECTORIES. Glob each one WHOLE — every depth, and every
+# extension that can carry a shell pipeline (`*.sh`/`*.bash`, and the YAML that
+# embeds `run:` bodies). Three narrower spellings have each been measured to let
+# a planted construct through: `ls .github/workflows/*.yml` (depth-1, .yml only)
+# missed `zz-probe.yaml`; `ls scripts/*.sh` missed `scripts/doc-maintainer/`;
+# `actions/*/action.yml` missed both an `action.yaml` rename and a depth-3
+# action, because the "check" on it carried the same two assumptions.
+# NOTE the exact extension list is the contract §27.2 states — widen BOTH
+# together or the rulebook claims a coverage the guard does not have.
+SURFACE_DIRS=(.github/workflows scripts install/templates actions)
+_surface_files() { find "$1" -type f \( -name '*.sh' -o -name '*.bash' -o -name '*.yml' -o -name '*.yaml' \) 2>/dev/null | sort; }
+
 mapfile -t GUARDED < <(
-  ls .github/workflows/*.yml scripts/*.sh tests/lib.sh 2>/dev/null
-  find install/templates -name '*.sh' -type f 2>/dev/null
+  for _d in "${SURFACE_DIRS[@]}"; do _surface_files "$_d"; done
+  echo tests/lib.sh
 )
 [ "${#GUARDED[@]}" -ge 20 ] || _r "guard scope collapsed to ${#GUARDED[@]} files — expected 20+"
+
+# PER-SURFACE FLOORS, asserted against GUARDED — the PRODUCT — not against the
+# arrays that feed it. The previous version asserted a floor on its own private
+# enumeration, so deleting the line that copies that enumeration INTO `GUARDED`
+# left six action files unscanned with the suite fully green (measured: 111 → 105
+# passed, 0 failed). A floor that does not police the array actually iterated is
+# not a floor. The total floor cannot substitute: 20+ is met by
+# .github/workflows/ alone, so any one surface can vanish beneath it.
+for _d in "${SURFACE_DIRS[@]}"; do
+  _in_scope=0
+  for _f in "${GUARDED[@]}"; do case "$_f" in "$_d"/*) _in_scope=$((_in_scope + 1)) ;; esac; done
+  _on_disk="$(_surface_files "$_d" | wc -l)"
+  assert_ok "[ $_on_disk -ge 1 ]" "§27.2 surface $_d/ exists and is non-empty"
+  assert_eq "$_in_scope" "$_on_disk" "every globbable file under $_d/ reached guard scope (§27.2)"
+done
+
+# PIN THE SURFACE LIST. Every check above iterates `SURFACE_DIRS`, so deleting
+# an entry deletes its own floor — measured: dropping `actions` and planting the
+# construct in a real action file left the suite at 111 passed, 0 failed. A list
+# that supplies both the work and the check on the work cannot detect its own
+# truncation. This pin is the one statement that does not come from the list.
+# Changing the scope means editing this string AND §27.2 in the same commit,
+# which is the intended cost.
+assert_eq "${SURFACE_DIRS[*]}" ".github/workflows scripts install/templates actions" \
+  "the §27.2 surface list is exactly the four directories the rulebook declares"
+
+mapfile -t ACTION_FILES < <(find actions -type f \( -name 'action.yml' -o -name 'action.yaml' \) 2>/dev/null | sort)
+
+# ...and the same question asked from a SEPARATE enumeration, so it survives any
+# edit to SURFACE_DIRS: every composite action file on disk must be in GUARDED.
+for _f in "${ACTION_FILES[@]}"; do
+  case " ${GUARDED[*]} " in
+    *" $_f "*) ;;
+    *) _r "composite action is on disk but not in guard scope: $_f" ;;
+  esac
+done
+
+# INDEPENDENT ORACLE. The floors above are derived from the same glob they check,
+# so they catch a surface leaving scope but share the glob's blind spots. This
+# asks a different question of a different file set: every composite action canon
+# actually INVOKES must resolve to a guarded file. An action is reachable only by
+# a `uses:`, so an unguarded one shows up here even when the glob misses it.
+# Callers write `vladm3105/aidoc-flow-ci/actions/<name>@ci/vX.Y.Z`, NOT
+# `./actions/<name>` — the owner/repo form is what a consumer installs. A
+# `./actions/`-only pattern matched zero files and made this whole oracle vacuous
+# while printing nothing, so its input is asserted non-empty below: an oracle
+# that silently examines an empty set is the failure mode it was added to catch.
+mapfile -t USED_ACTIONS < <(
+  grep -rhoE 'uses:[[:space:]]*(\./|[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/)actions/[A-Za-z0-9._/-]+' \
+    .github/workflows install/templates actions 2>/dev/null |
+    sed -E 's#.*/actions/##' | sort -u
+)
+assert_ok "[ ${#USED_ACTIONS[@]} -ge 1 ]" \
+  "the invoked-action oracle found at least one \`uses:\` to check"
+for _a in "${USED_ACTIONS[@]}"; do
+  _found=""
+  for _f in "${ACTION_FILES[@]}"; do
+    case "$_f" in "actions/$_a/action.yml" | "actions/$_a/action.yaml") _found=1 ;; esac
+  done
+  assert_eq "$_found" "1" "invoked action actions/$_a resolves to a guarded action file"
+done
 
 # ALLOWLIST: sites where the construct cannot invert, each with the reason.
 # An entry here is a claim that must stay true; it is not a way to silence a hit.
@@ -266,6 +345,17 @@ printf '%s\n' 'echo "$x" | grep -F -q y' > "$probe"
 assert_eq "$(probe_hits "$probe")" "1" "q outside the first option cluster is caught"
 printf '%s\n' 'echo "$x" | grep -m1 y' > "$probe"
 assert_eq "$(probe_hits "$probe")" "1" "-m1 is caught (exits early with no -q)"
+# These three spellings were unprobed, so a weakening of BANNED_RE that broke
+# them survived every probe. -Fq and -m 1 were already caught by the shipped
+# regex; --max-count=1 was NOT, and is the reason for the new alternation branch.
+printf '%s\n' 'echo "$x" | grep -Fq y' > "$probe"
+assert_eq "$(probe_hits "$probe")" "1" "q LAST in the option cluster is caught"
+printf '%s\n' 'echo "$x" | grep -m 1 y' > "$probe"
+assert_eq "$(probe_hits "$probe")" "1" "-m with a separated argument is caught"
+printf '%s\n' 'echo "$x" | grep --max-count=1 y' > "$probe"
+assert_eq "$(probe_hits "$probe")" "1" "--max-count=1 is caught (long form of -m)"
+printf '%s\n' 'echo "$x" | grep --silent y' > "$probe"
+assert_eq "$(probe_hits "$probe")" "1" "--silent is caught (GNU synonym for -q)"
 printf '%s\n' 'grep -q needle somefile.txt' > "$probe"
 assert_eq "$(probe_hits "$probe")" "0" "grep -q READING A FILE is not flagged (no writer to signal)"
 

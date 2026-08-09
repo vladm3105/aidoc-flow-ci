@@ -7,7 +7,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; ROOT="$(cd "$HERE/.." && pwd)"
 # shellcheck source=tests/lib.sh
 . "$HERE/lib.sh"
-cd "$ROOT"
+cd "$ROOT" || exit 1
 
 echo "== shellcheck (install/ sync/ scripts/ tests/) =="
 if command -v shellcheck >/dev/null 2>&1; then
@@ -22,7 +22,10 @@ if command -v yamllint >/dev/null 2>&1; then
   # Read the repo-root .yamllint.yaml — the SAME profile the pre-push hook uses
   # (single source of truth; FT-14). Previously an inline -d duplicate here that
   # the hook did not share, so the hook ran bare-strict and failed on canon main.
-  out="$(yamllint -c .yamllint.yaml .github/workflows/ install/templates/workflows/ 2>&1)" \
+  # PLAN-025 P8: `actions/` added. v3 moves the majority of canon's embedded
+  # shell into composite actions, a surface none of these three linters reached
+  # — while v3 makes "actionlint becomes enforced" a headline.
+  out="$(yamllint -c .yamllint.yaml .github/workflows/ install/templates/workflows/ actions/ 2>&1)" \
     && _g "yamllint: clean" || { _r "yamllint issues:"; printf '%s\n' "$out" | sed 's/^/      /'; }
 elif [ "${CI:-}" = "true" ]; then _r "yamllint missing in CI"
 else printf '  \033[33mskip\033[0m yamllint not installed\n'; fi
@@ -31,6 +34,9 @@ echo "== actionlint (workflows + templates) =="
 if command -v actionlint >/dev/null 2>&1; then
   # actionlint also delegates embedded `run:` blocks to shellcheck, closing the
   # gap where workflow shell passed while only standalone .sh files were linted.
+  # actionlint validates WORKFLOWS. It cannot parse an `action.yml` (no `on:`,
+  # no `jobs:`), so pointing it at actions/ produces false syntax errors — the
+  # embedded-shell delegation needs a different route, below.
   out="$(actionlint .github/workflows/*.yml install/templates/workflows/*.yml 2>&1)" \
     && _g "actionlint: clean" || { _r "actionlint issues:"; printf '%s\n' "$out" | sed 's/^/      /'; }
 elif [ "${CI:-}" = "true" ]; then _r "actionlint missing in CI"
@@ -53,4 +59,51 @@ else
   _g "codeql.yml does not pin the known-bad v4.36.1 tag object"
 fi
 
+
+echo "== shellcheck reaches composite-action run: bodies (PLAN-025 P8) =="
+# actionlint delegates a workflow's embedded `run:` to shellcheck — but it cannot
+# parse an `action.yml`, so v3's composite actions had NO shell linting at all:
+# test_lint.sh's shellcheck glob covers `install sync scripts tests`, and its
+# actionlint glob covers the two workflow directories. That left ~200 lines of
+# canon shell uninspected on the surface v3 makes primary.
+#
+# Extract each `run:` block and shellcheck it directly. Same -S error / -e SC1091
+# profile as the standalone-script pass above, so a body does not become
+# stricter or laxer by moving into an action.
+if command -v shellcheck >/dev/null 2>&1 && [ -d actions ]; then
+  tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; trap 'rm -rf "$tmp"; exit 130' INT; trap 'rm -rf "$tmp"; exit 143' TERM
+  n=0
+  while IFS= read -r a; do
+    python3 - "$a" "$tmp" <<'PY'
+import sys, os, yaml
+src, out = sys.argv[1], sys.argv[2]
+name = os.path.basename(os.path.dirname(src))
+d = yaml.safe_load(open(src)) or {}
+for i, s in enumerate((d.get("runs") or {}).get("steps") or []):
+    if isinstance(s, dict) and "run" in s and s.get("shell") == "bash":
+        with open(os.path.join(out, "%s_%02d.sh" % (name, i)), "w") as fh:
+            fh.write("#!/usr/bin/env bash\n" + str(s["run"]))
+PY
+    n=$((n+1))
+  done < <(find actions -name action.yml | sort)
+  mapfile -t extracted < <(find "$tmp" -name '*.sh' 2>/dev/null | sort)
+  if [ "${#extracted[@]}" -eq 0 ]; then
+    # Fail closed: n actions were read and produced zero bodies, so either the
+    # extractor broke or every action lost its `shell: bash`. Either way this
+    # must not read as "nothing to lint, all good".
+    if [ "$n" -gt 0 ]; then _r "extracted 0 run-bodies from $n action(s) — extractor broken or shell: bash missing"
+    else printf '  \033[33mskip\033[0m no composite actions present\n'; fi
+  else
+    out="$(shellcheck -S error -e SC1091 "${extracted[@]}" 2>&1)" \
+      && _g "shellcheck: no errors in ${#extracted[@]} composite-action run-body(ies)" \
+      || { _r "shellcheck errors in composite-action bodies:"; printf '%s\n' "$out" | sed 's/^/      /'; }
+  fi
+elif [ "${CI:-}" = "true" ]; then _r "shellcheck missing in CI"
+else printf '  \033[33mskip\033[0m shellcheck not installed\n'; fi
+
+# suite_summary MUST be the last statement. It prints the counts AND returns the
+# suite's exit status (`[ $T_FAIL -eq 0 ]`), so anything after it is excluded from
+# the count and replaces the exit status with its own. The composite-action
+# composite-action block below was appended after it and could not fail the suite:
+# a real shell defect printed FAIL, was not counted, and run.sh saw exit 0.
 suite_summary "lint"

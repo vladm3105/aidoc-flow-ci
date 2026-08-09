@@ -40,7 +40,20 @@ while IFS=$'\t' read -r tier ctx producer; do
   [ -n "$tier" ] || continue
   case "$producer" in
     '?')       _r "$tier: '$ctx' has NO producing caller in canon — arming would hang (F2 latent)"; orphans=1 ;;
-    '?non-call') _g "$tier: '$ctx' is a bare (repo-local) context — no canon producer expected" ;;
+    # `?non-call` is GONE as of PLAN-025 P8, and its removal is the point.
+    #
+    # It used to score a PASS for any context without a `<jobkey> / ` prefix, on
+    # the reasoning that a bare context must be repo-local. That held while every
+    # canon caller wrapped a reusable. v3 ships PLAIN jobs (composite-action
+    # steps), and a plain job's check run is bare — so the branch would have
+    # blessed exactly the contexts v3 arms, without checking them. A context
+    # armed against nothing pins every PR forever, which is the F2 class this
+    # suite exists to detect.
+    #
+    # The map now resolves bare contexts against canon's plain jobs and returns
+    # `?` when it cannot. If this label ever reappears in the output, the map
+    # regressed — fail rather than pass.
+    '?non-call') _r "$tier: '$ctx' returned the retired '?non-call' label — required-context-map.py has regressed (P8)"; orphans=1 ;;
     *)         _g "$tier: '$ctx' <- $producer" ;;
   esac
 done < <(printf '%s\n' "$out")

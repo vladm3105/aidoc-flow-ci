@@ -5,6 +5,166 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — §27 landed on `main` while `actions/` was being built on a branch, so the new surface entered canon outside the rule
+
+Merging `main` into `feat/v3-composite-actions` put CI-0033's §27 rule and v3's
+composite actions in one tree for the first time. Neither PR could have caught
+what that produced:
+
+- **`actions/sast-scan/action.yml` shipped the banned construct on a security
+  verdict, and it was a MEASURED fail-open.** The D23 post-condition — the one
+  that refuses to scan when a PR-supplied `.semgrepignore` survives the strip —
+  decided on `find … -print -quit | grep -q .`. Not by EPIPE (one write, so
+  `grep` cannot leave first) but by **find's own exit status**: `-quit` returns
+  non-zero when a traversal error is recorded before it quits, while still
+  printing the match; `pipefail` takes that over `grep`'s 0 and the gate
+  proceeds. Direction: *scan with attacker-controlled coverage*. Reachable, not
+  certain — it turns on `readdir` order, which is not alphabetical and not under
+  your control; the same directory contents were observed both ways. Now decides
+  on captured output, refuses on a non-zero `find` with `find`'s own stderr
+  quoted, and folds newlines out of the path before interpolating it into an
+  `::error::` (git paths may contain newlines, and GitHub parses every output
+  line for `::command::`).
+- **§27 gained the general form:** `pipefail` returns the rightmost non-zero
+  status from **any** stage, so clearing a site by counting the writer's
+  `write(2)` calls is necessary and not sufficient. The measured/latent taxonomy
+  is keyed on EPIPE only.
+- **The §27.2 scope did not name `actions/`, and the guard did not glob it** —
+  both were written against the tree their author could see, on branches that
+  could not see each other.
+- **The guard was narrower than the rule in every direction, not just `actions/`.**
+  §27.2 declares four *directories*; the guard globbed `install/templates/**/*.sh`
+  (4 files, leaving 31 `*.yml` consumer templates unscanned), `scripts/*.sh`
+  (depth-1 only) and `.github/workflows/*.yml` (missing a `.yaml` sibling). Each
+  narrowing was measured to pass a planted construct. All four directories are
+  now globbed whole — `*.sh`/`*.bash`/`*.yml`/`*.yaml`, any depth — and §27.2
+  states that extension set as part of the contract.
+- **The fix reproduced its own defect twice before it held, which is the finding
+  worth keeping.** A check derived from the thing it checks cannot detect that
+  thing's truncation. (1) The floor shared the glob's depth/extension
+  assumptions. (2) Its replacement was asserted on a private enumeration instead
+  of the array actually iterated, so deleting the line that copied it into scope
+  left six action files unscanned at *111 passed, 0 failed*. (3) The per-surface
+  floors were driven by the surface list, so deleting an entry deleted its own
+  floor — *111 passed, 0 failed* again. Each was caught only by mutating and
+  re-running, never by reading. Three overlapping anchors now hold: the surface
+  list is pinned to a literal, each surface is counted against `GUARDED` itself,
+  and an independent oracle requires every action canon `uses:` to resolve to a
+  guarded file. That oracle initially matched `./actions/…` while callers all
+  write `<owner>/<repo>/actions/…@<tag>`, so it examined nothing and printed
+  nothing — it now asserts its own input is non-empty.
+- **`actions/markdownlint/action.yml`: the sparse-checkout diagnostic could not
+  fire.** `… | while read f; do [ -f "$f" ] && printf '.'; done | wc -c` leaves
+  the loop's status at 1 when the last tracked `.md` is missing; `pipefail` plus
+  `set -e` killed the step before the `::error::` that names the cause. Measured.
+  Same §27.1 rule, a reader that is not `grep`, so the guard's regex cannot see
+  it.
+- **Guard coverage: 67 → 120 assertions, suite 17 suites / 1405 passed / 0
+  failed.** Mutations killed, each re-measured against the final code: restoring
+  the banned line; renaming an action to `action.yaml`; nesting one at depth 3;
+  planting the construct in `scripts/doc-maintainer/`, `actions/*/helper.sh`,
+  `.github/workflows/*.yaml` and `install/templates/workflows/`; and dropping
+  either `actions/` or `install/templates/` from the surface list. `--max-count=1`
+  and `--silent` were confirmed holes in `BANNED_RE` (documented synonyms for the
+  already-banned `-m N` and `-q`) and are now caught and probed. `grep -l` is
+  deliberately not banned, with the reason recorded in the file so it is not
+  re-litigated.
+
+### Fixed — OPS-0065 five-agent review of the v3 branch, ~90 findings folded
+
+Five diff-class-matched agents (code-reviewer, silent-failure-hunter,
+security-auditor, test-engineer, documentation-specialist) reviewed
+`git diff main...HEAD`. **The ported bodies held** — D20/D21/D24/D25/D26/D27
+verified present in the executed commands. Every serious finding was in what was
+added on top:
+
+- **`sast-scan`'s D23 strip was bypassable by symlink.** `find -type f` misses a
+  symlinked `.semgrepignore`; semgrep follows it, coverage goes to zero and the
+  gate goes green. Reproduced. Now strips symlinks and the repo root, and
+  **refuses to scan** if any ignore file survives. Same hole exists in
+  `.github/workflows/sast-scan.yml` (v2) and needs an upstream issue.
+- **`scanners` uploaded `sarif_file: .`** — the PR tree — so any committed
+  `*.sarif` was ingested under `security-events: write`, and dropping
+  `category:` made one upload replace all three analyses. Split into three
+  per-file, per-category uploads.
+- **All four callers had silently lost `push: branches: [main]`.** Beyond losing
+  post-merge lint, Code Scanning alerts anchor to the default branch, so the
+  scanners' SARIF baselines would never refresh.
+- **`scanners` public was `ubuntu-latest`** — a regression from v2, whose public
+  callers all pass the pool labels. Restored to self-hosted, which makes the
+  flow uniform-protected (PLAN-014 §1a) and removes the need for a `-private`
+  variant at all.
+- **`pre-commit` was silently downgraded 4.6.0 → 4.0.1.** Restored.
+- **`trivy` swallowed a missing or corrupt SARIF** as "clean" — the only one of
+  the three scanners that did. Now fails loud, matching dep-scan and sast-scan.
+- **`timeout` exit 124 was mislabelled** in markdownlint, pre-commit and links —
+  in links' report-only path it was swallowed entirely, so a hung weekly run
+  reported success. All three now treat it as infrastructure failure.
+- **An explicitly requested lychee config that does not exist** is now an error,
+  not a silent fallback to defaults.
+
+### Fixed — the test suite blessed eight mutations, and one gate could not fail
+
+`tests/test_lint.sh` appended its new composite-action shellcheck block **after**
+`suite_summary`, so its failures were uncounted and the script exited 0 — a gate
+added to close a coverage hole that structurally could not fail. Moving the
+summary last immediately surfaced a real error it had been hiding.
+
+`tests/test_actions.sh` asserted shape and presence, not behaviour. Deleting the
+`verdict` step from both `quick-gates` variants left a required gate that could
+never fail and the suite reported **112 passed, 0 failed**. Eight such mutations
+survived; all are now killed. The root cause recurred **six times**: assertions
+grepping a whole file matched the comment *documenting* the defense after the
+code was gone. Every YAML assertion now parses the structure — `runbody`,
+`stepwith`, `verdict_body`, `invoked_actions`, `perms_of` — and the whole-file
+variables are deleted.
+
+### Added — v3 composite-action foundation (PLAN-025, branch `feat/v3-composite-actions`, NOT merged)
+
+**Not released, not merged, and not reachable by any consumer.** Recorded here
+because the work exists and the next session needs to know it does. `install.sh`
+ships only what the manifest lists; the three new caller templates pin
+`ci/v3.0.0`, a tag that does not exist, guarded by `sync-version-refs:ignore`
+markers that must be removed at the tag cut.
+
+- **Six composite actions** (`actions/{markdownlint,pre-commit,links,dep-scan,trivy-scan,sast-scan}`).
+  A `workflow_call` reusable always gets its own runner, so twelve PR checks cost
+  twelve provisioning cycles — measured at ~167s for the audit-trail reusable to
+  run a `grep` on `aidoc-flow-operations`, almost all provisioning. Composite
+  actions share the caller's job. Step bodies are ported with three named
+  carve-outs, not verbatim: a `timeout` wrapper, a checkout-precondition guard,
+  and — in `sast-scan`'s preview step only — v2's `set -uo pipefail`, which
+  omits `-e` on purpose so a SIGPIPE from `git diff | head` cannot fail the scan
+  gate.
+- **Five caller templates** — `quick-gates{,-private}` (pre-commit, markdownlint
+  and links), `scanners{,-private}` (the three self-hosted scanners), and
+  `links-external` (the weekly report-only half of the v2 links split). Both
+  consolidating callers carry a collect-then-fail verdict step, so one failing
+  check does not hide the others.
+- **`.github/actionlint.yaml`** — new and load-bearing. v2 callers passed runner
+  labels as a JSON *string input* and the reusable did the `fromJSON`, so
+  actionlint never saw a label. v3 callers carry a literal `runs-on:`, so without
+  this file every private caller fails `pre_push_check.sh` on every consumer.
+
+### Fixed — `required-context-map.py` returned a false green on bare contexts
+
+`call / X` is `<caller-job-key> / <callee-job-name>` and only a reusable call
+produces it; a plain job emits its bare job name. The map classified anything
+without `" / "` as `?non-call`, and `test_required_contexts.sh` scored that a
+**pass**. Every v3 context would have resolved green and unvalidated — so the
+step whose purpose is catching a context armed against nothing would have
+reported success on exactly that case. Bare contexts now resolve against canon's
+plain caller jobs; unresolved returns `?` like any other orphan, and `?non-call`
+fails if it ever reappears.
+
+### Fixed — composite-action shell had no linter
+
+`test_lint.sh` globbed `install sync scripts tests` for shellcheck and the two
+workflow directories for yamllint/actionlint. `actions/` matched none of them,
+leaving ~200 lines of canon shell uninspected on the surface v3 makes primary.
+actionlint cannot parse an `action.yml`, so the `run:` bodies are extracted and
+shellchecked directly, with the same `-S error` profile as standalone scripts.
+
 ### Fixed — the OPS-0069 audit-trail gate reported a false negative on a PR whose evidence was present (#417, CI-0033)
 
 - **`grep -q` matched, and the gate recorded a miss.** `call / verify` failed PR
