@@ -7,69 +7,105 @@ command that re-derives it. Durable facts live in `CLAUDE.md` § "Durable traps"
 the decision record is `DECISIONS.md`, which is authoritative — this file never
 summarises it.
 
-**State:** `main` carries **#420** (CI-0033), squashed 2026-08-08 · tree clean ·
-**nothing deployed** — canon ships by tag, the last tag is still `ci/v2.16.0`,
-and #405, #414, #415, #420 are all merged and unreachable by any consumer ·
-**30** open issues.
+**State:** `main` carries **#416** (PLAN-025 P1/P2/P3/P8-core), squashed
+2026-08-09 · tree clean · **nothing deployed** — canon ships by tag, the last tag
+is still `ci/v2.16.0`, and **37 merged PRs** are unreachable by any consumer ·
+**32** open issues · **0** open PRs.
 
-All checks green, **run on this merge commit, not carried forward**:
+All checks green, **run on this merge commit, not carried forward**. Re-derive
+every row; the commands are exact (see `CLAUDE.md` § Durable traps for why the
+SGR strip and `--tier` are not optional):
 
 | Claim | Command | Value at wrap |
 |---|---|---|
 | Released version | `git describe --tags --abbrev=0` | `ci/v2.16.0` |
-| Suite | `bash tests/run.sh \| sed 's/\x1b\[[0-9;]*m//g' \| grep -oE '[0-9]+ passed, [0-9]+ failed' \| awk '{p+=$1;f+=$3} END{print NR" suites, "p" passed, "f" failed"}'` — the SGR strip is required | **16 suites, 1,170 passed, 0 failed** |
+| Unreleased **PRs** | `git log --oneline ci/v2.16.0..HEAD \| grep -cE '\(#[0-9]+\)$'` — count PRs, not commits; a wrap commit carries no `(#N)` and would inflate a `wc -l` | **37** |
+| Suite | `bash tests/run.sh \| sed 's/\x1b\[[0-9;]*m//g' \| grep -oE '[0-9]+ passed, [0-9]+ failed' \| awk '{p+=$1;f+=$3} END{print NR" suites, "p" passed, "f" failed"}'` | **17 suites, 1,405 passed, 0 failed** |
 | pre-commit | `pre-commit run --all-files` | 4 passed |
 | Governance table | `python3 install/parse-governance-table.py CLAUDE.md --repo-root .` | PASS |
-| Standards drift | `bash sync/check-standards-drift.sh --tier product` — `--tier` is required or it verifies 0/4 and exits 0 | 4/4 families, **2 drift** = the deliberate FT-52 profile |
-| Open issues | `gh issue list --state open --limit 200` | **30** |
-| Open PRs | `gh pr list --state open` | **1** — #416 |
+| Standards drift | `bash sync/check-standards-drift.sh --tier product` | 4/4 families, **2 drift** = the deliberate FT-52 profile |
+| Open issues | `gh issue list --state open --limit 200 \| wc -l` | **32** |
+| Open PRs | `gh pr list --state open \| wc -l` | **0** |
 
 ## What this session did
 
-**Merged [#420](https://github.com/vladm3105/aidoc-flow-ci/pull/420) — the
-OPS-0069 audit-trail gate was reporting a false negative, and eleven other
-guards had the same defect failing the other way.** Closes #417 and #418.
-Decision `DECISIONS.md` **CI-0033**; rule `docs/REPO_STANDARDS.md` **§27**.
+**Merged [#416](https://github.com/vladm3105/aidoc-flow-ci/pull/416)** — the v3
+composite-action foundation, open since the previous session. It had gone
+`CONFLICTING` when #420 and #421 landed. Merged with `--admin`; see Blockers for
+why that was the only path.
 
-`writer | grep -q` under `set -o pipefail` reports **not found** exactly when the
-string **was** found: `grep -q` exits on match, the writer takes `EPIPE`, and
-`pipefail` makes that 141 the pipeline's answer. **It is not a size threshold** —
-what matters is whether the writer has finished issuing its writes. A `printf`
-builtin is clean at 40 KB; a multi-write process inverts at 8 KB. That is why the
-local reproduction in #417 was correct and proved nothing.
+**The merge itself produced the session's real finding, and neither PR could have
+caught it.** §27 (CI-0033, never decide on a pipeline's exit status) landed on
+`main` while `actions/` — v3's primary gate surface — was being built on the
+branch. In one tree:
 
-**The asymmetry is the finding worth keeping:** twelve decisions in canon rode a
-pipeline's status; the reported one is the only one that failed *closed*, and the
-only one anybody noticed. The other eleven fail *open* — including the
-`ai-review` autofix symlink-escape guard (PLAN-012 §4.4), measured missing the
-symlink 4/5 at 401 staged files. All twelve converted.
+- `actions/sast-scan/action.yml`'s D23 post-condition, the verdict that refuses
+  to scan when a PR-supplied `.semgrepignore` survives the strip, decided on
+  `find … -print -quit | grep -q .`. **A reproduced fail-open** — not by EPIPE
+  but by `find`'s own status: `-quit` returns non-zero when a traversal error is
+  recorded before it quits, while still printing the match. Reachable, not
+  certain; it turns on `readdir` order.
+- The §27.2 scope named neither `actions/` nor most of what it did declare:
+  `install/templates/**/*.sh` was globbed (4 files) while 31 `*.yml` consumer
+  templates were not; `scripts/` was depth-1; `.github/workflows/` was `.yml`-only.
 
-**§26 is deliberately skipped** — it stays reserved for PLAN-023 PR-1, whose
-eleven `§24` forward references still renumber onto it. A note at §27 says so;
-do not renumber to close the gap. `DECISIONS.md` **CI-0031** likewise stays
-reserved for PLAN-023 PR-0.
+**The fix re-created its own defect three times before it held**, each attempt
+reporting a fully green suite. The durable form is in auto-memory
+(`a-check-must-not-derive-from-what-it-checks`): a check derived from the thing
+it checks cannot detect that thing's truncation. Three overlapping anchors now
+hold — a literal pin of the surface list, per-surface counts against `GUARDED`
+itself, and an independent oracle requiring every action canon `uses:` to resolve
+to a guarded file. Guard **60 → 120** assertions (baseline re-measured at
+`354110c`; the `67` in the `CHANGELOG.md` entry was a mid-session figure and is
+corrected there).
 
-Filed rather than folded: **#419** (`pre_push_check.sh` reports an unwalkable
-range as "no OPS-0069 phrase found", so the remedy it prints cannot work).
+**Two claims I wrote into canon were corrected before push**, both caught by the
+OPS-0066 cycle-2 review: a `1/1` reproduction ratio that was one observation in
+the notation §27 reserves for repeated trials, and a §27.2 sentence claiming a
+guard coverage that did not exist. §27 now carries the general rule that
+`pipefail` is poisoned by the writer's **own** exit status too, so counting a
+writer's `write(2)` calls is necessary and not sufficient.
+
+Review: 3 agents, 2 OPS-0066 cycles. Cycle 1 found the fix had re-created its
+defect class; cycle 2 found the cycle-1 fold had regressed it again.
+
+Filed rather than folded: **[#422](https://github.com/vladm3105/aidoc-flow-ci/issues/422)**
+(a pipeline wrapped after the `|` evades the guard's per-line match; the obvious
+`sed` join false-positives on every `run: |`) and
+**[#423](https://github.com/vladm3105/aidoc-flow-ci/issues/423)** (sast-scan's D23
+post-condition checks `SCAN_PATH` only while the strip also clears the repo root;
+latent while `scan-path` defaults to `.`).
 
 ## What to do next
 
 The top item is actionable with no discovery.
 
-1. **Cut the release — this is now the bottleneck for everything else.** Four
-   merged PRs are unreachable by consumers, CI-0033 among them, and it fixes a
-   *required* context on every workspace repo. Blockers below are all
-   release-gating. `docs/RELEASE_CHECKLIST.md`; a release-prep PR shows
-   **BLOCKED by design** (FT-21) and `--admin` is the documented path.
-2. **PLAN-024 Phases A/B/C** (PLAN-025 §7): eliminate `doc-maintainer`, reduce
-   `docs-sync`, cut `ci/v3.0.0`. Phase A carries a **release-gate circularity** —
-   the MAJOR-bump LiteLLM smoke tests the `ai-doc-maintainer` alias Phase A
-   deletes, so `litellm-smoke.yml` must be edited inside the phase.
-3. **PR #416** (`feat/v3-composite-actions`, PLAN-025 P1/P2/P3/P8-core) is open
-   and still red on `call / verify`. **Expected, not a defect in the branch:**
-   that caller pins `audit-trail-check.yml@ci/v2.16.0`, the pre-fix copy, and its
-   38 KB commit range is what trips it. It clears once the branch runs against a
-   tag containing CI-0033. Until then `--admin`. Re-derive: `gh pr checks 416`.
+1. **Take the founder decisions that gate everything else — nothing below moves
+   without them.** Both are in Blockers with their reasons; both are founder-only,
+   and one of them (FT-30) gates *every* tag, `v2.17.0` and `v3.0.0` alike. There
+   is also an ordering call this session did not make and could not: **Phase A
+   makes `main` a MAJOR**, so a `v2.17.0` carrying the CI-0033 fix must be cut
+   **before** Phase A lands, or not at all. 37 merged PRs — CI-0033 among them, a
+   *required* context on every workspace repo — are unreachable until one of them
+   ships.
+2. **PLAN-024 Phase A — unblocked by #416, but NOT ready to execute.** The plan
+   reached `main` only with #416, so no earlier session could have started it.
+   Read its header before anything else: `plans/PLAN-024_ci-flow-efficiency.md:3`
+   is `**Status:** Draft — no phase executed`, and its own review log (`:759`)
+   records *"Phase A carries two open 🔴/decision items for the human (§5 A4)"*.
+   Treat it as prepare-and-propose, not execute.
+   Phase A eliminates `doc-maintainer` from the library: 33 tracked files, 10 of
+   the 11 open doc-maintainer defects closed as *not planned* (**#404 is carved
+   out** — its defect survives verbatim in `docs-sync` and must be re-filed
+   there), and a `ci/v3.0.0` MAJOR bump. **A4 is the trap:** the MAJOR-bump smoke
+   gate requires `litellm-smoke.yml` to pass with the `ai-doc-maintainer` alias
+   that A3 deletes, so `litellm-smoke.yml` must be edited *inside* the phase or
+   the tag cannot be cut. `CHANGELOG.md`, `DECISIONS.md` and
+   `docs/MIGRATION_v2.0.0.md` are append-only carve-outs and must not be scrubbed.
+3. **PLAN-024's phase-level status is half-updated.** Its Status line already
+   carries `superseded in part by PLAN-025 (D/E/F/G)` — #416 did that. What
+   PLAN-025 §7 still owes is the marker on each `### Phase D/E/F/G` section
+   (`:271, :293, :306, :316`) and the re-scoping of the surviving phases.
 
 Open issues are the backlog — do not restate them here:
 
@@ -79,35 +115,42 @@ gh issue list --state open --limit 200      # the --limit 30 default truncates s
 
 ## Blockers
 
-All four are release-gating; the first two are founder-only.
+Both release blockers are founder-only and unchanged from the last wrap.
 
 | Blocker | Why | What clears it |
 | --- | --- | --- |
-| **🔴 FT-30 cold-start dry run** | `release.sh tag` refuses without `--dry-run-verified`. The changed cold-start surface has **grown well past the two files the previous wrap named** — now at least five under `install/templates/` (`doc-maintainer.json`, `labeler.yml`, `labels.json`, `pre_push_check.sh`, `runner/README.md`), plus nine shipped workflow templates. Re-derive: `git diff --name-only ci/v2.16.0..HEAD` against `coldstart_surface()` in `scripts/release.sh:91` | Founder runs `scripts/ft30-dry-run.sh`. Note it asserts the bootstrap COMPLETED, not that it installed the right file set (#358) |
-| **🔴 PR-C deviation confirmation still open** | Due before `ci/v2.17.0`. #405 shipped the demotion only, not the de-allowlisting §4 PR-C item 1 called for, while §9 item 2 records acceptance of *"both halves"* — the shape that did not ship | Founder decision; reasoning in PLAN-021 §4 PR-C LANDED note |
+| **🔴 FT-30 cold-start dry run** | `release.sh tag` refuses without `--dry-run-verified`, and the cold-start surface has changed. Re-derive: `git diff --name-only ci/v2.16.0..HEAD` against `coldstart_surface()` in `scripts/release.sh:91` | Founder runs `scripts/ft30-dry-run.sh` — see `CLAUDE.md` § Durable traps for what that script does and does not assert ([#358](https://github.com/vladm3105/aidoc-flow-ci/issues/358)) |
+| **🔴 PR-C deviation confirmation still open** | Due before `ci/v2.17.0`. #405 shipped the demotion only, not the de-allowlisting §4 PR-C item 1 called for, while §9 item 2 records acceptance of *"both halves"* | Founder decision; reasoning in PLAN-021 §4 PR-C LANDED note |
 | **PLAN-025 unreviewed since Pass 4** | OPS-0066 3-pass cap spent; P2/P3/P8 material never had an independent pass | Founder waiver, or a fresh plan for the remaining phases |
-| **`semgrep` cannot install on the runner image** | No `python3-venv` (#349) — `sast-scan` is inert where it is the only SAST | Rebuild `aidoc-flow-runner:latest` |
+| **`semgrep` cannot install on the runner image** | No `python3-venv` ([#349](https://github.com/vladm3105/aidoc-flow-ci/issues/349)) — `sast-scan` is inert where it is the only SAST | Rebuild `aidoc-flow-runner:latest` |
+
+**`call / verify` will red every canon PR until a tag containing CI-0033 exists.**
+`.github/workflows/audit-trail.yml:39` pins `audit-trail-check.yml@ci/v2.16.0`,
+the pre-fix copy, so the fix in `main`'s tree cannot reach the job that runs it —
+verified in the #416 runner log as `line 103: echo: write error: Broken pipe`.
+The documented `[skip-audit-trail]` override is inverted by the same defect and
+does not help. `enforce_admins: false` exists for this; `--admin` is the path
+until the tag. This is the FT-21 chicken-and-egg, not a defect in any branch.
 
 **PLAN-025 P7 must not run** — unblocked by P8's core fix, but still the only
 irreversible phase; P9 (rollback) must exist first.
 
-**The PLAN-021 resume owes two consumer edits**, both easy to get wrong:
-`operations` must edit **`auto_merge.low_risk_paths`**, *not* `allowed_paths`
-(its `"*.md"` catch-all makes that a no-op), and must answer **`[k]`** at any
-interactive `--update` drift prompt; and `framework`'s stale
-`RESUME REQUIRES #352 AND #353` note needs **#354 and #360** added.
+The **PLAN-021 consumer resume** owes two easy-to-get-wrong edits; they are
+durable and now live in `CLAUDE.md` § "The PLAN-021 consumer resume", not here.
 
 ## What did NOT change
 
 No tag, no release, no consumer repo, no branch protection, no ruleset, no
-`doc-maintainer` or `docs-sync` behaviour. PR #416 and its branch are untouched
-by this session. `doc-maintainer` is still **live on `operations`**
-(`dry_run: false`) and still **paused on `framework`** (`kill_switch: true`), and
-that pause still cites #352/#353 as resume-blockers, **both of which are closed**
-— so it remains stale, as the previous wrap also noted.
+`doc-maintainer` or `docs-sync` behaviour, and no `ai-review` behaviour.
 
-*Routed out of this file rather than re-derived, per CI-0028 and #402: the
-`pre_push_check`-vs-`pre-commit` gap and the "a verification narrower than its
-claim is a false claim" lesson now live in `CLAUDE.md` § Durable traps, where a
-regeneration cannot drop them. The #414 cancelled-runner signature was already
-routed there by the previous wrap and is not repeated.*
+**All four** new v3 caller templates (`quick-gates`, `quick-gates-private`,
+`scanners`, `links-external`) still pin `ci/v3.0.0`, a tag that does not exist,
+behind `sync-version-refs:ignore` markers that must be removed at the tag cut.
+Count them, do not trust this line:
+`grep -rlF 'ci/v3.0.0' install/templates/workflows/`.
+
+`doc-maintainer` remains **live on `operations`** and **paused on `framework`** —
+verified this wrap, re-derive with
+`python3 -c "import json;[print(r, json.load(open(f'../{r}/.github/doc-maintainer.json'))['dry_run'], json.load(open(f'../{r}/.github/doc-maintainer.json'))['kill_switch']) for r in ('operations','framework')]"`.
+Phase A deletes the library side of this regardless; the consumer-side removal is
+each repo's own business.
