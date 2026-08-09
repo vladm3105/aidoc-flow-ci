@@ -59,8 +59,9 @@ what that produced:
   `set -e` killed the step before the `::error::` that names the cause. Measured.
   Same §27.1 rule, a reader that is not `grep`, so the guard's regex cannot see
   it.
-- **Guard coverage: 67 → 120 assertions, suite 17 suites / 1405 passed / 0
-  failed.** Mutations killed, each re-measured against the final code: restoring
+- **Guard coverage: 60 → 120 assertions, suite 17 suites / 1405 passed / 0
+  failed.** (An earlier draft of this entry said `67 →`; that was a mid-session
+  figure taken after the first fix, not the baseline. Re-measured at `354110c`.) Mutations killed, each re-measured against the final code: restoring
   the banned line; renaming an action to `action.yaml`; nesting one at depth 3;
   planting the construct in `scripts/doc-maintainer/`, `actions/*/helper.sh`,
   `.github/workflows/*.yaml` and `install/templates/workflows/`; and dropping
