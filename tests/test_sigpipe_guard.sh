@@ -222,8 +222,21 @@ BANNED_RE='\|[[:space:]]*grep([[:space:]]+-[^|]*)?[[:space:]]+(-[a-zA-Z]*q|--qui
 mapfile -t GUARDED < <(
   ls .github/workflows/*.yml scripts/*.sh tests/lib.sh 2>/dev/null
   find install/templates -name '*.sh' -type f 2>/dev/null
+  ls actions/*/action.yml 2>/dev/null
 )
 [ "${#GUARDED[@]}" -ge 20 ] || _r "guard scope collapsed to ${#GUARDED[@]} files — expected 20+"
+
+# A total floor cannot notice one SURFACE dropping out — 20+ is already met by
+# .github/workflows alone. The composite actions are v3's primary gate surface
+# and joined the scope late (they were added on this branch while §27 was being
+# written on main, so neither change saw the other), which is exactly the case a
+# total-only floor misses.
+_actions_in_scope=0
+for _f in "${GUARDED[@]}"; do case "$_f" in actions/*/action.yml) _actions_in_scope=$((_actions_in_scope + 1)) ;; esac; done
+_actions_on_disk="$(find actions -mindepth 2 -maxdepth 2 -name action.yml -type f 2>/dev/null | wc -l)"
+assert_eq "$_actions_in_scope" "$_actions_on_disk" \
+  "every actions/*/action.yml is in guard scope (§27.2)"
+[ "$_actions_on_disk" -ge 1 ] || _r "no composite action found — the actions/ surface vanished from the guard"
 
 # ALLOWLIST: sites where the construct cannot invert, each with the reason.
 # An entry here is a claim that must stay true; it is not a way to silence a hit.

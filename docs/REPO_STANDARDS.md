@@ -2764,10 +2764,19 @@ no writer in the pipeline to signal. The banned construct is specifically
 ### 27.2 Scope — where this is mandatory
 
 Mandatory on anything whose result gates a merge, a push, a release or a
-security decision: the reusables in `.github/workflows/`, `scripts/`,
-`install/templates/`, and the `tests/lib.sh` assertion helpers. `assert_absent`
-is the sharpest case — the inversion turns it into a **silent pass**, so a
-suite loses coverage without a single red.
+security decision: the reusables in `.github/workflows/`, the composite actions
+in `actions/`, `scripts/`, `install/templates/`, and the `tests/lib.sh`
+assertion helpers. `assert_absent` is the sharpest case — the inversion turns it
+into a **silent pass**, so a suite loses coverage without a single red.
+
+**`actions/` was added to this scope after the fact, and the reason generalises.**
+The composite actions were being written on `feat/v3-composite-actions` while
+this section was being written on `main`; neither branch could see the other, so
+the surface v3 makes _primary_ entered canon outside the rule and outside its
+guard. **A scope written against the tree you can see is narrower than the rule
+the moment a parallel branch adds a surface** — so the guard now asserts that
+_every_ `actions/*/action.yml` on disk is in scope, rather than trusting a total
+file-count floor that `.github/workflows/` alone already satisfies.
 
 **`tests/test_sigpipe_guard.sh` enforces exactly this scope — it globs it, it
 does not carry a hand-written file list.** That is deliberate: CI-0033's first
@@ -2789,6 +2798,7 @@ one refactor away from a real writer.
 | `composition.yml` ×2 — break-glass + separation-of-duties | `printf` builtin | latent — 0/20 inversions at 300 KB and 5 MB |
 | `secret-scan.yml` ×3 — config canary | `printf` builtin | latent, but into the exact case its own comment warns of |
 | `release.sh`, `sync-version-refs.sh` | `printf` builtin, version string | latent |
+| `actions/sast-scan/action.yml` — D23 ignore-file post-condition | `find … -print -quit` — one write, then exits | latent — the write returns before `grep` can be scheduled to match. Converted anyway: the refusal is a **security** verdict and its inversion direction is _scan with attacker-controlled coverage_ |
 
 For contrast, the two writers that were measured to invert: `git log` at
 20,760 bytes → 3/20, and `git diff --raw` at 401 files → 4/5.

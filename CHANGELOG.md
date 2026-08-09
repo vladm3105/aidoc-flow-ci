@@ -5,6 +5,31 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — §27 landed on `main` while `actions/` was being built on a branch, so the new surface entered canon outside the rule
+
+Merging `main` into `feat/v3-composite-actions` put CI-0033's §27 rule and v3's
+composite actions in one tree for the first time. Neither PR could have caught
+what that produced:
+
+- **`actions/sast-scan/action.yml` shipped the banned construct on a security
+  verdict.** The D23 post-condition — the one that refuses to scan when a
+  PR-supplied `.semgrepignore` survives the strip — decided on
+  `find … -print -quit | grep -q .`. Its inversion direction is *scan with
+  attacker-controlled coverage*. Latent rather than live (`-print -quit` issues
+  one write and exits, so the write returns before `grep` can be scheduled to
+  match), and converted anyway per §27's own rule that a latent site is one
+  refactor from a real writer. Now decides on captured output.
+- **The §27.2 scope did not name `actions/`, and the guard did not glob it.**
+  Both were written against the tree their author could see; v3's primary gate
+  surface did not exist on `main` at the time. `test_sigpipe_guard.sh` now
+  globs `actions/*/action.yml`.
+- **The total-file floor could not have noticed.** `[ ${#GUARDED[@]} -ge 20 ]`
+  is satisfied by `.github/workflows/` alone, so a whole surface can leave scope
+  without reddening anything — measured: dropping the glob loses 6 per-file
+  assertions silently (67 → 60 with the new check removed). The guard now
+  asserts every `actions/*/action.yml` **on disk** is in scope. Both mutations
+  killed: restoring the banned line reds 1, dropping the surface reds 1.
+
 ### Fixed — OPS-0065 five-agent review of the v3 branch, ~90 findings folded
 
 Five diff-class-matched agents (code-reviewer, silent-failure-hunter,

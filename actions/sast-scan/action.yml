@@ -114,7 +114,12 @@ runs:
         # failure from aborting the step, so the post-condition is what actually
         # enforces it: if any ignore file still resolves, refuse to scan rather
         # than scan with attacker-controlled coverage.
-        if find "$SCAN_PATH" \( -type f -o -type l \) \( -name '.semgrepignore' -o -name '.semgreprc' \) -print -quit 2>/dev/null | grep -q .; then
+        # CI-0033 / §27.1: decide on captured OUTPUT, never on a pipeline's exit
+        # status. `find … | grep -q .` would report "none survived" exactly when
+        # one did, if grep left before find's write returned — and that verdict
+        # is this gate's fail-open direction.
+        survivor="$(find "$SCAN_PATH" \( -type f -o -type l \) \( -name '.semgrepignore' -o -name '.semgreprc' \) -print -quit 2>/dev/null)"
+        if [ -n "$survivor" ]; then
           echo "::error::sast-scan: a PR-supplied semgrep ignore/rc file survived the strip — refusing to scan rather than accept attacker-controlled coverage (D23)."
           exit 1
         fi
