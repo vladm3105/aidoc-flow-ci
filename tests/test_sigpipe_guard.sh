@@ -214,29 +214,61 @@ code_only() { sed -E 's/^[[:space:]]*#.*$//' "$1"; }
 #   … | grep --quiet     (long form)
 #   … | grep -F -q       (q outside the first option cluster)
 #   … | grep -m1         (exits after N matches — same mechanism, no -q at all)
-BANNED_RE='\|[[:space:]]*grep([[:space:]]+-[^|]*)?[[:space:]]+(-[a-zA-Z]*q|--quiet|-m[[:space:]]*[0-9])'
+#   … | grep --max-count=1  (long form of -m; measured to evade the -m branch)
+BANNED_RE='\|[[:space:]]*grep([[:space:]]+-[^|]*)?[[:space:]]+(-[a-zA-Z]*q|--quiet|-m[[:space:]]*[0-9]|--max-count[[:space:]=]*[0-9])'
 
 # SCOPE = what §27.2 declares mandatory, not a hand-listed four. A guard whose
 # list is narrower than the rule it enforces is why ai-review.yml and
 # secret-scan.yml sat unflagged through this defect's whole lifetime.
+# The composite actions are enumerated ONCE, and the enumeration is deliberately
+# wider than any layout in the tree: GitHub accepts `action.yaml` as well as
+# `action.yml`, and `uses: ./actions/a/b` nests to any depth. An earlier version
+# of this block globbed `actions/*/action.yml` and then "checked" it against a
+# counter carrying the SAME depth and extension assumptions — so renaming one
+# action to `action.yaml`, or nesting it one level deeper, dropped it out of
+# scope with both sides agreeing and the assertion green. That is the failure
+# this block exists to catch, reproduced by the block itself.
+mapfile -t ACTION_FILES < <(find actions -type f \( -name 'action.yml' -o -name 'action.yaml' \) 2>/dev/null | sort)
+
+# §27.2 declares DIRECTORIES, so glob every executable-bearing file in each, not
+# the `*.sh` half. install/templates/**/*.yml is the highest-blast-radius surface
+# in the list — it is what lands in all nine consumer repos on the next tag.
 mapfile -t GUARDED < <(
   ls .github/workflows/*.yml scripts/*.sh tests/lib.sh 2>/dev/null
-  find install/templates -name '*.sh' -type f 2>/dev/null
-  ls actions/*/action.yml 2>/dev/null
+  find install/templates -type f \( -name '*.sh' -o -name '*.yml' -o -name '*.yaml' \) 2>/dev/null
+  [ "${#ACTION_FILES[@]}" -eq 0 ] || printf '%s\n' "${ACTION_FILES[@]}"
 )
 [ "${#GUARDED[@]}" -ge 20 ] || _r "guard scope collapsed to ${#GUARDED[@]} files — expected 20+"
 
-# A total floor cannot notice one SURFACE dropping out — 20+ is already met by
-# .github/workflows alone. The composite actions are v3's primary gate surface
-# and joined the scope late (they were added on this branch while §27 was being
-# written on main, so neither change saw the other), which is exactly the case a
-# total-only floor misses.
-_actions_in_scope=0
-for _f in "${GUARDED[@]}"; do case "$_f" in actions/*/action.yml) _actions_in_scope=$((_actions_in_scope + 1)) ;; esac; done
-_actions_on_disk="$(find actions -mindepth 2 -maxdepth 2 -name action.yml -type f 2>/dev/null | wc -l)"
-assert_eq "$_actions_in_scope" "$_actions_on_disk" \
-  "every actions/*/action.yml is in guard scope (§27.2)"
-[ "$_actions_on_disk" -ge 1 ] || _r "no composite action found — the actions/ surface vanished from the guard"
+# A total floor cannot notice one SURFACE dropping out — 20+ is met by
+# .github/workflows alone.
+assert_ok "[ ${#ACTION_FILES[@]} -ge 1 ]" "the actions/ surface is in guard scope (§27.2)"
+
+# INDEPENDENT ORACLE. The floor above is derived from the same find as the scope,
+# so it can only catch the surface vanishing whole — never one member leaving it.
+# This asks a different question of a different file set: every local composite
+# action that canon actually INVOKES must resolve to a guarded file. A new action
+# is reachable only by a `uses: ./actions/<path>`, so an unguarded one shows up
+# here even when the enumeration above misses its spelling.
+# Callers reference these as `vladm3105/aidoc-flow-ci/actions/<name>@ci/vX.Y.Z`,
+# NOT as `./actions/<name>` — the owner/repo form is what a consumer installs.
+# A `./actions/`-only pattern here matched zero files and made this whole oracle
+# vacuous while printing nothing, so the count is asserted below: an oracle that
+# silently examines an empty set is the failure mode it was added to prevent.
+mapfile -t USED_ACTIONS < <(
+  grep -rhoE 'uses:[[:space:]]*(\./|[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/)actions/[A-Za-z0-9._/-]+' \
+    .github/workflows install/templates actions 2>/dev/null |
+    sed -E 's#.*/actions/##; s#@.*##' | sort -u
+)
+assert_ok "[ ${#USED_ACTIONS[@]} -ge 1 ]" \
+  "the invoked-action oracle found at least one \`uses:\` to check"
+for _a in "${USED_ACTIONS[@]}"; do
+  _found=""
+  for _f in "${ACTION_FILES[@]}"; do
+    case "$_f" in "actions/$_a/action.yml" | "actions/$_a/action.yaml") _found=1 ;; esac
+  done
+  assert_eq "$_found" "1" "invoked action actions/$_a resolves to a guarded action file"
+done
 
 # ALLOWLIST: sites where the construct cannot invert, each with the reason.
 # An entry here is a claim that must stay true; it is not a way to silence a hit.
@@ -279,6 +311,15 @@ printf '%s\n' 'echo "$x" | grep -F -q y' > "$probe"
 assert_eq "$(probe_hits "$probe")" "1" "q outside the first option cluster is caught"
 printf '%s\n' 'echo "$x" | grep -m1 y' > "$probe"
 assert_eq "$(probe_hits "$probe")" "1" "-m1 is caught (exits early with no -q)"
+# These three spellings were unprobed, so a weakening of BANNED_RE that broke
+# them survived every probe. -Fq and -m 1 were already caught by the shipped
+# regex; --max-count=1 was NOT, and is the reason for the new alternation branch.
+printf '%s\n' 'echo "$x" | grep -Fq y' > "$probe"
+assert_eq "$(probe_hits "$probe")" "1" "q LAST in the option cluster is caught"
+printf '%s\n' 'echo "$x" | grep -m 1 y' > "$probe"
+assert_eq "$(probe_hits "$probe")" "1" "-m with a separated argument is caught"
+printf '%s\n' 'echo "$x" | grep --max-count=1 y' > "$probe"
+assert_eq "$(probe_hits "$probe")" "1" "--max-count=1 is caught (long form of -m)"
 printf '%s\n' 'grep -q needle somefile.txt' > "$probe"
 assert_eq "$(probe_hits "$probe")" "0" "grep -q READING A FILE is not flagged (no writer to signal)"
 

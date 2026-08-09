@@ -115,12 +115,20 @@ runs:
         # enforces it: if any ignore file still resolves, refuse to scan rather
         # than scan with attacker-controlled coverage.
         # CI-0033 / §27.1: decide on captured OUTPUT, never on a pipeline's exit
-        # status. `find … | grep -q .` would report "none survived" exactly when
-        # one did, if grep left before find's write returned — and that verdict
-        # is this gate's fail-open direction.
-        survivor="$(find "$SCAN_PATH" \( -type f -o -type l \) \( -name '.semgrepignore' -o -name '.semgreprc' \) -print -quit 2>/dev/null)"
-        if [ -n "$survivor" ]; then
-          echo "::error::sast-scan: a PR-supplied semgrep ignore/rc file survived the strip — refusing to scan rather than accept attacker-controlled coverage (D23)."
+        # status. This was `find … -print -quit | grep -q .`, and it was a
+        # MEASURED fail-open — not by EPIPE (one write, so grep cannot leave
+        # first) but by find's OWN status: `-quit` returns 1 after any traversal
+        # error, `pipefail` takes that 1 over grep's 0, and the `if` reads false
+        # while the survivor is sitting on stdout. Reproduced 1/1 with an
+        # unreadable directory beside a live .semgrepignore.
+        #
+        # `|| fst=$?` is load-bearing: a bare assignment takes the substitution's
+        # status and `set -e` (:82) would abort HERE, before the ::error:: below,
+        # with stderr already on /dev/null — a red step with no stated cause.
+        fst=0
+        survivor="$(find "$SCAN_PATH" \( -type f -o -type l \) \( -name '.semgrepignore' -o -name '.semgreprc' \) -print -quit 2>/dev/null)" || fst=$?
+        if [ -n "$survivor" ] || [ "$fst" -ne 0 ]; then
+          echo "::error::sast-scan: could not certify the tree clean of PR-supplied semgrep ignore/rc files — refusing to scan rather than accept attacker-controlled coverage (D23). survivor='${survivor}' find_rc=${fst}"
           exit 1
         fi
 

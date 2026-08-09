@@ -79,7 +79,14 @@ runs:
         # sparse or partial checkout diverges them. Comparing the two is what
         # distinguishes "no Markdown" from "Markdown that is not on disk".
         indexed=$(git ls-files -- '*.md' | wc -l)
-        ondisk=$(git ls-files -- '*.md' | while IFS= read -r f; do [ -f "$f" ] && printf '.'; done | wc -c)
+        # `if`, not `[ -f "$f" ] && printf '.'` — with `&&`, a final iteration
+        # whose file is MISSING leaves the loop's status at 1, `pipefail` hands
+        # that to the assignment and `set -e` kills the step before the
+        # diagnostic below. That is precisely the case this check exists to
+        # report: measured, the step exited 1 and said nothing. §27.1's rule is
+        # about a pipeline's STATUS being a decision; the reader here is `read`,
+        # not `grep`, so BANNED_RE cannot see it.
+        ondisk=$(git ls-files -- '*.md' | while IFS= read -r f; do if [ -f "$f" ]; then printf '.'; fi; done | wc -c)
         if [ "$indexed" -eq 0 ]; then
           echo "::notice::markdownlint: repository tracks no .md files — nothing to lint."
         elif [ "$ondisk" -lt "$indexed" ]; then

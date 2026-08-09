@@ -12,23 +12,44 @@ composite actions in one tree for the first time. Neither PR could have caught
 what that produced:
 
 - **`actions/sast-scan/action.yml` shipped the banned construct on a security
-  verdict.** The D23 post-condition — the one that refuses to scan when a
-  PR-supplied `.semgrepignore` survives the strip — decided on
-  `find … -print -quit | grep -q .`. Its inversion direction is *scan with
-  attacker-controlled coverage*. Latent rather than live (`-print -quit` issues
-  one write and exits, so the write returns before `grep` can be scheduled to
-  match), and converted anyway per §27's own rule that a latent site is one
-  refactor from a real writer. Now decides on captured output.
-- **The §27.2 scope did not name `actions/`, and the guard did not glob it.**
-  Both were written against the tree their author could see; v3's primary gate
-  surface did not exist on `main` at the time. `test_sigpipe_guard.sh` now
-  globs `actions/*/action.yml`.
-- **The total-file floor could not have noticed.** `[ ${#GUARDED[@]} -ge 20 ]`
-  is satisfied by `.github/workflows/` alone, so a whole surface can leave scope
-  without reddening anything — measured: dropping the glob loses 6 per-file
-  assertions silently (67 → 60 with the new check removed). The guard now
-  asserts every `actions/*/action.yml` **on disk** is in scope. Both mutations
-  killed: restoring the banned line reds 1, dropping the surface reds 1.
+  verdict, and it was a MEASURED fail-open.** The D23 post-condition — the one
+  that refuses to scan when a PR-supplied `.semgrepignore` survives the strip —
+  decided on `find … -print -quit | grep -q .`. Not by EPIPE (one write, so
+  `grep` cannot leave first) but by **find's own exit status**: `-quit` returns 1
+  after any traversal error while still printing the match, `pipefail` takes that
+  1 over `grep`'s 0, and the gate proceeds. Reproduced 1/1 with an unreadable
+  directory beside a live `.semgrepignore`. Direction: *scan with
+  attacker-controlled coverage*. Now decides on captured output, and refuses on a
+  non-zero `find` with the cause named — a bare assignment would have let
+  `set -e` kill the step before the `::error::`.
+- **§27 gained the general form:** `pipefail` returns the rightmost non-zero
+  status from **any** stage, so clearing a site by counting the writer's
+  `write(2)` calls is necessary and not sufficient. The measured/latent taxonomy
+  is keyed on EPIPE only.
+- **The §27.2 scope did not name `actions/`, and the guard did not glob it** —
+  both were written against the tree their author could see, on branches that
+  could not see each other.
+- **Two more gaps found while closing it, each wider than the original.** The
+  guard globbed `install/templates/**/*.sh` (4 files) while §27.2 declares the
+  *directory* — 31 `*.yml` templates, the ones installed into every consumer
+  repo, went unscanned. And the first version of the new floor shared its
+  enumeration with the glob it checked, so `action.yaml` and a depth-3 action
+  both escaped with the assertion green. The enumeration is now wider than any
+  layout in the tree, plus an independent oracle: every action canon `uses:`
+  must resolve to a guarded file. That oracle initially matched `./actions/…`
+  while callers all write `<owner>/<repo>/actions/…@<tag>`, so it silently
+  checked nothing — it now asserts its own input is non-empty.
+- **`actions/markdownlint/action.yml`: the sparse-checkout diagnostic could not
+  fire.** `… | while read f; do [ -f "$f" ] && printf '.'; done | wc -c` leaves
+  the loop's status at 1 when the last tracked `.md` is missing; `pipefail` plus
+  `set -e` killed the step before the `::error::` that names the cause. Measured.
+  Same §27.1 rule, a reader that is not `grep`, so the guard's regex cannot see
+  it.
+- **Guard coverage: 67 → 111 assertions.** Mutations killed, each measured:
+  restoring the banned line, dropping the `actions/` glob, renaming to
+  `action.yaml`, nesting an action at depth 3, and planting the construct in
+  `install/templates/workflows/`. `--max-count=1` was a confirmed hole in
+  `BANNED_RE` (the long form of the already-banned `-m N`) and is now caught.
 
 ### Fixed — OPS-0065 five-agent review of the v3 branch, ~90 findings folded
 
