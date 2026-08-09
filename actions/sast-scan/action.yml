@@ -116,21 +116,31 @@ runs:
         # than scan with attacker-controlled coverage.
         # CI-0033 / §27.1: decide on captured OUTPUT, never on a pipeline's exit
         # status. This was `find … -print -quit | grep -q .`, and it was a
-        # MEASURED fail-open — not by EPIPE (one write, so grep cannot leave
-        # first) but by find's OWN status: `-quit` returns 1 after any traversal
-        # error, `pipefail` takes that 1 over grep's 0, and the `if` reads false
-        # while the survivor is sitting on stdout. Reproduced 1/1 with an
-        # unreadable directory beside a live .semgrepignore.
+        # REPRODUCED fail-open — not by EPIPE (one write, so grep cannot leave
+        # first) but by find's OWN status: `-quit` returns non-zero when a
+        # traversal error is recorded before it quits, `pipefail` takes that over
+        # grep's 0, and the `if` reads false while the survivor sits on stdout.
+        # Whether the error is reached first depends on readdir order, which is
+        # neither alphabetical nor under your control — observed both ways on the
+        # same directory contents, so it is a live fail-open, not a certainty.
         #
         # `|| fst=$?` is load-bearing: a bare assignment takes the substitution's
-        # status and `set -e` (:82) would abort HERE, before the ::error:: below,
-        # with stderr already on /dev/null — a red step with no stated cause.
+        # status and `set -e` (:82) would abort HERE, before the ::error:: below
+        # — a red step with no stated cause.
         fst=0
-        survivor="$(find "$SCAN_PATH" \( -type f -o -type l \) \( -name '.semgrepignore' -o -name '.semgreprc' \) -print -quit 2>/dev/null)" || fst=$?
+        ferr="$(mktemp)"
+        survivor="$(find "$SCAN_PATH" \( -type f -o -type l \) \( -name '.semgrepignore' -o -name '.semgreprc' \) -print -quit 2>"$ferr")" || fst=$?
         if [ -n "$survivor" ] || [ "$fst" -ne 0 ]; then
-          echo "::error::sast-scan: could not certify the tree clean of PR-supplied semgrep ignore/rc files — refusing to scan rather than accept attacker-controlled coverage (D23). survivor='${survivor}' find_rc=${fst}"
+          # Newlines are legal in git paths and GitHub parses EVERY output line
+          # for `::command::`, so an unsanitised path here lets a PR forge a
+          # workflow command. Fold the path to one line before interpolating.
+          survivor_safe="$(printf '%s' "$survivor" | tr '\n\r' '??')"
+          find_err="$(tr '\n\r' '  ' < "$ferr" | cut -c1-300)"
+          rm -f "$ferr"
+          echo "::error::sast-scan: could not certify the tree clean of PR-supplied semgrep ignore/rc files — refusing to scan rather than accept attacker-controlled coverage (D23). survivor='${survivor_safe}' find_rc=${fst} find_stderr='${find_err}'"
           exit 1
         fi
+        rm -f "$ferr"
 
         # Static AST scan. --metrics off = NO telemetry. Explicit --config (registry
         # ruleset), NEVER repo-local auto-discovery → a PR cannot inject rules. semgrep

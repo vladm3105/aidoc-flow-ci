@@ -15,13 +15,16 @@ what that produced:
   verdict, and it was a MEASURED fail-open.** The D23 post-condition — the one
   that refuses to scan when a PR-supplied `.semgrepignore` survives the strip —
   decided on `find … -print -quit | grep -q .`. Not by EPIPE (one write, so
-  `grep` cannot leave first) but by **find's own exit status**: `-quit` returns 1
-  after any traversal error while still printing the match, `pipefail` takes that
-  1 over `grep`'s 0, and the gate proceeds. Reproduced 1/1 with an unreadable
-  directory beside a live `.semgrepignore`. Direction: *scan with
-  attacker-controlled coverage*. Now decides on captured output, and refuses on a
-  non-zero `find` with the cause named — a bare assignment would have let
-  `set -e` kill the step before the `::error::`.
+  `grep` cannot leave first) but by **find's own exit status**: `-quit` returns
+  non-zero when a traversal error is recorded before it quits, while still
+  printing the match; `pipefail` takes that over `grep`'s 0 and the gate
+  proceeds. Direction: *scan with attacker-controlled coverage*. Reachable, not
+  certain — it turns on `readdir` order, which is not alphabetical and not under
+  your control; the same directory contents were observed both ways. Now decides
+  on captured output, refuses on a non-zero `find` with `find`'s own stderr
+  quoted, and folds newlines out of the path before interpolating it into an
+  `::error::` (git paths may contain newlines, and GitHub parses every output
+  line for `::command::`).
 - **§27 gained the general form:** `pipefail` returns the rightmost non-zero
   status from **any** stage, so clearing a site by counting the writer's
   `write(2)` calls is necessary and not sufficient. The measured/latent taxonomy
@@ -29,27 +32,43 @@ what that produced:
 - **The §27.2 scope did not name `actions/`, and the guard did not glob it** —
   both were written against the tree their author could see, on branches that
   could not see each other.
-- **Two more gaps found while closing it, each wider than the original.** The
-  guard globbed `install/templates/**/*.sh` (4 files) while §27.2 declares the
-  *directory* — 31 `*.yml` templates, the ones installed into every consumer
-  repo, went unscanned. And the first version of the new floor shared its
-  enumeration with the glob it checked, so `action.yaml` and a depth-3 action
-  both escaped with the assertion green. The enumeration is now wider than any
-  layout in the tree, plus an independent oracle: every action canon `uses:`
-  must resolve to a guarded file. That oracle initially matched `./actions/…`
-  while callers all write `<owner>/<repo>/actions/…@<tag>`, so it silently
-  checked nothing — it now asserts its own input is non-empty.
+- **The guard was narrower than the rule in every direction, not just `actions/`.**
+  §27.2 declares four *directories*; the guard globbed `install/templates/**/*.sh`
+  (4 files, leaving 31 `*.yml` consumer templates unscanned), `scripts/*.sh`
+  (depth-1 only) and `.github/workflows/*.yml` (missing a `.yaml` sibling). Each
+  narrowing was measured to pass a planted construct. All four directories are
+  now globbed whole — `*.sh`/`*.bash`/`*.yml`/`*.yaml`, any depth — and §27.2
+  states that extension set as part of the contract.
+- **The fix reproduced its own defect twice before it held, which is the finding
+  worth keeping.** A check derived from the thing it checks cannot detect that
+  thing's truncation. (1) The floor shared the glob's depth/extension
+  assumptions. (2) Its replacement was asserted on a private enumeration instead
+  of the array actually iterated, so deleting the line that copied it into scope
+  left six action files unscanned at *111 passed, 0 failed*. (3) The per-surface
+  floors were driven by the surface list, so deleting an entry deleted its own
+  floor — *111 passed, 0 failed* again. Each was caught only by mutating and
+  re-running, never by reading. Three overlapping anchors now hold: the surface
+  list is pinned to a literal, each surface is counted against `GUARDED` itself,
+  and an independent oracle requires every action canon `uses:` to resolve to a
+  guarded file. That oracle initially matched `./actions/…` while callers all
+  write `<owner>/<repo>/actions/…@<tag>`, so it examined nothing and printed
+  nothing — it now asserts its own input is non-empty.
 - **`actions/markdownlint/action.yml`: the sparse-checkout diagnostic could not
   fire.** `… | while read f; do [ -f "$f" ] && printf '.'; done | wc -c` leaves
   the loop's status at 1 when the last tracked `.md` is missing; `pipefail` plus
   `set -e` killed the step before the `::error::` that names the cause. Measured.
   Same §27.1 rule, a reader that is not `grep`, so the guard's regex cannot see
   it.
-- **Guard coverage: 67 → 111 assertions.** Mutations killed, each measured:
-  restoring the banned line, dropping the `actions/` glob, renaming to
-  `action.yaml`, nesting an action at depth 3, and planting the construct in
-  `install/templates/workflows/`. `--max-count=1` was a confirmed hole in
-  `BANNED_RE` (the long form of the already-banned `-m N`) and is now caught.
+- **Guard coverage: 67 → 120 assertions, suite 17 suites / 1405 passed / 0
+  failed.** Mutations killed, each re-measured against the final code: restoring
+  the banned line; renaming an action to `action.yaml`; nesting one at depth 3;
+  planting the construct in `scripts/doc-maintainer/`, `actions/*/helper.sh`,
+  `.github/workflows/*.yaml` and `install/templates/workflows/`; and dropping
+  either `actions/` or `install/templates/` from the surface list. `--max-count=1`
+  and `--silent` were confirmed holes in `BANNED_RE` (documented synonyms for the
+  already-banned `-m N` and `-q`) and are now caught and probed. `grep -l` is
+  deliberately not banned, with the reason recorded in the file so it is not
+  re-litigated.
 
 ### Fixed — OPS-0065 five-agent review of the v3 branch, ~90 findings folded
 
