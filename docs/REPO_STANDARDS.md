@@ -436,6 +436,50 @@ families`, naming the unverified ones and stating explicitly that a green result
 does not mean they match canon. Under `--strict`, uncheckable is fatal: a
 release gate that cannot read the settings it gates on must not pass.
 
+### 4.2e Adopting a surface a consumer does not have — `install.sh --add-surface`
+
+**Three modes, three disjoint jobs, and the third existed only after a shipped
+release turned out to be uninstallable.**
+
+| Mode | What it touches |
+|---|---|
+| bootstrap (no flag) | installs the `auto_install: true` set on a cold start |
+| `--update` | re-applies template bodies for files the consumer **already has** — it never introduces a new surface |
+| `--add-surface <path>` | installs a manifested surface the consumer **lacks** — never overwrites one it has |
+
+**An `auto_install: false` surface therefore had no install path at all** until
+`--add-surface`: bootstrap skipped it, `--update` skipped it by design, and
+`--repin` only rewrites tag strings. `ci/v3.0.0`'s three consolidating callers
+shipped in that state — manifested, documented, and impossible to adopt
+([#429](https://github.com/vladm3105/aidoc-flow-ci/issues/429)). **Whenever a new
+surface is added with `auto_install: false`, state which mode installs it**, or
+it is shipped-and-unreachable; `tests/test_install.sh` asserts the route exists.
+
+**Do not "fix" this by flipping `auto_install` to true.** Bootstrap runs on repos
+that still carry the surfaces the new one replaces, so auto-installing would give
+them both — doubled jobs on a serial self-hosted pool, and two sets of contexts
+where the add-new → observe-green → remove-old sequence assumes the new one is
+added deliberately. **Adoption of a replacing surface is a deliberate act.**
+
+`--add-surface` accordingly:
+
+- **resolves the visibility variant from the repo's live visibility**, never from
+  `--visibility`, and refuses to guess — the same rule as `--update`, because
+  picking wrong pins a private consumer to `ubuntu-latest` and the job queues
+  forever (D1, OPS-0049);
+- **never overwrites** — replacing an existing caller is `--update`'s job and its
+  own hazard (FT-9);
+- **warns when a surface it `replaces` is still installed**, using the manifest's
+  `replaces` array. The warning is advisory: running both briefly is a required
+  step of the migration, not a mistake;
+- **arms no required context.** Branch protection and rulesets are untouched,
+  because arming a context before its producer is observed green is the one
+  migration step with no `--admin`-free exit.
+
+**`replaces` is part of the manifest contract.** An entry naming a caller canon
+does not ship warns about nothing, forever, with nobody the wiser —
+`tests/test_install.sh` asserts every entry resolves.
+
 ### 4.3 Reusable workflows install tools as BINARIES, never third-party actions
 
 **Canon reusable workflows may `uses:` only `actions/*`, `github/*`, and

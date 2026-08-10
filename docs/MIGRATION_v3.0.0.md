@@ -111,12 +111,41 @@ CI_TAG=ci/v3.0.0 bash install.sh <owner/repo> --repin
 `--repin` rewrites `uses:` tag strings only. It does **not** deliver a change
 that lives in a caller *body*, and it does not add new files.
 
-### 2. Install the v3 callers — manually, for now
+### 2. Install the v3 callers
 
-**There is no tooling path yet.** The v3 callers are `auto_install: false`, so
-bootstrap does not add them and `--update` never introduces a surface the
-consumer did not already have. The wizard that closes this is PLAN-025 P8
-remainder and is not shipped. Until it is, fetch them directly:
+<!-- sync-version-refs:ignore-start -->
+<!-- CI-0024: the tag here is the SUBJECT of this document. -->
+```sh
+CI_TAG=ci/v3.0.0 bash install.sh <owner/repo> \
+  --add-surface .github/workflows/quick-gates.yml \
+  --add-surface .github/workflows/scanners.yml \
+  --add-surface .github/workflows/links-external.yml
+```
+<!-- sync-version-refs:ignore-end -->
+
+The files land in a **fresh clone** the run prints
+(`aidoc-flow-ci-bootstrap-<pid>/consumer/`), not in your current checkout —
+commit and push from there. `git status` in the directory you launched from will
+look clean, which is not the mode having done nothing.
+
+`--add-surface` is the route for a surface you do not already have — bootstrap
+installs only the `auto_install: true` set, and `--update` deliberately never
+introduces a new one. It:
+
+- **resolves the public/private variant from your repo's live visibility**, so
+  you cannot pick wrong (a private repo left on the public variant pins
+  `ubuntu-latest`, and this account has no GitHub-hosted minutes for private
+  repos — the job **queues forever**, and `timeout-minutes` cannot fire on a job
+  that never starts);
+- **never overwrites** an existing file — refreshing one is `--update`'s job;
+- **warns** when a v2 caller it replaces is still installed, because both will
+  run until you remove them. That is expected during step 3, not a mistake;
+- **arms nothing.** Branch protection and rulesets are untouched. Step 4 is
+  yours.
+
+#### If you are pinned to a release before `--add-surface` existed
+
+Fetch them directly. Take the variant that matches your visibility:
 
 <!-- sync-version-refs:ignore-start -->
 <!-- CI-0024: same reason as step 1 — the tag in this URL is what the reader is
@@ -137,11 +166,9 @@ curl -fsSL "$BASE/scanners.yml"        -o .github/workflows/scanners.yml
 ```
 <!-- sync-version-refs:ignore-end -->
 
-**Take the variant that matches your visibility.** A private repo left on the
-public variant pins `ubuntu-latest`, and this account has no GitHub-hosted
-minutes for private repos (OPS-0049) — the job **queues forever**, and
-`timeout-minutes` cannot fire on a job that never starts. The symptom is a check
-pinned on "Expected — Waiting for status to be reported", not a failure.
+The symptom of picking the wrong variant is a check pinned on "Expected —
+Waiting for status to be reported", not a failure. `--add-surface` above removes
+that choice; this fallback does not.
 
 Do **not** delete the v2 callers yet. Steps 3–4 depend on both being present.
 

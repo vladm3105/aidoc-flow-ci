@@ -206,7 +206,12 @@
       },
       "substitute": [],
       "safe_to_replace": true,
-      "auto_install": false
+      "auto_install": false,
+      "replaces": [
+        ".github/workflows/pre-commit.yml",
+        ".github/workflows/markdown-lint.yml",
+        ".github/workflows/links.yml"
+      ]
     },
     {
       "path": ".github/workflows/scanners.yml",
@@ -214,7 +219,12 @@
       "_note": "PLAN-025 P3a: consolidates dep-scan + trivy-scan + sast-scan into ONE job. secret-scan is deliberately NOT here — it is ubuntu-latest and fork-VISIBLE, and a merged job would report `skipped` on fork PRs, which SATISFIES a required context, so gitleaks would go green having never run. Emits the BARE context `scanners`. UNIFORM PROTECTED (PLAN-014 §1a): self-hosted on public and private alike, matching the v2 callers — so a visibility flip is a no-op and NO visibility_variants are needed (the PLAN-013 AI-flows precedent).",
       "substitute": [],
       "safe_to_replace": true,
-      "auto_install": false
+      "auto_install": false,
+      "replaces": [
+        ".github/workflows/dep-scan.yml",
+        ".github/workflows/trivy-scan.yml",
+        ".github/workflows/sast-scan.yml"
+      ]
     },
     {
       "path": ".github/workflows/links-external.yml",
@@ -226,7 +236,10 @@
       },
       "substitute": [],
       "safe_to_replace": true,
-      "auto_install": false
+      "auto_install": false,
+      "replaces": [
+        ".github/workflows/links.yml"
+      ]
     },
     {
       "path": ".github/actionlint.yaml",
@@ -302,7 +315,8 @@
       "template": "pre_push_check.sh",
       "substitute": [],
       "safe_to_replace": false,
-      "auto_install": true
+      "auto_install": true,
+      "executable": true
     },
     {
       "path": "CLAUDE.md",
