@@ -83,6 +83,27 @@ substitution, so a half-branded file is never written. Only files
 `install.sh` newly writes are substituted — an existing `config.json`,
 `CLAUDE.md`, or `.github/CODEOWNERS` is preserved untouched.
 
+### Adding a surface the consumer does not have
+
+**`--update` is the wrong tool for this and does nothing** — it re-applies
+bodies for files the consumer already has and deliberately never introduces a
+new surface. Bootstrap only installs the `auto_install: true` set. A surface
+that is neither is reachable only through `--add-surface`, and before that mode
+existed the `ci/v3.0.0` callers shipped manifested and uninstallable
+([#429](https://github.com/vladm3105/aidoc-flow-ci/issues/429)):
+
+```bash
+CI_TAG=ci/vX.Y.Z bash install.sh <owner/repo> \
+  --add-surface .github/workflows/quick-gates.yml \
+  --add-surface .github/workflows/scanners.yml
+```
+
+It resolves the public/private variant from the repo's **live** visibility and
+refuses to guess, never overwrites an existing file, warns when a surface it
+replaces is still installed, and arms no required status check. Files land in
+the working clone the run prints; commit from there. Full contract:
+[`../docs/REPO_STANDARDS.md`](../docs/REPO_STANDARDS.md) §4.2e.
+
 ### Updating an already-adopted consumer
 
 Bootstrap adds new surfaces and preserves everything. To pull a *newer*

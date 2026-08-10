@@ -974,7 +974,9 @@ updated and its private sibling was not.
 
 ## 8. Readiness — what is left, stated plainly
 
-**NOT READY to release. Ready to keep building, and the branch is safe to land.**
+**NOT READY to release, and as of 2026-08-09 every remaining blocker on the
+critical path is FOUNDER-OWNED or a later phase — the build side of P6/P8 is
+discharged.** Ready to keep building, and the branch is safe to land.
 
 ### Done
 
@@ -997,10 +999,10 @@ unblocks P7**.
 | --- | --- | --- |
 | ~~1~~ | ~~P2 incomplete~~ — **DONE 2026-08-08.** All six actions ported; the `scanners` caller added with the D27 job-level fork guard, per-category SARIF uploads and a collect-then-fail verdict | ✅ |
 | 2 | **P5 not started** — the whole v3 documentation set, plus the §2→`RULES.md` mapping §4.4 requires | build |
-| 3 | **P6** — release mechanics: `MIGRATION_v3.0.0.md`, the MAJOR-bump LiteLLM smoke, and the 🔴 **founder-executed FT-30 cold-start dry run**, which is owed before any tag | **founder** |
+| 3 | **P6 — partly discharged 2026-08-09.** `MIGRATION_v3.0.0.md` **written** (mapping, add-new→observe→remove-old across protection *and* rulesets, runner-image prerequisite, rollback; CI-0024 marker-guarded and verified against a simulated `ci/v3.1.0` cut). FT-30 **preflight is clean** — `scripts/ft30-dry-run.sh --check` reports the gate owed, `CI_TAG` resolvable and pushed, `gh` authenticated; only the real run remains, and it writes to a throwaway repo, which is a founder act. **LiteLLM smoke cannot run at all: canon has ZERO registered runners** (`gh api repos/vladm3105/aidoc-flow-ci/actions/runners --jq '.total_count'` → 0), so a dispatch onto the pool would queue forever. The 2026-07-13 failures were a mis-dispatch onto `ubuntu-latest`, which cannot reach the bridge proxy at `172.17.0.1` (CI-0017) — not a code defect. Register a pool against canon, then dispatch with the input defaults plus `allow_insecure_http: true` | **founder** |
 | 4 | **P7** — the per-repo required-context migration. Now *unblocked* by P8, but still the only irreversible phase | founder + build |
 | 5 | **P9 not started** — rollback. Ten repos hand-run with no script is not a plan | build |
-| 6 | **P8 remainder** — `deploy-ci-wizard.sh` and the `auto_install` move. (D44 is folded into blocker 8, where the measurement for it lives.) | build |
+| 6 | **P8 remainder — the `auto_install` move is DONE 2026-08-09**, and it was worse than "remaining work": the three v3 callers were `auto_install: false` with **no install path at all** — bootstrap installs only the auto_install set, `--update` never introduces a new surface, `--repin` rewrites strings. Shipped and uninstallable ([#429](https://github.com/vladm3105/aidoc-flow-ci/issues/429)). Closed by `install.sh --add-surface`, a general third mode: live-visibility variant resolution, never overwrites, warns via the manifest's new `replaces` array, arms nothing. **NOT** closed by flipping `auto_install`, which would install v3 alongside v2 on any re-bootstrap. `deploy-ci-wizard.sh` remains | build |
 | 7 | **PLAN-024 Phases A/B/C ship first** (§7) — building v3 around `doc-maintainer` while it is being deleted wastes the work | build |
 | ~~8~~ | ~~OPS-0065 medium/low tail~~ — **FOLDED 2026-08-08 (cycle 2).** The D11 guard now counts hooks *selected at the runner's stage* and refuses at zero (verified against the reproduced manual-only config); `links-external` gained a report step that warns and writes a summary without failing; `markdownlint`'s guard compares the index against the worktree and errors on a sparse checkout; **D44 closed** — the completeness guard discovers `actions/*/action.yml` and all six now carry inventory rows (mutation-verified: an unaccounted action fails it) | ✅ |
 

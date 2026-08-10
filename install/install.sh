@@ -25,6 +25,12 @@
 #   re-pin, NEVER --update which re-applies the template body; FT-9):
 #   CI_TAG=ci/v2.16.0 bash install.sh <owner/repo> --repin
 #   CI_TAG=ci/v2.16.0 bash install.sh <owner/repo> --visibility private
+#   Add a surface the consumer does NOT have (the only route for an
+#   `auto_install: false` file — bootstrap installs only the auto_install set and
+#   --update never introduces a new surface, which is how the v3 callers shipped
+#   uninstallable; #429). Repeatable. Never overwrites, arms nothing:
+#   bash install.sh <owner/repo> --add-surface .github/workflows/quick-gates.yml \
+#                                --add-surface .github/workflows/scanners.yml
 #   Verify server-side standards (no install; exits non-zero on genuine drift —
 #   PLAN-015 B2; needs an admin-scoped gh token to check branch protection):
 #   bash install.sh <owner/repo> --verify-standards --tier <governance|product|ops|umbrella|bootstrap>
@@ -78,6 +84,7 @@ NONINTERACTIVE=0
 # bootstrap instead of printing a silent "apply branch protection" reminder).
 MODE_VERIFY=0
 TIER=""
+ADD_SURFACES=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --visibility) VISIBILITY="$2"; shift 2 ;;
@@ -90,6 +97,12 @@ while [ $# -gt 0 ]; do
     # re-pin (FT-9: it clobbers customized callers → runner-self brick).
     --repin) MODE_REPIN=1; shift ;;
     --verify-standards) MODE_VERIFY=1; shift ;;
+    # --add-surface: install a manifested surface the consumer does NOT have.
+    # The only path for an `auto_install: false` file — bootstrap installs only
+    # the auto_install set, and --update never introduces a new surface, so v3's
+    # callers had no install path at all (#429). Repeatable. Adds only; never
+    # overwrites, never arms a required context.
+    --add-surface) ADD_SURFACES+=("${2:?--add-surface requires a path}"); shift 2 ;;
     --tier) TIER="${2:?--tier requires a value}"; shift 2 ;;
     --non-interactive) NONINTERACTIVE=1; shift ;;
     # Strip a leading @ so `--codeowner @org` and `--codeowner org` are
@@ -106,6 +119,19 @@ if [ "$MODE_UPDATE" = 1 ] && [ "$MODE_REPIN" = 1 ]; then
 fi
 if [ "$MODE_VERIFY" = 1 ] && { [ "$MODE_UPDATE" = 1 ] || [ "$MODE_REPIN" = 1 ]; }; then
   echo "--verify-standards is standalone (no install) — not combinable with --update/--repin" >&2; exit 1
+fi
+# --add-surface is its own mode: it ADDS files the consumer lacks, while
+# --update re-applies bodies of files they have and --repin rewrites tag strings
+# in place. Combining them would make "what did this run do to my tree?"
+# unanswerable, which is the question FT-9 was lost on.
+if [ "${#ADD_SURFACES[@]}" -gt 0 ] && { [ "$MODE_UPDATE" = 1 ] || [ "$MODE_REPIN" = 1 ] || [ "$MODE_VERIFY" = 1 ]; }; then
+  echo "--add-surface is standalone — not combinable with --update/--repin/--verify-standards" >&2; exit 1
+fi
+# --tier is meaningless here: this mode exits before any tier-driven step, and
+# accepting a flag it silently ignores is how an operator concludes branch
+# protection was applied. Reject rather than ignore.
+if [ "${#ADD_SURFACES[@]}" -gt 0 ] && [ -n "$TIER" ]; then
+  echo "--tier has no effect with --add-surface (this mode arms nothing); drop it" >&2; exit 1
 fi
 if [ -n "$TIER" ]; then
   case "$TIER" in governance|product|ops|umbrella|bootstrap) ;; *) echo "--tier must be one of: governance|product|ops|umbrella|bootstrap" >&2; exit 1 ;; esac
@@ -264,6 +290,15 @@ elif [ "$MODE_REPIN" = 1 ]; then
   echo "==> re-pinning $TARGET_REPO callers to @ $CI_TAG (version-only; topology preserved)"
 elif [ "$MODE_UPDATE" = 1 ]; then
   echo "==> updating $TARGET_REPO against canon @ $CI_TAG (non-interactive=$NONINTERACTIVE)"
+elif [ "${#ADD_SURFACES[@]}" -gt 0 ]; then
+  # DELIBERATELY DOES NOT PRINT $VISIBILITY. This mode resolves the variant from
+  # the repo's LIVE visibility and ignores the flag, so echoing the flag here
+  # printed a contradiction four lines above the real value — on a public repo
+  # invoked with `--visibility private`, "visibility=private" followed by
+  # "resolving templates for visibility=public". In the one mode whose headline
+  # safety claim is that you cannot pick wrong, and given OPS-0049/D1 is itself a
+  # visibility-confusion incident, that is worth not saying at all.
+  echo "==> adding surface(s) to $TARGET_REPO from canon @ $CI_TAG (variant resolved from LIVE visibility)"
 else
   echo "==> bootstrapping $TARGET_REPO (visibility=$VISIBILITY, tag=$CI_TAG)"
 fi
@@ -678,6 +713,180 @@ repin_mode() {
   echo "==> re-pin summary: $changed file(s) bumped to @${target}"
   return 0
 }
+
+# --- add-surface -------------------------------------------------------------
+#
+# THE MISSING THIRD MODE. Bootstrap installs only the `auto_install: true`
+# callers; `--update` explicitly never introduces a surface the consumer does
+# not already have. So an `auto_install: false` surface — every v3 caller — had
+# NO install path at all: not bootstrap, not update, not repin. A release nobody
+# can install is not released (aidoc-flow-ci#429).
+#
+# Why not just flip `auto_install` to true: bootstrap runs on repos that still
+# carry the six v2 callers, so auto-installing v3 would give them BOTH — double
+# the jobs, two sets of contexts, and the add-new/observe/remove-old sequence
+# in docs/MIGRATION_v3.0.0.md silently skipped. Adoption has to be a deliberate
+# act, which is what this mode is.
+#
+# It is GENERAL, not v3-specific: any manifested surface the consumer lacks.
+# That matters because the same gap will exist for the next opt-in surface.
+add_surface_mode() {
+  local vis detected
+  # Resolve from the LIVE repo, never from --visibility, and refuse to guess —
+  # same rule as update_mode. Picking the wrong variant is how a private repo
+  # ends up on ubuntu-latest and queues forever (OPS-0049, D1).
+  if ! detected=$(gh repo view "$TARGET_REPO" --json isPrivate --jq '.isPrivate' 2>/dev/null); then
+    echo "  FAIL  gh repo view failed for $TARGET_REPO — cannot resolve visibility (refusing to guess)" >&2
+    return 1
+  fi
+  case "$detected" in
+    true)  vis="private" ;;
+    false) vis="public" ;;
+    *)     echo "  FAIL  unexpected isPrivate='$detected' — refusing to guess visibility" >&2; return 1 ;;
+  esac
+  echo "==> add-surface: resolving templates for visibility=$vis"
+
+  local manifest; manifest=$(mktemp)
+  fetch_template "manifest.json" "$manifest" || { rm -f "$manifest"; return 1; }
+
+  local rc=0 added=0 want
+  for want in "${ADD_SURFACES[@]}"; do
+    local row tmpl replaces exec_bit
+    # `path<TAB>resolved_template<TAB>space-separated replaces`. Unknown path
+    # yields nothing, which is an ERROR below, not a silent skip.
+    row=$(python3 - "$manifest" "$vis" "$want" <<'PYADD'
+import sys, json
+manifest, vis, want = sys.argv[1], sys.argv[2], sys.argv[3]
+m = json.load(open(manifest, encoding="utf-8"))
+for f in m["files"]:
+    if f["path"] == want:
+        tmpl = f.get("visibility_variants", {}).get(vis, f["template"])
+        # `replaces` is NEWLINE-joined into one field and split with mapfile by
+        # the caller: an unquoted `for r in $replaces` word-splits AND
+        # pathname-expands, so a future entry containing a glob metacharacter
+        # would match against the consumer's tree.
+        # CO-REPLACERS. `links.yml` carries TWO jobs and is replaced JOINTLY —
+        # `quick-gates` takes its internal/offline half, `links-external` takes
+        # the external half. Modelling that as two independent `replaces` edges
+        # made the warning say "do not delete before the new context is green",
+        # which reads as "safe to delete after" — and deleting `links.yml` with
+        # only `quick-gates` installed silently loses external link checking,
+        # with no check reporting anything because nothing produces it.
+        # Emit, per replaced path, every surface that claims it.
+        co = []
+        for r in f.get("replaces") or []:
+            claimers = sorted(g["path"] for g in m["files"] if r in (g.get("replaces") or []))
+            co.append("%s|%s" % (r, ",".join(claimers)))
+        print("\t".join([f["path"], tmpl, "\\n".join(co),
+                         "1" if f.get("executable") else "0"]))
+        break
+PYADD
+) || { echo "  FAIL  could not parse manifest.json" >&2; rm -f "$manifest"; return 1; }
+
+    if [ -z "$row" ]; then
+      echo "  FAIL  '$want' is not a manifested surface — check the path against install/templates/manifest.json" >&2
+      rc=1; continue
+    fi
+    tmpl=$(printf '%s' "$row" | cut -f2)
+    replaces=$(printf '%s' "$row" | cut -f3)
+    exec_bit=$(printf '%s' "$row" | cut -f4)
+
+    # NEVER overwrite. Replacing an existing caller is `--update`'s job and its
+    # own hazard (FT-9 clobbered customized callers into a runner-self brick).
+    # This mode only ever ADDS.
+    # `-e` OR `-L`, not `-f`. `[ -f ]` is false for a DIRECTORY at the target, so
+    # the run proceeded, `mv` deposited the temp file INSIDE it, and the mode
+    # reported "1 file(s) added" having installed nothing — a fail-open in the
+    # mode whose whole contract is that you know what it did. `-L` catches a
+    # dangling symlink, which `-e` alone does not.
+    if [ -e "$WORK_DIR/consumer/$want" ] || [ -L "$WORK_DIR/consumer/$want" ]; then
+      echo "  skip      $want (already present — use --update to refresh it, never this)"
+      continue
+    fi
+
+    # THE DUPLICATE-RUN WARNING. Adding v3 while the v2 callers it replaces are
+    # still installed runs both: doubled jobs on a serial self-hosted pool, and
+    # two sets of contexts where the migration sequence assumes you add the new
+    # one deliberately. Warn, do not refuse — the migration guide's step 3 tells
+    # you to run both briefly and observe green before removing the old ones.
+    local still="" r
+    local -a repl_arr=()
+    [ -z "$replaces" ] || mapfile -t repl_arr < <(printf '%b\n' "$replaces")
+    local joint=""
+    for r in "${repl_arr[@]}"; do
+      [ -n "$r" ] || continue
+      local rpath="${r%%|*}" claimers="${r#*|}"
+      [ -e "$WORK_DIR/consumer/$rpath" ] || continue
+      still="$still $rpath"
+      # More than one claimer means this old caller is replaced JOINTLY; naming
+      # only the one being installed would licence a deletion that drops a check.
+      case "$claimers" in
+        *,*) joint="$joint
+            $rpath is replaced JOINTLY by: ${claimers//,/, } — ALL of them must be
+            installed and green before you delete it, or you silently lose whatever
+            the missing one covers." ;;
+      esac
+    done
+    if [ -n "$still" ]; then
+      echo "  WARN      $want replaces surfaces still installed:$still"
+      echo "            Both will run until you remove them. That is EXPECTED during"
+      echo "            step 3 of docs/MIGRATION_v3.0.0.md (observe green, then remove)."
+      echo "            Do NOT delete them before the new context is green."
+      [ -z "$joint" ] || printf '%s\n' "$joint"
+    fi
+
+    # RAW curl + validate_fetched, NOT fetch_template — the same shape
+    # update_mode uses at :594, and for the same reason: `fetch_template`'s first
+    # argument must stay a LITERAL in this file. tests/test_install.sh scrapes
+    # every call site and cross-checks the bootstrap set against the manifest, so
+    # a variable there disarms that cover for every caller, not just this one.
+    # (Caught by that guard on the first draft of this mode.)
+    local fetched
+    fetched=$(mktemp)
+    if ! curl -fsSL "${TEMPLATE_BASE}/${tmpl}" -o "$fetched"; then
+      echo "  FAIL  could not fetch ${tmpl} for $want" >&2
+      rm -f "$fetched"; rc=1; continue
+    fi
+    # FT-39: an empty or HTML-200 body must never be written over a gate.
+    validate_fetched "$fetched" "$tmpl" || { rm -f "$fetched"; rc=1; continue; }
+    substitute_placeholders "$fetched"
+    mkdir -p "$(dirname "$WORK_DIR/consumer/$want")"
+    if ! mv "$fetched" "$WORK_DIR/consumer/$want"; then
+      echo "  FAIL  could not write $want" >&2
+      rm -f "$fetched"; rc=1; continue
+    fi
+    # MODE BIT FROM THE MANIFEST, not from mktemp. `mktemp` creates 0600 and `mv`
+    # preserves it, so every added file landed non-readable — and for
+    # `scripts/pre_push_check.sh` that is not cosmetic: bootstrap `chmod +x`es it
+    # (:988) because pre-commit's `language: script` hook cannot exec it
+    # otherwise. Adding it through this mode committed it at 100644 and every
+    # clone's canon hook failed, while the mode reported success.
+    if [ "$exec_bit" = "1" ]; then chmod 755 "$WORK_DIR/consumer/$want"
+    else chmod 644 "$WORK_DIR/consumer/$want"; fi
+    echo "  add       $want (from $tmpl)$([ "$exec_bit" = "1" ] && printf ' [executable]')"
+    added=$((added + 1))
+  done
+  rm -f "$manifest"
+
+  echo ""
+  echo "==> add-surface summary: $added file(s) added"
+  # THIS MODE ARMS NOTHING. Branch protection and rulesets are untouched on
+  # purpose: arming a required context before its producer has been observed
+  # green is the one step of the migration with no --admin-free exit.
+  echo "    Branch protection and rulesets were NOT touched. Next:"
+  echo "      1. commit + push, open a PR, and confirm the new job(s) run and pass"
+  echo "      2. only then add the context(s) to protection AND rulesets"
+  echo "      3. remove the old contexts, then delete the old caller files"
+  echo "    Full sequence: docs/MIGRATION_v3.0.0.md"
+  return "$rc"
+}
+
+if [ "${#ADD_SURFACES[@]}" -gt 0 ]; then
+  if add_surface_mode; then add_rc=0; else add_rc=$?; fi
+  echo ""
+  echo "==> add-surface done (rc=$add_rc). Working copy: $WORK_DIR/consumer"
+  exit "$add_rc"
+fi
 
 if [ "$MODE_REPIN" = 1 ]; then
   if repin_mode; then repin_rc=0; else repin_rc=$?; fi

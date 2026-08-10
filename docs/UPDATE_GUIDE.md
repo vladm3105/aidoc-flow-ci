@@ -70,11 +70,20 @@ interrupted run never leaves a truncated file.
 change different surfaces, and reaching for the wrong one is the single most
 expensive mistake in a rollout:
 
-| | `--repin` | `--update` |
-| --- | --- | --- |
-| changes | the `@ci/vX.Y.Z` string, nothing else | the whole **body** of every `safe_to_replace` file |
-| consumer customization | preserved by construction | **replaced** (16 surfaces: all 15 workflow callers + `dependabot.yml`) |
-| use for | picking up a new canon *version* | adopting a canon *topology* change (new job, changed inputs) |
+There are in fact **three** operations, and the third exists because the pair
+above cannot express "I need a surface I do not have":
+
+| | `--repin` | `--update` | `--add-surface` |
+| --- | --- | --- | --- |
+| changes | the `@ci/vX.Y.Z` string, nothing else | the whole **body** of every `safe_to_replace` file the consumer HAS | adds a manifested surface the consumer LACKS |
+| consumer customization | preserved by construction | **replaced** (16 surfaces: all 15 workflow callers + `dependabot.yml`) | untouched — it never overwrites |
+| use for | picking up a new canon *version* | adopting a canon *topology* change (new job, changed inputs) | adopting an `auto_install: false` surface (the v3 callers) |
+
+**`--update` will silently do nothing for a surface you lack** — it walks only
+files already present. That is by design, and it is how the `ci/v3.0.0` callers
+came to be manifested and uninstallable
+([#429](https://github.com/vladm3105/aidoc-flow-ci/issues/429)). Full contract:
+[`REPO_STANDARDS.md`](REPO_STANDARDS.md) §4.2e.
 
 **Default to `--repin`.** A consumer that only needs the new canon version
 never needs `--update`. Body adoption is the exception, taken deliberately when

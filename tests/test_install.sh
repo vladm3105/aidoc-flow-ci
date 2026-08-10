@@ -619,4 +619,166 @@ PYEOF
 )"
 assert_eq "$_ft57_scope" "" "every manifest path is inside the backup scope (.github/ or the root list)"
 
+echo ""
+echo "== every manifested surface has SOME install path (#429) =="
+# THE GENERAL FORM OF #429, not a v3 check. A surface reaches a consumer by
+# exactly one of three routes: bootstrap (auto_install:true), `--update` (only
+# files they ALREADY have), or `--add-surface`. The v3 callers were
+# auto_install:false and predated --add-surface, so they had NO route at all —
+# manifested, shipped, and uninstallable. Assert the invariant rather than the
+# instance, so the next opt-in surface cannot repeat it.
+assert_ok "grep -q -- '--add-surface' '$INSTALL'" \
+  "install.sh offers --add-surface (the route for auto_install:false surfaces)"
+_optin="$(python3 - "$ROOT/install/templates/manifest.json" <<'PYEOF'
+import sys, json
+m = json.load(open(sys.argv[1], encoding="utf-8"))
+print(" ".join(f["path"] for f in m["files"]
+                if f.get("template", "").startswith("workflows/")
+                and not f.get("auto_install")))
+PYEOF
+)"
+assert_ok "[ -n '$_optin' ]" "found opt-in workflow surfaces to check (got: ${_optin:-none})"
+# Resolution-by-path is asserted BEHAVIOURALLY below — the mode is driven with a
+# real manifest path and the installed file inspected. An earlier version grepped
+# install.sh for the python source string `f["path"] == want`, which is a
+# tripwire, not a test: it survives any refactor that keeps the string and breaks
+# the logic, and reds on any refactor that changes the string and keeps the logic.
+
+echo ""
+echo "== --add-surface: DRIVEN, not grepped =="
+# The first version of this block asserted source strings — `grep -q` for the
+# never-overwrite message and for a python fragment. Two mutations that each
+# disarmed a documented safety property survived it at 124 passed / 0 failed:
+# stubbing the collision guard to `if false`, and dropping variant resolution so
+# a private consumer gets the ubuntu-latest caller and queues forever (D1). That
+# is this file's own doctrine (:20-23) violated in this file: "a test carrying
+# its own copy passes happily while the installer rots."
+#
+# So: run install.sh for real against stubbed `gh` and `curl`. The stubs resolve
+# canon templates from THIS working tree, so what is asserted is the installer's
+# actual resolution, not a re-implementation.
+ASTUB="$TMP/stub"; mkdir -p "$ASTUB"
+cat > "$ASTUB/curl" <<'STUBCURL'
+#!/usr/bin/env bash
+url=""; out=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2 ;;
+    -*) shift ;;
+    *) url="$1"; shift ;;
+  esac
+done
+src="$REPO_ROOT/install/templates/${url#*/install/templates/}"
+[ -f "$src" ] || { echo "stub curl: 404 $url" >&2; exit 22; }
+if [ -n "$out" ]; then cp "$src" "$out"; else cat "$src"; fi
+STUBCURL
+cat > "$ASTUB/gh" <<'STUBGH'
+#!/usr/bin/env bash
+if [ "$1" = "repo" ] && [ "$2" = "view" ]; then echo "${FAKE_ISPRIVATE:-false}"; exit 0; fi
+if [ "$1" = "repo" ] && [ "$2" = "clone" ]; then
+  dest="$4"; mkdir -p "$dest/.github/workflows"
+  [ -z "${PREEXISTING:-}" ] || printf 'LOCAL EDIT DO NOT CLOBBER
+' > "$dest/$PREEXISTING"
+  ( cd "$dest" && git init -q . && git config user.email t@t && git config user.name t ) || true
+  exit 0
+fi
+exit 0
+STUBGH
+chmod +x "$ASTUB/curl" "$ASTUB/gh"
+
+_add_run() {  # $1=isprivate  $2..=extra args ; echoes the WORK_DIR
+  local priv="$1"; shift
+  local wd; wd="$(mktemp -d "$TMP/wd.XXXXXX")"
+  ( cd "$wd" && PATH="$ASTUB:$PATH" REPO_ROOT="$ROOT" FAKE_ISPRIVATE="$priv"       WORK_DIR="$wd" CI_TAG="ci/v9.9.9" bash "$INSTALL" owner/repo "$@" ) >"$wd/out.log" 2>&1
+  printf '%s' "$wd"
+}
+
+# (a) VARIANT RESOLUTION — the mutation that dropped it survived the old block.
+_wd_pub="$(_add_run false --add-surface .github/workflows/quick-gates.yml)"
+_wd_priv="$(_add_run true --add-surface .github/workflows/quick-gates.yml)"
+# THE runs-on LINE, not the file. `grep -q 'self-hosted'` over the whole file
+# PASSED under the dropped-variant mutation, because the PUBLIC template's D7
+# comment explains that "the `-private` sibling carries the self-hosted labels".
+# An assertion about what runs must see only what runs — this file's own rule,
+# and the mutation is what exposed that I had broken it here.
+_privline="$(grep -E '^\s*runs-on:' "$_wd_priv/consumer/.github/workflows/quick-gates.yml" || true)"
+assert_contains "$_privline" "self-hosted" \
+  "--add-surface on a PRIVATE repo installs the self-hosted variant (D1/OPS-0049)"
+assert_contains "$_privline" "ci-runner" "...naming the real pool label"
+assert_absent   "$_privline" "ubuntu-latest" "...and never GitHub-hosted on a private repo"
+_publine="$(grep -E '^\s*runs-on:' "$_wd_pub/consumer/.github/workflows/quick-gates.yml" || true)"
+assert_contains "$_publine" "ubuntu-latest" "...while the public variant's runner line stays ubuntu-latest"
+
+# (b) NEVER OVERWRITE — the other surviving mutation.
+_wd_pre="$(PREEXISTING=.github/workflows/quick-gates.yml _add_run false --add-surface .github/workflows/quick-gates.yml)"
+assert_eq "$(cat "$_wd_pre/consumer/.github/workflows/quick-gates.yml")" "LOCAL EDIT DO NOT CLOBBER" \
+  "--add-surface leaves an existing file byte-unchanged (FT-9)"
+assert_contains "$(cat "$_wd_pre/out.log")" "already present" "...and says it skipped it"
+
+# (c) THE EXECUTABLE BIT, from the manifest. mktemp makes 0600 and mv preserves
+# it, so this landed non-executable — and pre-commit's `language: script` canon
+# hook cannot exec `pre_push_check.sh`, so every clone failed while the mode
+# reported success.
+_wd_x="$(_add_run false --add-surface scripts/pre_push_check.sh)"
+assert_ok "[ -x '$_wd_x/consumer/scripts/pre_push_check.sh' ]" \
+  "--add-surface honours the manifest executable bit (pre-commit language: script)"
+assert_ok "[ ! -x '$_wd_pub/consumer/.github/workflows/quick-gates.yml' ]" \
+  "...and does not make a non-executable surface executable"
+
+# (d) ARMS NOTHING, and an unknown surface is an ERROR not a silent skip.
+assert_absent "$(cat "$_wd_pub/out.log")" "branch protection applied" "--add-surface armed nothing"
+assert_contains "$(cat "$_wd_pub/out.log")" "Branch protection and rulesets were NOT touched" \
+  "--add-surface says it armed nothing"
+_wd_bogus="$(_add_run false --add-surface .github/workflows/not-a-real-surface.yml)"
+assert_contains "$(cat "$_wd_bogus/out.log")" "is not a manifested surface" \
+  "--add-surface rejects an unknown path loudly"
+
+# (e) THE JOINT-REPLACEMENT WARNING. links.yml is replaced by quick-gates AND
+# links-external; naming only one licences a deletion that drops external link
+# checking with nothing reporting it.
+_wd_j="$(PREEXISTING=.github/workflows/links.yml _add_run false --add-surface .github/workflows/quick-gates.yml)"
+assert_contains "$(cat "$_wd_j/out.log")" "replaced JOINTLY by" \
+  "--add-surface warns that links.yml is replaced jointly, not by quick-gates alone"
+assert_contains "$(cat "$_wd_j/out.log")" "links-external.yml" \
+  "...and names the co-requisite by path"
+# Standalone. Combining modes makes "what did this run do to my tree?"
+# unanswerable, which is the question FT-9 was lost on.
+_ax="$(bash "$INSTALL" owner/repo --add-surface .github/workflows/quick-gates.yml --update 2>&1 || true)"
+assert_contains "$_ax" "not combinable" "--add-surface refuses to combine with --update"
+_ax2="$(bash "$INSTALL" owner/repo --add-surface .github/workflows/quick-gates.yml --repin 2>&1 || true)"
+assert_contains "$_ax2" "not combinable" "--add-surface refuses to combine with --repin"
+
+echo ""
+echo '== the duplicate-run warning has real targets (manifest replaces) =='
+# Adding v3 while the v2 callers it replaces are installed runs BOTH — doubled
+# jobs on a serial self-hosted pool. The warning is only as good as the mapping,
+# and a `replaces` entry naming a file canon does not ship would warn about
+# nothing, forever, with nobody the wiser.
+_repl_bad="$(python3 - "$ROOT/install/templates/manifest.json" "$ROOT" <<'PYEOF'
+import sys, json, os
+m = json.load(open(sys.argv[1], encoding="utf-8"))
+root = sys.argv[2]
+known = {f["path"] for f in m["files"]}
+bad = []
+for f in m["files"]:
+    for r in f.get("replaces") or []:
+        # A replaced caller is either still manifested, or a template canon
+        # still ships (v2 callers stay shippable through the migration).
+        base = os.path.basename(r)
+        if r not in known and not os.path.exists(os.path.join(root, "install/templates/workflows", base)):
+            bad.append("%s->%s" % (f["path"], r))
+print(",".join(sorted(bad)))
+PYEOF
+)"
+assert_eq "$_repl_bad" "" "every \`replaces\` entry names a caller canon actually ships"
+_repl_v3="$(python3 - "$ROOT/install/templates/manifest.json" <<'PYEOF'
+import sys, json
+m = json.load(open(sys.argv[1], encoding="utf-8"))
+print(" ".join(sorted(f["path"] for f in m["files"] if f.get("replaces"))))
+PYEOF
+)"
+assert_eq "$_repl_v3" \
+  ".github/workflows/links-external.yml .github/workflows/quick-gates.yml .github/workflows/scanners.yml" \
+  "the three consolidating callers declare what they replace"
+
 suite_summary "test_install"

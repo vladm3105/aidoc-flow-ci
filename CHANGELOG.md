@@ -5,6 +5,68 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — `install.sh --add-surface`, because v3 shipped uninstallable (#429)
+
+**A release nobody can install is not released.** The three v3 consolidating
+callers are `auto_install: false`, and the two existing modes both decline to
+help: bootstrap installs only the `auto_install: true` set, and `--update`
+deliberately never introduces a surface the consumer does not already have.
+`--repin` rewrites tag strings. So `quick-gates`, `scanners` and
+`links-external` were manifested, documented, tested — and unreachable by any
+supported path.
+
+`--add-surface <path>` is the missing third mode, and it is **general**, not
+v3-specific: any manifested surface the consumer lacks. It resolves the
+public/private variant from the repo's **live** visibility and refuses to guess
+(picking wrong pins a private consumer to `ubuntu-latest`, where the job queues
+forever and `timeout-minutes` cannot fire); it never overwrites, because
+replacing an existing caller is `--update`'s job and its own FT-9 hazard; and it
+arms no required context, because arming one before its producer is green is the
+single migration step with no `--admin`-free exit.
+
+**It was not fixed by flipping `auto_install` to true**, which was the obvious
+move and the wrong one: bootstrap runs on repos that still carry the v2 callers,
+so it would have installed both — doubled jobs on a serial self-hosted pool and
+two sets of contexts. Adoption of a replacing surface has to be deliberate.
+Instead the manifest gained a **`replaces`** array, so the mode can warn when a
+superseded caller is still installed while making clear that running both
+briefly is a required step of the migration rather than a mistake.
+
+`tests/test_install.sh` now asserts the **invariant** rather than the instance —
+every manifested surface must have some install route — so the next opt-in
+surface cannot repeat this. The first draft of the mode tripped canon's own
+existing guard by passing a variable to `fetch_template`; it uses the raw
+`curl` + `validate_fetched` shape `update_mode` already uses, for exactly that
+reason. `docs/REPO_STANDARDS.md` §4.2e states the three-mode contract.
+
+**The review of this change found five more, and the pattern is now familiar:**
+
+- **The first test block was tripwires, not tests.** Two mutations that each
+  disarmed a documented safety property — stubbing out the never-overwrite guard,
+  and dropping variant resolution so a private consumer gets the `ubuntu-latest`
+  caller and queues forever — **both survived at 124 passed / 0 failed**. The
+  block now drives `install.sh` against stubbed `gh`/`curl` that resolve
+  templates from the working tree. All three mutations (plus the executable bit)
+  now die. Even then, one replacement assertion still passed under the mutation
+  because `grep -q 'self-hosted'` matched the **public** template's comment
+  explaining the private variant — the "see only what runs" rule, broken in the
+  test written to enforce it. It reads the `runs-on:` line now.
+- **`--add-surface scripts/pre_push_check.sh` installed the OPS-0069 gate
+  non-executable.** `mktemp` creates 0600 and `mv` preserves it; bootstrap
+  `chmod +x`es that file because pre-commit's `language: script` hook cannot exec
+  it otherwise. Committed at 100644, every clone's canon hook failed, and the
+  mode reported success. The bit is now modelled in the manifest, not hardcoded.
+- **`links.yml` is replaced JOINTLY** by `quick-gates` and `links-external`, and
+  modelling it as two independent edges made the warning read "safe to delete
+  after green" — deleting it with only `quick-gates` installed silently drops all
+  external link checking, with nothing reporting it. The warning now names every
+  co-requisite.
+- The collision guard was `[ -f ]`, which is false for a **directory** at the
+  target: the run deposited its temp file inside and reported "1 file(s) added".
+- A second `### 4.2b` was introduced into the rulebook, colliding with a section
+  three live citations already point at. Renumbered to `4.2e` and moved after
+  `4.2d`; the existing numbering was left alone precisely because it is cited.
+
 ### Fixed — a pre-prod review of the v3 surface found five blockers, three of them defenses PLAN-025 §2 records as carried (CI-0034)
 
 Five independent lenses over `actions/`, the v3 caller templates, the install
