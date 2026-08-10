@@ -76,9 +76,18 @@ jobs:
     # absorbs (pre-commit 15 + markdownlint 10 + links 20), never the max and
     # never a round number picked by eye. An earlier draft shipped 15 — BELOW
     # what links alone needs — so a slow lychee run would have killed the two
-    # checks that had already passed. Padding costs nothing: the runner is
-    # released on completion either way.
-    timeout-minutes: 45
+    # checks that had already passed.
+    #
+    # SUM + HEADROOM, because the sum alone budgets zero for provisioning. The
+    # `timeout N` wrappers INSIDE the actions already total exactly 45 (900+600+
+    # 1200s), so at 45 the job-level kill lands at or before the inner timeouts —
+    # and the inner ones are the only path that prints "infrastructure failure,
+    # not a clean run". Worse, a job-level timeout CANCELS the `if: always()`
+    # verdict step, so collect-then-fail is lost precisely in the case it exists
+    # for. The extra 10 covers checkout, setup-python, setup-node and
+    # `npm install -g`. Padding costs nothing: the runner is released on
+    # completion either way.
+    timeout-minutes: 55
     steps:
       # ONE checkout for all three actions — this is where the saving comes from.
       #
@@ -149,9 +158,22 @@ jobs:
       # rot is time-based, not change-based, so it belongs on the weekly
       # `links-external.yml` caller, non-blocking — NOT here.
       #
-      # links takes the token as an INPUT: the `secrets` context is not available
-      # inside a composite action, and without it lychee hits github.com
-      # anonymous rate limits (PLAN-025 §3.2a).
+      # NO `github-token` HERE, deliberately — and this is a change from the
+      # first draft, which copied the input from `links-external`. That caller
+      # needs it: `mode: external` makes real requests and hits github.com's
+      # anonymous rate limits without one (PLAN-025 §3.2a). This one runs
+      # `mode: internal`, which adds `--offline` (`actions/links/action.yml:110`),
+      # so lychee makes no network request at all and the token is never read.
+      #
+      # It is worth removing rather than leaving harmless, because v3 changed
+      # what "harmless" means. In v2, `pre-commit` and `links` were separate
+      # reusables on separate runners. Consolidating them puts a credential in
+      # the same job — same workspace, same PATH, same process namespace — as a
+      # step that executes the PR's OWN `.pre-commit-config.yaml`, where a
+      # `repo: local` hook's `entry:` is arbitrary code. On a public repo the
+      # fork token is read-only under `permissions: contents: read`, so this is
+      # least-privilege rather than a hole; an unused credential next to
+      # attacker-controlled code is still not worth keeping.
       - name: links
         id: links
         continue-on-error: true
@@ -160,7 +182,6 @@ jobs:
           mode: internal
           fail-on-error: 'true'
           config-file: .lychee.toml
-          github-token: ${{ secrets.GITHUB_TOKEN }}
       # sync-version-refs:ignore-end
 
       # THE VERDICT. Fails CLOSED (D6, and CI-0026: a fail-closed guard that

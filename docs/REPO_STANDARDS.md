@@ -2791,9 +2791,22 @@ no writer in the pipeline to signal. The banned construct is specifically
 
 Mandatory on anything whose result gates a merge, a push, a release or a
 security decision: the reusables in `.github/workflows/`, the composite actions
-in `actions/`, `scripts/`, `install/templates/`, and the `tests/lib.sh`
-assertion helpers. `assert_absent` is the sharpest case — the inversion turns it
-into a **silent pass**, so a suite loses coverage without a single red.
+in `actions/`, `scripts/`, `install/templates/`, and two named files —
+`tests/lib.sh` and `install/install.sh`. `assert_absent` is the sharpest case —
+the inversion turns it into a **silent pass**, so a suite loses coverage without
+a single red. `install/install.sh` is the file every consumer curls: its two
+sites decide which tag a cold-start install pins and whether the operator is
+told that AI-flow jobs will sit Queued forever.
+
+**Known gap, stated rather than implied.** The REST of `install/` and `tests/`
+is not in scope yet and does carry live instances — `install/deploy-ci-wizard.sh`
+(11 sites) and roughly 28 across `tests/`. Every current writer there is a
+`printf`/`echo` builtin, so none has been shown to invert; that is a statement
+about today's payload sizes, not a clearance, and §27's own rule is that "the
+payload is small" is not a justification. It is tracked as its own change rather
+than folded into a release-readiness pass. **A scope with an undeclared gap is
+the thing this clause exists to prevent, so the gap is declared here and the
+guard's `SURFACE_FILES` comment points back at it.**
 
 **`actions/` was added to this scope after the fact, and the reason generalises.**
 The composite actions were being written on `feat/v3-composite-actions` while
@@ -2812,9 +2825,16 @@ Two corrections that came out of closing it, both worth more than the fix:
   `ls .github/workflows/*.yml` missed a `.yaml` sibling, and `ls scripts/*.sh`
   missed anything below `scripts/`. **The globbed extension set is part of this
   contract, not an implementation detail:** `*.sh`, `*.bash`, `*.yml`, `*.yaml`,
-  at any depth, in each of the four directories, plus `tests/lib.sh`. Widen the
-  guard and this sentence together, or the rulebook claims a coverage the guard
-  does not have — which is the failure this whole clause is about.
+  at any depth, in each of the four directories, plus the named files
+  `tests/lib.sh` and `install/install.sh`. Widen the guard and this sentence
+  together, or the rulebook claims a coverage the guard does not have — which is
+  the failure this whole clause is about.
+- **The named files needed a pin of their own, for the same reason the
+  directories did.** `tests/lib.sh` was appended to the guarded set by a bare
+  `echo` inside the `mapfile`, with no assertion anywhere that it was there —
+  deleting that single line removed the sharpest surface in the list, silently.
+  Named files are now a pinned array, asserted both as a list and by presence in
+  the iterated product.
 - **A check derived from the thing it checks cannot detect that thing's own
   truncation. This took three attempts, and each fix reproduced the defect one
   level up.** (1) A glob of `actions/*/action.yml` was "verified" against a

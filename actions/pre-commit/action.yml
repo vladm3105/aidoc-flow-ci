@@ -55,6 +55,16 @@ runs:
       shell: bash
       env:
         CONFIG_PATH: ${{ inputs.config-path }}
+        # LOAD-BEARING, and its absence was invisible. The D11 count below reads
+        # `RUN_STAGE`, which was declared ONLY on the "Run hooks" step — composite
+        # steps do not share `env:`, so `${RUN_STAGE:-pre-commit}` silently took
+        # the default and the guard validated a stage the run would not use.
+        # A consumer on `run-stage: manual` therefore got the D11 failure the
+        # guard exists to prevent: hooks counted at `pre-commit`, zero selected at
+        # `manual`, `pre-commit run` exits 0 having inspected nothing, gate green.
+        # The reverse case is worse to debug — an all-`manual` config counted at
+        # `pre-commit` finds zero and hard-fails a correct configuration.
+        RUN_STAGE: ${{ inputs.run-stage }}
       run: |
         set -euo pipefail
         if [ ! -e .git ] && [ ! -f "${CONFIG_PATH}" ]; then
@@ -70,7 +80,80 @@ runs:
         # stage this runner uses, so `pre-commit run --all-files` matched zero
         # hooks and exited 0: a green required check that inspected nothing.
         # Count what would actually be selected, and refuse at zero.
-        python3 -c 'import sys,yaml; cfg=yaml.safe_load(open(sys.argv[1])) or {}; want=sys.argv[2]; ds=cfg.get("default_stages"); n=sum(1 for r in (cfg.get("repos") or []) for h in (r.get("hooks") or []) if (h.get("stages", ds) is None or want in h.get("stages", ds))); print("pre-commit: %d hook(s) selected at stage %r" % (n, want)); sys.exit(0) if n else (print("::error::pre-commit action: %s selects ZERO hooks at stage %r. `pre-commit run --all-files` would exit 0 having inspected nothing — a green required check that checked nothing (PLAN-025 D11). Add a hook at that stage, or set run-stage to one that has hooks." % (sys.argv[1], want)) or sys.exit(1))' "$CONFIG_PATH" "${RUN_STAGE:-pre-commit}"
+        python3 - "$CONFIG_PATH" "${RUN_STAGE:-pre-commit}" <<'PY_D11'
+        import sys
+        cfg_path, want = sys.argv[1], sys.argv[2]
+
+        # This guard runs BEFORE `actions/setup-python`, on the SYSTEM
+        # interpreter, so PyYAML is whatever the image provides. A bare `import
+        # yaml` raises a traceback that fails the whole consolidated gate while
+        # naming neither PyYAML nor the runner image. Fail CLOSED — D11 is not
+        # optional and a missing parser is not a pass — but say what is wrong.
+        # `python3-yaml` is baked into aidoc-flow-runner for exactly this.
+        try:
+            import yaml
+        except ImportError:
+            print("::error::pre-commit action: PyYAML is unavailable to the system python3, "
+                  "so the D11 hooks-selected guard cannot run. Refusing rather than skipping it. "
+                  "Install python3-yaml in the runner image (see install/templates/runner/Dockerfile).")
+            raise SystemExit(1)
+
+        cfg = yaml.safe_load(open(cfg_path)) or {}
+        default_stages = cfg.get("default_stages")
+
+        # pre-commit RENAMED its stages (`commit` -> `pre-commit`, `push` ->
+        # `pre-push`) and still honours the legacy spellings. Canon's own
+        # operator-side detector accepts both (tests/lib_count_stage_hooks.py),
+        # so an exact-membership test here made the action STRICTER than the tool
+        # that clears a repo for adoption: a consumer with a legacy config was
+        # told it was fine and then hard-failed on day one of v3. Alias both ways.
+        ALIASES = {"pre-commit": {"pre-commit", "commit"},
+                   "pre-push": {"pre-push", "push"},
+                   "commit": {"pre-commit", "commit"},
+                   "push": {"pre-push", "push"}}
+        accepted = ALIASES.get(want, {want})
+
+        n = 0
+        for repo in cfg.get("repos") or []:
+            if not isinstance(repo, dict):
+                continue
+            for hook in repo.get("hooks") or []:
+                if not isinstance(hook, dict):
+                    continue
+                stages = hook.get("stages", default_stages)
+                # A SCALAR `stages: manual` is legal-looking YAML and parses to a
+                # string, which `intersection` then walks CHARACTER-WISE — zero
+                # matches, so a correct config hard-fails with a message blaming
+                # the stage. A non-iterable (`stages: 3`) raised TypeError with no
+                # ::error:: at all, which is the one path the PyYAML branch above
+                # was written to avoid. Normalise before comparing.
+                if isinstance(stages, str):
+                    stages = [stages]
+                elif stages is not None and not isinstance(stages, (list, tuple, set)):
+                    print("::error::pre-commit action: %s hook %r has a `stages:` value that is "
+                          "neither a list nor a string (%r). Refusing rather than guessing."
+                          % (cfg_path, hook.get("id", "?"), stages))
+                    raise SystemExit(1)
+                # `stages` absent from BOTH the hook and `default_stages` means
+                # the CONFIG does not constrain the stage. It does NOT mean the
+                # hook runs at every stage — when the config is silent the hook
+                # repo's remote MANIFEST decides, and this guard cannot see it.
+                # Counting it here is the permissive choice, matching
+                # tests/lib_count_stage_hooks.py; the residual hole (manifest says
+                # pre-push, run selects nothing, guard counts one) is real and
+                # tracked separately. Do not read this branch as proof of
+                # selection.
+                if stages is None or accepted.intersection(stages):
+                    n += 1
+
+        print("pre-commit: %d hook(s) selected at stage %r" % (n, want))
+        if not n:
+            print("::error::pre-commit action: %s selects ZERO hooks at stage %r. "
+                  "`pre-commit run --all-files` would exit 0 having inspected nothing — a green "
+                  "required check that checked nothing (PLAN-025 D11). Add a hook at that stage, "
+                  "or set run-stage to one that has hooks." % (cfg_path, want))
+            raise SystemExit(1)
+        PY_D11
 
     - name: Set up Python
       uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0

@@ -23,6 +23,30 @@
 # `links.yml` without also installing THIS file loses external link checking
 # entirely** — the exact silent-coverage-loss class PLAN-025 §2 exists to
 # prevent. The v3 install set ships both together.
+#
+# ── PRIVATE VARIANT — self-hosted for a DIFFERENT reason than quick-gates ────
+# `quick-gates-private` is self-hosted because a private repo has no fork-PR
+# surface, so executing PR code on the pool is safe. That reasoning does not
+# apply here at all: this job runs on `schedule`/`workflow_dispatch` against the
+# default branch and executes no PR code in either visibility.
+#
+# The reason is OPS-0049 and it is the one that was missed. This account has NO
+# GitHub-hosted Actions minutes for private repos (`docs/runners.md` §1), so a
+# private repo pinned to `ubuntu-latest` QUEUES INDEFINITELY — and
+# `timeout-minutes` cannot save it, because the clock starts when a job starts
+# and this one never does. v2 knew this: `links-private.yml`'s **external** job
+# pinned the self-hosted labels for exactly this reason. The v3 port dropped it
+# and justified the single variant on fork-safety alone — true, and beside the
+# point.
+#
+# It fails silently in the worst way available: the job feeds no required
+# context, so nothing reds. A private consumer just stops getting external link
+# reports and the Actions tab fills with queued weekly runs nobody opens.
+#
+# D1 — this must stay a SEPARATE template, not a merge with the public file.
+# `install.sh --update` resolves surfaces through `manifest.json`'s
+# `visibility_variants`; with no private variant it re-applies the label-less
+# generic and the queue-forever state comes straight back.
 name: links-external
 
 on:
@@ -43,7 +67,7 @@ concurrency:
 jobs:
   links-external:
     name: links-external
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted", "ci-runner", "single-use"]
     # Matches the v2 links reusable's own budget. External checking is the slow
     # mode — it makes real network calls — so it gets the full 20.
     timeout-minutes: 25

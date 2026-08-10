@@ -5,6 +5,64 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — a pre-prod review of the v3 surface found five blockers, three of them defenses PLAN-025 §2 records as carried (CI-0034)
+
+Five independent lenses over `actions/`, the v3 caller templates, the install
+path and the governance surfaces. Every finding was re-verified against source
+before it was acted on; one lens's proposed fix was rejected because gating a
+SARIF upload on `outcome == 'success'` would suppress the upload in exactly the
+case PLAN-014 Phase 5 needs it — when a scanner finds something and exits 1.
+
+- **`scanners` was red on arrival for every adopter.** The runner image ships
+  `python3` without `ensurepip`, so `actions/sast-scan`'s `python3 -m venv` dies
+  under `set -e` (#349). v2 contained that to one context; v3's collect-then-fail
+  consolidation makes it red `dep-scan` and `trivy-scan` too. The Dockerfile
+  gains `python3-venv`, `python3-pip` and `python3-yaml`, and both the image
+  build and `build-image.sh` now **build a venv** rather than check a package
+  list — `python3-venv` is a metapackage over a versioned `python3.N-venv`, so
+  the package check passes while the interpreter stays broken.
+- **The D11 guard validated a stage the run would not use.** `RUN_STAGE` was
+  declared only on "Run hooks"; composite steps do not share `env:`. A consumer
+  on `run-stage: manual` got the exact silent pass D11 exists to prevent.
+- **`links-external` could not report.** `fail-on-error: 'false'` makes the
+  action exit 0 for everything short of a timeout, so `outcome` never varied and
+  the failure arm was unreachable. Non-blocking now comes from
+  `continue-on-error` — which rewrites the *conclusion* — instead of from
+  `fail-on-error`, which erases the *outcome*.
+- **`links-external` had no private variant**, so a private consumer's weekly job
+  queues forever (OPS-0049) with nothing to red it.
+- **All three SARIF uploads had lost D35's fork clause**, and gated on
+  `hashFiles` over PR-controllable repo-root paths — a committed `semgrep.sarif`
+  with empty `results` could replace a Code Scanning analysis on `push: main`
+  and auto-resolve every alert in the category. Purge-then-refuse now runs first,
+  in D23's shape.
+
+Also: the tag cut could not follow its own instruction. Every v3 caller says
+"REMOVE THE MARKERS AT THE TAG CUT" while a test asserted they be present, so
+removing them redded the suite and leaving them froze six composite-action pins
+at `ci/v3.0.0` permanently — `sync-version-refs` does not descend into an ignore
+span. The assertion is now a biconditional keyed on `VERSION`, and `release.sh
+prep` retires the markers itself.
+
+**Three of the fixes broke before they held, each caught only by executing them**
+— see CI-0034. The purge, the D11 guard and the marker retirement are now driven
+against real fixtures rather than parsed.
+
+### Added — `docs/MIGRATION_v3.0.0.md`
+
+Closes the `RELEASE_CHECKLIST` MAJOR-bump gate that had no artifact. Carries the
+old→new required-context mapping, the add-new → observe-green → remove-old
+sequence across **both** branch protection and rulesets, the runner-image
+rebuild prerequisite, and a rollback. It also records a gap found while writing
+it: the v3 callers are `auto_install: false`, so bootstrap does not add them and
+`--update` never introduces a surface the consumer lacks — **there is no tooling
+path to adopt v3 today**, only the documented `curl` commands.
+
+CI-0024 applied prospectively: the doc is a `sync-version-refs` target, and its
+three version-bearing commands are marker-guarded. Verified by bumping `VERSION`
+to `ci/v3.1.0`, running the rewriter, and confirming an empty diff — the v2
+guide's unguarded rollback command was rewritten *forward* by every release cut.
+
 ### Fixed — §27 landed on `main` while `actions/` was being built on a branch, so the new surface entered canon outside the rule
 
 Merging `main` into `feat/v3-composite-actions` put CI-0033's §27 rule and v3's
@@ -120,11 +178,14 @@ code was gone. Every YAML assertion now parses the structure — `runbody`,
 `stepwith`, `verdict_body`, `invoked_actions`, `perms_of` — and the whole-file
 variables are deleted.
 
-### Added — v3 composite-action foundation (PLAN-025, branch `feat/v3-composite-actions`, NOT merged)
+### Added — v3 composite-action foundation (PLAN-025, merged to `main` at #416 `e003094`; NOT released)
 
-**Not released, not merged, and not reachable by any consumer.** Recorded here
+**Merged to `main`, not released, and not reachable by any consumer.** The "not
+merged" half of this sentence was true when written and stopped being true at
+PR #416; it is corrected rather than deleted because the distinction is the
+point. Recorded here
 because the work exists and the next session needs to know it does. `install.sh`
-ships only what the manifest lists; the three new caller templates pin
+ships only what the manifest lists; the caller templates pin
 `ci/v3.0.0`, a tag that does not exist, guarded by `sync-version-refs:ignore`
 markers that must be removed at the tag cut.
 

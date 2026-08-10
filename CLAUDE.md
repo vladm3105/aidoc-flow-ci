@@ -181,10 +181,20 @@ session must not re-derive or get wrong:
 - **No state carries between jobs.** Every job is independent; the reusables
   `curl`-fetch assets into a fresh workspace — never assume prior-job files.
 - **Tools are baked into `aidoc-flow-runner:latest`** (`python3`, `gh`, `jq`,
-  `curl`, `git`, `ripgrep`; verified present). ai-review v2 hard-needs `python3`
+  `curl`, `git`, `ripgrep`; plus `python3-venv`, `python3-pip` and `python3-yaml`
+  since 2026-08-09). ai-review v2 hard-needs `python3`
   (the LiteLLM client); the `ci/v2.0.1` preflight names the cause if an image
   lacks it. The image is built **per host** (no registry push) — rebuild when
   tools update. A missing tool ≠ a code failure — check the image first.
+  - **"`python3` is present" does NOT mean an environment can be built.** The
+    base image ships the interpreter without `ensurepip`, so `python3 -m venv`
+    failed while `command -v python3` succeeded — that gap is #349, it made v3's
+    `sast-scan` inert, and under v3's consolidated `scanners` job it would have
+    redded two working scanners as well. `build-image.sh` now BUILDS a venv to
+    verify rather than checking the package list, because `apt-get install
+    python3-venv` exits 0 on a metapackage whose versioned child does not match
+    the base interpreter. **The v3 callers need a REBUILT image; the rebuild is
+    per host and nothing prompts for it.**
 - **Concurrency = one job per supervisor instance (SERIAL).** A PR fans out to
   ~8 jobs; on a private repo (all jobs self-hosted) a single `ci-runner@<repo>`
   instance runs them **one at a time**. Run **N parallel instances per repo**

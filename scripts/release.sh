@@ -193,6 +193,72 @@ prep() {
   printf '%s\n' "$version" > VERSION
   echo "  VERSION -> $version"
 
+  # RETIRE FORWARD-REFERENCE MARKERS THAT THIS CUT MAKES CURRENT (FT-21).
+  #
+  # A caller template may pin an action at a tag that does not exist yet — the
+  # v3 callers pin `@ci/v3.0.0` while VERSION is still on 2.x — because the
+  # rewriter's remedy would otherwise point them at a tag where `actions/` is
+  # absent, a startup_failure on every consumer. They are held inside
+  # `sync-version-refs:ignore` spans until the tag catches up.
+  #
+  # Every one of those files says "REMOVE THEM AT THE TAG CUT" and nothing did.
+  # Left in place they are permanent: `sync-version-refs` does not descend into
+  # an ignore span, so those pins never advance again and `--check` cannot see
+  # that they have not — CI-0024's class, inverted. Doing it here rather than by
+  # hand is the point; a step in a checklist is the thing that gets skipped.
+  #
+  # Scoped to spans whose pin EQUALS the version being cut. A span still ahead of
+  # this release stays guarded. Runs BEFORE sync-version-refs so the freed pins
+  # are in scope for it from this cut onward.
+  local unmarked
+  unmarked="$(python3 - "$version" <<'PY_MK'
+import glob, re, sys
+version = sys.argv[1]
+touched = []
+for p in sorted(glob.glob("install/templates/workflows/*.yml")):
+    s = open(p, encoding="utf-8").read()
+    if "sync-version-refs:ignore-start" not in s:
+        continue
+    pins = set(re.findall(r'vladm3105/aidoc-flow-ci/actions/[^@\s]+@(ci/v[0-9]+\.[0-9]+\.[0-9]+)', s))
+    # Only when EVERY pin in the file has become current — a mixed file keeps its
+    # span, because removing it would expose a still-forward reference.
+    if not pins or pins != {version}:
+        continue
+    # Remove the markers AND the note that explains them. Leaving the note is
+    # not cosmetic: its first line is `# ^ FORWARD REFERENCE …`, a caret pointing
+    # at the marker line just deleted, and its last instruction is "REMOVE THEM
+    # AT THE v3.0.0 TAG CUT" — an instruction that survives its own execution.
+    # `install.sh` ships this file verbatim to every consumer, so the stale note
+    # is what ten repos read. Delimited by two strings present exactly once in
+    # each template (verified across all five), so the range is unambiguous and
+    # unrelated comments below it are preserved.
+    lines, out, in_note = s.split("\n"), [], False
+    for l in lines:
+        if "sync-version-refs:ignore-start" in l or "sync-version-refs:ignore-end" in l:
+            continue
+        if "FORWARD REFERENCE, not a stale pin" in l:
+            in_note = True
+            continue
+        if in_note:
+            # The note is a contiguous comment block; anything that is not a
+            # comment ends it, so a missing end-delimiter cannot eat real YAML.
+            if "chicken-and-egg shape" in l:
+                in_note = False
+            elif not l.lstrip().startswith("#"):
+                in_note = False
+                out.append(l)
+            continue
+        out.append(l)
+    open(p, "w", encoding="utf-8").write("\n".join(out))
+    touched.append(p)
+print(" ".join(touched))
+PY_MK
+)"
+  if [ -n "$unmarked" ]; then
+    echo "  forward-pin markers retired (now current at $version):"
+    for f in $unmarked; do echo "    - $f"; done
+  fi
+
   # propagate the tag into CI_TAG_FALLBACK + every install/self-caller pin
   bash "$HERE/sync-version-refs.sh" >/dev/null
   echo "  sync-version-refs: pins + CI_TAG_FALLBACK -> $version"
