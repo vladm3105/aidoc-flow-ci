@@ -255,9 +255,25 @@ canon.** To go back:
      heading promised. Do not remove these markers.
      The span covers the WHOLE list: an ignore-end between items splits the
      ordered list and reds MD029. -->
-1. Re-add the six v2 caller files at your previous tag:
-   `CI_TAG=ci/v2.16.0 bash install.sh <owner/repo>` (bootstrap re-adds the
-   `auto_install` callers), or fetch them the way step 2 fetches the v3 ones.
+1. Re-add the six v2 caller files at your previous tag. **Do not rely on a bare
+   bootstrap for this** — only `pre-commit.yml` is `auto_install: true`; the
+   other five are `false`, so `bash install.sh <owner/repo>` restores **one of
+   six**, and step 2 then arms six contexts of which five have no producer. That
+   is the hang this procedure exists to end, re-created by it. Restore each one
+   explicitly:
+
+   ```sh
+   CI_TAG=ci/v2.16.0 bash install.sh <owner/repo> \
+     --add-surface .github/workflows/pre-commit.yml \
+     --add-surface .github/workflows/markdown-lint.yml \
+     --add-surface .github/workflows/links.yml \
+     --add-surface .github/workflows/dep-scan.yml \
+     --add-surface .github/workflows/trivy-scan.yml \
+     --add-surface .github/workflows/sast-scan.yml
+   ```
+
+   Verify all six are present before step 2. `--add-surface` skips any that
+   already exist, so re-running it is safe.
 2. Re-add the six v2 contexts to branch protection **and** rulesets; observe
    green.
 3. Remove `quick-gates` and `scanners` from both surfaces.
