@@ -7,105 +7,119 @@ command that re-derives it. Durable facts live in `CLAUDE.md` § "Durable traps"
 the decision record is `DECISIONS.md`, which is authoritative — this file never
 summarises it.
 
-**State:** `main` carries **#416** (PLAN-025 P1/P2/P3/P8-core), squashed
+**State:** `main` carries **#430** (v3 pre-release blockers), squashed
 2026-08-09 · tree clean · **nothing deployed** — canon ships by tag, the last tag
-is still `ci/v2.16.0`, and **37 merged PRs** are unreachable by any consumer ·
-**32** open issues · **0** open PRs.
+is still `ci/v2.16.0`, and **39 merged PRs** are unreachable by any consumer ·
+**37** open issues · **0** open PRs.
 
-All checks green, **run on this merge commit, not carried forward**. Re-derive
+All gates green, **run on this merge commit, not carried forward**. Re-derive
 every row; the commands are exact (see `CLAUDE.md` § Durable traps for why the
 SGR strip and `--tier` are not optional):
 
 | Claim | Command | Value at wrap |
 |---|---|---|
 | Released version | `git describe --tags --abbrev=0` | `ci/v2.16.0` |
-| Unreleased **PRs** | `git log --oneline ci/v2.16.0..HEAD \| grep -cE '\(#[0-9]+\)$'` — count PRs, not commits; a wrap commit carries no `(#N)` and would inflate a `wc -l` | **37** |
-| Suite | `bash tests/run.sh \| sed 's/\x1b\[[0-9;]*m//g' \| grep -oE '[0-9]+ passed, [0-9]+ failed' \| awk '{p+=$1;f+=$3} END{print NR" suites, "p" passed, "f" failed"}'` | **17 suites, 1,405 passed, 0 failed** |
-| pre-commit | `pre-commit run --all-files` | 4 passed |
+| Unreleased **PRs** | `git log --oneline ci/v2.16.0..HEAD \| grep -cE '\(#[0-9]+\)$'` — count PRs, not commits; a wrap commit carries no `(#N)` and would inflate a `wc -l` | **39** |
+| Suite | `bash tests/run.sh \| sed 's/\x1b\[[0-9;]*m//g' \| grep -oE '[0-9]+ passed, [0-9]+ failed' \| awk '{p+=$1;f+=$3} END{print NR" suites, "p" passed, "f" failed"}'` | **17 suites, 1,497 passed, 0 failed** |
+| pre-commit | `pre-commit run --all-files` | exit 0 |
+| pre-push | `bash scripts/pre_push_check.sh` | exit 0 |
 | Governance table | `python3 install/parse-governance-table.py CLAUDE.md --repo-root .` | PASS |
 | Standards drift | `bash sync/check-standards-drift.sh --tier product` | 4/4 families, **2 drift** = the deliberate FT-52 profile |
-| Open issues | `gh issue list --state open --limit 200 \| wc -l` | **32** |
-| Open PRs | `gh pr list --state open \| wc -l` | **0** |
+| Open issues | `gh issue list --state open --limit 200 --json number --jq 'length'` | **37** |
+| Open PRs | `gh pr list --state open --json number --jq 'length'` | **0** |
 
 ## What this session did
 
-**Merged [#416](https://github.com/vladm3105/aidoc-flow-ci/pull/416)** — the v3
-composite-action foundation, open since the previous session. It had gone
-`CONFLICTING` when #420 and #421 landed. Merged with `--admin`; see Blockers for
-why that was the only path.
+**Ran a five-lens pre-prod review of the v3 surface, then merged
+[#430](https://github.com/vladm3105/aidoc-flow-ci/pull/430)** closing all five
+blockers it found plus the two release-mechanics traps.
 
-**The merge itself produced the session's real finding, and neither PR could have
-caught it.** §27 (CI-0033, never decide on a pipeline's exit status) landed on
-`main` while `actions/` — v3's primary gate surface — was being built on the
-branch. In one tree:
+The blockers, each verified against source before it was acted on:
 
-- `actions/sast-scan/action.yml`'s D23 post-condition, the verdict that refuses
-  to scan when a PR-supplied `.semgrepignore` survives the strip, decided on
-  `find … -print -quit | grep -q .`. **A reproduced fail-open** — not by EPIPE
-  but by `find`'s own status: `-quit` returns non-zero when a traversal error is
-  recorded before it quits, while still printing the match. Reachable, not
-  certain; it turns on `readdir` order.
-- The §27.2 scope named neither `actions/` nor most of what it did declare:
-  `install/templates/**/*.sh` was globbed (4 files) while 31 `*.yml` consumer
-  templates were not; `scripts/` was depth-1; `.github/workflows/` was `.yml`-only.
+1. **`scanners` was red on arrival for every adopter.** The runner image ships
+   `python3` without `ensurepip` (#349). v2 contained that to one context; v3's
+   collect-then-fail consolidation makes semgrep take `dep-scan` and
+   `trivy-scan` down with it.
+2. **The D11 guard validated a stage the run would not use** — `RUN_STAGE`
+   declared on a later step, and composite steps do not share `env:`.
+3. **`links-external` could not report** — `fail-on-error: 'false'` pins
+   `outcome` to `success`, so the failure arm was unreachable.
+4. **`links-external` had no private variant** — a private consumer's weekly job
+   queues forever (OPS-0049) with nothing to red it.
+5. **All three SARIF uploads had lost D35's fork clause** and gated on
+   `hashFiles` over PR-controllable paths.
 
-**The fix re-created its own defect three times before it held**, each attempt
-reporting a fully green suite. The durable form is in auto-memory
-(`a-check-must-not-derive-from-what-it-checks`): a check derived from the thing
-it checks cannot detect that thing's truncation. Three overlapping anchors now
-hold — a literal pin of the surface list, per-surface counts against `GUARDED`
-itself, and an independent oracle requiring every action canon `uses:` to resolve
-to a guarded file. Guard **60 → 120** assertions (baseline re-measured at
-`354110c`; the `67` in the `CHANGELOG.md` entry was a mid-session figure and is
-corrected there).
+**Three of the five were defenses `PLAN-025 §2` records as CARRIED.** Each was
+ported correctly *as a body* and lost its defense *at a seam* — a caller-side
+`if:`, a step-scoped `env:`, an input pairing. Recorded as **CI-0034**: a
+defense inventory records intent; only an assertion records the defense.
 
-**Two claims I wrote into canon were corrected before push**, both caught by the
-OPS-0066 cycle-2 review: a `1/1` reproduction ratio that was one observation in
-the notation §27 reserves for repeated trials, and a §27.2 sentence claiming a
-guard coverage that did not exist. §27 now carries the general rule that
-`pipefail` is poisoned by the writer's **own** exit status too, so counting a
-writer's `write(2)` calls is necessary and not sufficient.
+**`docs/MIGRATION_v3.0.0.md` now exists**, closing the one `RELEASE_CHECKLIST`
+MAJOR gate that had no artifact at all. CI-0024 applied prospectively — the doc
+is a `sync-version-refs` target with its three version-bearing commands
+marker-guarded, verified by bumping `VERSION` to `ci/v3.1.0`, running the
+rewriter, and getting an empty diff.
 
-Review: 3 agents, 2 OPS-0066 cycles. Cycle 1 found the fix had re-created its
-defect class; cycle 2 found the cycle-1 fold had regressed it again.
+**The tag cut could not previously follow its own instruction.** Every v3 caller
+says "REMOVE THE MARKERS AT THE TAG CUT" while a test asserted they be present.
+The assertion is now a biconditional keyed on `VERSION`, and `release.sh prep`
+retires the markers — and their self-contradicting note — itself.
 
-Filed rather than folded: **[#422](https://github.com/vladm3105/aidoc-flow-ci/issues/422)**
-(a pipeline wrapped after the `|` evades the guard's per-line match; the obvious
-`sed` join false-positives on every `run: |`) and
-**[#423](https://github.com/vladm3105/aidoc-flow-ci/issues/423)** (sast-scan's D23
-post-condition checks `SCAN_PATH` only while the strip also clears the repo root;
-latent while `scan-path` defaults to `.`).
+Review: OPS-0065, 2 lenses, cycle 1 of 3. Returned 1 blocker / 4 high / 6 medium
+/ 5 low. It caught **a blocker I had caused and mis-reported as green** (see the
+correction below), and **both reviewers independently found a security rationale
+I had written into three files was false** — `!(a && null)` is TRUE in GitHub
+expressions, so the restored step-level fork clause did not escape the job
+guard's null-permissiveness. Both guards are now identity tests against
+`github.repository`, **stronger than the v2 spelling**. Durable form in
+auto-memory: `github-if-guards-are-null-permissive`.
+
+Filed rather than folded, each with a reproduction and a fix shape:
+[#425](https://github.com/vladm3105/aidoc-flow-ci/issues/425) (trivy/osv have no
+D23 — reproduced 3→0 and 34→8),
+[#426](https://github.com/vladm3105/aidoc-flow-ci/issues/426) (D11's
+remote-manifest hole — reproduced),
+[#427](https://github.com/vladm3105/aidoc-flow-ci/issues/427) (§27.2 scope
+remainder), [#428](https://github.com/vladm3105/aidoc-flow-ci/issues/428) (SARIF
+paths stated three times),
+[#429](https://github.com/vladm3105/aidoc-flow-ci/issues/429) (**no tooling path
+to adopt the v3 callers at all**).
+
+### One correction to the previous handoff, which regeneration would otherwise revert
+
+The last wrap asserted **"`call / verify` will red every canon PR until a tag
+containing CI-0033 exists."** That is **false**, and now falsified twice — it
+passed on **#424** and on **#430**. Re-derive:
+`gh pr checks <N> --json name,bucket --jq '.[]|select(.name=="call / verify")|.bucket'`.
+The pre-fix pipeline only inverts once the writer is large enough, so the
+outcome depends on the commit range's size, not on the tag. `--admin` is **not**
+routinely required. (This is #402's failure mode — stated here explicitly so the
+next wholesale regeneration carries it rather than silently restoring the wrong
+claim.)
 
 ## What to do next
 
 The top item is actionable with no discovery.
 
-1. **Take the founder decisions that gate everything else — nothing below moves
-   without them.** Both are in Blockers with their reasons; both are founder-only,
-   and one of them (FT-30) gates *every* tag, `v2.17.0` and `v3.0.0` alike. There
-   is also an ordering call this session did not make and could not: **Phase A
-   makes `main` a MAJOR**, so a `v2.17.0` carrying the CI-0033 fix must be cut
-   **before** Phase A lands, or not at all. 37 merged PRs — CI-0033 among them, a
-   *required* context on every workspace repo — are unreachable until one of them
-   ships.
-2. **PLAN-024 Phase A — unblocked by #416, but NOT ready to execute.** The plan
-   reached `main` only with #416, so no earlier session could have started it.
-   Read its header before anything else: `plans/PLAN-024_ci-flow-efficiency.md:3`
-   is `**Status:** Draft — no phase executed`, and its own review log (`:759`)
-   records *"Phase A carries two open 🔴/decision items for the human (§5 A4)"*.
-   Treat it as prepare-and-propose, not execute.
-   Phase A eliminates `doc-maintainer` from the library: 33 tracked files, 10 of
-   the 11 open doc-maintainer defects closed as *not planned* (**#404 is carved
-   out** — its defect survives verbatim in `docs-sync` and must be re-filed
-   there), and a `ci/v3.0.0` MAJOR bump. **A4 is the trap:** the MAJOR-bump smoke
-   gate requires `litellm-smoke.yml` to pass with the `ai-doc-maintainer` alias
-   that A3 deletes, so `litellm-smoke.yml` must be edited *inside* the phase or
-   the tag cannot be cut. `CHANGELOG.md`, `DECISIONS.md` and
-   `docs/MIGRATION_v2.0.0.md` are append-only carve-outs and must not be scrubbed.
-3. **PLAN-024's phase-level status is half-updated.** Its Status line already
-   carries `superseded in part by PLAN-025 (D/E/F/G)` — #416 did that. What
-   PLAN-025 §7 still owes is the marker on each `### Phase D/E/F/G` section
-   (`:271, :293, :306, :316`) and the re-scoping of the surviving phases.
+1. **Take the founder decisions. Nothing below moves without them**, and they are
+   now the *only* thing between the tree and a tag. They are in Blockers with
+   their reasons. FT-30 gates **every** tag.
+2. **Decide the v2.17.0 question, which is now nearly moot.** `ci/v3.0.0` cannot
+   be an RC — `docs/REPO_STANDARDS.md:355` states pre-release pins are not
+   supported by canon's own resolver, so validating v3 on a consumer branch needs
+   a **SHA pin**, not a tag. If a `v2.17.0` is still wanted to get CI-0033 to
+   consumers sooner, it must be cut **before** PLAN-024 Phase A, which makes
+   `main` a MAJOR.
+3. **[#429](https://github.com/vladm3105/aidoc-flow-ci/issues/429) blocks the v3
+   rollout regardless of the tag** — the v3 callers are `auto_install: false`, so
+   bootstrap will not add them and `--update` will not introduce them. There is
+   no tooling path to adopt v3 today; `docs/MIGRATION_v3.0.0.md` step 2 documents
+   `curl` commands as a stopgap. PLAN-025 P8 remainder owns the fix, and #429
+   states the design constraint (do **not** simply flip `auto_install`).
+4. **PLAN-024 Phase A is still prepare-and-propose, not execute.**
+   `plans/PLAN-024_ci-flow-efficiency.md:3` reads `Status: Draft — no phase
+   executed`, and §5 A4 carries two open founder items. `PLAN-025 §7` makes
+   Phases A/B/C a precondition for v3.
 
 Open issues are the backlog — do not restate them here:
 
@@ -115,42 +129,34 @@ gh issue list --state open --limit 200      # the --limit 30 default truncates s
 
 ## Blockers
 
-Both release blockers are founder-only and unchanged from the last wrap.
+All founder-only. None moved this session, and #430 did not attempt to.
 
 | Blocker | Why | What clears it |
 | --- | --- | --- |
-| **🔴 FT-30 cold-start dry run** | `release.sh tag` refuses without `--dry-run-verified`, and the cold-start surface has changed. Re-derive: `git diff --name-only ci/v2.16.0..HEAD` against `coldstart_surface()` in `scripts/release.sh:91` | Founder runs `scripts/ft30-dry-run.sh` — see `CLAUDE.md` § Durable traps for what that script does and does not assert ([#358](https://github.com/vladm3105/aidoc-flow-ci/issues/358)) |
-| **🔴 PR-C deviation confirmation still open** | Due before `ci/v2.17.0`. #405 shipped the demotion only, not the de-allowlisting §4 PR-C item 1 called for, while §9 item 2 records acceptance of *"both halves"* | Founder decision; reasoning in PLAN-021 §4 PR-C LANDED note |
-| **PLAN-025 unreviewed since Pass 4** | OPS-0066 3-pass cap spent; P2/P3/P8 material never had an independent pass | Founder waiver, or a fresh plan for the remaining phases |
-| **`semgrep` cannot install on the runner image** | No `python3-venv` ([#349](https://github.com/vladm3105/aidoc-flow-ci/issues/349)) — `sast-scan` is inert where it is the only SAST | Rebuild `aidoc-flow-runner:latest` |
+| **🔴 FT-30 cold-start dry run** | `release.sh tag` refuses without `--dry-run-verified`, and the cold-start surface has changed. Re-derive: `git diff --name-only ci/v2.16.0..HEAD` against `coldstart_surface()` in `scripts/release.sh` | Founder runs `scripts/ft30-dry-run.sh` — see `CLAUDE.md` § Durable traps for what it does **not** assert ([#358](https://github.com/vladm3105/aidoc-flow-ci/issues/358)) |
+| **🔴 `litellm-smoke` has never passed** | A MAJOR-only `RELEASE_CHECKLIST` gate. Re-derive: `gh run list --workflow litellm-smoke.yml --limit 5` — last runs 2026-07-13, all `failure`/`cancelled` | Founder; needs the proxy reachable from the pool |
+| **🔴 PR-C deviation confirmation** | Due before `ci/v2.17.0`. #405 shipped the demotion only, not the de-allowlisting §4 PR-C item 1 called for | Founder decision; reasoning in PLAN-021 §4 PR-C LANDED note |
+| **🔴 PLAN-025 unreviewed since Pass 4** | OPS-0066 3-pass cap spent; P2/P3/P8 material never had an independent pass | Founder waiver, or a fresh plan for the remaining phases |
+| **The runner image must be REBUILT, per host** | #430 fixed the Dockerfile (`python3-venv`, `python3-pip`, `python3-yaml`) but the image is built locally with **no registry push**, and nothing prompts for it. Until then `scanners` is red on arrival (#349) | `cd install/templates/runner && bash build-image.sh` on each runner host — it now *builds* a venv and imports yaml to verify, rather than trusting the package list |
 
-**`call / verify` will red every canon PR until a tag containing CI-0033 exists.**
-`.github/workflows/audit-trail.yml:39` pins `audit-trail-check.yml@ci/v2.16.0`,
-the pre-fix copy, so the fix in `main`'s tree cannot reach the job that runs it —
-verified in the #416 runner log as `line 103: echo: write error: Broken pipe`.
-The documented `[skip-audit-trail]` override is inverted by the same defect and
-does not help. `enforce_admins: false` exists for this; `--admin` is the path
-until the tag. This is the FT-21 chicken-and-egg, not a defect in any branch.
-
-**PLAN-025 P7 must not run** — unblocked by P8's core fix, but still the only
-irreversible phase; P9 (rollback) must exist first.
+**PLAN-025 P7 must not run** — still the only irreversible phase; P9 (rollback)
+must exist first. P4 and P5 (the full `docs/v3/` set) are also not started;
+`docs/MIGRATION_v3.0.0.md` is the migration path but not the documentation set.
 
 The **PLAN-021 consumer resume** owes two easy-to-get-wrong edits; they are
-durable and now live in `CLAUDE.md` § "The PLAN-021 consumer resume", not here.
+durable and live in `CLAUDE.md` § "The PLAN-021 consumer resume", not here.
 
 ## What did NOT change
 
 No tag, no release, no consumer repo, no branch protection, no ruleset, no
-`doc-maintainer` or `docs-sync` behaviour, and no `ai-review` behaviour.
+required context, and no `VERSION` bump. No `doc-maintainer`, `docs-sync`,
+`ai-review` or `secret-scan` behaviour.
 
-**All four** new v3 caller templates (`quick-gates`, `quick-gates-private`,
-`scanners`, `links-external`) still pin `ci/v3.0.0`, a tag that does not exist,
-behind `sync-version-refs:ignore` markers that must be removed at the tag cut.
-Count them, do not trust this line:
-`grep -rlF 'ci/v3.0.0' install/templates/workflows/`.
+**All five** v3 caller templates still pin `ci/v3.0.0`, a tag that does not
+exist, behind `sync-version-refs:ignore` markers. `release.sh prep` now removes
+them at the cut, so this is no longer a manual step — but count them rather than
+trusting this line: `grep -rlF 'ci/v3.0.0' install/templates/workflows/`.
 
 `doc-maintainer` remains **live on `operations`** and **paused on `framework`** —
-verified this wrap, re-derive with
+not re-verified this session; re-derive with
 `python3 -c "import json;[print(r, json.load(open(f'../{r}/.github/doc-maintainer.json'))['dry_run'], json.load(open(f'../{r}/.github/doc-maintainer.json'))['kill_switch']) for r in ('operations','framework')]"`.
-Phase A deletes the library side of this regardless; the consumer-side removal is
-each repo's own business.
