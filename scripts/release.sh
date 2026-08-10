@@ -224,8 +224,31 @@ for p in sorted(glob.glob("install/templates/workflows/*.yml")):
     # span, because removing it would expose a still-forward reference.
     if not pins or pins != {version}:
         continue
-    out = [l for l in s.split("\n")
-           if "sync-version-refs:ignore-start" not in l and "sync-version-refs:ignore-end" not in l]
+    # Remove the markers AND the note that explains them. Leaving the note is
+    # not cosmetic: its first line is `# ^ FORWARD REFERENCE …`, a caret pointing
+    # at the marker line just deleted, and its last instruction is "REMOVE THEM
+    # AT THE v3.0.0 TAG CUT" — an instruction that survives its own execution.
+    # `install.sh` ships this file verbatim to every consumer, so the stale note
+    # is what ten repos read. Delimited by two strings present exactly once in
+    # each template (verified across all five), so the range is unambiguous and
+    # unrelated comments below it are preserved.
+    lines, out, in_note = s.split("\n"), [], False
+    for l in lines:
+        if "sync-version-refs:ignore-start" in l or "sync-version-refs:ignore-end" in l:
+            continue
+        if "FORWARD REFERENCE, not a stale pin" in l:
+            in_note = True
+            continue
+        if in_note:
+            # The note is a contiguous comment block; anything that is not a
+            # comment ends it, so a missing end-delimiter cannot eat real YAML.
+            if "chicken-and-egg shape" in l:
+                in_note = False
+            elif not l.lstrip().startswith("#"):
+                in_note = False
+                out.append(l)
+            continue
+        out.append(l)
     open(p, "w", encoding="utf-8").write("\n".join(out))
     touched.append(p)
 print(" ".join(touched))

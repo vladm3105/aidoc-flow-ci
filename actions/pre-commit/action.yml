@@ -121,7 +121,28 @@ runs:
                 if not isinstance(hook, dict):
                     continue
                 stages = hook.get("stages", default_stages)
-                # No `stages:` anywhere means the hook runs at every stage.
+                # A SCALAR `stages: manual` is legal-looking YAML and parses to a
+                # string, which `intersection` then walks CHARACTER-WISE — zero
+                # matches, so a correct config hard-fails with a message blaming
+                # the stage. A non-iterable (`stages: 3`) raised TypeError with no
+                # ::error:: at all, which is the one path the PyYAML branch above
+                # was written to avoid. Normalise before comparing.
+                if isinstance(stages, str):
+                    stages = [stages]
+                elif stages is not None and not isinstance(stages, (list, tuple, set)):
+                    print("::error::pre-commit action: %s hook %r has a `stages:` value that is "
+                          "neither a list nor a string (%r). Refusing rather than guessing."
+                          % (cfg_path, hook.get("id", "?"), stages))
+                    raise SystemExit(1)
+                # `stages` absent from BOTH the hook and `default_stages` means
+                # the CONFIG does not constrain the stage. It does NOT mean the
+                # hook runs at every stage — when the config is silent the hook
+                # repo's remote MANIFEST decides, and this guard cannot see it.
+                # Counting it here is the permissive choice, matching
+                # tests/lib_count_stage_hooks.py; the residual hole (manifest says
+                # pre-push, run selects nothing, guard counts one) is real and
+                # tracked separately. Do not read this branch as proof of
+                # selection.
                 if stages is None or accepted.intersection(stages):
                     n += 1
 

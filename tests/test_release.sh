@@ -317,23 +317,81 @@ MK="$(mktemp -d)"
 sed -n '/^  unmarked="\$(python3 - "\$version" <<.PY_MK.$/,/^PY_MK$/p' "$REL" | sed '1d;$d' > "$MK/mk.py"
 assert_ok "[ -s '$MK/mk.py' ]" "the marker-retirement block was located in release.sh"
 
+# SYNTHESIZED, NOT COPIED FROM THE LIVE TREE. Copying `install/templates/
+# workflows/*.yml` made this block self-defeating: `prep` retires every marker at
+# the v3.0.0 cut, so on the release PR that performs the cut the fixture carries
+# zero markers, the `before >= 1` precondition fails, and the test reds on the
+# one commit it exists to protect. Hardcoding `@ci/v3.0.0` in the survivor
+# assertion broke it a second time, at v3.1.0. A fixture built here is
+# independent of what the tree currently holds — and it lets the MIXED-pin
+# branch be covered, which live templates cannot exercise because they are
+# uniform.
 mkdir -p "$MK/w/install/templates/workflows"
-cp install/templates/workflows/*.yml "$MK/w/install/templates/workflows/" 2>/dev/null || true
+_mk_caller() {  # $1=file  $2=pin
+  cat > "$MK/w/install/templates/workflows/$1" <<MKTPL
+name: ${1%.yml}
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      # sync-version-refs:ignore-start
+      # ^ FORWARD REFERENCE, not a stale pin. REMOVE THEM AT THE TAG CUT.
+      # (FT-21 chicken-and-egg shape.)
+      # An unrelated comment that must SURVIVE the retirement.
+      - uses: vladm3105/aidoc-flow-ci/actions/pre-commit@$2
+      # sync-version-refs:ignore-end
+MKTPL
+}
+_mk_caller current.yml ci/v3.0.0
+_mk_caller ahead.yml   ci/v9.9.9
+# Mixed pins in ONE file: the span must survive, because retiring it would
+# expose a reference that is still forward.
+cat > "$MK/w/install/templates/workflows/mixed.yml" <<'MKMIX'
+name: mixed
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      # sync-version-refs:ignore-start
+      - uses: vladm3105/aidoc-flow-ci/actions/pre-commit@ci/v3.0.0
+      - uses: vladm3105/aidoc-flow-ci/actions/links@ci/v9.9.9
+      # sync-version-refs:ignore-end
+MKMIX
+
 _marked() { grep -rl 'sync-version-refs:ignore-start' "$MK/w/install/templates/workflows/" 2>/dev/null | wc -l; }
-before="$(_marked)"
-assert_ok "[ '$before' -ge 1 ]" "fixture carries at least one marker-guarded caller to retire"
+assert_eq "$(_marked)" "3" "fixture carries three marker-guarded callers (current, ahead, mixed)"
 
-# A cut BELOW the pin must leave the span alone — it is still a forward reference.
+# A cut BELOW every pin must leave all spans alone — all still forward.
 ( cd "$MK/w" && python3 "$MK/mk.py" ci/v2.17.0 >/dev/null )
-assert_eq "$(_marked)" "$before" "a cut below the pin leaves the markers in place"
+assert_eq "$(_marked)" "3" "a cut below the pins leaves every marker in place"
 
-# A cut AT the pin retires them.
+# A cut AT one pin retires only the file whose pins have ALL become current.
 ( cd "$MK/w" && python3 "$MK/mk.py" ci/v3.0.0 >/dev/null )
-assert_eq "$(_marked)" "0" "a cut at the pinned tag retires every marker"
-assert_ok "grep -q 'actions/pre-commit@ci/v3.0.0' '$MK/w/install/templates/workflows/quick-gates.yml'" \
+assert_eq "$(_marked)" "2" "a cut at a pinned tag retires only the file that became current"
+assert_absent "$(cat "$MK/w/install/templates/workflows/current.yml")" "ignore-start" \
+  "...the matching caller lost its markers"
+assert_contains "$(cat "$MK/w/install/templates/workflows/ahead.yml")" "ignore-start" \
+  "...a caller still ahead of the cut keeps its markers"
+assert_contains "$(cat "$MK/w/install/templates/workflows/mixed.yml")" "ignore-start" \
+  "...and a MIXED-pin caller keeps them, or a still-forward pin would be exposed"
+assert_ok "grep -q 'actions/pre-commit@ci/v3.0.0' '$MK/w/install/templates/workflows/current.yml'" \
   "...and removes ONLY the markers — the pin itself survives"
+# THE NOTE GOES WITH THE MARKERS. Its first line is a caret pointing at the
+# marker line just deleted, and its last instruction is "REMOVE THEM AT THE TAG
+# CUT" — an instruction that outlives its own execution and ships verbatim to
+# every consumer via install.sh.
+_cur="$(cat "$MK/w/install/templates/workflows/current.yml")"
+assert_absent "$_cur" "FORWARD REFERENCE" "...the explanatory note is retired with them"
+assert_absent "$_cur" "REMOVE THEM AT THE" "...including the instruction that has now been carried out"
+assert_contains "$_cur" "An unrelated comment that must SURVIVE" \
+  "...but an unrelated comment below the note is preserved"
+assert_contains "$(cat "$MK/w/install/templates/workflows/ahead.yml")" "FORWARD REFERENCE" \
+  "...and a still-forward caller keeps its note"
 assert_ok "python3 -c \"import yaml,glob,sys; [yaml.safe_load(open(f)) for f in glob.glob('$MK/w/install/templates/workflows/*.yml')]\"" \
   "...and every caller still parses as YAML afterwards"
+# Idempotent: re-running the same cut must not corrupt an already-retired file.
+( cd "$MK/w" && python3 "$MK/mk.py" ci/v3.0.0 >/dev/null )
+assert_eq "$(_marked)" "2" "re-running the same cut is a no-op"
 rm -rf "$MK"
 
 # ORDER IS LOAD-BEARING: retire the markers, THEN rewrite pins. Reversed, the

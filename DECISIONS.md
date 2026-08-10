@@ -2276,9 +2276,12 @@ records as **carried**, and that source showed were not:
 - **D35** — all three v2 SARIF uploads carry a fork clause on the upload step
   (`dep-scan.yml:138`, `trivy-scan.yml:114`, `sast-scan.yml:169`). All three v3
   uploads shipped without it, leaving the job-level `if:` as the only barrier to
-  three steps holding `security-events: write` — and that guard is
-  null-permissive when `head.repo` is null, which a deleted fork on a `reopened`
-  event produces. §2 says "All 27 CARRIED. None dropped."
+  three steps holding `security-events: write`. §2 says "All 27 CARRIED. None
+  dropped." Restoring the clause exposed a second defect **in the v2 spelling
+  itself**: `head.repo.fork != true` is null-permissive, and a deleted fork on a
+  `reopened` event gives a null `head.repo`. Both guards are now identity tests
+  against `github.repository`, which fails closed on null. `fork == false` would
+  not have worked — GitHub coerces null and false alike to 0.
 - **D11** — the pre-commit precondition guard read `RUN_STAGE`, declared only on
   a later step. Composite steps do not share `env:`, so it validated a stage the
   run would not use. §8 blocker 8 records it "verified against the reproduced

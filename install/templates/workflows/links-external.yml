@@ -128,8 +128,14 @@ jobs:
               echo "links-external: no dead outbound links." >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
               ;;
             failure)
-              echo "::warning::links-external: dead outbound link(s) found — see the job log. Not blocking (external rot is time-based, not caused by any PR), but it needs a human."
-              echo "⚠️ links-external: dead outbound link(s) found — see the job log." >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+              # WORDED FOR BOTH CAUSES. `outcome == failure` covers dead links
+              # AND a lychee killed by its own `timeout 1200` — actions/links
+              # exits 1 on rc 124 BEFORE it consults fail-on-error, so an
+              # infrastructure kill lands in this arm too. The `*)` arm never
+              # sees it. Naming only dead links would send a human hunting for a
+              # broken URL that does not exist.
+              echo "::warning::links-external: the external link check did not come back clean — dead outbound link(s), or lychee hit its 20m timeout. See the job log for which. Not blocking (external rot is time-based, not caused by any PR), but it needs a human."
+              echo "⚠️ links-external: dead outbound link(s) or a timed-out run — see the job log." >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
               ;;
             *)
               echo "::warning::links-external: the check did not report a verdict (outcome=${OUTCOME:-<empty>}) — treat as UNKNOWN, not clean."

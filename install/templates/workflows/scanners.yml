@@ -64,8 +64,15 @@ concurrency:
 jobs:
   scanners:
     name: scanners
-    # D27 — see the header. Identical across all three v2 reusables.
-    if: ${{ github.event.pull_request.head.repo.fork != true }}
+    # D27 — see the header. STRENGTHENED past the v2 spelling, which was
+    # `head.repo.fork != true` and is NULL-PERMISSIVE: a deleted fork on a
+    # `reopened` event gives a null `head.repo`, so `head.repo.fork` is null,
+    # `null != true` is TRUE, and the job runs on a fork-origin tree with
+    # `security-events: write`. Identity beats negating a possibly-null flag —
+    # `null == 'owner/repo'` is false, so this fails CLOSED. `fork == false`
+    # would NOT fix it: GitHub coerces both null and false to 0, so
+    # `null == false` is true.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ["self-hosted", "ci-runner", "single-use"]
     # §3.2b: the SUM of the absorbed budgets (dep-scan 15 + sast 20 + trivy 15)
     # PLUS headroom. The sum alone is exactly what the `timeout N` wrappers
@@ -123,15 +130,22 @@ jobs:
           # error while the match is already on stdout. Both fail OPEN.
           # `|| fst=$?` is load-bearing: a bare assignment adopts the
           # substitution's status and `set -e` would abort before the ::error::.
+          # Capture find's stderr too, the way actions/sast-scan:138 does. Without
+          # it a traversal-error failure reports `find_rc=1` and nothing else —
+          # fail-closed but undiagnosable, on a gate an operator has to clear.
           fst=0
+          ferr="$(mktemp)"
           survivor="$(find . -maxdepth 1 \
-            \( -name 'osv.sarif' -o -name 'trivy.sarif' -o -name 'semgrep.sarif' \) -print -quit)" || fst=$?
+            \( -name 'osv.sarif' -o -name 'trivy.sarif' -o -name 'semgrep.sarif' \) -print -quit 2>"$ferr")" || fst=$?
           if [ -n "$survivor" ] || [ "$fst" -ne 0 ]; then
+            find_err="$(tr '\n\r' '  ' < "$ferr" | cut -c1-300)"
+            rm -f "$ferr"
             # Newlines are legal in git paths and GitHub parses every output line
             # for `::command::`, so fold before interpolating.
-            echo "::error::scanners: a PR-supplied SARIF survived the purge — refusing to scan rather than let it be uploaded as a scanner's report. survivor='$(printf '%s' "$survivor" | tr '\n\r' '??')' find_rc=${fst}"
+            echo "::error::scanners: a PR-supplied SARIF survived the purge — refusing to scan rather than let it be uploaded as a scanner's report. survivor='$(printf '%s' "$survivor" | tr '\n\r' '??')' find_rc=${fst} find_stderr='${find_err}'"
             exit 1
           fi
+          rm -f "$ferr"
 
       # §3.2c COLLECT-THEN-FAIL. Without it the first blocking scanner prevents
       # the other two from running or uploading SARIF, and under PLAN-014 Phase 5
@@ -186,23 +200,31 @@ jobs:
       # crashed scanner's alerts get resolved as fixed. Each step is guarded by
       # its own `hashFiles`, so a scanner that produced nothing is simply skipped.
       #
-      # THE FORK CLAUSE IS NOT REDUNDANT WITH THE JOB-LEVEL `if:` (D35). All
-      # three v2 reusables carry it on the upload step as well
+      # THE FORK CLAUSE IS RESTORED AS DEFENSE-IN-DEPTH (D35), and that is the
+      # whole reason — no more. All three v2 reusables carry it on the upload step
       # (`.github/workflows/dep-scan.yml:138`, `trivy-scan.yml:114`,
-      # `sast-scan.yml:169`), and the v3 port dropped it from all three while
-      # PLAN-025 §2 records D35 as carried. Two reasons it goes back:
-      #   1. It made the job `if:` at :68 the SOLE barrier between a fork PR and
-      #      three steps holding `security-events: write`. In v2 a mis-edit there
-      #      still left three independent guards; here it left none.
-      #   2. That job `if:` is null-permissive — `head.repo.fork != true` is TRUE
-      #      when `head.repo` is null, which is what a deleted fork on a
-      #      `reopened` event produces. The step clause tests `event_name` first,
-      #      so it does not share that hole.
+      # `sast-scan.yml:169`); the v3 port dropped it from all three while
+      # PLAN-025 §2 records D35 as carried. Dropping it made the job `if:` the
+      # SOLE barrier between a fork PR and three steps holding
+      # `security-events: write` — in v2 a mis-edit there still left three
+      # independent guards, here it left none.
+      #
+      # AN EARLIER VERSION OF THIS COMMENT CLAIMED A SECOND REASON AND IT WAS
+      # FALSE: that the step clause, by testing `event_name` first, escaped the
+      # job guard's null-permissiveness. It did not. In GitHub expressions `&&`
+      # yields the last evaluated operand, so with a null `head.repo`,
+      # `true && null` is null and `!(null)` is TRUE — identical behaviour to the
+      # job guard it claimed to compensate for. Both are now written as an
+      # identity test against `github.repository`, which fails CLOSED on null.
+      # Recorded because the false claim had already reached three files: writing
+      # a security rationale into canon makes it load-bearing whether or not it
+      # is true, and the next reader inherits it as verified.
+      #
       # `tests/test_contract.sh` greps only the job-level guard, which is why
       # nothing caught the drop; an assertion for the step clause lands with this.
       - name: Upload dep-scan SARIF (best-effort)
         continue-on-error: true
-        if: always() && hashFiles('osv.sarif') != '' && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)
+        if: always() && hashFiles('osv.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
         with:
           sarif_file: osv.sarif
@@ -210,7 +232,7 @@ jobs:
 
       - name: Upload trivy SARIF (best-effort)
         continue-on-error: true
-        if: always() && hashFiles('trivy.sarif') != '' && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)
+        if: always() && hashFiles('trivy.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
         with:
           sarif_file: trivy.sarif
@@ -218,7 +240,7 @@ jobs:
 
       - name: Upload sast SARIF (best-effort)
         continue-on-error: true
-        if: always() && hashFiles('semgrep.sarif') != '' && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)
+        if: always() && hashFiles('semgrep.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
         with:
           sarif_file: semgrep.sarif

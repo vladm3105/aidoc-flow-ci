@@ -258,6 +258,7 @@ read -r -d '' _svr_expected <<'EXPECTED' || true
 docs/AI_CI_DEPLOYMENT.md
 docs/BRANCH_PROTECTION.md
 docs/MIGRATION_v2.0.0.md
+docs/MIGRATION_v3.0.0.md
 docs/PLAYBOOK_governance-canon-rollout.md
 docs/REVIEWER_APP_ONBOARDING.md
 docs/UPDATE_GUIDE.md

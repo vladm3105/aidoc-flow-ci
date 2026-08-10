@@ -129,14 +129,44 @@ import sys, re, yaml
 # Provided by the runner itself, so reading one without declaring it is correct.
 PROVIDED = re.compile(r'^(GITHUB_|RUNNER_|ACTIONS_|INPUT_|CI$|HOME$|PATH$|TMPDIR$|LANG$|PWD$|SHELL$|USER$|IFS$|OSTYPE$|BASH)')
 REF    = re.compile(r'\$\{([A-Z][A-Z0-9_]*)(?:[:#%/^,-][^}]*)?\}|\$([A-Z][A-Z0-9_]*)')
-# re.M is load-bearing on all three: without it `^` anchors to the start of the
-# whole body, so only a first-line assignment counts and every later one reads
-# as undeclared. The prototype reported five false positives for exactly that.
+# re.M is load-bearing on ASSIGN and GHENV — both anchor with `^`, and without
+# the flag `^` binds to the start of the whole body, so only a first-line match
+# counts and every later one reads as undeclared. The prototype reported five
+# false positives for exactly that. LOOPRD has no anchor and does not need it;
+# an earlier version of this comment claimed all three, which was wrong.
 ASSIGN = re.compile(r'(?:^|[;&|(]|\bthen\b|\bdo\b|\bexport\b|\blocal\b|\bdeclare\b|\breadonly\b)\s*([A-Z][A-Z0-9_]*)\s*(?:=|\+=)', re.M)
-LOOPRD = re.compile(r'\b(?:for|read(?:\s+-\w+)*|mapfile(?:\s+-\w+)*(?:\s+\S+)?)\s+([A-Z][A-Z0-9_]*)', re.M)
+LOOPRD = re.compile(r'\b(?:for|read(?:\s+-\w+)*|mapfile(?:\s+-\w+)*(?:\s+\S+)?)\s+([A-Z][A-Z0-9_]*)')
 # `echo FOO=bar >> "$GITHUB_ENV"` exports to LATER steps, so the name is
 # legitimately defined without appearing in any `env:` block.
 GHENV  = re.compile(r'^\s*(?:echo|printf)[^\n]*?\b([A-Z][A-Z0-9_]*)=[^\n]*>>\s*"?\$(?:\{)?GITHUB_ENV', re.M)
+
+# A DECLARER MUST NOT BE ABLE TO FIRE ON PROSE. Both false negatives found in
+# review were of that shape: `echo "cannot read CONFIG_PATH from the tree"` made
+# LOOPRD believe CONFIG_PATH was bound, and a heredoc body line `RUN_STAGE=…`
+# made ASSIGN believe RUN_STAGE was. Either one masks a genuinely undeclared
+# read of that same name — the exact variables of the defect this check exists
+# for. Strip heredoc bodies and string literals BEFORE looking for declarers.
+# References are matched on the unstripped code, because a `$VAR` inside a
+# double-quoted string is a real expansion.
+HEREDOC = re.compile(r'<<-?\s*[\'"]?([A-Za-z_][A-Za-z0-9_]*)[\'"]?.*?^\s*\1\s*$',
+                     re.S | re.M)
+def no_heredoc(code):
+    return HEREDOC.sub("", code)
+
+def declarer_view(code):
+    # Strings blanked for ASSIGN and LOOPRD only. NOT for GHENV — that declarer
+    # matches `echo "FOO=bar" >> "$GITHUB_ENV"`, whose whole payload lives inside
+    # quotes, so blanking strings makes it match nothing. Applying one view to
+    # all three silently disarmed GHENV; caught by the per-declarer probe.
+    code = no_heredoc(code)
+    code = re.sub(r'"(?:[^"\\]|\\.)*"', '""', code)
+    code = re.sub(r"'[^']*'", "''", code)
+    return code
+
+def strip_comments(body):
+    return "\n".join(l for l in str(body).split("\n") if not re.match(r'\s*#', l))
+
+clean = True
 for path in sys.argv[1:]:
     d = yaml.safe_load(open(path)) or {}
     for i, s in enumerate((d.get("runs") or {}).get("steps") or []):
@@ -146,13 +176,27 @@ for path in sys.argv[1:]:
         # "an assertion about what runs must see only what runs" rule applies
         # here in reverse: an unstripped comment would HIDE a real hit only if
         # it declared one, but it would just as easily invent one.
-        code = "\n".join(l for l in str(s["run"]).split("\n") if not re.match(r'\s*#', l))
-        known = set((s.get("env") or {}).keys()) | set(ASSIGN.findall(code)) \
-              | set(LOOPRD.findall(code)) | set(GHENV.findall(code))
+        code = strip_comments(s["run"])
+        dv = declarer_view(code)
+        env = s.get("env") or {}
+        # A list-valued `env:` is schema-invalid but parses, and `.keys()` on it
+        # raised AttributeError — which printed nothing and read as CLEAN at the
+        # one call site where "found nothing" and "produced nothing" were the
+        # same value. Degrade to no declarations rather than crash; the sentinel
+        # below is the real fix.
+        declared = set(env.keys()) if isinstance(env, dict) else set()
+        known = declared | set(ASSIGN.findall(dv)) | set(LOOPRD.findall(dv)) \
+                         | set(GHENV.findall(no_heredoc(code)))
         for name in dict.fromkeys(m.group(1) or m.group(2) for m in REF.finditer(code)):
             if name not in known and not PROVIDED.match(name):
+                clean = False
                 print("%s step %d (%s): reads $%s, never declared in that step" %
                       (path, i, s.get("name", "?"), name))
+# SENTINEL. Without it `assert_eq "$out" ""` treats a crash, a typo'd path or an
+# empty input as a pass — the only assertion in this file where silence is the
+# success value. Printed last so any traceback replaces it.
+if clean:
+    print("UE-CLEAN")
 PY_UE
 }
 
@@ -465,11 +509,31 @@ if [ -f "$SC" ]; then
   # D27 — the fork guard MUST be job-level. A step-level skip runs after the job
   # has already checked the fork's code out, turning an admission guard into a
   # no-op. Assert it sits at job indentation (4 spaces), not step (6+).
-  if grep -qE '^    if: .*head\.repo\.fork' "$SC"; then
-    _g "scanners: fork guard is JOB-level (D27)"
+  # The spelling matters as much as the placement. `head.repo.fork != true` is
+  # NULL-PERMISSIVE — a deleted fork on a `reopened` event gives a null
+  # `head.repo`, so the guard reads TRUE and the job runs on a fork-origin tree
+  # with `security-events: write`. Require the identity test, which fails closed
+  # on null, and BAN the negated-flag spelling so a "restore v2 parity" edit
+  # cannot quietly reintroduce it.
+  if grep -qE '^    if: .*head\.repo\.full_name == github\.repository' "$SC"; then
+    _g "scanners: fork guard is JOB-level and null-safe (D27)"
   else
-    _r "scanners: fork guard is not at job level — a step-level skip runs AFTER checkout (D27)"
+    _r "scanners: fork guard is not job-level, or uses a null-permissive spelling (D27)"
   fi
+  # PARSED, not grepped. `assert_absent "$sc" …` matched the COMMENT that
+  # explains why the spelling is banned — this file's opening rule ("an
+  # assertion about what runs must see only what runs") applied to itself.
+  assert_eq "$(python3 - "$SC" <<'PY_NULLPERM'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+conds = []
+for j in (d.get("jobs") or {}).values():
+    if j.get("if"): conds.append(str(j["if"]))
+    for s in (j.get("steps") or []):
+        if isinstance(s, dict) and s.get("if"): conds.append(str(s["if"]))
+print("BANNED" if any("head.repo.fork" in c for c in conds) else "NONE")
+PY_NULLPERM
+)" "NONE" "scanners: no null-permissive fork guard in any evaluated if: (null != true is TRUE)"
 
   # secret-scan must NOT be folded in: it is fork-VISIBLE by design, and a
   # skipped job satisfies a required context, so gitleaks would go green on
@@ -673,7 +737,8 @@ PY_SS
 assert_ok "[ ${#SARIF_STEPS[@]} -ge 3 ]" "SARIF-upload check found the upload steps to check"
 for row in "${SARIF_STEPS[@]}"; do
   IFS='|' read -r sf sname sif <<< "$row"
-  assert_contains "$sif" "head.repo.fork" "$(basename "$sf") / $sname: upload carries its own fork clause (D35)"
+  assert_contains "$sif" "head.repo.full_name == github.repository" \
+    "$(basename "$sf") / $sname: upload carries its own null-safe fork clause (D35)"
   assert_contains "$sif" "hashFiles"      "$(basename "$sf") / $sname: upload is guarded on a produced report"
 done
 
@@ -744,7 +809,24 @@ echo "== every ubuntu-latest caller HAS a private variant (D1/OPS-0049) =="
 # about the file rather than the file. `install.sh` resolves the variant by
 # path, so a declared-but-absent private template is exactly the queue-forever
 # state, arrived at from the other side.
-while IFS='|' read -r tpl variants priv; do
+# ROW-COUNT FLOOR. Measured: making the manifest query return nothing (a renamed
+# key) emptied this whole section with the suite still green — the CI-0034 shape.
+# The floor is the one statement not derived from the query it polices.
+mapfile -t _vv_rows < <(python3 - <<'PY_VV0'
+import json
+m = json.load(open("install/templates/manifest.json"))
+for e in m.get("files") or []:
+    t = e.get("template") or ""
+    if not t.startswith("workflows/"):
+        continue
+    v = e.get("visibility_variants") or {}
+    ok = bool(v.get("public") and v.get("private"))
+    print("%s|%s|%s" % (t, "yes" if ok else "no", v.get("private") or ""))
+PY_VV0
+)
+assert_ok "[ ${#_vv_rows[@]} -ge 10 ]" "manifest yielded workflow rows to check (got ${#_vv_rows[@]})"
+for _row in "${_vv_rows[@]}"; do
+  IFS='|' read -r tpl variants priv <<< "$_row"
   [ -n "$tpl" ] || continue
   f="install/templates/$tpl"
   [ -f "$f" ] || continue
@@ -759,18 +841,7 @@ while IFS='|' read -r tpl variants priv; do
   [ "$variants" = "yes" ] || continue
   assert_ok "[ -f 'install/templates/$priv' ]" \
     "$b: the private variant it declares ($priv) is actually on disk"
-done < <(python3 - <<'PY_VV'
-import json
-m = json.load(open("install/templates/manifest.json"))
-for e in m.get("files") or []:
-    t = e.get("template") or ""
-    if not t.startswith("workflows/"):
-        continue
-    v = e.get("visibility_variants") or {}
-    ok = bool(v.get("public") and v.get("private"))
-    print("%s|%s|%s" % (t, "yes" if ok else "no", v.get("private") or ""))
-PY_VV
-)
+done
 
 echo "== links-external actually reports (D42) =="
 # `fail-on-error` and `continue-on-error` are a PAIR here. actions/links exits 0
@@ -895,15 +966,7 @@ echo "== the links token is passed IFF the mode can use it =="
 #     made, the token is never read — and in v3 it would sit in the same job,
 #     PATH and process namespace as the step that executes the PR's own
 #     `.pre-commit-config.yaml`. v2 kept those on separate runners.
-while IFS='|' read -r wf mode tok; do
-  [ -n "$wf" ] || continue
-  b="$(basename "$wf")"
-  if [ "$mode" = "external" ]; then
-    assert_ok "[ '$tok' != '<ABSENT>' ]" "$b: mode=external MUST carry a token (rate limits)"
-  else
-    assert_eq "$tok" "<ABSENT>" "$b: mode=$mode is offline — must NOT carry a token it cannot use"
-  fi
-done < <(python3 - <<'PY_TOK'
+mapfile -t _tok_rows < <(python3 - <<'PY_TOK0'
 import glob, yaml
 for wf in sorted(glob.glob("install/templates/workflows/*.yml")):
     d = yaml.safe_load(open(wf)) or {}
@@ -913,8 +976,21 @@ for wf in sorted(glob.glob("install/templates/workflows/*.yml")):
                 continue
             w = s.get("with") or {}
             print("%s|%s|%s" % (wf, w.get("mode", "<ABSENT>"), w.get("github-token", "<ABSENT>")))
-PY_TOK
+PY_TOK0
 )
+# FLOOR: four callers invoke actions/links (quick-gates{,-private},
+# links-external{,-private}). A typo in the `uses:` match emptied this section.
+assert_ok "[ ${#_tok_rows[@]} -ge 4 ]" "found the links call sites to check (got ${#_tok_rows[@]})"
+for _row in "${_tok_rows[@]}"; do
+  IFS='|' read -r wf mode tok <<< "$_row"
+  [ -n "$wf" ] || continue
+  b="$(basename "$wf")"
+  if [ "$mode" = "external" ]; then
+    assert_ok "[ '$tok' != '<ABSENT>' ]" "$b: mode=external MUST carry a token (rate limits)"
+  else
+    assert_eq "$tok" "<ABSENT>" "$b: mode=$mode is offline — must NOT carry a token it cannot use"
+  fi
+done
 
 echo "== job timeout EXCEEDS the sum of the inner tool timeouts (§3.2b) =="
 # v2: pre-commit 15 + markdownlint 10 + links 20 = 45. A consolidated job that
@@ -933,29 +1009,36 @@ echo "== job timeout EXCEEDS the sum of the inner tool timeouts (§3.2b) =="
 # editing the caller alone; this resolves each `uses:` to its action file and
 # adds up what that action actually enforces, so raising an inner timeout
 # without raising the job's is a red.
-while IFS='|' read -r wf inner_s; do
-  [ -n "$wf" ] || continue
-  b="$(basename "$wf")"
-  job_m="$(grep -oE 'timeout-minutes: [0-9]+' "$wf" | grep -oE '[0-9]+' | head -1 || echo 0)"
-  inner_m=$(( inner_s / 60 ))
-  assert_ok "[ ${job_m:-0} -gt $inner_m ]" \
-    "$b: job timeout ${job_m}m EXCEEDS the ${inner_m}m its actions enforce internally"
-done < <(python3 - <<'PY_TMO'
+mapfile -t _tmo_rows < <(python3 - <<'PY_TMO'
 import glob, re, yaml
-def inner_seconds(action_path):
+
+def code_only(body):
+    # STRIP COMMENTS. `re.findall(r'timeout (\d+)')` over a raw body reads the
+    # PROSE explaining a timeout as if it were one: dep-scan step 1 yielded
+    # ['900','900','900'] where only one is code. `max()` hid it here, but a
+    # comment naming a larger number would have inflated the demanded budget.
+    return "\n".join(l for l in str(body).split("\n") if not re.match(r'\s*#', l))
+
+def inner_seconds(action_path, opt_in_enabled):
     d = yaml.safe_load(open(action_path)) or {}
     total = 0
     for s in ((d.get("runs") or {}).get("steps") or []):
         if not isinstance(s, dict) or "run" not in s:
             continue
-        # Skip opt-in steps: sast-scan's autofix preview carries its own
-        # `timeout 1200` but is `if: inputs.autofix-preview == 'true'` and every
-        # caller passes false. Counting it would demand ~20 unusable minutes.
-        if s.get("if"):
+        # A conditional step counts ONLY when the caller turns it on. Skipping
+        # every `if:` step unconditionally under-budgeted the exact case this
+        # check exists for: sast-scan's autofix preview carries its own
+        # `timeout 1200`, so a caller passing `autofix-preview: true` really
+        # needs 70m against scanners' 60 — and the check computed 50 and passed.
+        if s.get("if") and not opt_in_enabled:
             continue
-        found = [int(m) for m in re.findall(r'\btimeout\s+(\d+)\b', str(s["run"]))]
+        found = [int(m) for m in re.findall(r'\btimeout\s+(\d+)\b', code_only(s["run"]))]
         total += max(found) if found else 0
     return total
+
+# Inputs whose truthiness enables an `if:`-gated step inside the action.
+OPT_IN = {"sast-scan": "autofix-preview"}
+
 for wf in sorted(glob.glob("install/templates/workflows/*.yml")):
     d = yaml.safe_load(open(wf)) or {}
     tot = 0
@@ -965,15 +1048,30 @@ for wf in sorted(glob.glob("install/templates/workflows/*.yml")):
             if "/actions/" not in u:
                 continue
             name = u.split("/actions/")[1].split("@")[0]
+            w = s.get("with") or {}
+            key = OPT_IN.get(name)
+            enabled = key is not None and str(w.get(key, "false")).lower() == "true"
             for cand in ("actions/%s/action.yml" % name, "actions/%s/action.yaml" % name):
                 try:
-                    tot += inner_seconds(cand); break
+                    tot += inner_seconds(cand, enabled); break
                 except FileNotFoundError:
                     continue
     if tot:
         print("%s|%d" % (wf, tot))
 PY_TMO
 )
+# FLOOR: five callers invoke composite actions. Pointing the resolver at a
+# nonexistent filename emptied this section with the suite green.
+assert_ok "[ ${#_tmo_rows[@]} -ge 5 ]" "resolved inner timeouts for the callers (got ${#_tmo_rows[@]})"
+for _row in "${_tmo_rows[@]}"; do
+  IFS='|' read -r wf inner_s <<< "$_row"
+  [ -n "$wf" ] || continue
+  b="$(basename "$wf")"
+  job_m="$(grep -oE 'timeout-minutes: [0-9]+' "$wf" | grep -oE '[0-9]+' | head -1 || echo 0)"
+  inner_m=$(( inner_s / 60 ))
+  assert_ok "[ ${job_m:-0} -gt $inner_m ]" \
+    "$b: job timeout ${job_m}m EXCEEDS the ${inner_m}m its actions enforce internally"
+done
 
 echo "== every step declares the env it reads (the D11 wrong-stage class) =="
 # ASSERT THE INPUT IS NON-EMPTY FIRST. A checker handed zero files prints
@@ -981,7 +1079,7 @@ echo "== every step declares the env it reads (the D11 wrong-stage class) =="
 # invoked-action check in test_sigpipe_guard.sh was rewritten to close.
 assert_ok "[ ${#ACTIONS[@]} -ge 6 ]" "env-declaration check has all six actions as input"
 undeclared="$(undeclared_env "${ACTIONS[@]}")"
-assert_eq "$undeclared" "" "no composite step reads an env var its own step never declared"
+assert_eq "$undeclared" "UE-CLEAN" "no composite step reads an env var its own step never declared"
 
 # GUARD THE GUARD. Two synthetic actions, because "prints nothing" is the
 # expected output of both a clean tree and a broken checker.
@@ -1018,8 +1116,73 @@ runs:
 PROBE_GOOD
 assert_contains "$(undeclared_env "$_ue_probe/bad.yml")" 'reads $SOME_STAGE' \
   "checker catches a var declared on a LATER step (the actual B2 shape)"
-assert_eq "$(undeclared_env "$_ue_probe/good.yml")" "" \
+assert_eq "$(undeclared_env "$_ue_probe/good.yml")" "UE-CLEAN" \
   "checker does not flag env-declared, locally-assigned or runner-provided vars"
+
+# ONE PROBE PER DECLARER. Measured: disabling LOOPRD or GHENV against the real
+# six actions suppressed NOTHING — ASSIGN accounted for all five suppressions —
+# so two of four declarers were unexercised by both the corpus and the probes,
+# and a defect in either was undetectable.
+cat > "$_ue_probe/declarers.yml" <<'PROBE_DECL'
+name: probe
+runs:
+  using: composite
+  steps:
+    - name: for-loop variable
+      shell: bash
+      run: |
+        for CHK in a b; do echo "$CHK"; done
+    - name: exported to later steps via GITHUB_ENV
+      shell: bash
+      run: |
+        echo "BIN_DIR=/tmp/x" >> "$GITHUB_ENV"
+        echo "$BIN_DIR"
+PROBE_DECL
+assert_eq "$(undeclared_env "$_ue_probe/declarers.yml")" "UE-CLEAN" \
+  "checker honours for-loop vars (LOOPRD) and \$GITHUB_ENV exports (GHENV)"
+
+# THE TWO FALSE NEGATIVES, as expected-HIT cases. A declarer that can fire on
+# prose masks a real undeclared read of the same name — and both of these named
+# the exact variables of the B2 defect.
+cat > "$_ue_probe/prose.yml" <<'PROBE_PROSE'
+name: probe
+runs:
+  using: composite
+  steps:
+    - name: the word read inside a string is not a declaration
+      shell: bash
+      run: |
+        echo "cannot read CONFIG_PATH from the tree"
+        cat "$CONFIG_PATH"
+    - name: a heredoc body line is not a declaration
+      shell: bash
+      run: |
+        cat > out.env <<CFG
+        RUN_STAGE=${RUN_STAGE:-pre-commit}
+        CFG
+PROBE_PROSE
+_prose="$(undeclared_env "$_ue_probe/prose.yml")"
+assert_contains "$_prose" 'reads $CONFIG_PATH' \
+  "checker is not fooled by the word 'read' inside a string literal"
+assert_contains "$_prose" 'reads $RUN_STAGE' \
+  "checker is not fooled by an assignment inside a heredoc body"
+
+# A CRASH MUST NOT READ AS CLEAN. This is the call site where silence was the
+# success value; a schema-invalid list-valued env: used to raise AttributeError,
+# print nothing, and pass.
+cat > "$_ue_probe/weird.yml" <<'PROBE_WEIRD'
+name: probe
+runs:
+  using: composite
+  steps:
+    - name: list-valued env is schema-invalid but parses
+      shell: bash
+      env:
+        - NOT_A_MAPPING
+      run: echo "$UNDECLARED_THING"
+PROBE_WEIRD
+assert_contains "$(undeclared_env "$_ue_probe/weird.yml" 2>&1)" 'reads $UNDECLARED_THING' \
+  "a malformed env: block degrades to 'undeclared', never to silence"
 rm -rf "$_ue_probe"
 
 echo "== the D11 guard validates the stage the run will actually use =="
@@ -1034,7 +1197,11 @@ steps = d["runs"]["steps"]
 guard = next(s for s in steps if "selects ZERO hooks" in str(s.get("run", "")))
 run   = next(s for s in steps if "--all-files" in str(s.get("run", "")))
 g, r = (guard.get("env") or {}).get("RUN_STAGE"), (run.get("env") or {}).get("RUN_STAGE")
-print("MATCH" if g is not None and g == r else "MISMATCH")
+# ASSERT THE LITERAL, not just equality. `g == r` is satisfied by wiring BOTH to
+# a nonexistent input, and the execution test injects RUN_STAGE from outside so
+# it cannot see that either — two green checks over a guard reading nothing.
+want = "${{ inputs.run-stage }}"
+print("MATCH" if g == want and r == want else "MISMATCH(g=%r r=%r)" % (g, r))
 PY_D11
 )" "MATCH" "D11 guard and hook run resolve run-stage from the same input"
 
@@ -1060,12 +1227,32 @@ assert_ok   "_d11_run normal pre-commit"   "D11: a commit-stage hook counts at p
 assert_fail "_d11_run normal manual"       "D11: it does NOT count at manual (B2 scenario A — the silent pass)"
 assert_fail "_d11_run manual pre-commit"   "D11: an all-manual config is refused at pre-commit"
 assert_ok   "_d11_run manual manual"       "D11: ...and accepted at manual (B2 scenario B — the false red)"
-assert_ok   "_d11_run nostages pre-commit" "D11: a hook with no stages: counts at every stage"
-assert_ok   "_d11_run nostages manual"     "D11: ...including manual"
+# NOTE THE WORDING. An earlier version of these two said "a hook with no
+# stages: counts at every stage", which is FALSE and the guard's own comment
+# repeated it: when the consumer config omits `stages:`, the hook repo's remote
+# MANIFEST decides, and a manifest declaring `stages: [pre-push]` means
+# `pre-commit run` selects nothing while this guard counts one. That residual
+# D11 hole is real, pre-dates this change and is tracked separately; what these
+# assert is only the guard's LOCAL behaviour on the config it can see.
+assert_ok   "_d11_run nostages pre-commit" "D11: a config-level hook with no stages: is counted (local view)"
+assert_ok   "_d11_run nostages manual"     "D11: ...at any requested stage"
 # The action must not be STRICTER than the operator-side detector that clears a
 # repo for adoption — tests/lib_count_stage_hooks.py accepts the legacy spelling,
 # so a consumer cleared by it must not be hard-failed by the action on day one.
 assert_ok   "_d11_run legacy pre-commit"   "D11: legacy 'commit' stage is accepted, matching canon's own detector"
+
+# A SCALAR `stages:` is legal-looking YAML. Before normalisation `accepted
+# .intersection("manual")` walked the string CHARACTER-wise, matched nothing,
+# and hard-failed a correct config while blaming the stage.
+printf 'repos:\n- repo: local\n  hooks:\n  - id: a\n    stages: manual\n' > "$_d11/scalar.yaml"
+assert_ok   "_d11_run scalar manual"       "D11: a scalar stages: value is honoured, not walked character-wise"
+assert_fail "_d11_run scalar pre-commit"   "D11: ...and still refuses at a stage it does not name"
+# A non-iterable must fail CLOSED with a stated cause, not a bare TypeError —
+# the one path the PyYAML branch above was written to avoid.
+printf 'repos:\n- repo: local\n  hooks:\n  - id: a\n    stages: 3\n' > "$_d11/badtype.yaml"
+_bt="$( CONFIG_PATH="$_d11/badtype.yaml" RUN_STAGE=pre-commit bash "$_d11/guard.sh" 2>&1 || true )"
+assert_contains "$_bt" "::error::" "D11: a non-iterable stages: fails with a stated cause"
+assert_absent   "$_bt" "Traceback"  "D11: ...not a raw traceback"
 rm -rf "$_d11"
 
 suite_summary "test_actions.sh"
