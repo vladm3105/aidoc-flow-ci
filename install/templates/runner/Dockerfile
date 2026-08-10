@@ -52,7 +52,7 @@ USER root
 
 # Install gh from cli.github.com's official apt repo (the canonical install
 # path for Debian/Ubuntu per https://github.com/cli/cli/blob/trunk/docs/install_linux.md).
-ARG GH_VERSION=2.96.0
+ARG GH_VERSION=2.97.0
 RUN set -eux; \
     apt-get update -qq; \
     apt-get install -y -qq --no-install-recommends ca-certificates curl gnupg; \

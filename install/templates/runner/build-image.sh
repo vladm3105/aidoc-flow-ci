@@ -20,7 +20,42 @@ IMAGE_TAG="${IMAGE_TAG:-aidoc-flow-runner:latest}"
 CONTEXT_DIR="$(dirname "$(readlink -f "$0")")"
 
 echo "==> building ${IMAGE_TAG}"
-docker build --pull ${GH_VERSION:+--build-arg "GH_VERSION=${GH_VERSION}"} -t "${IMAGE_TAG}" "${CONTEXT_DIR}"
+# THE `gh` PIN GOES STALE ON ITS OWN, WITH NO CHANGE HERE. cli.github.com's apt
+# repo carries only the CURRENT release, so an exact `gh=<version>` stops being
+# installable the moment upstream ships the next one — and the raw failure is
+# `E: Version 'X' for 'gh' was not found` buried in `exit code: 100` under 80
+# lines of Dockerfile echo. Measured 2026-08-09: the image had been unbuildable
+# since the 2.97.0 release, so the #349 fix could not have been delivered by
+# anyone, and nothing detected it because no CI job builds this image.
+#
+# Capture the build output so the diagnosis can be made from it, then re-emit it
+# — a bare `docker build` loses nothing but tells the operator nothing either.
+build_log="$(mktemp)"
+if docker build --pull ${GH_VERSION:+--build-arg "GH_VERSION=${GH_VERSION}"} \
+     -t "${IMAGE_TAG}" "${CONTEXT_DIR}" 2>&1 | tee "$build_log"; then
+  :
+else
+  # Decide on the captured OUTPUT, never on the pipeline's status (CI-0033):
+  # `tee` is the last stage, so `$?` here is tee's, not docker's.
+  case "$(cat "$build_log")" in
+    *"for 'gh' was not found"*)
+      pinned="$(grep -oE "Version '[^']+' for 'gh'" "$build_log" | head -1 | cut -d"'" -f2)"
+      echo "" >&2
+      echo "❌ the pinned gh version (${pinned:-see above}) is NO LONGER IN THE APT REPO." >&2
+      echo "   This is not a defect in your change: cli.github.com keeps only the" >&2
+      echo "   CURRENT release, so the pin expires on its own at every gh release." >&2
+      echo "   Find what is available and bump ARG GH_VERSION in the Dockerfile:" >&2
+      echo "     docker run --rm --user root <base> bash -c 'apt-get update -qq; apt-cache madison gh'" >&2
+      echo "   or take the newest from https://github.com/cli/cli/releases" >&2
+      ;;
+    *)
+      echo "" >&2
+      echo "❌ image build failed — see the output above." >&2
+      ;;
+  esac
+  rm -f "$build_log"; exit 1
+fi
+rm -f "$build_log"
 
 echo "==> verifying gh is installed in the built image"
 # Capture first (no live pipe to gh → no SIGPIPE under pipefail), then trim.

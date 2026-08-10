@@ -161,7 +161,7 @@ re-pin) with the following baked in:
 
 | Tool | Why |
 |---|---|
-| `gh` CLI | Required by `ai-review` + `composition` workflows for `gh api` calls; **historical foot-gun** (PR #101 on operations spent ~2h debugging a "network failure" that was actually `gh: not found` in the runner image) |
+| `gh` CLI | Required by `ai-review` + `composition` workflows for `gh api` calls; **historical foot-gun** (PR #101 on operations spent ~2h debugging a "network failure" that was actually `gh: not found` in the runner image). **The exact `ARG GH_VERSION` pin EXPIRES ON ITS OWN** — `cli.github.com` carries only the current release, so the image silently becomes unbuildable at each upstream `gh` release with no change here. Measured 2026-08-09: unbuildable since 2.97.0, which meant [#349](https://github.com/vladm3105/aidoc-flow-ci/issues/349)'s fix could not be delivered by anyone. `build-image.sh` now names this cause instead of surfacing a raw `exit code: 100`; the durable fix is [#435](https://github.com/vladm3105/aidoc-flow-ci/issues/435) |
 | `libatomic1` | Node-backed lint tools installed at job time (markdownlint-cli2) crash without it — second shipped instance of the same image-drift class (business #63) |
 | `ripgrep` | fast search for AI-review / doc-maintainer job scripts |
 | `python3` | Runs the dependency-free LiteLLM adapter |
