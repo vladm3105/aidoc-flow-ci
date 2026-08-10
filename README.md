@@ -35,6 +35,27 @@ per-repo applicability matrix, and skip guidance) and
 [`docs/architecture.md`](docs/architecture.md) for the per-workflow design
 rationale.
 
+> **In progress — `ci/v3.0.0` adds a composite-action layer. It is NOT
+> released and NOT adoptable yet; the latest tag is still the one in
+> [`VERSION`](VERSION).**
+>
+> v3 repackages six of the workflows below (`pre-commit`, `markdown-lint`,
+> `links`, `dep-scan`, `trivy-scan`, `sast-scan`) as **composite actions** under
+> `actions/`, invoked from two consolidated jobs — `quick-gates` and `scanners`.
+> A reusable always gets its own runner, so six checks paid six provisioning
+> cycles; composite actions run inside the calling job and share one.
+>
+> **No check is removed and no defense is dropped** (PLAN-025 §2 carries all 46).
+> The breaking part is that required status-check **context strings change**,
+> from `call / <name>` to a bare job name.
+>
+> Read [`docs/MIGRATION_v3.0.0.md`](docs/MIGRATION_v3.0.0.md) before adopting —
+> it carries the old→new context mapping and the add-new → observe-green →
+> remove-old sequence. Arming a context nothing produces has no `--admin`-free
+> exit. The `actions/` directory and the v3 caller templates are present in this
+> tree but pin a tag that does not exist yet, so nothing reaches a consumer
+> until the tag is cut.
+
 | Workflow | Purpose |
 | --- | --- |
 | `ai-review.yml` | AI code-review gate. Two-job split (trust → LiteLLM reviewer) — safe-by-design for public repos. Submits a formal review as the reviewer App, sets `ai:review-*` labels, and arms auto-merge when appropriate. |
