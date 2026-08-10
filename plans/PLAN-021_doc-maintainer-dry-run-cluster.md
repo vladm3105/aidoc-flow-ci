@@ -429,9 +429,11 @@ to high-risk"* sentence is about the **cost on `operations`** — where
 de-allowlisting is a no-op anyway, since that allowlist ends in a `*.md`
 catch-all — not about which keys the template edits. An earlier draft of this
 note cited it as recording "the shipped shape, not point 1's", which is an
-authority the record does not carry. **The founder has not been re-asked.** The
-deviation stands on the measured reproduction and on §4/§1 above, and wants a
-founder confirmation before `ci/v2.17.0` is tagged.
+authority the record does not carry. **CONFIRMED BY THE FOUNDER 2026-08-10 — see `DECISIONS.md` CI-0035.** The
+shipped shape stands: demote to `high_risk_paths`, leave allowlisted. The
+deviation stood on the measured reproduction and on §4/§1 above; it now also has
+the record it was missing, and §9 item 2 is superseded on point 1 only. **Do not
+re-open this.**
 
 Two additions the spec did not name, neither changing what it required:
 

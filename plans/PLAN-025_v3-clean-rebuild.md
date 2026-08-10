@@ -1000,7 +1000,7 @@ unblocks P7**.
 | ~~1~~ | ~~P2 incomplete~~ — **DONE 2026-08-08.** All six actions ported; the `scanners` caller added with the D27 job-level fork guard, per-category SARIF uploads and a collect-then-fail verdict | ✅ |
 | 2 | **P5 not started** — the whole v3 documentation set, plus the §2→`RULES.md` mapping §4.4 requires | build |
 | 3 | **P6 — build side DISCHARGED; only FT-30's real run remains.** `MIGRATION_v3.0.0.md` **written** (mapping, add-new→observe→remove-old across protection *and* rulesets, runner-image prerequisite, rollback; CI-0024 marker-guarded and verified against a simulated `ci/v3.1.0` cut). FT-30 **preflight is clean** — `scripts/ft30-dry-run.sh --check` reports the gate owed, `CI_TAG` resolvable and pushed, `gh` authenticated; only the real run remains, and it writes to a throwaway repo, which is a founder act. **LiteLLM smoke PASSED 2026-08-10 — run `31348751529`, both the review and documentation aliases, conclusion `success`.** This gate had never been green. The 2026-07-13 failures were a **mis-dispatch onto `ubuntu-latest`**, which per CI-0017 cannot reach the bridge proxy at `172.17.0.1` — not a code defect; the workflow's own default was already the pool. Cleared by registering an ephemeral single-use runner against canon (founder-authorised), dispatching with the input defaults plus `allow_insecure_http: true`, then tearing the pool down: canon is back to **0** registered runners. Re-running it needs a pool again | **founder** |
-| 4 | **P7** — the per-repo required-context migration. Now *unblocked* by P8, but still the only irreversible phase | founder + build |
+| 4 | **P7** — the per-repo required-context migration. The only irreversible phase, and **post-tag work rather than a tag gate** (CI-0036): canon cannot self-adopt its composite actions until `ci/v3.0.0` exists (FT-21), so P7 necessarily follows the cut | founder + build |
 | 5 | **P9 not started** — rollback. Ten repos hand-run with no script is not a plan | build |
 | 6 | **P8 remainder — the `auto_install` move is DONE 2026-08-09**, and it was worse than "remaining work": the three v3 callers were `auto_install: false` with **no install path at all** — bootstrap installs only the auto_install set, `--update` never introduces a new surface, `--repin` rewrites strings. Shipped and uninstallable ([#429](https://github.com/vladm3105/aidoc-flow-ci/issues/429)). Closed by `install.sh --add-surface`, a general third mode: live-visibility variant resolution, never overwrites, warns via the manifest's new `replaces` array, arms nothing. **NOT** closed by flipping `auto_install`, which would install v3 alongside v2 on any re-bootstrap. `deploy-ci-wizard.sh` remains | build |
 | 7 | **PLAN-024 Phases A/B/C ship first** (§7) — building v3 around `doc-maintainer` while it is being deleted wastes the work | build |
@@ -1018,10 +1018,22 @@ design reversal, which is the right direction. But **every pass has still found
 something a consumer would have felt**, and three of the three found a
 required-context defect specifically.
 
-**The OPS-0066 cap is spent.** Before release this needs either a founder waiver
-for a fifth pass, or — better — a fresh plan for the remaining phases, reviewed
-on its own budget. Calling this ready on the strength of an author sweep would
-be the one move the whole document argues against.
+**The OPS-0066 cap is spent — and was WAIVED by the founder 2026-08-10
+(`DECISIONS.md` CI-0036).** Both routes this paragraph offered were exercised:
+the fresh plan was written (PLAN-026), took three independent passes, and **did
+not converge** — two of its Pass-3 findings were introduced by the intervening
+fold. The waiver rests on a distinction this paragraph did not draw: **a plan
+that has not converged and code that has been reviewed are different claims, and
+the tag depends on the second.** The merged v3 surface had a five-lens
+independent pre-prod review (5 blockers, all fixed) plus two independent OPS-0065
+reviews of the fixes.
+
+**The caveat above was NOT wrong and is not retracted.** "Every pass has still
+found something a consumer would have felt" held again — the pre-prod review
+found five, three of them defenses §2 records as *carried*. The waiver accepts
+that rate as tolerable at the tag, with the migration sequence and rollback as
+containment. Calling it *converged* would still be false; calling it *reviewed*
+is not.
 
 ### What is safe right now
 
