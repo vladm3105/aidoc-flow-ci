@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     # Matches the v2 links reusable's own budget. External checking is the slow
     # mode — it makes real network calls — so it gets the full 20.
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

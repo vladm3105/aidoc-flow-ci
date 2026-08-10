@@ -237,11 +237,39 @@ BANNED_RE='\|[[:space:]]*grep([[:space:]]+-[^|]*)?[[:space:]]+(-[a-zA-Z]*q|--qui
 SURFACE_DIRS=(.github/workflows scripts install/templates actions)
 _surface_files() { find "$1" -type f \( -name '*.sh' -o -name '*.bash' -o -name '*.yml' -o -name '*.yaml' \) 2>/dev/null | sort; }
 
+# NAMED FILES OUTSIDE THE FOUR DIRECTORIES. §27.2 declares directories, but two
+# individual files carry decisions load-bearing enough to guard on their own:
+#   tests/lib.sh        — `assert_absent` inverts to a SILENT PASS, so an
+#                         inversion here is lost coverage with no red anywhere.
+#   install/install.sh  — the file every consumer curls. Its two sites decide
+#                         which tag a cold-start install pins and whether the
+#                         operator is warned that AI-flow jobs will sit Queued
+#                         forever. Both converted under CI-0033; guarded so they
+#                         cannot come back.
+# The REST of install/ and tests/ is NOT yet in scope — deploy-ci-wizard.sh (11
+# sites) and ~28 across tests/ are real instances, tracked separately rather
+# than converted inside a release-readiness change.
+SURFACE_FILES=(tests/lib.sh install/install.sh)
+
 mapfile -t GUARDED < <(
   for _d in "${SURFACE_DIRS[@]}"; do _surface_files "$_d"; done
-  echo tests/lib.sh
+  printf '%s\n' "${SURFACE_FILES[@]}"
 )
 [ "${#GUARDED[@]}" -ge 20 ] || _r "guard scope collapsed to ${#GUARDED[@]} files — expected 20+"
+
+# PIN THE NAMED FILES TOO. `echo tests/lib.sh` sat inside the mapfile with no
+# assertion on it at all — deleting that one line dropped the file from scope in
+# silence, the same shape the per-surface floors exist to prevent for the
+# directories. Assert both the list and each file's presence in the PRODUCT.
+assert_eq "${SURFACE_FILES[*]}" "tests/lib.sh install/install.sh" \
+  "the named-file guard list is exactly what §27.2 declares"
+for _f in "${SURFACE_FILES[@]}"; do
+  assert_ok "[ -s '$_f' ]" "named guard target exists: $_f"
+  case " ${GUARDED[*]} " in
+    *" $_f "*) _g "named guard target reached guard scope: $_f" ;;
+    *) _r "named guard target is NOT in guard scope: $_f" ;;
+  esac
+done
 
 # PER-SURFACE FLOORS, asserted against GUARDED — the PRODUCT — not against the
 # arrays that feed it. The previous version asserted a floor on its own private

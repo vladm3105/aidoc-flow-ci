@@ -160,9 +160,15 @@ else
     /dev/fd/*|/proc/*|pipe:*|"") : ;;   # process-sub: no local VERSION to read
     *) _script_dir="$(cd "$(dirname "$_self")" 2>/dev/null && pwd || true)" ;;
   esac
+  # CI-0033 §27: a bash regex test, not a pipeline whose status is the decision.
+  # This is the spelling release.sh:54 and sync-version-refs.sh:96 already use;
+  # install.sh was the last holdout. The writer here is a `printf` builtin, so
+  # no inversion was reachable at this payload size — but §27 states that "the
+  # payload is small" is not a justification, and this file is the one every
+  # consumer curls, so it decides which tag a cold-start install pins.
   if [ -n "$_script_dir" ] && [ -f "$_script_dir/../VERSION" ] \
      && _v="$(tr -d '[:space:]' < "$_script_dir/../VERSION")" \
-     && printf '%s' "$_v" | grep -qE '^ci/v[0-9]+\.[0-9]+\.[0-9]+$'; then
+     && [[ "$_v" =~ ^ci/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     CI_TAG="$_v"
     CI_TAG_SOURCE="VERSION file"
   else
@@ -1241,7 +1247,11 @@ echo "    2. Runner pool — REQUIRED for the AI-flows on BOTH visibilities (the
 echo "       review job pins the self-hosted pool even on public repos):"
 if command -v "${GH:-gh}" >/dev/null 2>&1; then
   _runners="$("${GH:-gh}" api "repos/$TARGET_REPO/actions/runners" --jq '[.runners[]|select(.status=="online")|[.labels[].name]|join(",")]|join(" | ")' 2>/dev/null || echo '')"
-  if printf '%s' "$_runners" | grep -q 'ci-runner' && printf '%s' "$_runners" | grep -q 'single-use'; then
+  # CI-0033 §27: substring tests via `case` — no fork, no pipeline status to
+  # invert, `grep -F` semantics from the quoted expansion. The decision this
+  # makes is whether to tell the operator their AI-flow jobs will sit Queued
+  # forever, so a false negative here is a silently mis-provisioned repo.
+  if [[ "$_runners" == *ci-runner* && "$_runners" == *single-use* ]]; then
     echo "         ✅ online ci-runner/single-use pool: $_runners"
   else
     echo "         🔴 NO online ci-runner/single-use pool — every AI-flow job will sit Queued forever"

@@ -16,6 +16,14 @@
 # over HTTP; no vendor CLI or durable subscription authentication is installed
 # in the image.
 #
+# `python3-yaml`: `actions/pre-commit`'s D11 precondition guard parses the hook
+# config to count what would actually be SELECTED at the runner's stage, and it
+# runs BEFORE `actions/setup-python` — deliberately, so a config that selects
+# zero hooks is refused before anything is provisioned. That means it uses the
+# SYSTEM interpreter, where PyYAML is not present by default. Without this the
+# guard raises a raw ImportError traceback and fails the whole consolidated
+# `quick-gates` gate for a reason that names neither PyYAML nor the image.
+#
 # `python3-venv` + `python3-pip`: the base image ships the `python3` INTERPRETER
 # but not `ensurepip`, so `python3 -m venv` fails with "ensurepip is not
 # available" — a distinction that reads as "python3 is present, we are fine"
@@ -56,7 +64,7 @@ RUN set -eux; \
       > /etc/apt/sources.list.d/github-cli.list; \
     apt-get update -qq; \
     apt-get install -y -qq --no-install-recommends \
-      "gh=${GH_VERSION}" ripgrep libatomic1 python3-venv python3-pip; \
+      "gh=${GH_VERSION}" ripgrep libatomic1 python3-venv python3-pip python3-yaml; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*; \
     gh --version | head -1; \

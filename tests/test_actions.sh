@@ -390,7 +390,11 @@ if [ -f "$QG" ]; then
   # Explicit beats inherited on a required gate.
   assert_contains "$qg" "mode: internal" "quick-gates: passes mode explicitly"
   assert_contains "$qg" "config-file: .lychee.toml" "quick-gates: passes the config path explicitly"
-  assert_contains "$qg" "github-token:" "quick-gates: passes the token (no secrets context inside an action)"
+  # NO token here — see the mode-keyed rule asserted below. `mode: internal`
+  # adds `--offline`, so lychee makes no request and the credential is never
+  # read; it would only sit in the same job as the step that executes the PR's
+  # own pre-commit hooks.
+  assert_absent "$qg" "github-token:" "quick-gates: does NOT pass a token it cannot use (mode: internal)"
 fi
 LX=install/templates/workflows/links-external.yml
 if [ -f "$LX" ]; then
@@ -611,8 +615,8 @@ for wf in quick-gates quick-gates-private; do
   assert_eq "$(stepwith "$f" links mode)"          "internal"     "$wf: links mode=internal (parsed)"
   assert_eq "$(stepwith "$f" links config-file)"   ".lychee.toml" "$wf: links config-file (parsed)"
   assert_eq "$(stepwith "$f" links fail-on-error)" "true"         "$wf: links is BLOCKING (parsed)"
-  assert_eq "$(stepwith "$f" links github-token)"  '${{ secrets.GITHUB_TOKEN }}' \
-    "$wf: token passed to links (no secrets context inside an action)"
+  assert_eq "$(stepwith "$f" links github-token)"  "<ABSENT>" \
+    "$wf: no token passed to an offline links step"
   assert_eq "$(stepwith "$f" markdownlint fail-on-findings)" "true" "$wf: markdownlint is BLOCKING (parsed)"
 done
 if [ -f "$LX" ]; then
@@ -880,17 +884,96 @@ done < <(grep -rhoE 'vladm3105/aidoc-flow-ci/actions/[^@[:space:]]+@[^[:space:]]
            install/templates/workflows/ .github/workflows/ 2>/dev/null | sort -u)
 [ "$missing" -eq 0 ] || printf '  \033[33mnote\033[0m %d dangling reference(s) — the caller will startup_failure\n' "$missing"
 
-echo "== timeout is the SUM of absorbed budgets (PLAN-025 §3.2b) =="
+echo "== the links token is passed IFF the mode can use it =="
+# A biconditional, because both directions are real defects and the one-way rule
+# ("callers must pass the token, the secrets context is unavailable inside a
+# composite action") was applied universally and put an unusable credential in
+# `quick-gates`.
+#   mode: external → lychee makes live requests and hits github.com's anonymous
+#     rate limits without a token. Omitting it degrades the weekly report.
+#   mode: internal → `--offline` (actions/links/action.yml:110), no request is
+#     made, the token is never read — and in v3 it would sit in the same job,
+#     PATH and process namespace as the step that executes the PR's own
+#     `.pre-commit-config.yaml`. v2 kept those on separate runners.
+while IFS='|' read -r wf mode tok; do
+  [ -n "$wf" ] || continue
+  b="$(basename "$wf")"
+  if [ "$mode" = "external" ]; then
+    assert_ok "[ '$tok' != '<ABSENT>' ]" "$b: mode=external MUST carry a token (rate limits)"
+  else
+    assert_eq "$tok" "<ABSENT>" "$b: mode=$mode is offline — must NOT carry a token it cannot use"
+  fi
+done < <(python3 - <<'PY_TOK'
+import glob, yaml
+for wf in sorted(glob.glob("install/templates/workflows/*.yml")):
+    d = yaml.safe_load(open(wf)) or {}
+    for j in (d.get("jobs") or {}).values():
+        for s in (j.get("steps") or []):
+            if not isinstance(s, dict) or "/actions/links@" not in str(s.get("uses", "")):
+                continue
+            w = s.get("with") or {}
+            print("%s|%s|%s" % (wf, w.get("mode", "<ABSENT>"), w.get("github-token", "<ABSENT>")))
+PY_TOK
+)
+
+echo "== job timeout EXCEEDS the sum of the inner tool timeouts (§3.2b) =="
 # v2: pre-commit 15 + markdownlint 10 + links 20 = 45. A consolidated job that
 # takes the MAX kills checks that already passed when the slowest one runs long.
-if [ -f "$QG" ]; then
-  tmo="$(grep -oE 'timeout-minutes: [0-9]+' "$QG" | grep -oE '[0-9]+' || echo 0)"
-  if [ "${tmo:-0}" -ge 45 ]; then
-    _g "quick-gates: timeout ${tmo} >= 45 (sum of absorbed budgets)"
-  else
-    _r "quick-gates: timeout ${tmo} < 45 — a slow links run would kill passed checks"
-  fi
-fi
+#
+# But the sum is a FLOOR, not the answer, and shipping exactly the sum was the
+# defect. Each action wraps its tool in `timeout N`, and those wrappers are the
+# only path that prints "infrastructure failure, not a clean run" — a job-level
+# kill at the same minute pre-empts every one of them, and additionally CANCELS
+# the `if: always()` verdict step, losing collect-then-fail in exactly the case
+# it exists for. Provisioning (checkout, setup-python, setup-node, `npm -g`,
+# `python3 -m venv` + pip, three verified binary downloads) is unbudgeted by the
+# sum entirely.
+#
+# DERIVED FROM THE ACTIONS, not restated. A hardcoded `>= 45` is satisfiable by
+# editing the caller alone; this resolves each `uses:` to its action file and
+# adds up what that action actually enforces, so raising an inner timeout
+# without raising the job's is a red.
+while IFS='|' read -r wf inner_s; do
+  [ -n "$wf" ] || continue
+  b="$(basename "$wf")"
+  job_m="$(grep -oE 'timeout-minutes: [0-9]+' "$wf" | grep -oE '[0-9]+' | head -1 || echo 0)"
+  inner_m=$(( inner_s / 60 ))
+  assert_ok "[ ${job_m:-0} -gt $inner_m ]" \
+    "$b: job timeout ${job_m}m EXCEEDS the ${inner_m}m its actions enforce internally"
+done < <(python3 - <<'PY_TMO'
+import glob, re, yaml
+def inner_seconds(action_path):
+    d = yaml.safe_load(open(action_path)) or {}
+    total = 0
+    for s in ((d.get("runs") or {}).get("steps") or []):
+        if not isinstance(s, dict) or "run" not in s:
+            continue
+        # Skip opt-in steps: sast-scan's autofix preview carries its own
+        # `timeout 1200` but is `if: inputs.autofix-preview == 'true'` and every
+        # caller passes false. Counting it would demand ~20 unusable minutes.
+        if s.get("if"):
+            continue
+        found = [int(m) for m in re.findall(r'\btimeout\s+(\d+)\b', str(s["run"]))]
+        total += max(found) if found else 0
+    return total
+for wf in sorted(glob.glob("install/templates/workflows/*.yml")):
+    d = yaml.safe_load(open(wf)) or {}
+    tot = 0
+    for j in (d.get("jobs") or {}).values():
+        for s in (j.get("steps") or []):
+            u = str(s.get("uses", "")) if isinstance(s, dict) else ""
+            if "/actions/" not in u:
+                continue
+            name = u.split("/actions/")[1].split("@")[0]
+            for cand in ("actions/%s/action.yml" % name, "actions/%s/action.yaml" % name):
+                try:
+                    tot += inner_seconds(cand); break
+                except FileNotFoundError:
+                    continue
+    if tot:
+        print("%s|%d" % (wf, tot))
+PY_TMO
+)
 
 echo "== every step declares the env it reads (the D11 wrong-stage class) =="
 # ASSERT THE INPUT IS NON-EMPTY FIRST. A checker handed zero files prints
@@ -954,5 +1037,35 @@ g, r = (guard.get("env") or {}).get("RUN_STAGE"), (run.get("env") or {}).get("RU
 print("MATCH" if g is not None and g == r else "MISMATCH")
 PY_D11
 )" "MATCH" "D11 guard and hook run resolve run-stage from the same input"
+
+# RUN THE SHIPPED GUARD. The structural check above proves the wiring; only
+# execution proves the COUNT is right, and every one of these cases was either a
+# live defect or a near miss.
+_d11="$(mktemp -d)"
+python3 - > "$_d11/guard.sh" <<'PY_X'
+import yaml
+d = yaml.safe_load(open("actions/pre-commit/action.yml"))
+for s in d["runs"]["steps"]:
+    if "selects ZERO hooks" in str(s.get("run", "")):
+        print(s["run"]); break
+PY_X
+_hook_cfg() { printf 'repos:\n- repo: local\n  hooks:\n  - id: a\n%s\n' "$1"; }
+_hook_cfg "    stages: [pre-commit]" > "$_d11/normal.yaml"
+_hook_cfg "    stages: [commit]"     > "$_d11/legacy.yaml"
+_hook_cfg "    stages: [manual]"     > "$_d11/manual.yaml"
+_hook_cfg ""                         > "$_d11/nostages.yaml"
+_d11_run() { ( CONFIG_PATH="$_d11/$1.yaml" RUN_STAGE="$2" bash "$_d11/guard.sh" >/dev/null 2>&1 ); }
+
+assert_ok   "_d11_run normal pre-commit"   "D11: a commit-stage hook counts at pre-commit"
+assert_fail "_d11_run normal manual"       "D11: it does NOT count at manual (B2 scenario A — the silent pass)"
+assert_fail "_d11_run manual pre-commit"   "D11: an all-manual config is refused at pre-commit"
+assert_ok   "_d11_run manual manual"       "D11: ...and accepted at manual (B2 scenario B — the false red)"
+assert_ok   "_d11_run nostages pre-commit" "D11: a hook with no stages: counts at every stage"
+assert_ok   "_d11_run nostages manual"     "D11: ...including manual"
+# The action must not be STRICTER than the operator-side detector that clears a
+# repo for adoption — tests/lib_count_stage_hooks.py accepts the legacy spelling,
+# so a consumer cleared by it must not be hard-failed by the action on day one.
+assert_ok   "_d11_run legacy pre-commit"   "D11: legacy 'commit' stage is accepted, matching canon's own detector"
+rm -rf "$_d11"
 
 suite_summary "test_actions.sh"

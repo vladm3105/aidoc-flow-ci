@@ -67,8 +67,15 @@ jobs:
     # D27 — see the header. Identical across all three v2 reusables.
     if: ${{ github.event.pull_request.head.repo.fork != true }}
     runs-on: ["self-hosted", "ci-runner", "single-use"]
-    # §3.2b: the SUM of the absorbed budgets (dep-scan 15 + sast 20 + trivy 15).
-    timeout-minutes: 50
+    # §3.2b: the SUM of the absorbed budgets (dep-scan 15 + sast 20 + trivy 15)
+    # PLUS headroom. The sum alone is exactly what the `timeout N` wrappers
+    # inside the three actions already total (900+1200+900s = 50m), so a job
+    # budget of 50 lets the job-level kill pre-empt the inner timeouts — losing
+    # both their "infrastructure error, re-run" diagnostics AND the `if: always()`
+    # verdict step, which a job-level timeout cancels. The extra 10 covers the
+    # checkout, a `python3 -m venv` + pip install, and three checksum-verified
+    # binary downloads, none of which the sum accounts for.
+    timeout-minutes: 60
     steps:
       - name: Checkout (data-only; no persisted creds)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
