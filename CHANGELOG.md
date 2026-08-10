@@ -5,6 +5,32 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — the runner image had been unbuildable since gh 2.97.0, so #430's #349 fix could not be delivered by anyone (#435)
+
+**Found by trying it.** `#349` (`sast-scan` cannot install semgrep — no
+`python3-venv`) was fixed in #430 by editing the runner Dockerfile, and the fix
+requires a rebuild per host because there is no registry push. The rebuild
+failed: `E: Version '2.96.0' for 'gh' was not found`, buried under ~80 lines of
+echoed Dockerfile inside `exit code: 100`.
+
+`cli.github.com`'s apt repo carries **only the current release**, so an exact
+`gh=<version>` pin expires on its own at every upstream release, with no change
+here and nothing detecting it — **no CI job builds this image.** The blocker had
+been listed across three handoffs as "founder rebuilds the image", an action
+that could not have succeeded.
+
+Pin bumped to 2.97.0, and **#349 is now empirically closed rather than assumed**:
+`python3 -m venv` works, `PyYAML 6.0.1` imports on the system interpreter (which
+is what the D11 guard uses, before `setup-python`), and `semgrep==1.170.0`
+installs and reports its version — all run in the rebuilt image.
+
+`build-image.sh` now decides on the captured build output (CI-0033 — `tee` is
+the last pipeline stage, so `$?` is tee's) and, on this failure specifically,
+names the expired version, says it is not the operator's change, and gives the
+command to find the current one. Driven with `GH_VERSION=9.99.9` to confirm it
+fires. That converts a three-minute diagnosis into ten seconds; it does not stop
+the expiry, which is [#435](https://github.com/vladm3105/aidoc-flow-ci/issues/435).
+
 ### Added — `install.sh --add-surface`, because v3 shipped uninstallable (#429)
 
 **A release nobody can install is not released.** The three v3 consolidating
