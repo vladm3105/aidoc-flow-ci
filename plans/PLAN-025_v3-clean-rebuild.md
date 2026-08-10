@@ -978,10 +978,18 @@ updated and its private sibling was not.
 
 ### Done
 
-P1 (inventory signed off, 46 defenses, all carried) · P2 in part (three of six
-composite actions: `markdownlint`, `pre-commit`, `links`) · P3 in part
-(`quick-gates` + private variant + `links-external`, with the verdict step and
-per-check timeouts) · **P8 core — which unblocks P7**.
+P1 (inventory signed off, 46 defenses, all carried) · **P2 complete** (all six
+composite actions: `markdownlint`, `pre-commit`, `links`, `dep-scan`,
+`trivy-scan`, `sast-scan`) · **P3 + P3a complete** (five caller templates:
+`quick-gates{,-private}`, `scanners`, `links-external{,-private}`, with the
+collect-then-fail verdict step and per-check timeouts) · **P8 core — which
+unblocks P7**.
+
+> This paragraph read "P2 in part (three of six)" until 2026-08-09, contradicting
+> the §5 at-a-glance table and this section's own blocker table two paragraphs
+> below, both of which recorded P2 as done on 2026-08-08. The table was right.
+> Prose beside a table is a second copy of one truth and drifts against it; the
+> §5 table is the surface to read.
 
 ### Blocking release
 

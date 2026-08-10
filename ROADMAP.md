@@ -8,7 +8,39 @@ deferred items belong in `plans/` or `HANDOFF.md` open threads.
 
 ---
 
-## Current release — ci/v2.10.0: FT-15 pinned-asset-fetch fix (PLAN-017; prep merged, tag + pilot verification remaining)
+## Current release — ci/v2.16.0 (2026-07-27)
+
+The latest published tag. Six releases landed after the `ci/v2.10.0` section
+below, which sat here as "Current release" until 2026-08-09 — this file's own
+maintenance protocol asks for an update when a phase closes, and six closed
+without one. `VERSION` is the single source of truth; read it rather than this
+heading if the two ever disagree again.
+
+**Unreleased work on `main` exceeds one release.** Roughly forty merged PRs are
+not reachable by any consumer, because canon ships by tag and no tag has been
+cut since. That backlog is the argument for cutting something, not for cutting
+it quickly.
+
+## In flight — ci/v3.0.0: composite-action rebuild (PLAN-025)
+
+Repackages six reusables as **composite actions** under `actions/`, invoked from
+two consolidated jobs (`quick-gates`, `scanners`) instead of six. A
+`workflow_call` reusable always gets its own runner; a composite action runs
+inside the calling job. No check is removed and PLAN-025 §2 carries all 46
+defenses.
+
+**Breaking:** required status-check context strings change from `call / <name>`
+to a bare job name. `docs/MIGRATION_v3.0.0.md` carries the mapping and the
+add-new → observe-green → remove-old sequence.
+
+**Not released, not adoptable.** Phases P1/P2/P3/P3a and P8-core are done; P4
+(local layer), P5 (the `docs/v3/` set), P6 (release), P7 (per-repo context
+migration) and P9 (rollback) are not. The founder-gated items — the FT-30
+cold-start dry run, a green `litellm-smoke`, and the OPS-0066 waiver-or-
+fresh-plan call — gate the tag. PLAN-025 §7 additionally makes PLAN-024 Phases
+A/B/C a precondition, and PLAN-024 is `Status: Draft — no phase executed`.
+
+## Earlier release — ci/v2.10.0: FT-15 pinned-asset-fetch fix (PLAN-017)
 
 The adopted `@ci/vX.Y.Z` pin now actually controls the assets each affected
 reusable fetches. FT-15 was **confirmed live** 2026-07-21: a consumer pinned

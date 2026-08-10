@@ -2265,6 +2265,74 @@ Issue [#417](https://github.com/vladm3105/aidoc-flow-ci/issues/417), from the
 that it reached a required gate and that a correct-looking local test cannot
 detect it.
 
+## CI-0034: A defense inventory records intent; only an assertion records the defense (2026-08-09)
+
+**Context**
+
+A five-lens pre-prod review of the v3 surface at `c0e50c1` returned five
+blocking defects. Three of them were defenses that `PLAN-025 §2` explicitly
+records as **carried**, and that source showed were not:
+
+- **D35** — all three v2 SARIF uploads carry a fork clause on the upload step
+  (`dep-scan.yml:138`, `trivy-scan.yml:114`, `sast-scan.yml:169`). All three v3
+  uploads shipped without it, leaving the job-level `if:` as the only barrier to
+  three steps holding `security-events: write` — and that guard is
+  null-permissive when `head.repo` is null, which a deleted fork on a `reopened`
+  event produces. §2 says "All 27 CARRIED. None dropped."
+- **D11** — the pre-commit precondition guard read `RUN_STAGE`, declared only on
+  a later step. Composite steps do not share `env:`, so it validated a stage the
+  run would not use. §8 blocker 8 records it "verified against the reproduced
+  manual-only config"; that verification ran with `run-stage` unset, where the
+  default and the hardcoded value coincide and the defect is invisible.
+- **D42** — `links-external`'s report step could not fire. `fail-on-error:
+  'false'` makes the action exit 0 for every lychee result short of a timeout,
+  pinning `steps.links.outcome` to `success`. The file's own header says "A
+  REPORT-ONLY JOB WITH NO REPORT IS NOT A CHECK".
+
+The pattern is not carelessness. Each was ported correctly *as a body* and lost
+its defense *at the seam* — the caller-side `if:`, the step-scoped `env:`, the
+input pairing. §1 makes the port verbatim precisely to avoid rewrite risk, and
+the residue is that what is NOT in the body is what goes missing.
+
+**Decision**
+
+1. **A row in a defense inventory is a claim about intent. It is not evidence,
+   and a review must not treat it as one.** Where §2 says "carried", the
+   question to ask of source is "carried *where*" — a defense expressed in a
+   caller, a step's `env:` scope, or the pairing of two inputs does not travel
+   with the body it belonged to.
+2. **Every carried defense gets an assertion that fails when it is removed**,
+   and the assertion is written against the seam, not the body. Added here:
+   SARIF uploads looped for their own fork clause; a general check that no
+   composite step reads an env var its own step never declared; the links
+   token/mode biconditional; the ubuntu-latest-caller/private-variant
+   biconditional.
+3. **Prefer the general form.** Three of the five would have been caught by a
+   check of the *class* rather than the instance — which is why the env check
+   scans all six actions rather than asserting `RUN_STAGE` in one place.
+4. **Consolidation raises the cost of every missing seam.** In v2 each check was
+   its own job with its own `permissions`, its own guard, its own context. v3
+   puts three in one job, so a dropped guard has no sibling behind it and one
+   scanner that cannot install reds two that can (`#349`).
+
+**Consequences**
+
+- Five defects fixed before any consumer could see them, none of which the
+  suite, the plan, or three prior author passes had surfaced.
+- **Three of the FIXES broke before they held, each caught only by executing
+  them** — the SARIF purge's `rm -f` aborting under `set -e` on a directory
+  survivor with no `::error::`; the private-variant check reading the manifest's
+  claim about a file instead of the file; the step-order assertion matching a
+  header comment rather than an invocation. This is the same shape as CI-0033's
+  fold and reinforces it: **a fix inherits the defect class it fixes.**
+- The purge, the D11 guard and `release.sh`'s marker retirement are now
+  **executed** by the suite against real fixtures, not merely parsed. Every
+  structural assertion passed against the broken first drafts.
+- This does not retire `PLAN-025 §2`. The inventory is still how the port is
+  planned; it is no longer how the port is verified.
+
+---
+
 <!-- Append new entries above this line (or into a previously reserved ID
 slot — see the ordering rule at the top); append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
