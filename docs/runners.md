@@ -165,6 +165,7 @@ re-pin) with the following baked in:
 | `libatomic1` | Node-backed lint tools installed at job time (markdownlint-cli2) crash without it — second shipped instance of the same image-drift class (business #63) |
 | `ripgrep` | fast search for AI-review / doc-maintainer job scripts |
 | `python3` | Runs the dependency-free LiteLLM adapter |
+| `python3-venv`, `python3-pip` | `actions/sast-scan` installs semgrep into an isolated venv (D21). The base image ships the **interpreter** without `ensurepip`, so `python3 -m venv` fails while `command -v python3` succeeds — third shipped instance of the image-drift class ([#349](https://github.com/vladm3105/aidoc-flow-ci/issues/349)). `build-image.sh` now proves it by building a venv, not by checking the package list |
 | `gh`, `jq`, `curl`, `git` | Standard CLI utilities the workflows assume |
 
 The image spec is versioned here and re-tagged with the `ci/vX.Y.Z`

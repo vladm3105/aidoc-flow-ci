@@ -55,6 +55,16 @@ runs:
       shell: bash
       env:
         CONFIG_PATH: ${{ inputs.config-path }}
+        # LOAD-BEARING, and its absence was invisible. The D11 count below reads
+        # `RUN_STAGE`, which was declared ONLY on the "Run hooks" step — composite
+        # steps do not share `env:`, so `${RUN_STAGE:-pre-commit}` silently took
+        # the default and the guard validated a stage the run would not use.
+        # A consumer on `run-stage: manual` therefore got the D11 failure the
+        # guard exists to prevent: hooks counted at `pre-commit`, zero selected at
+        # `manual`, `pre-commit run` exits 0 having inspected nothing, gate green.
+        # The reverse case is worse to debug — an all-`manual` config counted at
+        # `pre-commit` finds zero and hard-fails a correct configuration.
+        RUN_STAGE: ${{ inputs.run-stage }}
       run: |
         set -euo pipefail
         if [ ! -e .git ] && [ ! -f "${CONFIG_PATH}" ]; then

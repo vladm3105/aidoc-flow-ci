@@ -303,4 +303,49 @@ assert_ok "grep -q 'not.*merged yet\\|is not merged\\|VERSION on main reads' '$R
   "source carries the VERSION-must-match-tree guard"
 assert_ok "grep -q \"must be on main\" '$REL'" "source carries the on-main guard"
 
+echo ""
+echo "== prep retires forward-pin markers the cut makes current (FT-21) =="
+# Every v3 caller instructs "REMOVE THEM AT THE v3.0.0 TAG CUT" and nothing did.
+# Left behind, `sync-version-refs` never descends into the span again and those
+# pins freeze at v3.0.0 through every later release — invisibly, because
+# `--check` skips exactly what it is told to skip.
+#
+# Extract the SHIPPED block and drive it, rather than grepping for its presence:
+# the ordering and the version comparison are the parts that can be wrong, and
+# neither is visible in a `grep -q`.
+MK="$(mktemp -d)"
+sed -n '/^  unmarked="\$(python3 - "\$version" <<.PY_MK.$/,/^PY_MK$/p' "$REL" | sed '1d;$d' > "$MK/mk.py"
+assert_ok "[ -s '$MK/mk.py' ]" "the marker-retirement block was located in release.sh"
+
+mkdir -p "$MK/w/install/templates/workflows"
+cp install/templates/workflows/*.yml "$MK/w/install/templates/workflows/" 2>/dev/null || true
+_marked() { grep -rl 'sync-version-refs:ignore-start' "$MK/w/install/templates/workflows/" 2>/dev/null | wc -l; }
+before="$(_marked)"
+assert_ok "[ '$before' -ge 1 ]" "fixture carries at least one marker-guarded caller to retire"
+
+# A cut BELOW the pin must leave the span alone — it is still a forward reference.
+( cd "$MK/w" && python3 "$MK/mk.py" ci/v2.17.0 >/dev/null )
+assert_eq "$(_marked)" "$before" "a cut below the pin leaves the markers in place"
+
+# A cut AT the pin retires them.
+( cd "$MK/w" && python3 "$MK/mk.py" ci/v3.0.0 >/dev/null )
+assert_eq "$(_marked)" "0" "a cut at the pinned tag retires every marker"
+assert_ok "grep -q 'actions/pre-commit@ci/v3.0.0' '$MK/w/install/templates/workflows/quick-gates.yml'" \
+  "...and removes ONLY the markers — the pin itself survives"
+assert_ok "python3 -c \"import yaml,glob,sys; [yaml.safe_load(open(f)) for f in glob.glob('$MK/w/install/templates/workflows/*.yml')]\"" \
+  "...and every caller still parses as YAML afterwards"
+rm -rf "$MK"
+
+# ORDER IS LOAD-BEARING: retire the markers, THEN rewrite pins. Reversed, the
+# rewriter skips the spans on the very cut that was supposed to free them.
+# Anchored on the INVOCATION (`bash "$HERE/sync-version-refs.sh"`), not on any
+# mention: the header comments name the script ~150 lines earlier, so a bare
+# `grep -n 'sync-version-refs.sh' | head -1` compares against prose and reports
+# the order backwards.
+mk_line="$(grep -n 'PY_MK' "$REL" | head -1 | cut -d: -f1)"
+sv_line="$(grep -n 'bash "\$HERE/sync-version-refs.sh"' "$REL" | head -1 | cut -d: -f1)"
+assert_ok "[ -n '$mk_line' ] && [ -n '$sv_line' ]" "both prep steps located by line number"
+assert_ok "[ '${mk_line:-0}' -lt '${sv_line:-0}' ]" \
+  "marker retirement (line ${mk_line:-?}) runs BEFORE sync-version-refs (line ${sv_line:-?})"
+
 suite_summary "release"

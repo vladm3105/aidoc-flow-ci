@@ -72,6 +72,23 @@ for j in (d.get("jobs") or {}).values():
 PY_VB
 }
 
+# A named caller step's `run:` body, comments stripped. `verdict_body` above is
+# this specialised to "verdict"; the report-only callers name theirs "report",
+# and a report that is not asserted is how links-external's unreachable failure
+# arm survived review.
+named_step_body() {
+  python3 - "$1" "$2" <<'PY_NB'
+import sys, re, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+for j in (d.get("jobs") or {}).values():
+    for s in (j.get("steps") or []):
+        if isinstance(s, dict) and s.get("name") == sys.argv[2]:
+            for line in str(s.get("run", "")).split("\n"):
+                if not re.match(r'\s*#', line):
+                    print(line)
+PY_NB
+}
+
 # Sorted action basenames a caller invokes — catches a silently dropped check.
 invoked_actions() {
   python3 - "$1" <<'PY_IA'
@@ -92,6 +109,51 @@ perms_of() {
   python3 -c "
 import yaml, json, sys
 print(json.dumps(yaml.safe_load(open(sys.argv[1])).get('permissions'), sort_keys=True))" "$1"
+}
+
+# Env vars a step's `run:` READS that the SAME step never declared. In a
+# composite action every step is its own shell AND its own `env:` scope, so a
+# value declared on step 4 is simply absent in step 1 — with no error, because
+# `${VAR:-default}` is exactly how you write "optional". That is how the D11
+# guard came to validate a stage the run would not use: `RUN_STAGE` was declared
+# on "Run hooks" and read by the precondition step, so `${RUN_STAGE:-pre-commit}`
+# silently took the default and the guard checked the wrong stage for every
+# consumer that set the input. Nothing failed; the gate just stopped meaning
+# what it said.
+#
+# Reported per step, not per file — the same name legitimately appears declared
+# in one step and undeclared in another, which is the whole defect shape.
+undeclared_env() {
+  python3 - "$@" <<'PY_UE'
+import sys, re, yaml
+# Provided by the runner itself, so reading one without declaring it is correct.
+PROVIDED = re.compile(r'^(GITHUB_|RUNNER_|ACTIONS_|INPUT_|CI$|HOME$|PATH$|TMPDIR$|LANG$|PWD$|SHELL$|USER$|IFS$|OSTYPE$|BASH)')
+REF    = re.compile(r'\$\{([A-Z][A-Z0-9_]*)(?:[:#%/^,-][^}]*)?\}|\$([A-Z][A-Z0-9_]*)')
+# re.M is load-bearing on all three: without it `^` anchors to the start of the
+# whole body, so only a first-line assignment counts and every later one reads
+# as undeclared. The prototype reported five false positives for exactly that.
+ASSIGN = re.compile(r'(?:^|[;&|(]|\bthen\b|\bdo\b|\bexport\b|\blocal\b|\bdeclare\b|\breadonly\b)\s*([A-Z][A-Z0-9_]*)\s*(?:=|\+=)', re.M)
+LOOPRD = re.compile(r'\b(?:for|read(?:\s+-\w+)*|mapfile(?:\s+-\w+)*(?:\s+\S+)?)\s+([A-Z][A-Z0-9_]*)', re.M)
+# `echo FOO=bar >> "$GITHUB_ENV"` exports to LATER steps, so the name is
+# legitimately defined without appearing in any `env:` block.
+GHENV  = re.compile(r'^\s*(?:echo|printf)[^\n]*?\b([A-Z][A-Z0-9_]*)=[^\n]*>>\s*"?\$(?:\{)?GITHUB_ENV', re.M)
+for path in sys.argv[1:]:
+    d = yaml.safe_load(open(path)) or {}
+    for i, s in enumerate((d.get("runs") or {}).get("steps") or []):
+        if not isinstance(s, dict) or "run" not in s:
+            continue
+        # Comments name the variables they explain, so strip them first — the
+        # "an assertion about what runs must see only what runs" rule applies
+        # here in reverse: an unstripped comment would HIDE a real hit only if
+        # it declared one, but it would just as easily invent one.
+        code = "\n".join(l for l in str(s["run"]).split("\n") if not re.match(r'\s*#', l))
+        known = set((s.get("env") or {}).keys()) | set(ASSIGN.findall(code)) \
+              | set(LOOPRD.findall(code)) | set(GHENV.findall(code))
+        for name in dict.fromkeys(m.group(1) or m.group(2) for m in REF.finditer(code)):
+            if name not in known and not PROVIDED.match(name):
+                print("%s step %d (%s): reads $%s, never declared in that step" %
+                      (path, i, s.get("name", "?"), name))
+PY_UE
 }
 
 mapfile -t ACTIONS < <(find actions -name action.yml 2>/dev/null | sort)
@@ -335,29 +397,55 @@ if [ -f "$LX" ]; then
   lx="$(cat "$LX")"
   assert_contains "$lx" "schedule:" "links-external: is scheduled"
   assert_contains "$lx" "mode: external" "links-external: checks external URLs"
-  assert_contains "$lx" "fail-on-error: 'false'" "links-external: report-only, never blocking"
+  # NOT `fail-on-error: 'false'` — that spelling of "report-only" was the defect,
+  # not the property. It makes actions/links exit 0 for every result short of a
+  # timeout, which pins `steps.links.outcome` to `success` and leaves the report
+  # step's failure arm unreachable: dead links, green tick, no warning. The job's
+  # non-blocking-ness comes from `continue-on-error` (asserted below with its
+  # partner), which rewrites the CONCLUSION while leaving the OUTCOME true.
+  assert_contains "$lx" "continue-on-error: true" "links-external: never blocking"
 else
   _r "links-external.yml missing — adopting quick-gates would drop external link checking entirely (D42)"
 fi
 
-echo "== forward pins are marker-guarded (blocker found in the final review) =="
+echo "== ignore markers track the pin, in BOTH directions (FT-21) =="
 # `sync-version-refs --check` is a DEFAULT-STAGE, always_run pre-commit hook, so
 # it runs on every commit AND inside canon's `call / Lint / format / security
 # hooks` required context. A v3 template pinning `@ci/v3.0.0` while VERSION is
-# ci/v2.16.0 reports STALE and reds the branch. Worse, the rewriter's suggested
-# remedy would point the pin at a tag where `actions/` does not exist.
-# These are forward references (FT-21 shape) and need the ignore markers.
-for tpl in install/templates/workflows/quick-gates.yml \
-           install/templates/workflows/quick-gates-private.yml \
-           install/templates/workflows/links-external.yml; do
-  [ -f "$tpl" ] || continue
+# ci/v2.16.0 reports STALE and reds the branch, and the rewriter's suggested
+# remedy would point the pin at a tag where `actions/` does not exist. So while
+# the pin is AHEAD of VERSION the markers are mandatory (FT-21 chicken-and-egg).
+#
+# THE OTHER DIRECTION IS WHY THIS IS A BICONDITIONAL, and the earlier one-way
+# version made the tag cut impossible to perform. Every one of these templates
+# instructs the operator to REMOVE THE MARKERS AT THE v3.0.0 TAG CUT. Under a
+# markers-must-be-present rule, doing so reds the suite — so they stay, and
+# `sync-version-refs` never descends into an ignore span again: the six
+# composite-action pins freeze at ci/v3.0.0 through every later release, silently,
+# because `--check` cannot see inside the span it is told to skip. That is
+# CI-0024's class inverted. Once VERSION reaches the pinned tag the reference is
+# no longer forward, and the markers must be GONE.
+#
+# DISCOVERED, not enumerated. The old list named three files by hand and
+# `scanners.yml` — which carries the same markers and the same six-pin exposure —
+# was simply not in it. Any new caller is covered the moment it exists.
+_ver="$(tr -d '[:space:]' < VERSION)"
+mapfile -t PINNED_TPL < <(grep -rlE 'vladm3105/aidoc-flow-ci/actions/[^@]+@ci/v' install/templates/workflows/ 2>/dev/null | sort)
+assert_ok "[ ${#PINNED_TPL[@]} -ge 1 ]" "marker check found caller templates carrying an actions pin"
+for tpl in "${PINNED_TPL[@]}"; do
   b="$(basename "$tpl")"
-  if grep -q 'vladm3105/aidoc-flow-ci/actions/.*@ci/v' "$tpl"; then
-    if grep -q 'sync-version-refs:ignore-start' "$tpl" && grep -q 'sync-version-refs:ignore-end' "$tpl"; then
-      _g "$b: forward pin is inside ignore markers"
-    else
-      _r "$b: pins a v3 action with NO ignore markers — sync-version-refs --check will red the branch"
-    fi
+  # The pin's own tag, read from the file — not assumed to be ci/v3.0.0, so this
+  # keeps working at v3.1.0 and beyond.
+  pin="$(grep -oE 'vladm3105/aidoc-flow-ci/actions/[^@]+@(ci/v[0-9]+\.[0-9]+\.[0-9]+)' "$tpl" | sed -E 's/.*@//' | sort -u | head -1)"
+  has_start=no; has_end=no
+  grep -q 'sync-version-refs:ignore-start' "$tpl" && has_start=yes
+  grep -q 'sync-version-refs:ignore-end'   "$tpl" && has_end=yes
+  if [ "$pin" != "$_ver" ]; then
+    assert_eq "$has_start$has_end" "yesyes" \
+      "$b: pin $pin is AHEAD of VERSION $_ver — forward reference, markers required"
+  else
+    assert_eq "$has_start$has_end" "nono" \
+      "$b: pin $pin now EQUALS VERSION — markers must be removed or the pin freezes here"
   fi
 done
 if command -v bash >/dev/null && [ -x scripts/sync-version-refs.sh ]; then
@@ -529,7 +617,7 @@ for wf in quick-gates quick-gates-private; do
 done
 if [ -f "$LX" ]; then
   assert_eq "$(stepwith "$LX" links mode)"          "external" "links-external: mode=external (parsed)"
-  assert_eq "$(stepwith "$LX" links fail-on-error)" "false"    "links-external: report-only (parsed)"
+  assert_eq "$(stepwith "$LX" links fail-on-error)" "true"     "links-external: fail-on-error true so outcome can vary (parsed)"
   assert_eq "$(stepwith "$LX" links github-token)"  '${{ secrets.GITHUB_TOKEN }}' \
     "links-external: token passed (D42)"
 fi
@@ -560,6 +648,152 @@ for pv in install/templates/workflows/*-private.yml; do
   assert_contains "$rl" "ci-runner"     "$b: names the real pool label"
   assert_absent   "$rl" "runner-self"   "$b: not the dead pre-v1.9.0 placeholder"
   assert_absent   "$rl" "ubuntu-latest" "$b: never GitHub-hosted on a private repo"
+done
+
+echo "== every SARIF upload carries its own fork clause (D35) =="
+# Looped over the uses:, not enumerated per category — the drop hit all three
+# upload steps at once, so any check written per-scanner would have had to be
+# wrong three times to miss it, and instead there simply was none. The job-level
+# `if:` is NOT a substitute: it is null-permissive on a deleted-fork `reopened`
+# event, and in v2 each upload guarded itself.
+mapfile -t SARIF_STEPS < <(python3 - <<'PY_SS'
+import glob, yaml
+for f in sorted(glob.glob("install/templates/workflows/*.yml")):
+    d = yaml.safe_load(open(f)) or {}
+    for j in (d.get("jobs") or {}).values():
+        for s in (j.get("steps") or []):
+            if isinstance(s, dict) and "codeql-action/upload-sarif" in str(s.get("uses", "")):
+                print("%s|%s|%s" % (f, s.get("name", "?"), s.get("if", "")))
+PY_SS
+)
+assert_ok "[ ${#SARIF_STEPS[@]} -ge 3 ]" "SARIF-upload check found the upload steps to check"
+for row in "${SARIF_STEPS[@]}"; do
+  IFS='|' read -r sf sname sif <<< "$row"
+  assert_contains "$sif" "head.repo.fork" "$(basename "$sf") / $sname: upload carries its own fork clause (D35)"
+  assert_contains "$sif" "hashFiles"      "$(basename "$sf") / $sname: upload is guarded on a produced report"
+done
+
+echo "== the SARIF paths cannot be supplied by the PR (H1) =="
+# A PR-committed osv/trivy/semgrep.sarif satisfies `hashFiles` exactly as a real
+# report does, and an empty `results` array REPLACES the category's analysis —
+# resolving every open alert as fixed. The purge must run BEFORE the first
+# scanner, or the scanner overwrites the evidence that it was there.
+if [ -f "$SC" ]; then
+  assert_eq "$(python3 - "$SC" <<'PY_PURGE'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+steps = [s for j in (d.get("jobs") or {}).values() for s in (j.get("steps") or []) if isinstance(s, dict)]
+purge = next((i for i, s in enumerate(steps) if "PR-supplied SARIF" in str(s.get("name", ""))), None)
+first = next((i for i, s in enumerate(steps) if "/actions/" in str(s.get("uses", ""))), None)
+print("ORDERED" if purge is not None and first is not None and purge < first else "BAD")
+PY_PURGE
+)" "ORDERED" "scanners: the SARIF purge runs before the first scanner"
+  purge_body="$(named_step_body "$SC" "Purge PR-supplied SARIF before scanning (gate-decides-the-report)")"
+  assert_contains "$purge_body" "exit 1" "scanners: the purge REFUSES on a survivor rather than continuing"
+  # §27.1: the survivor test must read captured output, not a pipeline status.
+  assert_absent "$purge_body" "-print -quit | grep" "scanners: purge does not decide on a pipeline (CI-0033)"
+
+  # RUN THE SHIPPED BODY. Every assertion above passed against a first draft
+  # whose `rm -f` aborted under `set -e` on a directory survivor — fail-closed,
+  # but with NO ::error::, so the operator got a red step and no cause. Reading
+  # could not see it; only executing it could. Four trees, because the
+  # interesting cases are the ones `rm` cannot clear.
+  _pg="$(mktemp -d)"; printf '%s\n' "$purge_body" > "$_pg/purge.sh"
+  _run_purge() { ( cd "$1" && bash "$_pg/purge.sh" 2>&1 ); }
+
+  mkdir -p "$_pg/clean"
+  assert_ok "_run_purge '$_pg/clean' >/dev/null" "purge: clean tree passes"
+
+  mkdir -p "$_pg/file"; echo '{}' > "$_pg/file/semgrep.sarif"
+  assert_ok "_run_purge '$_pg/file' >/dev/null" "purge: a PR-committed SARIF file is removed and the step passes"
+  assert_ok "[ ! -e '$_pg/file/semgrep.sarif' ]" "purge: ...and the file is actually gone"
+
+  mkdir -p "$_pg/link"; ln -sf /etc/hostname "$_pg/link/trivy.sarif"
+  assert_ok "_run_purge '$_pg/link' >/dev/null" "purge: a SYMLINK survivor is removed (git stores mode 120000)"
+  assert_ok "[ ! -e '$_pg/link/trivy.sarif' ]" "purge: ...and the symlink is actually gone"
+
+  # The case that broke the first draft: `rm -f` cannot remove a directory.
+  mkdir -p "$_pg/dir/osv.sarif"
+  _dir_out="$(_run_purge "$_pg/dir" || true)"
+  assert_fail "_run_purge '$_pg/dir' >/dev/null 2>&1" "purge: a DIRECTORY survivor fails the step closed"
+  assert_contains "$_dir_out" "::error::" "purge: ...and says why, rather than dying under set -e"
+  assert_contains "$_dir_out" "osv.sarif" "purge: ...and names the survivor"
+  rm -rf "$_pg"
+fi
+
+echo "== every ubuntu-latest caller HAS a private variant (D1/OPS-0049) =="
+# THE OTHER DIRECTION, and the one that was missing. The loop above checks that
+# a private variant, IF PRESENT, is self-hosted. Nothing asserted that a template
+# which NEEDS one HAS one — so `links-external.yml` shipped `ubuntu-latest` with
+# no sibling and every assertion stayed green. On a private consumer that job
+# queues forever, and because it feeds no required context nothing ever reds:
+# the external link reports simply stop arriving.
+#
+# The rule is not "fork-code execution" — that is why quick-gates SPLITS rather
+# than going uniformly self-hosted. It is OPS-0049: no GitHub-hosted minutes on
+# a private repo at all. So every manifested caller pinning a literal
+# `ubuntu-latest` must name a private variant; a caller already self-hosted on
+# both (uniform-protected, PLAN-014 §1a — `scanners`) needs none.
+# TWO assertions per caller, and the second is not redundant. Deleting
+# links-external-private.yml while leaving its manifest row in place left this
+# block fully green on the first draft — the check read the MANIFEST'S CLAIM
+# about the file rather than the file. `install.sh` resolves the variant by
+# path, so a declared-but-absent private template is exactly the queue-forever
+# state, arrived at from the other side.
+while IFS='|' read -r tpl variants priv; do
+  [ -n "$tpl" ] || continue
+  f="install/templates/$tpl"
+  [ -f "$f" ] || continue
+  rl="$(grep -E '^\s*runs-on:' "$f" || true)"
+  case "$rl" in
+    *ubuntu-latest*) ;;
+    *) continue ;;   # self-hosted already, or a v2 runner_labels reusable caller
+  esac
+  b="$(basename "$tpl")"
+  assert_eq "$variants" "yes" \
+    "$b: pins ubuntu-latest, so manifest.json must give it a private variant (OPS-0049)"
+  [ "$variants" = "yes" ] || continue
+  assert_ok "[ -f 'install/templates/$priv' ]" \
+    "$b: the private variant it declares ($priv) is actually on disk"
+done < <(python3 - <<'PY_VV'
+import json
+m = json.load(open("install/templates/manifest.json"))
+for e in m.get("files") or []:
+    t = e.get("template") or ""
+    if not t.startswith("workflows/"):
+        continue
+    v = e.get("visibility_variants") or {}
+    ok = bool(v.get("public") and v.get("private"))
+    print("%s|%s|%s" % (t, "yes" if ok else "no", v.get("private") or ""))
+PY_VV
+)
+
+echo "== links-external actually reports (D42) =="
+# `fail-on-error` and `continue-on-error` are a PAIR here. actions/links exits 0
+# for every lychee result short of a timeout when fail-on-error is false, so
+# `steps.links.outcome` is pinned to `success`, the report's `failure` arm is
+# unreachable and dead links render as "no dead outbound links". The job must
+# still not FAIL, which is what continue-on-error delivers — outcome varies,
+# conclusion does not.
+for lx in install/templates/workflows/links-external.yml \
+          install/templates/workflows/links-external-private.yml; do
+  [ -f "$lx" ] || continue
+  b="$(basename "$lx")"
+  assert_eq "$(stepwith "$lx" links fail-on-error)" "true" \
+    "$b: fail-on-error true, or steps.links.outcome can never be 'failure'"
+  assert_eq "$(python3 - "$lx" <<'PY_COE'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+for j in (d.get("jobs") or {}).values():
+    for s in (j.get("steps") or []):
+        if isinstance(s, dict) and "/actions/links@" in str(s.get("uses", "")):
+            print(str(s.get("continue-on-error", "<ABSENT>")).lower()); raise SystemExit(0)
+print("<NOSTEP>")
+PY_COE
+)" "true" "$b: continue-on-error true, so the report stays non-blocking"
+  # And the arm the pairing exists to make reachable is still there.
+  assert_contains "$(named_step_body "$lx" report)" "dead outbound link" \
+    "$b: the failure arm still emits a warning a human will see"
 done
 
 echo "== private variant (D1) =="
@@ -657,5 +891,68 @@ if [ -f "$QG" ]; then
     _r "quick-gates: timeout ${tmo} < 45 — a slow links run would kill passed checks"
   fi
 fi
+
+echo "== every step declares the env it reads (the D11 wrong-stage class) =="
+# ASSERT THE INPUT IS NON-EMPTY FIRST. A checker handed zero files prints
+# nothing and reads as a pass — the same vacuous-oracle failure the
+# invoked-action check in test_sigpipe_guard.sh was rewritten to close.
+assert_ok "[ ${#ACTIONS[@]} -ge 6 ]" "env-declaration check has all six actions as input"
+undeclared="$(undeclared_env "${ACTIONS[@]}")"
+assert_eq "$undeclared" "" "no composite step reads an env var its own step never declared"
+
+# GUARD THE GUARD. Two synthetic actions, because "prints nothing" is the
+# expected output of both a clean tree and a broken checker.
+_ue_probe="$(mktemp -d)"
+cat > "$_ue_probe/bad.yml" <<'PROBE_BAD'
+name: probe
+runs:
+  using: composite
+  steps:
+    - name: reads an undeclared var
+      shell: bash
+      run: echo "${SOME_STAGE:-fallback}"
+    - name: declares it too late
+      shell: bash
+      env:
+        SOME_STAGE: x
+      run: echo "$SOME_STAGE"
+PROBE_BAD
+cat > "$_ue_probe/good.yml" <<'PROBE_GOOD'
+name: probe
+runs:
+  using: composite
+  steps:
+    - name: declared in this step
+      shell: bash
+      env:
+        SOME_STAGE: x
+      run: echo "${SOME_STAGE:-fallback}"
+    - name: assigned locally, and one the runner provides
+      shell: bash
+      run: |
+        LOCAL_DIR="$RUNNER_TEMP/x"
+        echo "$LOCAL_DIR" >> "$GITHUB_STEP_SUMMARY"
+PROBE_GOOD
+assert_contains "$(undeclared_env "$_ue_probe/bad.yml")" 'reads $SOME_STAGE' \
+  "checker catches a var declared on a LATER step (the actual B2 shape)"
+assert_eq "$(undeclared_env "$_ue_probe/good.yml")" "" \
+  "checker does not flag env-declared, locally-assigned or runner-provided vars"
+rm -rf "$_ue_probe"
+
+echo "== the D11 guard validates the stage the run will actually use =="
+# Structural, not textual: find the step whose body counts hooks and the step
+# that runs them, and require both to resolve run-stage from the SAME input. A
+# grep for `RUN_STAGE` passed throughout the defect — the name was present in
+# both steps, just declared in only one.
+assert_eq "$(python3 - <<'PY_D11'
+import yaml
+d = yaml.safe_load(open("actions/pre-commit/action.yml"))
+steps = d["runs"]["steps"]
+guard = next(s for s in steps if "selects ZERO hooks" in str(s.get("run", "")))
+run   = next(s for s in steps if "--all-files" in str(s.get("run", "")))
+g, r = (guard.get("env") or {}).get("RUN_STAGE"), (run.get("env") or {}).get("RUN_STAGE")
+print("MATCH" if g is not None and g == r else "MISMATCH")
+PY_D11
+)" "MATCH" "D11 guard and hook run resolve run-stage from the same input"
 
 suite_summary "test_actions.sh"

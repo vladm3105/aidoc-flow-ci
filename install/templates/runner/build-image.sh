@@ -41,6 +41,22 @@ else
   exit 1
 fi
 
+echo "==> verifying python3 -m venv works (sast-scan installs semgrep into one)"
+# BUILD THE THING, do not ask whether the package is installed. `python3` being
+# present says nothing about `ensurepip`: noble's `python3-venv` is a metapackage
+# over a versioned `python3.N-venv`, so a mismatched base leaves `python3 -m venv`
+# broken while `dpkg -l python3-venv` and `command -v python3` both look healthy.
+# That gap is aidoc-flow-ci#349, and under v3 it reds the whole consolidated
+# `scanners` context rather than one scanner. No pipe: the exit status IS the
+# decision here (CI-0033 / §27.1), so nothing may sit downstream of it.
+if venv_check="$(docker run --rm "${IMAGE_TAG}" sh -c 'python3 -m venv /tmp/_v && /tmp/_v/bin/pip --version' 2>&1)"; then
+  printf '%s\n' "$venv_check"
+else
+  echo "❌ python3 -m venv failed in ${IMAGE_TAG} — sast-scan cannot install semgrep (#349)." >&2
+  printf '%s\n' "$venv_check" >&2
+  exit 1
+fi
+
 echo "==> ${IMAGE_TAG} ready. To use it:"
 echo "    RUNNER_IMAGE=${IMAGE_TAG} ./run-ephemeral.sh"
 echo "    # or set RUNNER_IMAGE in ~/.config/ci-runner/<nick>.env for the systemd unit"

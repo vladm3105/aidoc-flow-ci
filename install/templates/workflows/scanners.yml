@@ -76,6 +76,56 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      # THE GATE DECIDES WHAT IS UPLOADED, NOT THE SCANNED PR — the same rule as
+      # D23, applied to the report instead of the coverage.
+      #
+      # The three SARIF paths below live in the CHECKED-OUT TREE, and each upload
+      # is gated on `hashFiles(...)`, which asks only whether a file exists. A PR
+      # can commit `semgrep.sarif` at the repo root, so the gate cannot tell the
+      # scanner's report from the PR's. That is not hypothetical while #349 is
+      # open: "the scanner failed and wrote nothing" is the expected state, so the
+      # committed file is the ONLY candidate. It then rides the `push: main` run
+      # into `upload-sarif` under `security-events: write`, and because Code
+      # Scanning keys an analysis by `category`, an empty `results` array REPLACES
+      # the previous analysis — every open alert in that category is auto-resolved
+      # as fixed. The verdict step still reds the build; the alerts are already
+      # gone.
+      #
+      # Purge first, then refuse if anything survived. `hashFiles` is left as the
+      # emptiness check it is good at, now that what it inspects can only have
+      # been written by a scanner in this job.
+      - name: Purge PR-supplied SARIF before scanning (gate-decides-the-report)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `|| true` IS THE GATE'S DESIGN, not sloppiness — same shape as D23 in
+          # actions/sast-scan. A bare `rm -f` aborts under `set -e` when the path
+          # is a DIRECTORY (`rm: cannot remove: Is a directory`), and it aborts
+          # BEFORE the ::error:: below, producing a red step with no stated cause.
+          # Measured while writing this step. The purge is best-effort; the
+          # post-condition is what enforces.
+          rm -f ./osv.sarif ./trivy.sarif ./semgrep.sarif 2>/dev/null || true
+          # NO `-type` FILTER, deliberately. `-type f -o -type l` was the first
+          # draft and it cannot see a DIRECTORY named `osv.sarif` — precisely the
+          # survivor `rm -f` is unable to clear, so the one case the purge fails
+          # to handle was the one case the check could not detect.
+          #
+          # CI-0033 / §27.1 — decide on captured OUTPUT, never on a pipeline's
+          # exit status. `find … | grep -q .` inverts two ways here: SIGPIPE from
+          # the early-exiting reader, and find's own non-zero on a traversal
+          # error while the match is already on stdout. Both fail OPEN.
+          # `|| fst=$?` is load-bearing: a bare assignment adopts the
+          # substitution's status and `set -e` would abort before the ::error::.
+          fst=0
+          survivor="$(find . -maxdepth 1 \
+            \( -name 'osv.sarif' -o -name 'trivy.sarif' -o -name 'semgrep.sarif' \) -print -quit)" || fst=$?
+          if [ -n "$survivor" ] || [ "$fst" -ne 0 ]; then
+            # Newlines are legal in git paths and GitHub parses every output line
+            # for `::command::`, so fold before interpolating.
+            echo "::error::scanners: a PR-supplied SARIF survived the purge — refusing to scan rather than let it be uploaded as a scanner's report. survivor='$(printf '%s' "$survivor" | tr '\n\r' '??')' find_rc=${fst}"
+            exit 1
+          fi
+
       # §3.2c COLLECT-THEN-FAIL. Without it the first blocking scanner prevents
       # the other two from running or uploading SARIF, and under PLAN-014 Phase 5
       # (fail-on-findings → true) that becomes the normal case.
@@ -128,9 +178,24 @@ jobs:
       # by category, so a single uncategorised upload REPLACES all three, and a
       # crashed scanner's alerts get resolved as fixed. Each step is guarded by
       # its own `hashFiles`, so a scanner that produced nothing is simply skipped.
+      #
+      # THE FORK CLAUSE IS NOT REDUNDANT WITH THE JOB-LEVEL `if:` (D35). All
+      # three v2 reusables carry it on the upload step as well
+      # (`.github/workflows/dep-scan.yml:138`, `trivy-scan.yml:114`,
+      # `sast-scan.yml:169`), and the v3 port dropped it from all three while
+      # PLAN-025 §2 records D35 as carried. Two reasons it goes back:
+      #   1. It made the job `if:` at :68 the SOLE barrier between a fork PR and
+      #      three steps holding `security-events: write`. In v2 a mis-edit there
+      #      still left three independent guards; here it left none.
+      #   2. That job `if:` is null-permissive — `head.repo.fork != true` is TRUE
+      #      when `head.repo` is null, which is what a deleted fork on a
+      #      `reopened` event produces. The step clause tests `event_name` first,
+      #      so it does not share that hole.
+      # `tests/test_contract.sh` greps only the job-level guard, which is why
+      # nothing caught the drop; an assertion for the step clause lands with this.
       - name: Upload dep-scan SARIF (best-effort)
         continue-on-error: true
-        if: always() && hashFiles('osv.sarif') != ''
+        if: always() && hashFiles('osv.sarif') != '' && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)
         uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
         with:
           sarif_file: osv.sarif
@@ -138,7 +203,7 @@ jobs:
 
       - name: Upload trivy SARIF (best-effort)
         continue-on-error: true
-        if: always() && hashFiles('trivy.sarif') != ''
+        if: always() && hashFiles('trivy.sarif') != '' && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)
         uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
         with:
           sarif_file: trivy.sarif
@@ -146,7 +211,7 @@ jobs:
 
       - name: Upload sast SARIF (best-effort)
         continue-on-error: true
-        if: always() && hashFiles('semgrep.sarif') != ''
+        if: always() && hashFiles('semgrep.sarif') != '' && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)
         uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
         with:
           sarif_file: semgrep.sarif
