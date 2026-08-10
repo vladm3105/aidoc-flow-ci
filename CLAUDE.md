@@ -340,6 +340,21 @@ has settled — measured, reproduced, and not expected to change.
   a cancelled required context is still not `SUCCESS`, so all of them block, not
   just one that never reported.
 
+- **`call / verify` does NOT red every canon PR pre-tag — that claim is false and
+  has now been re-derived twice.** Three handoffs asserted that the OPS-0069 gate
+  "will red every canon PR until a tag containing CI-0033 exists", because
+  `audit-trail.yml` pins the pre-fix `audit-trail-check.yml@ci/v2.16.0`.
+  **Measured 10 of 10 PRs green** this session (#424, #430, #431, #433, #434,
+  #436, #437, #439, #441, #442). The pre-fix pipeline only inverts once the
+  WRITER is large enough, so the outcome turns on the commit range's size, not on
+  the tag — the same writer-dependency §27 records. **`--admin` is not routinely
+  required, and reaching for it because a handoff said so is how a real red gets
+  merged past.** Re-derive:
+  `gh pr checks <N> --json name,bucket --jq '.[]|select(.name=="call / verify")|.bucket'`.
+  **This trap lives HERE because the handoff could not hold it:** the correction
+  was written into one wrap *with a section explaining that regeneration would
+  otherwise revert it*, and the very next regeneration dropped it anyway. A fact
+  that must survive a rewrite is a fact in the wrong carrier.
 - **`gh run list` reports only a run's LATEST attempt — a re-run erases the red
   from the listing.** Run `30500957909` on framework failed three attempts, the
   third inside `Run review through LiteLLM → verdict file`, and reads in

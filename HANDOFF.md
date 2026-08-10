@@ -110,6 +110,19 @@ Open issues are the backlog — do not restate them here:
 gh issue list --state open --limit 200      # the --limit 30 default truncates silently
 ```
 
+### One fact this wrap ROUTED OUT rather than carried
+
+The previous wrap corrected *"`call / verify` will red every canon PR until a
+tag containing CI-0033 exists"* — and wrote a section explaining that
+regeneration would otherwise revert it. **The next regeneration reverted it
+anyway.** That is #402's failure mode, committed one wrap after being warned
+about, by the same author.
+
+So it is no longer here. It is in `CLAUDE.md` § "Durable traps", where a
+wholesale rewrite cannot reach it, now with 10-of-10 measurements. **A fact that
+has to survive a regeneration is a fact in the wrong carrier** — if you find
+yourself deliberately carrying something forward, move it instead.
+
 ## Blockers
 
 All founder-only. None moved this session, and #430 did not attempt to.
