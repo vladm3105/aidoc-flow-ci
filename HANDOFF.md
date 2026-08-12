@@ -7,10 +7,10 @@ command that re-derives it. Durable facts live in `CLAUDE.md` § "Durable traps"
 the decision record is `DECISIONS.md`, which is authoritative — this file never
 summarises it.
 
-**State:** `main` carries **#437** (PLAN-026), squashed
+**State:** `main` carries **#445** (cold-start visibility fix), squashed
 2026-08-10 · tree clean · **nothing deployed** — canon ships by tag, the last tag
-is still `ci/v2.16.0`, and **44 merged PRs** are unreachable by any consumer ·
-**38** open issues · **1** open PR — **[#441](https://github.com/vladm3105/aidoc-flow-ci/pull/441), which must NOT be merged before the tag** (see Blockers).
+is still `ci/v2.16.0`, and **49 merged PRs** are unreachable by any consumer ·
+**37** open issues · **2** open PRs — **[#441](https://github.com/vladm3105/aidoc-flow-ci/pull/441), which must NOT be merged before the tag** (see Blockers).
 
 All gates green, **run on this merge commit, not carried forward**. Re-derive
 every row; the commands are exact (see `CLAUDE.md` § Durable traps for why the
@@ -20,13 +20,13 @@ SGR strip and `--tier` are not optional):
 |---|---|---|
 | Released version | `git describe --tags --abbrev=0` | `ci/v2.16.0` |
 | Unreleased **PRs** | `git log --oneline ci/v2.16.0..HEAD \| grep -cE '\(#[0-9]+\)$'` — count PRs, not commits; a wrap commit carries no `(#N)` and would inflate a `wc -l` | **41** |
-| Suite | `bash tests/run.sh \| sed 's/\x1b\[[0-9;]*m//g' \| grep -oE '[0-9]+ passed, [0-9]+ failed' \| awk '{p+=$1;f+=$3} END{print NR" suites, "p" passed, "f" failed"}'` | **17 suites, 1,517 passed, 0 failed** |
+| Suite | `bash tests/run.sh \| sed 's/\x1b\[[0-9;]*m//g' \| grep -oE '[0-9]+ passed, [0-9]+ failed' \| awk '{p+=$1;f+=$3} END{print NR" suites, "p" passed, "f" failed"}'` | **17 suites, 1,532 passed, 0 failed** |
 | pre-commit | `pre-commit run --all-files` | exit 0 |
 | pre-push | `bash scripts/pre_push_check.sh` | exit 0 |
 | Governance table | `python3 install/parse-governance-table.py CLAUDE.md --repo-root .` | PASS |
 | Standards drift | `bash sync/check-standards-drift.sh --tier product` | 4/4 families, **2 drift** = the deliberate FT-52 profile |
-| Open issues | `gh issue list --state open --limit 200 --json number --jq 'length'` | **38** |
-| Open PRs | `gh pr list --state open --json number --jq 'length'` | **1** (#441, held on purpose) |
+| Open issues | `gh issue list --state open --limit 200 --json number --jq 'length'` | **37** |
+| Open PRs | `gh pr list --state open --json number --jq 'length'` | **2** — #441 held on purpose, #440 is dependabot's (not mine to merge) |
 
 ## What this session did
 
@@ -74,6 +74,27 @@ Filed: [#425](https://github.com/vladm3105/aidoc-flow-ci/issues/425)
 [#438](https://github.com/vladm3105/aidoc-flow-ci/issues/438) · **#429 was filed
 and then fixed** — filing is not finishing.
 
+### Two defects found by RUNNING things nothing else runs
+
+**Asked to make the installer ready for first run, and it was not.**
+`VISIBILITY` defaulted to `private` and only bootstrap trusted the flag —
+`update_mode` and `add_surface_mode` both resolved from the live repo. So a
+PUBLIC cold start without `--visibility public` installed the **private**
+variants, and once `quick-gates` lands that is a self-hosted job running
+`pre-commit` over the PR's own files: the D7 violation, via a flag nobody
+passed. Present since the installer's first commit (`21b9068`, 2026-06-23).
+Nothing exercises that path — canon is already adopted.
+
+**FT-30 could not see what it installed** (#358, closed). Every criterion was a
+`grep` over the installer's own log, so a stanza that silently never runs passed
+the whole gate — the F1 shape, which shipped a cold start missing
+`ai-review.yml` for nine releases. It now checks the tree against the manifest at
+the ref under test.
+
+**And running FT-30 before #441 lands would have produced a false green**, because
+the script pins `CI_TAG` to `HEAD` and #441 changes the bootstrap path. That
+reordering is in `docs/RELEASE_CHECKLIST.md` and in "What to do next".
+
 ### The pattern worth carrying, because it recurred three times
 
 **A check I wrote could not fail for the case it existed to catch** — three
@@ -108,8 +129,9 @@ not open questions.**
 2. **`bash scripts/release.sh prep ci/v3.0.0`**, then merge the prep PR. It
    retires the forward-pin markers itself. The MAJOR gates are met: migration
    guide written, `litellm-smoke` green (run `31348751529`).
-3. **Then FT-30**, against the prep-merge SHA. `--check` first — it writes
-   nothing. The real run clones and creates ~21 labels in another repo, which is
+3. **Then FT-30**, against the prep-merge SHA, and **use a PUBLIC throwaway** —
+   that is the path that was broken and the one public consumers take.
+   `--check` first — it writes nothing. The real run clones and creates ~21 labels in another repo, which is
    why it is yours:
    `bash scripts/ft30-dry-run.sh --target <owner>/<throwaway>`. **It now verifies
    the installed FILE SET, not only the log**
@@ -129,19 +151,6 @@ Open issues are the backlog — do not restate them here:
 ```sh
 gh issue list --state open --limit 200      # the --limit 30 default truncates silently
 ```
-
-### One fact this wrap ROUTED OUT rather than carried
-
-The previous wrap corrected *"`call / verify` will red every canon PR until a
-tag containing CI-0033 exists"* — and wrote a section explaining that
-regeneration would otherwise revert it. **The next regeneration reverted it
-anyway.** That is #402's failure mode, committed one wrap after being warned
-about, by the same author.
-
-So it is no longer here. It is in `CLAUDE.md` § "Durable traps", where a
-wholesale rewrite cannot reach it, now with 10-of-10 measurements. **A fact that
-has to survive a regeneration is a fact in the wrong carrier** — if you find
-yourself deliberately carrying something forward, move it instead.
 
 ## Blockers
 
