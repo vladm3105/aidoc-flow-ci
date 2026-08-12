@@ -261,11 +261,20 @@ PYEXP
           [ -s "$CONSUMER/$_w" ] || continue
           _rl="$(grep -E '^[[:space:]]*runs-on:' "$CONSUMER/$_w" || true)"
           [ -n "$_rl" ] || continue
+          # ALL FOUR QUADRANTS. The first draft had three and fell through
+          # silently on public+self-hosted — which is the one that was actually
+          # live: bootstrap defaulted VISIBILITY to `private` and never
+          # auto-detected, so a public cold start installed the self-hosted
+          # variant. A check missing the case that is happening is the failure
+          # mode this whole block was added to fix, one level up.
           case "$_vis:$_rl" in
             private:*ubuntu-latest*)
               bad "$_w is on ubuntu-latest but $TARGET is PRIVATE — jobs will queue forever (OPS-0049/D1)" ;;
+            public:*self-hosted*)
+              bad "$_w is SELF-HOSTED but $TARGET is PUBLIC — a fork-code-executing job on the shared pool (D7). NEVER ship this." ;;
             private:*self-hosted*) ok "$_w: self-hosted, correct for a private target" ;;
             public:*ubuntu-latest*) ok "$_w: ubuntu-latest, correct for a public target" ;;
+            *) bad "$_w: could not classify runner line against visibility=$_vis — $_rl" ;;
           esac
         done <<< "$_expected"
       fi

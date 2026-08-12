@@ -65,7 +65,16 @@ fi
 
 TARGET_REPO="${1:?usage: $0 <owner/repo> [--visibility public|private]}"
 shift
+# DEFAULTS TO PRIVATE ONLY AS A FALLBACK, AND IS AUTO-DETECTED BELOW. Leaving
+# this as the effective value is how a PUBLIC repo got the private variants: the
+# bootstrap block reads $VISIBILITY, `update_mode` and `add_surface_mode` resolve
+# from the LIVE repo, and only bootstrap trusted the flag. A public cold start
+# run without `--visibility public` therefore installed
+# `quick-gates-private.yml` — self-hosted — on a repo whose `quick-gates` job
+# executes the PR's own files. That is the D7 / fork-code-on-self-hosted
+# violation `CLAUDE.md` says NEVER to make.
 VISIBILITY="private"
+VISIBILITY_EXPLICIT=0
 # De-branding defaults — chosen so omitting the flags yields byte-identical
 # output to the pre-D2 templates (the aidoc-flow workspace's own values).
 CODEOWNER_HANDLE="vladm3105"
@@ -87,7 +96,7 @@ TIER=""
 ADD_SURFACES=()
 while [ $# -gt 0 ]; do
   case "$1" in
-    --visibility) VISIBILITY="$2"; shift 2 ;;
+    --visibility) VISIBILITY="$2"; VISIBILITY_EXPLICIT=1; shift 2 ;;
     --update) MODE_UPDATE=1; shift ;;
     # --repin: version-only pin bump. Rewrites the @ci/vX.Y.Z on every
     # `uses: …/aidoc-flow-ci/…` line to the target CI_TAG and touches NOTHING
@@ -136,6 +145,42 @@ fi
 if [ -n "$TIER" ]; then
   case "$TIER" in governance|product|ops|umbrella|bootstrap) ;; *) echo "--tier must be one of: governance|product|ops|umbrella|bootstrap" >&2; exit 1 ;; esac
 fi
+
+# --- visibility, resolved from the LIVE repo -------------------------------
+#
+# PLACED AFTER EVERY PURE-ARGUMENT VALIDATION, DELIBERATELY. An earlier draft put
+# this immediately after the `--visibility` value check, which made a
+# bad-arguments error depend on the network: `--add-surface X --update` aborted
+# with "could not read visibility" instead of "not combinable", because the
+# `gh` call ran first. Caught by the existing mutual-exclusion tests.
+# **Argument validation must never require a network call.**
+# RESOLVE VISIBILITY FROM THE LIVE REPO unless the operator stated it. The same
+# rule `update_mode` and `add_surface_mode` already follow, applied to the one
+# mode that did not — and bootstrap is the mode where getting it wrong is worst,
+# because it is the only one that writes a caller the consumer never had.
+#
+# An explicit `--visibility` still wins: it is the documented escape for a repo
+# about to be flipped, and overriding a deliberate flag would be its own defect.
+# Detection failure REFUSES rather than falling back to the `private` default —
+# "could not determine" must never resolve to a value that installs
+# fork-code-executing jobs onto a self-hosted pool.
+if [ "$VISIBILITY_EXPLICIT" = 0 ] && [ "${MODE_VERIFY:-0}" = 0 ]; then
+  if _detected_vis=$(gh repo view "$TARGET_REPO" --json isPrivate --jq '.isPrivate' 2>/dev/null); then
+    case "$_detected_vis" in
+      true)  VISIBILITY="private" ;;
+      false) VISIBILITY="public" ;;
+      *) echo "==> ABORT: unexpected isPrivate='$_detected_vis' from gh for $TARGET_REPO — refusing to guess visibility." >&2
+         echo "           Pass --visibility public|private explicitly." >&2; exit 1 ;;
+    esac
+    echo "==> visibility auto-detected from $TARGET_REPO: $VISIBILITY"
+  else
+    echo "==> ABORT: could not read $TARGET_REPO visibility via gh — refusing to guess." >&2
+    echo "           A wrong guess installs self-hosted callers onto a public repo (D7)." >&2
+    echo "           Fix gh auth, or pass --visibility public|private explicitly." >&2
+    exit 1
+  fi
+fi
+
 if [ "$MODE_VERIFY" = 1 ] && [ -z "$TIER" ]; then
   echo "--verify-standards requires --tier <governance|product|ops|umbrella|bootstrap>" >&2; exit 1
 fi
@@ -300,7 +345,7 @@ elif [ "${#ADD_SURFACES[@]}" -gt 0 ]; then
   # visibility-confusion incident, that is worth not saying at all.
   echo "==> adding surface(s) to $TARGET_REPO from canon @ $CI_TAG (variant resolved from LIVE visibility)"
 else
-  echo "==> bootstrapping $TARGET_REPO (visibility=$VISIBILITY, tag=$CI_TAG)"
+  echo "==> bootstrapping $TARGET_REPO (visibility=$VISIBILITY$([ "$VISIBILITY_EXPLICIT" = 1 ] && printf ' [explicit]' || printf ' [detected]'), tag=$CI_TAG)"
 fi
 
 # --verify-standards is standalone (no clone/install): the check reads server

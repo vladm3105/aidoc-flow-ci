@@ -5,6 +5,39 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — a PUBLIC cold start installed the PRIVATE (self-hosted) callers
+
+**Found by running the installer's cold start, which nothing exercises** —
+canon is already adopted, so its own bootstrap path had never executed.
+
+`VISIBILITY` defaulted to `private` and the bootstrap block read it directly,
+while `update_mode` and `add_surface_mode` both resolved from the live repo.
+A public cold start without `--visibility public` therefore installed
+`composition-private.yml` and `pre-commit-private.yml`; once v3's `quick-gates`
+lands it would install `quick-gates-private.yml`, whose job runs `pre-commit`
+over the PR's own files **on the self-hosted pool** — the D7 /
+fork-code-on-self-hosted violation `CLAUDE.md` says never to make, arriving via
+the default value of a flag nobody passed.
+
+Bootstrap now resolves visibility from the live repo and **refuses** when it
+cannot read it — "could not determine" must not resolve to a value that installs
+self-hosted callers onto a public repo. An explicit `--visibility` still wins.
+
+Two things the fix taught, both folded:
+
+- **Argument validation must never require a network call.** The first placement
+  put detection immediately after the `--visibility` value check, so
+  `--add-surface X --update` aborted with "could not read visibility" instead of
+  "not combinable". Caught by the existing mutual-exclusion tests.
+- **The FT-30 check that should have caught this had three of four quadrants.**
+  `public:self-hosted` fell through silently — the one case that was actually
+  live. All four are now covered, with a fail-closed default arm.
+
+Verified by cold-starting against a stubbed target on both visibilities, before
+and after: public now resolves public and installs the public variants.
+Mutation-tested — removing the detection reds 4 assertions, making its failure
+path fall back instead of abort reds 1.
+
 ### Fixed — the runner image had been unbuildable since gh 2.97.0, so #430's #349 fix could not be delivered by anyone (#435)
 
 **Found by trying it.** `#349` (`sast-scan` cannot install semgrep — no
