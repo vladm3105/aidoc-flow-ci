@@ -69,6 +69,38 @@ the 🔴 dry-run for you.
 - [ ] **`install.sh` fallback matches:** `CI_TAG_FALLBACK` in `install.sh`
   matches `VERSION`. Grep: `grep CI_TAG_FALLBACK install/install.sh`.
 - [ ] **🔴 COLD-START DRY-RUN (founder-executed) — PLAN-018 FT-30.**
+
+  > ### ⚠️ RUN IT AGAINST THE TREE THAT WILL BE TAGGED, OR IT PROVES THE WRONG THING
+  >
+  > **The dry run validates whatever commit `CI_TAG` resolves to** — the script
+  > pins it to `git rev-parse HEAD` and fetches `install.sh` from that SHA, not
+  > from your working tree. So a run performed *before* a pending bootstrap-path
+  > change lands is green **about an installer that is not the one being
+  > shipped.** The gate cannot detect this: it is doing exactly what it was
+  > asked, against the wrong input.
+  >
+  > **Concretely, and this is live as of 2026-08-10:** PR #441 changes
+  > `install/install.sh`'s bootstrap block and `manifest.json`'s `auto_install`
+  > flags — both squarely on the cold-start surface `coldstart_surface()`
+  > derives. Running FT-30 on `main` today would pass, and would have validated
+  > a bootstrap that installs `pre-commit.yml`, when the tagged one installs
+  > `quick-gates.yml`.
+  >
+  > **The ordering that works:**
+  >
+  > 1. Land the bootstrap-path change (#441) **in the prep branch**, or merge it
+  >    immediately before `prep`.
+  > 2. `release.sh prep <ver>` → merge the prep PR.
+  > 3. **Then** `ft30-dry-run.sh --target …` — `CI_TAG` now resolves to the
+  >    prep-merge SHA, which is the tree the tag will point at.
+  > 4. `release.sh tag <ver> --dry-run-verified`.
+  >
+  > **Do not merge a bootstrap-path change to `main` and leave it sitting.**
+  > `CI_TAG_FALLBACK` is the *previous* tag, so `install.sh` curl'd from `main`
+  > fetches templates from a ref where the new caller does not exist —
+  > `fetch_template … || exit 1`, and the cold start dies. The prep→merge→tag
+  > window has this property inherently; keep it short rather than widening it.
+
   **CONDITIONAL since 2026-07-24 — `release.sh tag` decides for you.** The gate is
   required only when the release changes the installer **bootstrap write path** —
   the path whose breakage *aborts* a cold start (`fetch_template … || exit 1`),

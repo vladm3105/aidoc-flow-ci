@@ -130,6 +130,13 @@ sleep 5
 
 LOG="$(mktemp -t ft30-XXXXXX.log)"
 export CI_TAG="$CI_TAG_RESOLVED"
+# PIN THE WORKING COPY so the FILE SET can be inspected after the run. install.sh
+# defaults WORK_DIR to `$PWD/aidoc-flow-ci-bootstrap-$$`, whose pid we cannot
+# predict from here — and without the tree, every criterion below has to be a
+# grep over the installer's own log (see #358).
+WORK_DIR="$(mktemp -d -t ft30-work-XXXXXX)"
+export WORK_DIR
+CONSUMER="$WORK_DIR/consumer"
 URL="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/install.sh"
 
 echo "    fetching installer from the tree under test: $URL"
@@ -183,6 +190,97 @@ grep -q '==> ABORT:' "$LOG" && { bad "installer ABORTed:"; grep '==> ABORT:' "$L
   || ok "no ABORT"
 grep -q '404' "$LOG" && { bad "404(s) in output — a template is missing at this ref:"; grep -n '404' "$LOG" | head -5 | sed 's/^/         /'; } \
   || ok "no 404s"
+
+# ---------------------------------------------- what actually landed (#358) ---
+#
+# EVERY CRITERION ABOVE IS A GREP OVER THE INSTALLER'S OWN LOG. That asserts the
+# bootstrap COMPLETED; it says nothing about WHAT IT INSTALLED. A stanza that
+# silently never runs — a deleted `if` block, an `auto_install` flag flipped, a
+# guard that fires when it should not — prints every marker string these look
+# for, exits 0, and passes the whole gate having installed the wrong file set.
+# That is #358, and it is the exact class FT-30 exists to catch: the F1 defect
+# was a cold start that shipped without `ai-review.yml` for nine releases.
+#
+# So: compare the tree on disk against the manifest AT THE REF UNDER TEST — not
+# against the working tree, for the same reason the installer is fetched from
+# the ref rather than sourced locally.
+note "==> installed file set (the part a log grep cannot see)"
+
+if [ ! -d "$CONSUMER/.github/workflows" ]; then
+  bad "no .github/workflows/ in the working copy ($CONSUMER) — nothing to verify"
+else
+  _mf="$(mktemp)"
+  if ! curl -fsSL "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TAG}/install/templates/manifest.json" -o "$_mf"; then
+    bad "could not fetch manifest.json at $CI_TAG — cannot verify the file set"
+  else
+    # Visibility decides which variant SHOULD have landed. Resolve it the way
+    # install.sh does — from the live repo — and refuse to guess.
+    _vis=""
+    case "$(gh repo view "$TARGET" --json isPrivate --jq '.isPrivate' 2>/dev/null)" in
+      true)  _vis=private ;;
+      false) _vis=public ;;
+    esac
+    if [ -z "$_vis" ]; then
+      bad "could not resolve $TARGET visibility — cannot verify which variant should have installed"
+    else
+      ok "target visibility: $_vis"
+      # Expected = every auto_install:true workflow entry. This is the SAME
+      # invariant tests/test_install.sh asserts offline against the bootstrap
+      # block; here it is asserted against a real cold start.
+      _expected="$(python3 - "$_mf" <<'PYEXP'
+import sys, json
+m = json.load(open(sys.argv[1], encoding="utf-8"))
+for f in m.get("files") or []:
+    p = f.get("path") or ""
+    if p.startswith(".github/workflows/") and f.get("auto_install"):
+        print(p)
+PYEXP
+)"
+      if [ -z "$_expected" ]; then
+        bad "manifest at $CI_TAG declares NO auto_install workflow callers — a cold start would arm contexts with no producer"
+      else
+        _missing=""
+        while IFS= read -r _w; do
+          [ -n "$_w" ] || continue
+          if [ -s "$CONSUMER/$_w" ]; then
+            ok "installed: $_w"
+          else
+            _missing="$_missing $_w"
+          fi
+        done <<< "$_expected"
+        if [ -n "$_missing" ]; then
+          bad "manifest declares auto_install but these did NOT land:$_missing"
+        fi
+
+        # THE VARIANT, not just the presence. A private consumer handed the
+        # public caller pins ubuntu-latest and every job QUEUES FOREVER
+        # (OPS-0049/D1) — a file that exists and is wrong, which a presence
+        # check cannot see. Only meaningful for callers carrying a literal
+        # `runs-on:`; the v2 reusable callers express the pool as an input.
+        while IFS= read -r _w; do
+          [ -s "$CONSUMER/$_w" ] || continue
+          _rl="$(grep -E '^[[:space:]]*runs-on:' "$CONSUMER/$_w" || true)"
+          [ -n "$_rl" ] || continue
+          case "$_vis:$_rl" in
+            private:*ubuntu-latest*)
+              bad "$_w is on ubuntu-latest but $TARGET is PRIVATE — jobs will queue forever (OPS-0049/D1)" ;;
+            private:*self-hosted*) ok "$_w: self-hosted, correct for a private target" ;;
+            public:*ubuntu-latest*) ok "$_w: ubuntu-latest, correct for a public target" ;;
+          esac
+        done <<< "$_expected"
+      fi
+    fi
+  fi
+  rm -f "$_mf"
+
+  # A caller that landed EMPTY passes `-f` and every log grep. FT-39 exists
+  # because a 200-with-HTML-body was written over a gate.
+  while IFS= read -r -d '' _f; do
+    [ -s "$_f" ] || bad "installed but EMPTY: ${_f#"$CONSUMER"/}"
+  done < <(find "$CONSUMER/.github/workflows" -type f -print0 2>/dev/null)
+fi
+
+echo "    working copy kept for inspection: $CONSUMER"
 
 # ------------------------------------------------------------------ verdict ---
 echo

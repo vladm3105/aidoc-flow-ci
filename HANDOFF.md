@@ -89,27 +89,39 @@ guards is a live-armed context in no template. Durable form in auto-memory.
 founder-executed run and one timed merge — both are your own recorded choices,
 not open questions.**
 
-1. **Run FT-30 against a throwaway repo.** The preflight is clean
-   (`bash scripts/ft30-dry-run.sh --check` — gate owed, `CI_TAG` resolvable and
-   pushed, `gh` authenticated). The real run clones and creates ~21 labels in
-   another repo, which is why it is yours:
-   `bash scripts/ft30-dry-run.sh --target <owner>/<throwaway>`. Note
-   [#358](https://github.com/vladm3105/aidoc-flow-ci/issues/358) — it asserts the
-   bootstrap COMPLETED, not that it installed the right file set; check the file
-   set separately.
-2. **Cut `ci/v3.0.0`.** `scripts/release.sh prep ci/v3.0.0` now retires the
-   forward-pin markers itself. The MAJOR gates are met: migration guide written,
-   `litellm-smoke` green (run `31348751529`).
-3. **Merge [#441](https://github.com/vladm3105/aidoc-flow-ci/pull/441) AT the
-   cut** — not before. It resolves #438; merging pre-tag installs a
-   `startup_failure`ing caller while removing the producer the current templates
-   require. Land it beside PLAN-026 C0's substitution in **all four** tier
-   templates that carry the old context.
-4. **Rebuild `aidoc-flow-runner:latest` on every OTHER runner host.** This host is
+> **⚠️ THE ORDER CHANGED, and the previous sequence would have produced a FALSE
+> GREEN.** FT-30 pins `CI_TAG` to `git rev-parse HEAD` and fetches `install.sh`
+> from that SHA — so running it before #441 lands validates a bootstrap that
+> installs `pre-commit.yml`, when the tagged one installs `quick-gates.yml`.
+> #441 changes `install/install.sh`'s bootstrap block and `manifest.json`'s
+> `auto_install` flags, both on the cold-start surface. The gate cannot detect
+> this; it does exactly what it is asked, against the wrong input.
+> `docs/RELEASE_CHECKLIST.md` now carries the ordering.
+
+1. **Land [#441](https://github.com/vladm3105/aidoc-flow-ci/pull/441) in the prep
+   branch**, or merge it immediately before `prep`. Do **not** merge it and leave
+   it sitting on `main`: `CI_TAG_FALLBACK` is the previous tag, so `install.sh`
+   curl'd from `main` fetches templates from `ci/v2.16.0` where `quick-gates.yml`
+   does not exist — `fetch_template … || exit 1`, cold start dead. Land it beside
+   PLAN-026 C0's substitution in **all four** tier templates carrying the old
+   context.
+2. **`bash scripts/release.sh prep ci/v3.0.0`**, then merge the prep PR. It
+   retires the forward-pin markers itself. The MAJOR gates are met: migration
+   guide written, `litellm-smoke` green (run `31348751529`).
+3. **Then FT-30**, against the prep-merge SHA. `--check` first — it writes
+   nothing. The real run clones and creates ~21 labels in another repo, which is
+   why it is yours:
+   `bash scripts/ft30-dry-run.sh --target <owner>/<throwaway>`. **It now verifies
+   the installed FILE SET, not only the log**
+   ([#358](https://github.com/vladm3105/aidoc-flow-ci/issues/358) closed): a
+   missing `auto_install` caller, a wrong visibility variant, or an empty file
+   each fail it.
+4. **`bash scripts/release.sh tag ci/v3.0.0 --dry-run-verified`.**
+5. **Rebuild `aidoc-flow-runner:latest` on every OTHER runner host.** This host is
    done and verified; nothing prompts the others, and until they rebuild
    `scanners` is red on arrival. The `gh` pin will expire again
    ([#435](https://github.com/vladm3105/aidoc-flow-ci/issues/435)).
-5. **Then** the post-tag phases — PLAN-026 P4/P5/P7/P9. P7 could not have
+6. **Then** the post-tag phases — PLAN-026 P4/P5/P7/P9. P7 could not have
    preceded the tag anyway (FT-21).
 
 Open issues are the backlog — do not restate them here:

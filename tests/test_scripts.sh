@@ -1175,7 +1175,12 @@ assert_contains "$ft30_notarget" "rc=1" "  and exits non-zero"
 # Drive the SHIPPED criteria block against crafted logs — the assertions are the
 # point of the script, so a copy here would prove nothing.
 FT30_CRIT="$(mktemp)"
-awk '/^note "==> FT-30 criteria"/,/^# ---.*verdict/' "$FT30" | head -n -1 > "$FT30_CRIT"
+# Stop at WHICHEVER section marker comes first. The log-criteria block and the
+# file-set block (#358) are different tests with different fixtures — the
+# file-set one needs a real tree on disk, so sweeping it into this extraction
+# made the log battery fail for a reason that had nothing to do with logs.
+# The alternation keeps this working if either block is ever moved or removed.
+awk '/^note "==> FT-30 criteria"/,/^# ---.*(what actually landed|verdict)/' "$FT30" | head -n -1 > "$FT30_CRIT"
 assert_ok "grep -q 'creating canonical labels' '$FT30_CRIT'" "criteria block extracted from the shipped script"
 _ft30_drive() { # $1=log $2=rc -> failure count
   # `bad` MUST increment — a no-op stub makes every mutation look caught-free and
@@ -1211,5 +1216,81 @@ assert_ok "[ \"\$(_ft30_drive '$_mut' 0)\" -ge 1 ]" "a FAIL line in the installe
 assert_ok "[ \"\$(_ft30_drive '$_mut' 0)\" -ge 1 ]" "a 404 in the installer output is caught"
 assert_ok "[ \"\$(_ft30_drive '$_ft30_good' 1)\" -ge 1 ]" "a non-zero installer exit is caught"
 rm -f "$_mut" "$_ft30_good" "$FT30_CRIT"
+
+echo ""
+echo "== FT-30 verifies WHAT LANDED, not only what was printed (#358) =="
+# Every other FT-30 criterion is a grep over the installer's own log, which
+# asserts the bootstrap COMPLETED and says nothing about what it INSTALLED. A
+# stanza that silently never runs prints every marker string those look for and
+# passes the whole gate — the exact class FT-30 exists to catch, since the F1
+# defect was a cold start shipping without ai-review.yml for nine releases.
+#
+# Extract the shipped block and drive it against synthetic trees. The block is
+# extracted, never re-implemented here: a test carrying its own copy passes
+# happily while the script rots.
+FS_BLK="$(mktemp)"
+sed -n '/^# ---* what actually landed/,/^# ---* verdict/p' "$FT30" | sed '$d' > "$FS_BLK"
+assert_ok "[ -s '$FS_BLK' ]" "the file-set block was located in ft30-dry-run.sh"
+
+FS_DRV="$(mktemp)"; cat > "$FS_DRV" <<'FSDRV'
+FAILED=0
+ok()   { :; }
+bad()  { printf 'FAIL %s
+' "$*"; FAILED=$((FAILED+1)); }
+note() { :; }
+CONSUMER="$1"; TARGET="o/r"; CI_TAG="testref"; VIS="$2"
+curl() { local out=""; while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift 2;; *) shift;; esac; done; cp "$MANIFEST" "$out"; }
+gh()   { printf '%s
+' "$VIS"; }
+# shellcheck disable=SC1090
+. "$3"
+echo "FAILED=$FAILED"
+FSDRV
+_fs_mk() {  # $1=name $2=files $3=runner ; echoes the dir
+  local d; d="$(mktemp -d)"; mkdir -p "$d/.github/workflows"
+  local f; for f in $2; do printf 'runs-on: %s
+' "${3:-ubuntu-latest}" > "$d/.github/workflows/$f"; done
+  printf '%s' "$d"
+}
+_fs_run() { MANIFEST="$ROOT/install/templates/manifest.json" bash "$FS_DRV" "$1" "$2" "$FS_BLK" 2>/dev/null; }
+# The expected set is READ FROM THE MANIFEST, not hardcoded — hardcoding it here
+# would make this test drift the moment auto_install changes, which is exactly
+# the change #441 makes.
+_fs_expected="$(python3 - "$ROOT/install/templates/manifest.json" <<'PYFS'
+import sys, json
+m = json.load(open(sys.argv[1], encoding="utf-8"))
+print(" ".join(f["path"].split("/")[-1] for f in (m.get("files") or [])
+                if (f.get("path") or "").startswith(".github/workflows/") and f.get("auto_install")))
+PYFS
+)"
+assert_ok "[ -n '$_fs_expected' ]" "manifest declares at least one auto_install caller to verify"
+
+_d="$(_fs_mk ok "$_fs_expected")"
+assert_contains "$(_fs_run "$_d" false)" "FAILED=0" "a complete public cold start passes the file-set check"
+rm -rf "$_d"
+
+# THE #358 CASE: a caller the manifest promises simply is not there.
+_one="$(printf '%s' "$_fs_expected" | awk '{print $1}')"
+_rest="$(printf '%s' "$_fs_expected" | cut -d' ' -f2-)"
+_d="$(_fs_mk miss "$_rest")"
+assert_contains "$(_fs_run "$_d" false)" "did NOT land" "a MISSING auto_install caller fails the gate (#358)"
+rm -rf "$_d"
+
+# Wrong VARIANT: present, non-empty, and fatal on a private repo.
+_d="$(_fs_mk priv "$_fs_expected" "ubuntu-latest")"
+assert_contains "$(_fs_run "$_d" true)" "queue forever" \
+  "a private target handed ubuntu-latest callers fails (D1/OPS-0049)"
+rm -rf "$_d"
+
+# FT-39: a 200-with-empty-body written over a gate. Present, and worthless.
+_d="$(_fs_mk empty "$_fs_expected")"; : > "$_d/.github/workflows/$_one"
+assert_contains "$(_fs_run "$_d" false)" "EMPTY" "a caller that landed empty fails (FT-39)"
+rm -rf "$_d"
+
+# And the block must refuse rather than pass when it cannot resolve visibility —
+# "could not determine" must never read as "correct".
+_d="$(_fs_mk novis "$_fs_expected")"
+assert_contains "$(_fs_run "$_d" "")" "FAIL" "an unresolvable target visibility fails closed"
+rm -rf "$_d" "$FS_BLK" "$FS_DRV"
 
 suite_summary "scripts"
