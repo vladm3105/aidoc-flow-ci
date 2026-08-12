@@ -620,6 +620,57 @@ PYEOF
 assert_eq "$_ft57_scope" "" "every manifest path is inside the backup scope (.github/ or the root list)"
 
 echo ""
+echo "== bootstrap resolves visibility from the LIVE repo, not from the flag default =="
+# THE DEFECT THIS CATCHES, found by actually RUNNING a cold start rather than
+# reading one: `VISIBILITY` defaults to `private` and the bootstrap block reads
+# it, while `update_mode` and `add_surface_mode` both resolve from the live repo.
+# So a PUBLIC cold start run without `--visibility public` installed
+# `composition-private.yml` — and, once #441 lands, `quick-gates-private.yml`, a
+# self-hosted caller whose job executes the PR's own files. That is the D7 /
+# fork-code-on-self-hosted violation CLAUDE.md says NEVER to make, arriving via
+# the default value of a flag nobody passed.
+VIS_BLK="$(mktemp)"
+sed -n '/^# --- visibility, resolved from the LIVE repo/,/^fi$/p' "$INSTALL" > "$VIS_BLK"
+assert_ok "[ -s '$VIS_BLK' ]" "the visibility-resolution block was located in install.sh"
+
+_vis_run() {  # $1=gh stdout ("true"/"false"/"" = gh fails) $2=explicit $3=preset -> resolved value or ABORTED
+  ( FAKE="$1"
+    # These four are read by the SOURCED block below, which shellcheck cannot
+    # follow. A `# shellcheck disable=SC2034` did NOT silence it here — the
+    # directive did not attach to a multi-assignment line inside a subshell — so
+    # the reference is made explicit instead, which is honest either way: `:`
+    # marks them as consumed and costs nothing.
+    VISIBILITY="${3:-private}"; VISIBILITY_EXPLICIT="$2"; TARGET_REPO="o/r"; MODE_VERIFY=0
+    : "$VISIBILITY" "$VISIBILITY_EXPLICIT" "$TARGET_REPO" "$MODE_VERIFY"
+    # shellcheck disable=SC2317,SC2329
+    gh() { [ -n "$FAKE" ] || return 1; printf '%s\n' "$FAKE"; }
+    # shellcheck disable=SC1090
+    . "$VIS_BLK" >/dev/null 2>&1
+    echo "$VISIBILITY" )
+}
+# The abort path calls `exit 1` from the SOURCED block, which terminates the
+# subshell before any `||` fallback attached to `.` can run — so the refusal has
+# to be observed as a STATUS, not as a sentinel on stdout. (Measured: the
+# sentinel form reported empty and the assertion read it as a mismatch.)
+_vis_rc() { ( _vis_run "$@" ) >/dev/null 2>&1; echo "$?"; }
+assert_eq "$(_vis_run false 0)"         "public"  "a PUBLIC repo resolves to public, overriding the private default"
+assert_eq "$(_vis_run true 0)"          "private" "a PRIVATE repo resolves to private"
+assert_eq "$(_vis_run false 1 private)" "private" "an EXPLICIT --visibility wins over detection"
+assert_ok "[ \"$(_vis_rc '' 0)\" -ne 0 ]" "an unreadable repo ABORTS rather than falling back to the default"
+assert_eq "$(_vis_rc false 0)" "0" "...while a readable one exits 0"
+
+# ARGUMENT VALIDATION MUST NOT REQUIRE THE NETWORK. An earlier draft placed the
+# detection immediately after the `--visibility` value check, so
+# `--add-surface X --update` aborted with "could not read visibility" instead of
+# "not combinable" — a flags error that needed `gh` to work. Pinned by line
+# order so the placement is stated rather than incidental.
+_vis_line="$(grep -n '^# --- visibility, resolved from the LIVE repo' "$INSTALL" | cut -d: -f1)"
+_tier_line="$(grep -n 'case "\$TIER" in governance' "$INSTALL" | cut -d: -f1)"
+assert_ok "[ '${_vis_line:-0}' -gt '${_tier_line:-0}' ]" \
+  "visibility detection runs AFTER every pure-argument validation (line ${_vis_line:-?} > ${_tier_line:-?})"
+rm -f "$VIS_BLK"
+
+echo ""
 echo "== every manifested surface has SOME install path (#429) =="
 # THE GENERAL FORM OF #429, not a v3 check. A surface reaches a consumer by
 # exactly one of three routes: bootstrap (auto_install:true), `--update` (only

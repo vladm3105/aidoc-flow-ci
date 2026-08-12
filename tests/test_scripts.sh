@@ -1276,10 +1276,17 @@ _d="$(_fs_mk miss "$_rest")"
 assert_contains "$(_fs_run "$_d" false)" "did NOT land" "a MISSING auto_install caller fails the gate (#358)"
 rm -rf "$_d"
 
-# Wrong VARIANT: present, non-empty, and fatal on a private repo.
+# Wrong VARIANT, BOTH directions. The first draft covered only private+ubuntu
+# and fell through silently on public+self-hosted — which is the quadrant that
+# was actually live, because bootstrap defaulted VISIBILITY to `private`.
 _d="$(_fs_mk priv "$_fs_expected" "ubuntu-latest")"
 assert_contains "$(_fs_run "$_d" true)" "queue forever" \
   "a private target handed ubuntu-latest callers fails (D1/OPS-0049)"
+rm -rf "$_d"
+
+_d="$(_fs_mk pubsh "$_fs_expected" '["self-hosted", "ci-runner", "single-use"]')"
+assert_contains "$(_fs_run "$_d" false)" "SELF-HOSTED but" \
+  "a PUBLIC target handed self-hosted callers fails (D7 — fork code on the shared pool)"
 rm -rf "$_d"
 
 # FT-39: a 200-with-empty-body written over a gate. Present, and worthless.

@@ -291,6 +291,23 @@ has settled — measured, reproduced, and not expected to change.
   declaring the opposite — it is `grep -qF` on the prefix (`:211-213`). The gate
   cannot distinguish the phrase from the work, so the discipline is yours, not
   its. Every time the review was then actually run, it found something real.
+- **A DEFAULT is a decision nobody made, and this one shipped from the
+  installer's first commit (`21b9068`, 2026-06-23) until 2026-08-10.**
+  `VISIBILITY="private"` was the default and the **bootstrap block read
+  it directly**, while `update_mode` and `add_surface_mode` both resolved from
+  the live repo. So a cold start on a PUBLIC repo run without
+  `--visibility public` installed `composition-private.yml` — and, once v3's
+  `quick-gates` lands, `quick-gates-private.yml`, whose job executes the PR's
+  own files on the self-hosted pool. **That is the D7 / fork-code-on-self-hosted
+  violation this file says NEVER to make, arriving through a flag nobody passed.**
+  Bootstrap now auto-detects and REFUSES when it cannot read the repo; an
+  explicit `--visibility` still wins. Two corollaries worth more than the fix:
+  **argument validation must never require a network call** (the first placement
+  made `--add-surface X --update` abort with "could not read visibility" instead
+  of "not combinable"), and **the check that would have caught this had three of
+  four quadrants** — `public:self-hosted` fell through silently, which is
+  precisely the case that was live. Found by RUNNING a cold start, not reading
+  one; nothing exercises it, because canon is already adopted.
 - **`governance_check` has no automated reader.** It verifies that every path a
   repo's `CLAUDE.md` declares exists, has one call site
   (`install/apply-standards.sh:433`), and nothing in `.github/workflows/`
