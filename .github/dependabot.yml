@@ -31,6 +31,47 @@ updates:
     labels:
       - dependencies
 
+  # THE COMPOSITE ACTIONS canon SHIPS. Dependabot's github-actions ecosystem
+  # scans `.github/workflows/` for the given directory AND `action.yml`
+  # files, so naming each action's directory is what brings the v3 composite
+  # actions into the weekly cycle. Without these, `actions/*/action.yml` pin
+  # `actions/setup-node` and `actions/setup-python` and nothing bumps them.
+  - package-ecosystem: github-actions
+    directories:
+      - /actions/dep-scan
+      - /actions/links
+      - /actions/markdownlint
+      - /actions/pre-commit
+      - /actions/sast-scan
+      - /actions/trivy-scan
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      composite-actions:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+    labels:
+      - dependencies
+
+  # ── install/templates/workflows/ CANNOT BE COVERED HERE — that is the gap ──
+  # Those are workflow files OUTSIDE `.github/workflows/`, so no `directory:`
+  # setting reaches them — dependabot only scans `.github/workflows/` and
+  # `action.yml`. The consequence is one-directional and silent: canon bumps its
+  # OWN reusables weekly and ships consumers whatever pin the template froze at.
+  # Measured 2026-08-12 right after #440: canon moved to
+  # `codeql-action/upload-sarif@5595ccaf` (v4.37.6) while the shipped
+  # `scanners.yml` stayed on `@f205ea1c` (v4.37.4).
+  #
+  # THE GUARD IS A TEST, NOT THIS FILE. `tests/test_contract.sh` asserts ONE
+  # ACTION, ONE SHA across `.github/workflows/`, `install/templates/workflows/`
+  # and `actions/` — so drift reds the suite the moment a bump lands in one
+  # tree and not the other. Do not delete that test on the assumption this
+  # config covers it; it does not, and cannot.
+
   # Bump the digest-pinned actions-runner base image in the canon runner
   # template (install/templates/runner/Dockerfile). Direction of truth:
   # canon leads, consumers re-pin (PLAN-016 W2). Best-effort: the FROM is a

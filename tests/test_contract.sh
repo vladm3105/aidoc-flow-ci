@@ -999,4 +999,57 @@ PYEOF
 assert_eq "$ci0025_callers" "OK" \
   "required-context callers cancel ONLY on push/dispatch/opened/synchronize, and fail safe on an empty context (CI-0025 §23.2)"
 
+echo ""
+echo "== ONE ACTION, ONE SHA — canon must not ship consumers a pin it has moved past =="
+# WHY THIS EXISTS. Dependabot's `github-actions` ecosystem scans
+# `.github/workflows/` and composite `action.yml` files. It CANNOT see
+# `install/templates/workflows/` — those are workflow files outside
+# `.github/workflows/`, so no `directory:` setting reaches them. The consequence
+# is one-directional and silent: canon bumps its OWN reusables on the weekly
+# cycle and ships consumers whatever pin the template was frozen at.
+#
+# Measured 2026-08-12, immediately after #440: canon's reusables moved to
+# `codeql-action/upload-sarif@5595ccaf` (v4.37.6) while
+# `install/templates/workflows/scanners.yml` — the file consumers install —
+# stayed on `@f205ea1c` (v4.37.4). Mild for a first-party patch bump; not mild
+# when a bump is a security fix, because canon would be patched while every
+# consumer stayed exposed, with nothing reporting it.
+#
+# The invariant is deliberately simple and repo-wide: an action referenced in
+# more than one tree must be pinned to the SAME sha everywhere. A per-tree
+# allowlist would be a second place to forget.
+_pin_drift="$(python3 - <<'PYPIN'
+import re, pathlib, collections
+PIN = re.compile(r'uses:\s*([A-Za-z0-9._-]+/[A-Za-z0-9._/-]+)@([a-f0-9]{40})')
+seen = collections.defaultdict(lambda: collections.defaultdict(set))
+roots = ["\u002egithub/workflows", "install/templates/workflows", "actions", "sync"]
+for root in roots:
+    base = pathlib.Path(root)
+    if not base.exists():
+        continue
+    for f in list(base.rglob("*.yml")) + list(base.rglob("*.yaml")):
+        for action, sha in PIN.findall(f.read_text(encoding="utf-8", errors="replace")):
+            seen[action][sha].add(str(f))
+for action, shas in sorted(seen.items()):
+    if len(shas) > 1:
+        detail = " | ".join(
+            "%s in %s" % (sha[:8], ",".join(sorted(files)))
+            for sha, files in sorted(shas.items()))
+        print("%s pinned to %d different SHAs: %s" % (action, len(shas), detail))
+PYPIN
+)"
+assert_eq "$_pin_drift" "" "no action is pinned to two different SHAs across canon's trees"
+
+# ASSERT THE SCAN FOUND SOMETHING. An empty corpus prints nothing and reads as
+# clean — the vacuous-oracle shape this repo has now been bitten by four times.
+_pin_count="$(grep -rhoE 'uses:[[:space:]]*[A-Za-z0-9._-]+/[A-Za-z0-9._/-]+@[a-f0-9]{40}' \
+  .github/workflows install/templates/workflows actions 2>/dev/null | wc -l)"
+assert_ok "[ '${_pin_count:-0}' -ge 20 ]" "the pin-drift scan actually inspected pins (found ${_pin_count:-0})"
+
+# And the specific pin that drifted, named, so a regression is legible rather
+# than a generic count change.
+_sarif_shas="$(grep -rhoE 'codeql-action/upload-sarif@[a-f0-9]{40}' \
+  .github/workflows install/templates/workflows 2>/dev/null | sed 's/.*@//' | sort -u | wc -l)"
+assert_eq "$_sarif_shas" "1" "codeql-action/upload-sarif has ONE sha across canon and the shipped templates"
+
 suite_summary "contract"
