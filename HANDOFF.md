@@ -9,8 +9,8 @@ summarises it.
 
 **State:** `main` carries **#441** (bootstrap tier gate), squashed
 2026-08-12 · tree clean · **nothing deployed** — canon ships by tag, the last tag
-is still `ci/v2.16.0`, and **53 merged PRs** are unreachable by any consumer ·
-**36** open issues · **0** open PRs — **[#441](https://github.com/vladm3105/aidoc-flow-ci/pull/441), which must NOT be merged before the tag** (see Blockers).
+is still `ci/v2.16.0`, and **54 merged PRs** are unreachable by any consumer ·
+**36** open issues · **0** open PRs.
 
 All gates green, **run on this merge commit, not carried forward**. Re-derive
 every row; the commands are exact (see `CLAUDE.md` § Durable traps for why the
