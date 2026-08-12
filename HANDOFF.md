@@ -85,24 +85,32 @@ guards is a live-armed context in no template. Durable form in auto-memory.
 
 ## What to do next
 
-**Every remaining item on the critical path is a DECISION, not build work.** I
-looked for build work and did not find any that moves the tag; PLAN-026 was the
-last attempt and it is in Blockers, not here.
+**Two founder gates closed on 2026-08-10 (CI-0035, CI-0036). What is left is one
+founder-executed run and one timed merge — both are your own recorded choices,
+not open questions.**
 
-1. **Take the four decisions in Blockers.** Nothing below them moves. Two of
-   them are new or newly-sharpened this session, so read them rather than
-   assuming they are the same list as yesterday.
-2. **[#438](https://github.com/vladm3105/aidoc-flow-ci/issues/438) is the one to
-   read first** — it is the only load-bearing item that survived PLAN-026's three
-   review passes, it blocks the migration phase, and both options hang a repo's
-   `main` in some scenario. It has a recommendation and the evidence for it.
-3. **Do NOT start PLAN-026's phases.** Its Status header says NOT READY,
-   `check_plan.py` fails it, and §C0 carries a 🔴 block. Phases A (local layer)
-   and B (rollback) are the only ones without an open precondition — but B's
-   value is as C's undo, and C cannot start until the tag exists.
-4. **If a v2.17.0 is still wanted**, it must be cut before PLAN-024 Phase A makes
-   `main` a MAJOR. `docs/REPO_STANDARDS.md:355` rules out an RC tag entirely —
-   validating v3 on a consumer branch needs a **SHA pin**.
+1. **Run FT-30 against a throwaway repo.** The preflight is clean
+   (`bash scripts/ft30-dry-run.sh --check` — gate owed, `CI_TAG` resolvable and
+   pushed, `gh` authenticated). The real run clones and creates ~21 labels in
+   another repo, which is why it is yours:
+   `bash scripts/ft30-dry-run.sh --target <owner>/<throwaway>`. Note
+   [#358](https://github.com/vladm3105/aidoc-flow-ci/issues/358) — it asserts the
+   bootstrap COMPLETED, not that it installed the right file set; check the file
+   set separately.
+2. **Cut `ci/v3.0.0`.** `scripts/release.sh prep ci/v3.0.0` now retires the
+   forward-pin markers itself. The MAJOR gates are met: migration guide written,
+   `litellm-smoke` green (run `31348751529`).
+3. **Merge [#441](https://github.com/vladm3105/aidoc-flow-ci/pull/441) AT the
+   cut** — not before. It resolves #438; merging pre-tag installs a
+   `startup_failure`ing caller while removing the producer the current templates
+   require. Land it beside PLAN-026 C0's substitution in **all four** tier
+   templates that carry the old context.
+4. **Rebuild `aidoc-flow-runner:latest` on every OTHER runner host.** This host is
+   done and verified; nothing prompts the others, and until they rebuild
+   `scanners` is red on arrival. The `gh` pin will expire again
+   ([#435](https://github.com/vladm3105/aidoc-flow-ci/issues/435)).
+5. **Then** the post-tag phases — PLAN-026 P4/P5/P7/P9. P7 could not have
+   preceded the tag anyway (FT-21).
 
 Open issues are the backlog — do not restate them here:
 
@@ -132,8 +140,8 @@ All founder-only. None moved this session, and #430 did not attempt to.
 | **🔴 FT-30 cold-start dry run — PREFLIGHT IS CLEAN, only the real run remains** | `bash scripts/ft30-dry-run.sh --check` writes nothing and passes: gate owed (15 cold-start files changed), `CI_TAG` resolves and is pushed, `gh` authenticated. Run it yourself before asking the founder for anything | Founder runs `scripts/ft30-dry-run.sh --target <owner>/<throwaway>` — it CLONES and creates ~21 labels in another repo, which is why it is founder-owned. See `CLAUDE.md` § Durable traps for what it does **not** assert ([#358](https://github.com/vladm3105/aidoc-flow-ci/issues/358)) |
 | ~~🔴 `litellm-smoke`~~ | ✅ **PASSED 2026-08-10** — run `31348751529`, both aliases. Was never an infra fault; a mis-dispatch onto `ubuntu-latest` (CI-0017). Canon is back to **0** registered runners, so **re-running it needs a pool again** | done |
 | **🟡 [#438](https://github.com/vladm3105/aidoc-flow-ci/issues/438) — RESOLVED IN CODE, awaiting a merge you must time** | Was: substituting `quick-gates` into the tier templates bricks a post-v3 cold start. [PR #441](https://github.com/vladm3105/aidoc-flow-ci/pull/441) removes the trade-off — the `auto_install` flag moves with the context AND a `replaces`-aware bootstrap skip prevents the double-install that was option A's whole cost. Mutation-tested both directions | **Merge #441 AT the tag cut, never before.** Pre-tag, `quick-gates.yml` pins a tag that does not exist, so merging early installs a `startup_failure`ing caller while removing the producer the current templates require — the same brick, sooner |
-| **🔴 PR-C deviation confirmation** | Due before `ci/v2.17.0`. #405 shipped the demotion only, not the de-allowlisting §4 PR-C item 1 called for | Founder decision; reasoning in PLAN-021 §4 PR-C LANDED note |
-| **🔴 OPS-0066 — and the fresh-plan route has now been TRIED AND FAILED** | PLAN-025's cap was spent; §8 offered "a fresh plan, reviewed on its own budget" as the better alternative. PLAN-026 is that plan: 3 independent passes, 15 load-bearing findings, 14 folded, 1 open (#438), and its own cap now spent. `check_plan.py` fails it | A founder **waiver** is now the remaining route; the alternative was attempted in good faith and did not converge |
+| ~~🔴 PR-C deviation~~ | ✅ **CONFIRMED by the founder 2026-08-10 — `DECISIONS.md` CI-0035.** Shipped shape stands: demote `CHANGELOG.md` to high-risk, leave it allowlisted. De-allowlisting relocates the red run rather than removing it (measured: exit 1 vs exit 0). §9 item 2 superseded on point 1 only. **Do not re-open** | done |
+| ~~🔴 OPS-0066~~ | ✅ **WAIVED by the founder 2026-08-10 — `DECISIONS.md` CI-0036.** Both of §8's routes were exercised; the fresh plan (PLAN-026) took 3 independent passes and did not converge. The waiver rests on a distinction §8 did not draw: **the tag depends on the CODE being reviewed, not on the PLAN converging** — and the merged surface had a 5-lens pre-prod review plus 2 OPS-0065 reviews. The caveat is **not retracted**: the finding rate held, and the waiver accepts it as tolerable with the migration sequence and rollback as containment | done |
 | **The runner image must be REBUILT on EVERY OTHER runner host** | #436 fixed the `gh` pin (the image had been unbuildable since 2.97.0, so #349's fix was undeliverable) and **this host's image is rebuilt and verified** — venv, PyYAML and `semgrep==1.170.0` all confirmed. Other hosts still carry the old one, and nothing prompts them. Until each rebuilds, `scanners` is red on arrival | `cd install/templates/runner && bash build-image.sh` per host. It now *builds* a venv and imports yaml to verify. The pin will expire again at the next `gh` release — [#435](https://github.com/vladm3105/aidoc-flow-ci/issues/435) |
 
 **PLAN-025 P7 must not run** — still the only irreversible phase; P9 (rollback)

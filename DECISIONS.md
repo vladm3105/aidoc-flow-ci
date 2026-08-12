@@ -2336,6 +2336,90 @@ the residue is that what is NOT in the body is what goes missing.
 
 ---
 
+## CI-0035: PR-C's `CHANGELOG.md` deviation is CONFIRMED — demote, do not de-allowlist (2026-08-10)
+
+**Context**
+
+`PLAN-021 §4` PR-C point 1 specified dropping `CHANGELOG.md` from **both**
+`allowed_paths` and `auto_merge.low_risk_paths`. What shipped in #405 dropped it
+from `low_risk_paths` only, added it to `high_risk_paths`, and left it
+allowlisted. The plan flagged the divergence, recorded *"the founder has not been
+re-asked"*, and asked for confirmation before the next tag.
+
+**Decision**
+
+**The shipped shape is confirmed. Do not restore the de-allowlisting.** Founder,
+2026-08-10.
+
+The reasoning is measured, not argued. Driven against the shipped planner with a
+stub proposing `CHANGELOG.md`:
+
+| Config | Result |
+| --- | --- |
+| de-allowlisted | `::error::` + **exit 1** — a run-killing `return 1` |
+| demoted to high-risk | **exit 0**, `high_risk_set: [CHANGELOG.md]` — an issue body a human acts on |
+
+De-allowlisting does not remove the red run, it **relocates** it. The path is
+still proposed — the inventory is an unfiltered `rglob("*.md")` until PR-D lands,
+and `install/templates/doc-maintainer-conventions.md` instructs the model to use
+`CHANGELOG.md`. On the only population half 1 reaches (new adopters, since
+`safe_to_replace: false`), point 1 as written ships a config whose first
+changelog-touching merge reds from day one, at any file size.
+
+**Consequences**
+
+- The 🔴 blocker "PR-C deviation confirmation" is **closed**. It gated
+  `ci/v2.17.0` and carried forward to `ci/v3.0.0`; neither is gated by it now.
+- `PLAN-021 §9` item 2's *"PR-C ships as specified, both halves"* is **superseded
+  on point 1 only** by this entry. Its "as specified" predates the reproduction.
+- Two other places in PLAN-021 already reached this conclusion (§4's analysis of
+  `operations`, §1 correction (b)); three independent pre-push reviewers
+  converged on it, two with reproductions. This entry is the record that was
+  missing, not a new position.
+
+---
+
+## CI-0036: OPS-0066 waived for PLAN-025 — the v3 tag rests on the CODE review (2026-08-10)
+
+**Context**
+
+`PLAN-025 §8` recorded the OPS-0066 three-pass cap as spent and offered two ways
+forward: a founder waiver, or *"better — a fresh plan for the remaining phases,
+reviewed on its own budget."*
+
+**The fresh-plan route was attempted and did not converge.** PLAN-026 took three
+independent passes (10 load-bearing findings, then 5, **two of them introduced by
+the intervening fold**), ended with one open item, and spent its own cap. Its
+Pass-3 fold has had no re-review.
+
+**Decision**
+
+**Waived. The `ci/v3.0.0` tag rests on the review the CODE received, not on
+PLAN-025 converging.** Founder, 2026-08-10.
+
+The distinction is the substance: the merged v3 surface had a five-lens
+independent pre-prod review this session (5 blockers, all fixed), plus two
+independent OPS-0065 reviews of the fixes. A plan that has not converged and code
+that has been reviewed are different claims, and the tag depends on the second.
+
+**Consequences**
+
+- The 🔴 blocker "PLAN-025 unreviewed since Pass 4" is **closed**.
+- **This waiver is a judgement about an acceptable rate, not a claim the concern
+  was wrong.** §8's stated worry was *"every pass has still found something a
+  consumer would have felt"* — and that held again: the pre-prod review found
+  five blockers, three of them defenses §2 records as *carried*. The waiver
+  accepts that finding rate as tolerable at the tag, with the migration sequence
+  and rollback as the containment.
+- **PLAN-026 stays NOT READY and is not a release gate.** Its remaining phases
+  (P4/P5/P7/P9) are work against the tag, not preconditions for it. Its one open
+  item is resolved in code by PR #441, which merges at the cut.
+- **PR-C's confirmation (CI-0035) closed in the same session**, so the founder
+  gates remaining before a tag are the FT-30 cold-start dry run and the timed
+  merge of #441.
+
+---
+
 <!-- Append new entries above this line (or into a previously reserved ID
 slot — see the ordering rule at the top); append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
