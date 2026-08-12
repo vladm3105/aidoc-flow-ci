@@ -670,6 +670,61 @@ assert_ok "[ '${_vis_line:-0}' -gt '${_tier_line:-0}' ]" \
   "visibility detection runs AFTER every pure-argument validation (line ${_vis_line:-?} > ${_tier_line:-?})"
 rm -f "$VIS_BLK"
 
+echo "== the bootstrap tier gate has a producer, and does not double-install (#438) =="
+# THE HAZARD: `apply-standards.sh` PUTs the tier branch-protection file as one
+# whole payload, so if bootstrap does not install a producer for the context that
+# file requires, a COLD START arms a required check nothing satisfies — and
+# consumer tiers have no `--admin` escape. Before v3 that producer was
+# `pre-commit.yml`; v3 folds three checks into `quick-gates`, so the auto_install
+# flag has to move with the context.
+#
+# THE COUNTER-HAZARD, which is why the flag alone is not the fix: flipping it
+# makes a RE-bootstrap on a not-yet-migrated consumer install v3 alongside v2.
+# Both directions are driven here, by evaluating the SHIPPED block — the same
+# harness Part 2 uses, so it cannot drift from what install.sh actually does.
+_bootstrap_in() {   # $1=sandbox  $2=visibility ; echoes resolved "template<TAB>dest" lines
+  local sandbox="$1" vis="$2" out="$TMP/bs-out"
+  : > "$out"
+  (
+    set -euo pipefail
+    cd "$sandbox" || exit 1
+    # shellcheck disable=SC2034
+    VISIBILITY="$vis"
+    # shellcheck disable=SC2317,SC2329
+    fetch_template() { printf '%s\t%s\n' "$1" "$2" >> "$out"; }
+    # shellcheck disable=SC1090
+    . "$TMP/block.sh" >/dev/null 2>&1
+  ) || true
+  cat "$out"
+}
+
+# (a) COLD START — nothing installed. The tier gate's producer must land.
+_cold="$TMP/bs-cold"; mkdir -p "$_cold/.github/workflows"
+_cold_out="$(_bootstrap_in "$_cold" public)"
+assert_contains "$_cold_out" ".github/workflows/quick-gates.yml" \
+  "cold start installs quick-gates — the producer for the context the tier template requires"
+
+# (b) PRIVATE cold start resolves the labelled variant, not the generic.
+_coldp="$TMP/bs-coldp"; mkdir -p "$_coldp/.github/workflows"
+assert_contains "$(_bootstrap_in "$_coldp" private)" "workflows/quick-gates-private.yml" \
+  "private cold start resolves the self-hosted variant (D1/OPS-0049)"
+
+# (c) RE-BOOTSTRAP on a v2 consumer — must NOT add v3 behind their back.
+for _v2 in pre-commit markdown-lint links; do
+  _mig="$TMP/bs-mig-$_v2"; mkdir -p "$_mig/.github/workflows"
+  printf 'v2 caller\n' > "$_mig/.github/workflows/$_v2.yml"
+  assert_absent "$(_bootstrap_in "$_mig" public)" ".github/workflows/quick-gates.yml" \
+    "re-bootstrap with $_v2.yml present SKIPS quick-gates (no v2+v3 double-install, #429)"
+done
+
+# (d) Already migrated — quick-gates present, v2 gone. Preserved, not re-fetched.
+_done="$TMP/bs-done"; mkdir -p "$_done/.github/workflows"
+printf 'local override\n' > "$_done/.github/workflows/quick-gates.yml"
+assert_absent "$(_bootstrap_in "$_done" public)" ".github/workflows/quick-gates.yml" \
+  "an existing quick-gates.yml is preserved, never re-fetched"
+assert_eq "$(cat "$_done/.github/workflows/quick-gates.yml")" "local override" \
+  "...and is left byte-unchanged"
+
 echo ""
 echo "== every manifested surface has SOME install path (#429) =="
 # THE GENERAL FORM OF #429, not a v3 check. A surface reaches a consumer by

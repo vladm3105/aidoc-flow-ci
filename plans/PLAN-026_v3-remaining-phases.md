@@ -1,8 +1,10 @@
 # PLAN-026 — `ci/v3.0.0` remaining phases: local layer, documentation set, context migration, rollback
 
-**Status:** Draft — no phase executed. **NOT READY: one load-bearing item is
-open (the 🔴 block in §C0) and the OPS-0066 three-pass review cap is spent.**
-It needs a founder decision, not a fourth review pass.
+**Status:** Draft — no phase executed. **NOT READY**, and the reason narrowed:
+§C0's blocker has a proposed resolution (implemented, mutation-tested, awaiting
+a founder merge at the tag cut — see #438), but the OPS-0066 three-pass review
+cap is spent on this plan, so the plan itself still needs a waiver rather than a
+fourth pass.
 **Owner:** canon (aidoc-flow-ci)
 **Scope:** PLAN-025's unstarted phases — P4 (local layer), P5 (documentation
 set), P7 (required-context migration), P9 (rollback), and the P8 remainder
@@ -182,7 +184,7 @@ Only one of the six old contexts appears in any tier template —
 - **C1–C5 (per repo, live):** add 2, observe green, remove up to 6 from live
   protection **and** rulesets, delete the old callers, then verify.
 
-> ### 🔴 OPEN — C0 cannot be executed as written, and this needs a decision
+> ### 🟡 RESOLUTION PROPOSED — see the PR that carries this edit; NOT yet merged
 >
 > **Substituting `quick-gates` into the tier templates arms a context that
 > bootstrap does not install.** `quick-gates.yml` is `auto_install: false`
@@ -207,9 +209,21 @@ Only one of the six old contexts appears in any tier template —
 > 2. **Hold the template edit until the fleet is migrated** — accept that any
 >    `--apply` in the interim restores the old contexts, and say so explicitly.
 >
-> **This is a founder decision.** It is recorded here rather than guessed
-> because guessing wrong bricks a cold start, and C0 is the step whose whole
-> purpose is preventing exactly that.
+> **A third option removes option A's cost, and is implemented in the PR that
+> carries this edit — deliberately UNMERGED.** Flip `quick-gates.yml` to
+> `auto_install: true` and `pre-commit.yml` to `false` (the flag moves with the
+> context), **and** make the bootstrap stanza skip `quick-gates` when any caller
+> it `replaces` is still present. Cold start installs the producer, so the tier
+> gate is honest; a re-bootstrap on a not-yet-migrated consumer skips, so there
+> is no double-install. Both directions are driven by the shipped block in
+> `tests/test_install.sh` and mutation-tested — removing the skip reds 3
+> assertions, reverting the flag reds 2.
+>
+> **It must not merge before the `ci/v3.0.0` tag.** Pre-tag, `quick-gates.yml`
+> pins a tag that does not exist, so flipping the flag today would make every
+> cold start install a caller that `startup_failure`s while removing the
+> producer the current templates require — the same brick, sooner. The PR states
+> this; merging it is the founder's call and belongs at the tag cut.
 
 **C2's precondition is the runner-image rebuild** on every host serving that
 repo (Claim 16). Arming `scanners` before the rebuild arms a context that is red
