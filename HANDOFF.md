@@ -7,10 +7,10 @@ command that re-derives it. Durable facts live in `CLAUDE.md` § "Durable traps"
 the decision record is `DECISIONS.md`, which is authoritative — this file never
 summarises it.
 
-**State:** `main` carries **#445** (cold-start visibility fix), squashed
-2026-08-10 · tree clean · **nothing deployed** — canon ships by tag, the last tag
-is still `ci/v2.16.0`, and **49 merged PRs** are unreachable by any consumer ·
-**37** open issues · **2** open PRs — **[#441](https://github.com/vladm3105/aidoc-flow-ci/pull/441), which must NOT be merged before the tag** (see Blockers).
+**State:** `main` carries **#441** (bootstrap tier gate), squashed
+2026-08-12 · tree clean · **nothing deployed** — canon ships by tag, the last tag
+is still `ci/v2.16.0`, and **53 merged PRs** are unreachable by any consumer ·
+**36** open issues · **0** open PRs — **[#441](https://github.com/vladm3105/aidoc-flow-ci/pull/441), which must NOT be merged before the tag** (see Blockers).
 
 All gates green, **run on this merge commit, not carried forward**. Re-derive
 every row; the commands are exact (see `CLAUDE.md` § Durable traps for why the
@@ -20,13 +20,13 @@ SGR strip and `--tier` are not optional):
 |---|---|---|
 | Released version | `git describe --tags --abbrev=0` | `ci/v2.16.0` |
 | Unreleased **PRs** | `git log --oneline ci/v2.16.0..HEAD \| grep -cE '\(#[0-9]+\)$'` — count PRs, not commits; a wrap commit carries no `(#N)` and would inflate a `wc -l` | **41** |
-| Suite | `bash tests/run.sh \| sed 's/\x1b\[[0-9;]*m//g' \| grep -oE '[0-9]+ passed, [0-9]+ failed' \| awk '{p+=$1;f+=$3} END{print NR" suites, "p" passed, "f" failed"}'` | **17 suites, 1,532 passed, 0 failed** |
+| Suite | `bash tests/run.sh \| sed 's/\x1b\[[0-9;]*m//g' \| grep -oE '[0-9]+ passed, [0-9]+ failed' \| awk '{p+=$1;f+=$3} END{print NR" suites, "p" passed, "f" failed"}'` | **17 suites, 1,542 passed, 0 failed** |
 | pre-commit | `pre-commit run --all-files` | exit 0 |
 | pre-push | `bash scripts/pre_push_check.sh` | exit 0 |
 | Governance table | `python3 install/parse-governance-table.py CLAUDE.md --repo-root .` | PASS |
 | Standards drift | `bash sync/check-standards-drift.sh --tier product` | 4/4 families, **2 drift** = the deliberate FT-52 profile |
-| Open issues | `gh issue list --state open --limit 200 --json number --jq 'length'` | **37** |
-| Open PRs | `gh pr list --state open --json number --jq 'length'` | **2** — #441 held on purpose, #440 is dependabot's (not mine to merge) |
+| Open issues | `gh issue list --state open --limit 200 --json number --jq 'length'` | **36** |
+| Open PRs | `gh pr list --state open --json number --jq 'length'` | **0** |
 
 ## What this session did
 
@@ -106,45 +106,36 @@ guards is a live-armed context in no template. Durable form in auto-memory.
 
 ## What to do next
 
-**Two founder gates closed on 2026-08-10 (CI-0035, CI-0036). What is left is one
-founder-executed run and one timed merge — both are your own recorded choices,
-not open questions.**
+> ### ⏳ `main` is temporarily broken for ONE path — cut the tag to close it
+>
+> #441 merged on 2026-08-12 (founder instruction), so bootstrap now installs
+> `quick-gates.yml` — which pins **`ci/v3.0.0`, a tag that does not exist yet**.
+> A cold start from **raw `main`** therefore resolves templates at
+> `CI_TAG_FALLBACK` (`ci/v2.16.0`), where that file is absent, and dies on
+> `fetch_template … || exit 1`. Verified: `git show
+> ci/v2.16.0:install/templates/workflows/quick-gates.yml` → absent.
+>
+> **Unaffected:** the documented adoption path (pins a released tag) and FT-30
+> (pins a SHA). **The window closes when the tag is cut.** Do not widen it.
 
-> **⚠️ THE ORDER CHANGED, and the previous sequence would have produced a FALSE
-> GREEN.** FT-30 pins `CI_TAG` to `git rev-parse HEAD` and fetches `install.sh`
-> from that SHA — so running it before #441 lands validates a bootstrap that
-> installs `pre-commit.yml`, when the tagged one installs `quick-gates.yml`.
-> #441 changes `install/install.sh`'s bootstrap block and `manifest.json`'s
-> `auto_install` flags, both on the cold-start surface. The gate cannot detect
-> this; it does exactly what it is asked, against the wrong input.
-> `docs/RELEASE_CHECKLIST.md` now carries the ordering.
-
-1. **Land [#441](https://github.com/vladm3105/aidoc-flow-ci/pull/441) in the prep
-   branch**, or merge it immediately before `prep`. Do **not** merge it and leave
-   it sitting on `main`: `CI_TAG_FALLBACK` is the previous tag, so `install.sh`
-   curl'd from `main` fetches templates from `ci/v2.16.0` where `quick-gates.yml`
-   does not exist — `fetch_template … || exit 1`, cold start dead. Land it beside
-   PLAN-026 C0's substitution in **all four** tier templates carrying the old
-   context.
+1. **Run FT-30** — `main` is now the tree that will be tagged, which is what
+   makes the run meaningful (it validates whatever `CI_TAG` resolves to, and
+   #441 changed the bootstrap path). `--check` first; it writes nothing. Use a
+   **PUBLIC** throwaway — that is the path #445 fixed and the one public
+   consumers take:
+   `bash scripts/ft30-dry-run.sh --target <owner>/<public-throwaway>`.
+   It now verifies the installed **file set**, not just the log (#358).
 2. **`bash scripts/release.sh prep ci/v3.0.0`**, then merge the prep PR. It
-   retires the forward-pin markers itself. The MAJOR gates are met: migration
-   guide written, `litellm-smoke` green (run `31348751529`).
-3. **Then FT-30**, against the prep-merge SHA, and **use a PUBLIC throwaway** —
-   that is the path that was broken and the one public consumers take.
-   `--check` first — it writes nothing. The real run clones and creates ~21 labels in another repo, which is
-   why it is yours:
-   `bash scripts/ft30-dry-run.sh --target <owner>/<throwaway>`. **It now verifies
-   the installed FILE SET, not only the log**
-   ([#358](https://github.com/vladm3105/aidoc-flow-ci/issues/358) closed): a
-   missing `auto_install` caller, a wrong visibility variant, or an empty file
-   each fail it.
-4. **`bash scripts/release.sh tag ci/v3.0.0 --dry-run-verified`.**
-5. **Rebuild `aidoc-flow-runner:latest` on every OTHER runner host.** This host is
-   done and verified; nothing prompts the others, and until they rebuild
-   `scanners` is red on arrival. The `gh` pin will expire again
+   retires the forward-pin markers itself.
+3. **`bash scripts/release.sh tag ci/v3.0.0 --dry-run-verified`.** This closes
+   the window above.
+4. **Rebuild `aidoc-flow-runner:latest` on every OTHER runner host.** This host
+   is done and verified; nothing prompts the others, and until they rebuild
+   `scanners` is red on arrival. The `gh` pin expires again at the next release
    ([#435](https://github.com/vladm3105/aidoc-flow-ci/issues/435)).
-6. **Then** the post-tag phases — PLAN-026 P4/P5/P7/P9. P7 could not have
-   preceded the tag anyway (FT-21).
+5. **Then** PLAN-026's phases. **§C0 still owes the template substitution** —
+   the retiring context is in **four** tier templates (`bootstrap`, `product`,
+   `ops`, `governance`), and #441 did not touch them.
 
 Open issues are the backlog — do not restate them here:
 
@@ -160,7 +151,7 @@ All founder-only. None moved this session, and #430 did not attempt to.
 | --- | --- | --- |
 | **🔴 FT-30 cold-start dry run — PREFLIGHT IS CLEAN, only the real run remains** | `bash scripts/ft30-dry-run.sh --check` writes nothing and passes: gate owed (15 cold-start files changed), `CI_TAG` resolves and is pushed, `gh` authenticated. Run it yourself before asking the founder for anything | Founder runs `scripts/ft30-dry-run.sh --target <owner>/<throwaway>` — it CLONES and creates ~21 labels in another repo, which is why it is founder-owned. See `CLAUDE.md` § Durable traps for what it does **not** assert ([#358](https://github.com/vladm3105/aidoc-flow-ci/issues/358)) |
 | ~~🔴 `litellm-smoke`~~ | ✅ **PASSED 2026-08-10** — run `31348751529`, both aliases. Was never an infra fault; a mis-dispatch onto `ubuntu-latest` (CI-0017). Canon is back to **0** registered runners, so **re-running it needs a pool again** | done |
-| **🟡 [#438](https://github.com/vladm3105/aidoc-flow-ci/issues/438) — RESOLVED IN CODE, awaiting a merge you must time** | Was: substituting `quick-gates` into the tier templates bricks a post-v3 cold start. [PR #441](https://github.com/vladm3105/aidoc-flow-ci/pull/441) removes the trade-off — the `auto_install` flag moves with the context AND a `replaces`-aware bootstrap skip prevents the double-install that was option A's whole cost. Mutation-tested both directions | **Merge #441 AT the tag cut, never before.** Pre-tag, `quick-gates.yml` pins a tag that does not exist, so merging early installs a `startup_failure`ing caller while removing the producer the current templates require — the same brick, sooner |
+| ~~🟡 #438~~ | ✅ **CLOSED — #441 merged 2026-08-12** on founder instruction, ahead of the tag. Verified on merged `main`: `quick-gates` `auto_install: true`, `pre-commit` `false`, `replaces`-aware skip present, 1,542 assertions green. The consequence is the ⏳ window above, not a defect | done — cut the tag to close the window |
 | ~~🔴 PR-C deviation~~ | ✅ **CONFIRMED by the founder 2026-08-10 — `DECISIONS.md` CI-0035.** Shipped shape stands: demote `CHANGELOG.md` to high-risk, leave it allowlisted. De-allowlisting relocates the red run rather than removing it (measured: exit 1 vs exit 0). §9 item 2 superseded on point 1 only. **Do not re-open** | done |
 | ~~🔴 OPS-0066~~ | ✅ **WAIVED by the founder 2026-08-10 — `DECISIONS.md` CI-0036.** Both of §8's routes were exercised; the fresh plan (PLAN-026) took 3 independent passes and did not converge. The waiver rests on a distinction §8 did not draw: **the tag depends on the CODE being reviewed, not on the PLAN converging** — and the merged surface had a 5-lens pre-prod review plus 2 OPS-0065 reviews. The caveat is **not retracted**: the finding rate held, and the waiver accepts it as tolerable with the migration sequence and rollback as containment | done |
 | **The runner image must be REBUILT on EVERY OTHER runner host** | #436 fixed the `gh` pin (the image had been unbuildable since 2.97.0, so #349's fix was undeliverable) and **this host's image is rebuilt and verified** — venv, PyYAML and `semgrep==1.170.0` all confirmed. Other hosts still carry the old one, and nothing prompts them. Until each rebuilds, `scanners` is red on arrival | `cd install/templates/runner && bash build-image.sh` per host. It now *builds* a venv and imports yaml to verify. The pin will expire again at the next `gh` release — [#435](https://github.com/vladm3105/aidoc-flow-ci/issues/435) |
