@@ -5,6 +5,53 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — three consumer-facing docs still said v3 was unreleased, after it was released
+
+`ci/v3.0.0` was cut on 2026-08-12 at `6d68b26`. Three documents a consumer reads
+before adopting still described the state before the cut, and each was false at
+the moment it became most likely to be read:
+
+- `README.md:38-40` — "It is **NOT** released and **NOT** adoptable yet; the
+  latest tag is still the one in `VERSION`", on the repo's front page, while
+  `VERSION` reads `ci/v3.0.0`. Its closing paragraph also said the v3 templates
+  "pin a tag that does not exist yet, so nothing reaches a consumer".
+- `docs/MIGRATION_v3.0.0.md:3-5` — "**Status:** written ahead of the tag.
+  `ci/v3.0.0` is not cut, and nothing below is actionable until it is", at the
+  top of the migration guide the release notes send adopters to.
+- `ROADMAP.md:11-41` — "Current release — ci/v2.16.0", "no tag has been cut
+  since", and "**Not released, not adoptable**" for v3.
+
+All three now state the released position, and `ROADMAP.md` records the measured
+count — **57 merged PRs** carried by the tag — with the command that re-derives
+it rather than the "roughly forty" it had been carrying.
+
+This is the same class as
+[#451](https://github.com/vladm3105/aidoc-flow-ci/issues/451): prose whose truth
+was scoped to a condition, read after the condition ended. #451 stays open for
+the half that prevents it — nothing scans for these, and they were found by
+grepping for the phrasing after the fact, not by any gate.
+
+Two adjacent defects the same review surfaced, both fixed here because both are
+read at the moment they do damage:
+
+- `docs/MIGRATION_v3.0.0.md`'s **rollback** step 1 said a bare bootstrap restores
+  "one of six" v2 callers because `pre-commit.yml` is `auto_install: true`.
+  #441 flipped it to `false`, so a bare bootstrap restores **zero of six** and
+  installs `quick-gates.yml` instead — arming six contexts with no producer,
+  the exact hang the procedure exists to end. Read mid-incident, and it erred
+  toward "you are partly covered".
+- `README.md` attributed non-delivery of the v3 callers to `auto_install`, which
+  implies the third arrives on a repin. No v3 caller reaches an existing
+  consumer by `--repin` or `--update` — both act only on files already present.
+
+Filed, not fixed here:
+[#454](https://github.com/vladm3105/aidoc-flow-ci/issues/454) (PLAN-025 still
+says P6 `NOT STARTED`, and the discharged founder gates have no durable record),
+[#455](https://github.com/vladm3105/aidoc-flow-ci/issues/455) (the manifest's own
+`_note` and `REPO_STANDARDS` §16 still name `pre-commit` as the bootstrap
+producer), [#456](https://github.com/vladm3105/aidoc-flow-ci/issues/456) (three
+docs still framed around the pre-tag state).
+
 ## ci/v3.0.0 — 2026-08-12
 
 ### Fixed — the update guide had no v3 section, and its one repin command pointed across a MAJOR boundary (#450)
