@@ -110,13 +110,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # sync-version-refs:ignore-start
-      # ^ FORWARD REFERENCE, not a stale pin. `ci/v3.0.0` does not exist yet, and
-      # `actions/` does not exist at ci/v2.16.0 — so the rewriter's remedy #1 would
-      # point these at a tag where the action is absent: a startup_failure on every
-      # consumer. The markers are the documented remedy #2 for a reference that must
-      # NOT track VERSION. REMOVE THEM AT THE v3.0.0 TAG CUT, when the pin becomes
-      # current and should track VERSION again. (FT-21 chicken-and-egg shape.)
       # EVERY input explicit on every step, none left to a default. This is a
       # REQUIRED gate: a default that changes in a later release would change
       # what the gate does, silently. The rule was applied to `links` first and
@@ -188,7 +181,6 @@ jobs:
           mode: internal
           fail-on-error: 'true'
           config-file: .lychee.toml
-      # sync-version-refs:ignore-end
 
       # THE VERDICT. Fails CLOSED (D6, and CI-0026: a fail-closed guard that
       # cannot fail open is only a cost). Any outcome that is not exactly

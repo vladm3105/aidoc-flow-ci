@@ -150,11 +150,6 @@ jobs:
       # §3.2c COLLECT-THEN-FAIL. Without it the first blocking scanner prevents
       # the other two from running or uploading SARIF, and under PLAN-014 Phase 5
       # (fail-on-findings → true) that becomes the normal case.
-      # sync-version-refs:ignore-start
-      # ^ FORWARD REFERENCE, not a stale pin. `ci/v3.0.0` does not exist yet, and
-      # `actions/` does not exist at ci/v2.16.0 — the rewriter's remedy #1 would
-      # point these at a tag where the action is absent. REMOVE THESE MARKERS AT
-      # THE v3.0.0 TAG CUT. (FT-21 chicken-and-egg shape.)
       - name: dep-scan (SCA — osv-scanner)
         id: depscan
         continue-on-error: true
@@ -184,7 +179,6 @@ jobs:
           fail-on-findings: 'false'
           autofix-preview: 'false'
           sarif-path: semgrep.sarif
-      # sync-version-refs:ignore-end
 
       # D35: best-effort by construction. A private repo without GHAS returns
       # 403 "code scanning not enabled" — the SARIF surfacing is a nice-to-have;
