@@ -7,6 +7,40 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## ci/v3.0.0 — 2026-08-12
 
+### Fixed — the update guide had no v3 section, and its one repin command pointed across a MAJOR boundary (#450)
+
+`docs/RELEASE_CHECKLIST.md:44-47` makes a `docs/UPDATE_GUIDE.md` cross-reference
+a pre-tag gate for a MAJOR. The CHANGELOG, `README.md` and `docs/README.md` all
+linked `MIGRATION_v3.0.0.md`; the update guide — the document actually named
+"updating a consumer to a newer canon" — did not mention it, and its last
+section was still `ci/v1.x → ci/v2.0.0`.
+
+The sharper half was a **silent** misroute. The v2.0.0 quick-reference's repin
+command was never wrapped in a `sync-version-refs:ignore` span, so it tracked
+`VERSION` at every cut and the `ci/v3.0.0` prep rewrote it to
+`CI_TAG=ci/v3.0.0` — telling a v1.x consumer, from inside the *v2.0.0* section,
+to repin across a MAJOR boundary. Nothing would have broken loudly: v3 deletes
+nothing, so the consumer would sit on a v3 pin with a v2 topology, never
+learning that required-context strings change or that two of the three v3
+callers are `auto_install: false` and reachable only by `--add-surface` (#429).
+Its twin in `MIGRATION_v2.0.0.md` was already marked; this one was the outlier,
+and the drift was harmless until it crossed a major.
+
+Both fixed: the v2.0.0 quick-reference is now held at `ci/v2.0.0` inside an
+ignore span and says explicitly that it lands you on v2.0.0, and a
+`ci/v2.x → ci/v3.0.0` section follows it — image rebuild first, repin,
+`--add-surface`, observe-green, add-then-remove contexts in **both** branch
+protection and rulesets, delete the v2 callers last.
+
+Found by the OPS-0065 review of the `ci/v3.0.0` prep. The class it belongs to —
+an unmarked reference that is correct until it isn't — is CI-0024's, and the
+release-notes half of that class is [#451](https://github.com/vladm3105/aidoc-flow-ci/issues/451).
+
+Filed under `ci/v3.0.0` rather than `## Unreleased` because the fix ships **in**
+that tag — it is one of its pre-tag gates. `release.sh prep` promotes at prep,
+not at tag, so an entry left above the heading would have described v3.0.0 while
+being published as the notes of whatever release came next.
+
 ### Fixed — canon was shipping consumers an action pin it had moved past (#447)
 
 **Surfaced by merging #440.** Dependabot bumped `codeql-action` 4.37.4 → 4.37.6

@@ -293,13 +293,20 @@ a normal `--update` or `--repin` cycle. Read the full migration guide:
 
 Quick-reference:
 
+<!-- sync-version-refs:ignore-start -->
+<!-- CI-0024: the tag below is this migration's DESTINATION, not a reference that
+     tracks VERSION. Unmarked, every release cut rewrote it — and at the ci/v3.0.0
+     cut it read `CI_TAG=ci/v3.0.0`, sending a v1.x consumer across a MAJOR
+     boundary from inside the v2.0.0 section, skipping the context surgery the
+     v3 migration below requires (#450). Its twin in MIGRATION_v2.0.0.md was
+     already marked; this one was the outlier. -->
 1. Add `LITELLM_BASE_URL` + `LITELLM_REVIEW_API_KEY` secrets
 2. Set `.github/ai-review/config.json` to the **v2 shape** — BOTH fields, since
    CI-0014 asserts `version == 2` before reading anything and `litellm.model`
    has no default:
    `{"version": 2, "litellm": {"model": "ai-reviewer"}, ...}`
 3. Drop deprecated vendor-CLI secrets (`OPENAI_API_KEY`, etc.)
-4. `CI_TAG=ci/v3.0.0 bash install.sh <owner/repo> --repin` — and **only add
+4. `CI_TAG=ci/v2.0.0 bash install.sh <owner/repo> --repin` — and **only add
    `--update` if this consumer actually needs canon's new caller bodies**. The
    `v2.0.0` migration itself does not: it is secrets + config + a **hand-edit of
    the caller's `with:` block** (drop the removed `reviewer:` / vendor-model
@@ -309,3 +316,91 @@ Quick-reference:
    [Body adoption vs re-pin](#body-adoption-vs-re-pin--pick-the-right-operation-first)
    and reconcile the diff before committing.
 5. Verify LiteLLM connectivity (smoke test) before merging the consumer PR
+<!-- sync-version-refs:ignore-end -->
+
+That lands the consumer on `ci/v2.0.0`, not on the current release. Continue with
+the v3 migration below — it is a second breaking change and the two do not
+compose into one repin.
+
+## ci/v2.x → ci/v3.0.0 breaking-change migration
+
+The `ci/v3.0.0` release repackages six reusable workflows as **composite
+actions** invoked from two consolidated jobs, plus a weekly `links-external`.
+Nothing is removed and no check is lost, but **required status-check context
+strings change**, so this cannot be done by `--repin` or `--update` alone. Read
+the full migration guide:
+
+- [`docs/MIGRATION_v3.0.0.md`](MIGRATION_v3.0.0.md) — complete checklist
+  (preconditions, the context mapping, add-surface, the add-then-remove
+  sequence, rollback)
+
+**Arriving from a pin below `ci/v2.16.0` — including from the v2.0.0 section
+above — read the two sections earlier in this file first.** A v3 repin crosses
+both boundaries at once: `docs-sync` needs `pull-requests: write` on a caller
+installed before `ci/v2.11.0`, and `ci/v2.14.0` or later emits two CI-0011
+`standards-drift` warnings until the settings are applied. Neither is a v3
+change, and neither announces itself at the v3 step that exposes it.
+
+**Why `--repin` and `--update` are both insufficient here**, in the terms this
+document already uses: `--repin` rewrites `uses:` tag strings, and `--update`
+walks only files the consumer already has, so neither introduces a file that is
+absent — which all three v3 callers are
+([#429](https://github.com/vladm3105/aidoc-flow-ci/issues/429)). What
+`auto_install` governs is narrower: a **bootstrap** picks up `quick-gates.yml`
+and not `scanners.yml` or `links-external.yml`, so a consumer adopting by
+bootstrap still needs `--add-surface` for the other two. A consumer several
+minors behind additionally needs body adoption — see
+[Body adoption vs re-pin](#body-adoption-vs-re-pin--pick-the-right-operation-first)
+and reconcile the diff.
+
+Quick-reference:
+
+<!-- sync-version-refs:ignore-start -->
+<!-- CI-0024: same as the v2.0.0 block above — these tags are the destination of
+     this migration, not references that track VERSION. -->
+1. **Self-hosted consumers: rebuild the runner image FIRST** —
+   `cd install/templates/runner && bash build-image.sh`. v3's `sast-scan` builds
+   a venv and the `pre-commit` guard parses YAML on the system interpreter; a
+   pre-v3 image has neither. The image is built per host with no registry push,
+   so nothing prompts a host that has not rebuilt. Skipping this reds `scanners`
+   on its first run and takes the two working scanners down with it
+   ([#349](https://github.com/vladm3105/aidoc-flow-ci/issues/349)). In the same
+   step confirm the runner version —
+   `gh api repos/<owner>/<repo>/actions/runners --jq '.runners[].version'` —
+   `2.327.1` is a hard floor for the node24 actions, unchanged from v2. Below it
+   jobs die with an error naming neither the action nor the floor, which at
+   step 4 is indistinguishable from a v3 defect.
+2. `CI_TAG=ci/v3.0.0 bash install.sh <owner/repo> --repin`
+3. Add the three new callers — `--add-surface` resolves the public/private
+   variant from your repo's live visibility, so you cannot pick wrong:
+
+   ```sh
+   CI_TAG=ci/v3.0.0 bash install.sh <owner/repo> \
+     --add-surface .github/workflows/quick-gates.yml \
+     --add-surface .github/workflows/scanners.yml \
+     --add-surface .github/workflows/links-external.yml
+   ```
+
+   They land in the fresh clone the run prints, not in your checkout — commit
+   and push from there.
+4. **Observe `quick-gates` and `scanners` green on a real PR before requiring
+   them.** Old and new both run in this window; that double cost is the point.
+5. Swap the required contexts — **add first, then remove** the six v2 ones. Do
+   it in **both** branch protection and rulesets; `apply-standards.sh` never
+   touches rulesets (CI-0029). Leave `links-external` non-required.
+6. Only then delete the six v2 callers. Keep `secret-scan.yml`,
+   `audit-trail.yml`, `composition.yml`, `ai-review.yml` — they are not part of
+   v3. **Do not delete `links.yml` unless `links-external.yml` is installed**:
+   `quick-gates` absorbs only the internal half, so dropping one without the
+   other loses external link checking entirely, and nothing reports its absence.
+7. Re-check `gh pr checks` for a context stuck on "Expected — Waiting for status
+   to be reported": that is a required context nothing emits, and it has no
+   `--admin`-free exit.
+<!-- sync-version-refs:ignore-end -->
+
+The mapping — three v2 contexts collapse into `quick-gates`, three into
+`scanners`, so you add two and remove six — is the table at
+[`MIGRATION_v3.0.0.md` § The mapping](MIGRATION_v3.0.0.md#the-mapping--old-context--new-context).
+`call / X` disappears because it is `<caller-job-key> / <callee-job-name>` and
+only a reusable call produces it; v3's jobs are plain jobs, so their contexts are
+bare.
