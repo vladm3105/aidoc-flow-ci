@@ -23,8 +23,8 @@
 #                                 [--codeowner <handle>] [--canon-*-url <url>]
 #   Re-pin (version-only tag bump; preserves all customization — use this for a
 #   re-pin, NEVER --update which re-applies the template body; FT-9):
-#   CI_TAG=ci/v2.16.0 bash install.sh <owner/repo> --repin
-#   CI_TAG=ci/v2.16.0 bash install.sh <owner/repo> --visibility private
+#   CI_TAG=ci/v3.0.0 bash install.sh <owner/repo> --repin
+#   CI_TAG=ci/v3.0.0 bash install.sh <owner/repo> --visibility private
 #   Add a surface the consumer does NOT have (the only route for an
 #   `auto_install: false` file — bootstrap installs only the auto_install set and
 #   --update never introduces a new surface, which is how the v3 callers shipped
@@ -221,7 +221,7 @@ done
 # and the hardcoded fallback is authoritative — that is expected and correct.
 # The startup log below names the winning source so a stale CI_TAG env var in
 # a consumer's CI caller silently overriding VERSION is diagnosable.
-CI_TAG_FALLBACK="ci/v2.16.0"
+CI_TAG_FALLBACK="ci/v3.0.0"
 if [ -n "${CI_TAG:-}" ]; then
   CI_TAG_SOURCE="CI_TAG env"
 else

@@ -5,6 +5,8 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+## ci/v3.0.0 — 2026-08-12
+
 ### Fixed — canon was shipping consumers an action pin it had moved past (#447)
 
 **Surfaced by merging #440.** Dependabot bumped `codeql-action` 4.37.4 → 4.37.6
@@ -92,8 +94,10 @@ the expiry, which is [#435](https://github.com/vladm3105/aidoc-flow-ci/issues/43
 
 ### Added — `install.sh --add-surface`, because v3 shipped uninstallable (#429)
 
-**A release nobody can install is not released.** The three v3 consolidating
-callers are `auto_install: false`, and the two existing modes both decline to
+**A release nobody can install is not released.** All three v3 consolidating
+callers were `auto_install: false` when this was written — #441 has since
+flipped `quick-gates` to `true`, leaving `scanners` and `links-external` on
+`--add-surface` — and the two existing modes both decline to
 help: bootstrap installs only the `auto_install: true` set, and `--update`
 deliberately never introduces a surface the consumer does not already have.
 `--repin` rewrites tag strings. So `quick-gates`, `scanners` and
@@ -325,16 +329,18 @@ code was gone. Every YAML assertion now parses the structure — `runbody`,
 `stepwith`, `verdict_body`, `invoked_actions`, `perms_of` — and the whole-file
 variables are deleted.
 
-### Added — v3 composite-action foundation (PLAN-025, merged to `main` at #416 `e003094`; NOT released)
+### Added — v3 composite-action foundation (PLAN-025, merged to `main` at #416 `e003094`)
 
-**Merged to `main`, not released, and not reachable by any consumer.** The "not
-merged" half of this sentence was true when written and stopped being true at
-PR #416; it is corrected rather than deleted because the distinction is the
-point. Recorded here
-because the work exists and the next session needs to know it does. `install.sh`
-ships only what the manifest lists; the caller templates pin
-`ci/v3.0.0`, a tag that does not exist, guarded by `sync-version-refs:ignore`
-markers that must be removed at the tag cut.
+**This is the release that makes it reachable.** The heading and this paragraph
+have now been corrected twice, and both corrections are kept rather than
+deleted because the distinction is the point: "not merged" stopped being true
+at PR #416, and "not released" stopped being true here. A claim scoped to a
+condition outlives the condition, and `## Unreleased` is where such claims
+accumulate — this one would have shipped as the release notes of the very
+release that falsifies it, because `release.sh tag` publishes this section
+verbatim. `install.sh` ships only what the manifest lists; the caller templates
+pin `ci/v3.0.0`, and the `sync-version-refs:ignore` markers that guarded that
+forward reference were retired at this cut.
 
 - **Six composite actions** (`actions/{markdownlint,pre-commit,links,dep-scan,trivy-scan,sast-scan}`).
   A `workflow_call` reusable always gets its own runner, so twelve PR checks cost

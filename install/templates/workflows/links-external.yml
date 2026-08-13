@@ -76,13 +76,6 @@ jobs:
 
       # Every input explicit — a default that changes in a later release must
       # not silently change what this reports.
-      # sync-version-refs:ignore-start
-      # ^ FORWARD REFERENCE, not a stale pin. `ci/v3.0.0` does not exist yet, and
-      # `actions/` does not exist at ci/v2.16.0 — so the rewriter's remedy #1 would
-      # point these at a tag where the action is absent: a startup_failure on every
-      # consumer. The markers are the documented remedy #2 for a reference that must
-      # NOT track VERSION. REMOVE THEM AT THE v3.0.0 TAG CUT, when the pin becomes
-      # current and should track VERSION again. (FT-21 chicken-and-egg shape.)
       # `fail-on-error: 'true'` WITH `continue-on-error: true` — the pairing is
       # the whole mechanism, and getting it backwards is what made the report
       # below unreachable. `outcome` is what the step returned; `conclusion` is
@@ -142,7 +135,6 @@ jobs:
               echo "⚠️ links-external: no verdict (outcome=${OUTCOME:-<empty>}) — unknown, not clean." >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
               ;;
           esac
-      # sync-version-refs:ignore-end
 
       # `if: always()` so a failed or timed-out lychee still persists what it
       # learned — the next weekly run should not re-fetch every URL because this
