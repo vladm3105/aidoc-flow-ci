@@ -5,6 +5,32 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — canon was shipping consumers an action pin it had moved past (#447)
+
+**Surfaced by merging #440.** Dependabot bumped `codeql-action` 4.37.4 → 4.37.6
+in `.github/workflows/`, and `install/templates/workflows/scanners.yml` — the
+file **consumers install** — stayed on 4.37.4. One-directional and silent: canon
+updates itself on the weekly cycle and ships everyone else the frozen pin.
+
+**It cannot be fixed in `dependabot.yml` alone.** The `github-actions` ecosystem
+scans `.github/workflows/` for a given `directory:`, plus `action.yml` files.
+Those templates are workflow files *outside* `.github/workflows/`, so no
+`directory:` setting reaches them — a limitation, not a misconfiguration.
+
+Three parts: the drifted pin synced; a repo-wide **one action, one SHA** test in
+`tests/test_contract.sh` across all four trees, mutation-tested both ways
+(re-introducing #440's exact drift reds 2 assertions, drifting a *different*
+action also reds); and dependabot extended to the six composite actions under
+`actions/`, which it *can* scan.
+
+The config documents the gap it cannot close and tells the next reader not to
+delete the test believing otherwise. **The dependabot half is unverified** — it
+cannot be exercised from a working tree; the test is what carries the guarantee.
+
+Mild today, for a first-party patch bump. Not mild when a bump is a security
+fix, because canon would be patched while every consumer stayed exposed with
+nothing reporting it.
+
 ### Fixed — a PUBLIC cold start installed the PRIVATE (self-hosted) callers
 
 **Found by running the installer's cold start, which nothing exercises** —
