@@ -35,9 +35,9 @@ per-repo applicability matrix, and skip guidance) and
 [`docs/architecture.md`](docs/architecture.md) for the per-workflow design
 rationale.
 
-> **In progress — `ci/v3.0.0` adds a composite-action layer. It is NOT
-> released and NOT adoptable yet; the latest tag is still the one in
-> [`VERSION`](VERSION).**
+> **`ci/v3.0.0` adds a composite-action layer. Released 2026-08-12 and
+> adoptable; it is the latest tag. Adoption is per-consumer and opt-in — no
+> consumer moves until it repins.**
 >
 > v3 repackages six of the workflows below (`pre-commit`, `markdown-lint`,
 > `links`, `dep-scan`, `trivy-scan`, `sast-scan`) as **composite actions** under
@@ -52,9 +52,11 @@ rationale.
 > Read [`docs/MIGRATION_v3.0.0.md`](docs/MIGRATION_v3.0.0.md) before adopting —
 > it carries the old→new context mapping and the add-new → observe-green →
 > remove-old sequence. Arming a context nothing produces has no `--admin`-free
-> exit. The `actions/` directory and the v3 caller templates are present in this
-> tree but pin a tag that does not exist yet, so nothing reaches a consumer
-> until the tag is cut.
+> exit. **No v3 caller reaches an existing consumer by `--repin` or `--update`**
+> — both act only on files already present, so all three need
+> `install.sh --add-surface`.
+> [`docs/UPDATE_GUIDE.md`](docs/UPDATE_GUIDE.md) § `ci/v2.x → ci/v3.0.0` carries
+> the condensed sequence.
 
 | Workflow | Purpose |
 | --- | --- |

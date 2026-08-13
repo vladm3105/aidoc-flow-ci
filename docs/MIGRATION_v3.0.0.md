@@ -1,8 +1,8 @@
 # Migration — ci/v2.x → ci/v3.0.0
 
-**Status:** written ahead of the tag. `ci/v3.0.0` is not cut, and nothing below
-is actionable until it is. Steps 1–7 are the procedure; §"Before you start"
-lists what must be true first.
+**Status:** `ci/v3.0.0` is cut (2026-08-12) and every step below is actionable.
+Steps 1–7 are the procedure; §"Before you start" lists what must be true first.
+Adoption is per-consumer — nothing moves until that consumer repins.
 
 v3 changes **packaging, not checks**. No check is deleted and no defense is
 dropped — PLAN-025 §2 inventories 46 of them and carries all 46. What changes is
@@ -256,10 +256,12 @@ canon.** To go back:
      The span covers the WHOLE list: an ignore-end between items splits the
      ordered list and reds MD029. -->
 1. Re-add the six v2 caller files at your previous tag. **Do not rely on a bare
-   bootstrap for this** — only `pre-commit.yml` is `auto_install: true`; the
-   other five are `false`, so `bash install.sh <owner/repo>` restores **one of
-   six**, and step 2 then arms six contexts of which five have no producer. That
-   is the hang this procedure exists to end, re-created by it. Restore each one
+   bootstrap for this** — since #441 flipped `pre-commit.yml` to
+   `auto_install: false`, **none** of the six is `auto_install: true`, so
+   `bash install.sh <owner/repo>` restores **zero of six** and installs
+   `quick-gates.yml` instead. Step 2 then arms six contexts of which none has a
+   producer. That is the hang this procedure exists to end, re-created by it —
+   worse than the one-of-six this step used to describe. Restore each one
    explicitly:
 
    ```sh

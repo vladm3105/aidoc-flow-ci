@@ -8,37 +8,51 @@ deferred items belong in `plans/` or `HANDOFF.md` open threads.
 
 ---
 
-## Current release — ci/v2.16.0 (2026-07-27)
+## Current release — ci/v3.0.0: composite-action rebuild (2026-08-12, PLAN-025)
 
-The latest published tag. Six releases landed after the `ci/v2.10.0` section
-below, which sat here as "Current release" until 2026-08-09 — this file's own
-maintenance protocol asks for an update when a phase closes, and six closed
-without one. `VERSION` is the single source of truth; read it rather than this
-heading if the two ever disagree again.
-
-**Unreleased work on `main` exceeds one release.** Roughly forty merged PRs are
-not reachable by any consumer, because canon ships by tag and no tag has been
-cut since. That backlog is the argument for cutting something, not for cutting
-it quickly.
-
-## In flight — ci/v3.0.0: composite-action rebuild (PLAN-025)
+The latest published tag, and the first since `ci/v2.16.0` (2026-07-27). It
+carries **57 merged PRs** that no consumer could reach until it was cut —
+`git log --oneline ci/v2.16.0..ci/v3.0.0 | grep -cE '\(#[0-9]+\)$'`. `VERSION`
+is the single source of truth; read it rather than this heading if the two ever
+disagree. That sentence is here because this heading once sat at `ci/v2.10.0`
+across six releases.
 
 Repackages six reusables as **composite actions** under `actions/`, invoked from
-two consolidated jobs (`quick-gates`, `scanners`) instead of six. A
-`workflow_call` reusable always gets its own runner; a composite action runs
-inside the calling job. No check is removed and PLAN-025 §2 carries all 46
-defenses.
+two consolidated jobs (`quick-gates`, `scanners`) plus a weekly `links-external`
+instead of six separate reusable calls. A `workflow_call` reusable always gets
+its own runner; a composite action runs inside the calling job. No check is
+removed and PLAN-025 §2 carries all 46 defenses.
 
 **Breaking:** required status-check context strings change from `call / <name>`
 to a bare job name. `docs/MIGRATION_v3.0.0.md` carries the mapping and the
-add-new → observe-green → remove-old sequence.
+add-new → observe-green → remove-old sequence; `docs/UPDATE_GUIDE.md`
+§ `ci/v2.x → ci/v3.0.0` carries the condensed form.
 
-**Not released, not adoptable.** Phases P1/P2/P3/P3a and P8-core are done; P4
-(local layer), P5 (the `docs/v3/` set), P6 (release), P7 (per-repo context
-migration) and P9 (rollback) are not. The founder-gated items — the FT-30
-cold-start dry run, a green `litellm-smoke`, and the OPS-0066 waiver-or-
-fresh-plan call — gate the tag. PLAN-025 §7 additionally makes PLAN-024 Phases
-A/B/C a precondition, and PLAN-024 is `Status: Draft — no phase executed`.
+**Released, not adopted.** No consumer has repinned, and adoption is opt-in per
+repo.
+
+The three founder-gated items that blocked the tag:
+
+| Gate | Discharged | Evidence |
+| --- | --- | --- |
+| 🔴 FT-30 cold-start dry-run | 2026-08-12 | `FT-30 DRY-RUN PASSED` against `vladm3105/ci-coldstart-scratch` (public) at `CI_TAG=f9c9c73`, the prep-merge SHA. **Recorded nowhere durable yet** — see the issue filter below |
+| 🔴 `litellm-smoke` | 2026-08-10 | run `31348751529`, both aliases |
+| 🔴 OPS-0066 | 2026-08-10 | waived — `DECISIONS.md` CI-0036 |
+
+**Phase status is the owning plan's, not this file's.** PLAN-025's header and
+its P6 row still read `NOT STARTED — blocked on a 🔴 founder step`, which the
+tag falsifies; reconciling them is tracked, not done here. What this file
+asserts is only what the tag itself settles: the release happened. **P4** (local
+layer), **P5** (the `docs/v3/` set), **P7** (per-repo context migration) and
+**P9** (rollback) are not done, and P8 remains core-done with items open. P7
+stays the only irreversible phase.
+
+PLAN-025 §7 makes PLAN-024 Phases A/B/C a precondition and PLAN-024 is still
+`Status: Draft — no phase executed`, so the tag was cut ahead of that
+precondition rather than after it. §7's stated reason for A is the
+`litellm-smoke` circularity and the FT-30 precondition, and both were discharged
+directly — but the plan has not been amended to say so, which is part of the
+same reconciliation.
 
 ## Earlier release — ci/v2.10.0: FT-15 pinned-asset-fetch fix (PLAN-017)
 
