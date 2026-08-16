@@ -49,26 +49,72 @@ toplevel="$(git rev-parse --show-toplevel 2>/dev/null)" || {
 }
 cd "$toplevel" || exit 2
 
-# --- changed-files calculation ---
+# --- push range ---
+# ONE resolution, two consumers: the linters' file range (`BASE`...HEAD) and the
+# OPS-0069 phrase range (`commit_range`). These were computed independently, and
+# the canon and template copies of this script drifted apart on the first while
+# the second stayed in sync, undetected for the life of the divergence (#477).
+#
 # base = the already-pushed point (@{upstream}) so the mechanical linters see
 # only what THIS push ADDS — not every file that differs from main. PLAN-015 M3:
 # merge-base-with-main re-linted every pre-existing branch commit on every push,
 # so a push that touched only file A was blocked by stale lint on files B/C from
-# earlier commits. This mirrors the audit-trail phrase range below (@{upstream}
-# ..HEAD). Fall back to merge-base with origin/main on the FIRST push (no
-# upstream yet), then local main, then the empty tree for a fresh repo.
+# earlier commits. Fall back to merge-base with origin/main on the FIRST push
+# (no upstream yet), then local main, then the ROOT COMMIT for a fresh repo.
+#
+# SCOPE NOTE, so the next reader does not have to re-derive it: this range
+# describes the CHECKED-OUT branch, not necessarily the refs being pushed.
+# `git push origin feat` from an up-to-date `main` produces an EMPTY range while
+# unreviewed commits are in flight, and a multi-ref push is not described at all.
+# That is why an empty range below exits NON-ZERO. Treating it as "nothing to
+# gate" and exiting 0 was measured to let an unreviewed commit reach a remote.
+# Reading the pushed refs is the real fix and is tracked separately (#432).
 # shellcheck disable=SC1083  # @{upstream} is git ref-syntax, not shell brace expansion
-BASE="$(git rev-parse --verify --quiet '@{upstream}' 2>/dev/null \
-        || git merge-base HEAD origin/main 2>/dev/null \
-        || git merge-base HEAD main 2>/dev/null \
-        || git rev-list --max-parents=0 HEAD | tail -1)"
-mapfile -t CHANGED < <(git diff --name-only --diff-filter=ACMR "$BASE"...HEAD 2>/dev/null)
-if [ "${#CHANGED[@]}" -eq 0 ]; then
-  echo "pre_push_check: no changed files vs base — skipping mechanical linters."
-  CHANGED=()
+upstream_ref="$(git rev-parse --abbrev-ref --symbolic-full-name @{upstream} 2>/dev/null || echo '')"
+if [ -n "$upstream_ref" ] && git rev-parse --verify --quiet "$upstream_ref" >/dev/null; then
+  commit_range="${upstream_ref}..HEAD"
+  BASE="$(git rev-parse --verify --quiet "$upstream_ref")"
+else
+  # First push (no upstream yet) — scan since main-divergence.
+  commit_range="origin/main..HEAD"
+  BASE="$(git merge-base HEAD origin/main 2>/dev/null \
+          || git merge-base HEAD main 2>/dev/null \
+          || git rev-list --max-parents=0 HEAD | tail -1)"
+fi
+
+# An EMPTY range and an UNRESOLVABLE one are different, and neither is a pass.
+# Both exit non-zero; only the message differs, and the message is the whole
+# point — the generic "no phrase found" block tells the reader to amend a commit,
+# which cannot clear either state and, for the empty range, sends them to amend a
+# commit that already carries the phrase (#432).
+range_empty=0
+range_unresolvable=0
+if range_shas="$(git log --format=%H "$commit_range" 2>/dev/null)"; then
+  [ -n "$range_shas" ] || range_empty=1
+else
+  range_unresolvable=1
 fi
 
 rc=0
+
+# `git diff` FAILING is not an empty change set. Unrelated histories exit 128
+# here and the status was discarded, so zero files were linted and the run still
+# printed the pass banner. A gate must not assert a verification it did not
+# perform, and that applies to its own malfunction too.
+diff_rc=0
+diff_err="$(git diff --name-only --diff-filter=ACMR "$BASE"...HEAD 2>&1 >/dev/null)" || diff_rc=$?
+mapfile -t CHANGED < <(git diff --name-only --diff-filter=ACMR "$BASE"...HEAD 2>/dev/null)
+if [ "$diff_rc" -ne 0 ]; then
+  echo "::error::pre_push_check: cannot compute the changed-file list (git diff exited ${diff_rc})."
+  echo "::error::  range: ${BASE}...HEAD"
+  [ -n "$diff_err" ] && echo "::error::  ${diff_err}"
+  echo "::error::  This is a GATE MALFUNCTION, not an empty change set — no file was linted."
+  rc=1
+  CHANGED=()
+elif [ "${#CHANGED[@]}" -eq 0 ]; then
+  echo "pre_push_check: no changed files vs base — skipping mechanical linters."
+  CHANGED=()
+fi
 have() { command -v "$1" >/dev/null 2>&1; }
 exists() { [ -f "$1" ]; }
 filter() {
@@ -160,14 +206,8 @@ fi
 # phrase is a governance-Rule-2 violation caught at the CI ai-review
 # layer.
 #
-# shellcheck disable=SC1083  # @{upstream} is git ref-syntax, not shell brace expansion
-upstream_ref="$(git rev-parse --abbrev-ref --symbolic-full-name @{upstream} 2>/dev/null || echo '')"
-if [ -n "$upstream_ref" ] && git rev-parse --verify --quiet "$upstream_ref" >/dev/null; then
-  commit_range="${upstream_ref}..HEAD"
-else
-  # First push (no upstream yet) — scan since main-divergence.
-  commit_range="origin/main..HEAD"
-fi
+# `commit_range` is resolved once at the top of this script, alongside the
+# linters' BASE — see "push range" above.
 push_msgs="$(git log --format=%B "$commit_range" 2>/dev/null || echo '')"
 
 # --- Exemption logic (mirrors PLAN-002 §4.6; CI side implements the same +
@@ -225,7 +265,39 @@ else
     done
   fi
 fi
-if [ "$audit_ok" -ne 1 ]; then
+# ONE decision point for what this run is allowed to claim. The empty and
+# unresolvable arms come FIRST so neither can reach the generic phrase block,
+# whose remedies are both `git commit --amend` and cannot clear either state.
+#
+# There is deliberately no second guard setting `audit_ok=0` up in the exemption
+# chain: mutation showed it was dead code. Neither exemption can fire on an empty
+# or unresolvable range — the bot arm needs a non-empty author list and the
+# revert arm needs at least one commit — so `audit_ok` is already 0 by the time
+# control arrives here. A guard that cannot be observed to fail is not a guard.
+if [ "$range_empty" = 1 ]; then
+  # #432. The range holds no commits, so NOTHING was verified — not the phrase,
+  # and not the mechanical linters, which had no files. That is neither a pass
+  # nor an OPS-0069 violation, and the old message claimed the latter: it sent
+  # the reader to `git commit --amend` a commit that already carried the phrase.
+  echo "::error::pre_push_check: the push range ($commit_range) is EMPTY — NOTHING was verified."
+  echo "::error::  This is NOT an OPS-0069 violation. The usual cause is that the branch has"
+  echo "::error::  ALREADY been pushed, so @{upstream} is HEAD and no commit is in range."
+  echo "::error::  Amending a commit will not change this — the phrase is not the problem."
+  echo "::error::  Run this BEFORE 'git push'. To inspect a branch that is already pushed:"
+  echo "::error::    git log --oneline origin/main..HEAD"
+  echo "::error::  Exiting non-zero: a run that verified nothing must not approve a push."
+  rc=1
+elif [ "$range_unresolvable" = 1 ]; then
+  # Distinct from empty: the range's base ref is missing, so the scan could not
+  # run at all. The generic block's two remedies are both `git commit --amend`,
+  # and neither can clear this.
+  echo "::error::pre_push_check: the push range ($commit_range) does not resolve."
+  echo "::error::  Its base ref is missing from this clone, so no OPS-0069 phrase check was possible."
+  echo "::error::  Amending a commit will not clear this. Fetch the base ref this range names,"
+  echo "::error::  or set the branch's upstream:"
+  echo "::error::    git fetch origin && git branch --set-upstream-to=origin/<branch>"
+  rc=1
+elif [ "$audit_ok" -ne 1 ]; then
   echo "::error::no OPS-0069 audit-trail phrase found in any commit in the push range ($commit_range)."
   echo
   echo "Every push MUST carry one of these phrases in a commit message body:"
@@ -261,6 +333,10 @@ fi
 echo "════════════════════════════════════════════════════════════════════"
 if [ "$rc" = 0 ]; then
   echo "✅ local pre-push checks passed (including OPS-0069 audit-trail check)."
+elif [ "$range_empty" = 1 ]; then
+  # Not "FAILED" — nothing was checked, so nothing failed. Saying otherwise is
+  # what sent readers to fix a commit that was never the problem.
+  echo "❌ NOTHING VERIFIED — the push range is EMPTY (see above). This is not a pass."
 else
   echo "❌ local pre-push checks FAILED — do not push until fixed."
 fi

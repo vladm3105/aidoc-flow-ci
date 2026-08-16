@@ -5,6 +5,73 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — the two `pre_push_check.sh` copies had diverged on `BASE=` (#477)
+
+`scripts/pre_push_check.sh` and `install/templates/pre_push_check.sh` had
+diverged. Canon carried the PLAN-015 M3 fix; the template shipped the pre-M3
+`merge-base`-with-`origin/main` form, so every consumer adopting a tag installed
+a hook that re-lints every pre-existing branch commit on every push — a push
+touching only file A blocked by stale lint on files B and C. No consumer had
+repinned to `ci/v3.0.0` and no wrapper existed anywhere in the workspace at the
+time of the fix, so the exposure was the next adoption wave, not live breakage.
+
+The two copies are now byte-for-byte identical, and `BASE` (the linters' file
+range) and `commit_range` (the OPS-0069 phrase range) come from a single
+`@{upstream}` resolution rather than two independent ones — independent
+resolution is the mechanism that let one drift while the other stayed in sync.
+
+**The guard that let this age is replaced.** `tests/test_sigpipe_guard.sh`
+compared the two copies through a `sed`-scoped window covering one phrase-loop
+hunk, under a comment claiming a general no-drift invariant; `BASE=` sat outside
+that window and was asserted by nothing, as was every other line of the file.
+New suite `tests/test_pre_push_range.sh` (89 assertions) executes both copies in
+scratch repos with a stubbed linter and asserts identity with `cmp` — a string
+comparison is not enough, because `$(cat …)` strips trailing newlines and so
+calls two files identical when one has extra blank lines.
+
+The distinguishing fixture is a branch pushed **twice**: on `main` with one
+unpushed commit, `@{upstream}` and merge-base-with-`origin/main` are the same
+commit and both `BASE=` forms behave identically, so a simpler fixture goes green
+against the divergence.
+
+**Coverage was added where mutation proved it absent**, not where it looked thin.
+Newly pinned because each mutant survived an otherwise-green suite: the
+empty-range and unresolvable-range branches, both OPS-0069 exemptions and their
+mixed-range negatives, the `Self-review skipped per founder OK` phrase, and the
+byte-identity comparison. One guard was **deleted** for the same reason — an
+`audit_ok=0` arm in the exemption chain that no mutation could make fail, because
+neither exemption can fire on an empty range. Three assertions were also inert by
+construction: they named `seed.md`, which lives in the fixture's root commit and
+so can never appear in any diff, for any value of `BASE`.
+
+### Fixed — an empty push range no longer reports an OPS-0069 violation (#432, partial)
+
+Run after a push, `@{upstream}` IS `HEAD`, so the range is empty — and the script
+raised a hard OPS-0069 failure directing the reader to `git commit --amend` a
+commit that already carried the phrase, while silently skipping every mechanical
+linter in the same run. It was loud in the wrong place and silent in the right
+one. The run now says what happened: `NOTHING VERIFIED`, explicitly not a
+violation and explicitly not a pass, with the linter skip stated rather than
+implied.
+
+`git diff` **failing** is likewise no longer reported as an empty change set.
+Unrelated histories exit 128 there and the status was discarded, so zero files
+were linted and the run still printed the pass banner; it is now a
+`GATE MALFUNCTION`. An unresolvable range gets its own message too, because the
+generic block's only remedies are `git commit --amend` and neither can clear it.
+
+**The exit status deliberately stays non-zero, and #432 stays open.** Exiting 0
+on an empty range was implemented and then withdrawn: the range describes the
+**checked-out** branch, so an empty range is not proof that nothing is being
+pushed. Two review cycles measured the consequence — `git push origin feat` from
+an up-to-date `main`, and a multi-ref `git push origin a b`, each landed an
+unreviewed commit on a remote with the gate printing a green banner. Closing that
+properly means reading the pushed refs, which in turn means handling multi-ref
+pushes, branch deletions, tag pushes and working-tree coverage — and the
+multi-ref case cannot be closed on the wiring consumers use at all, because
+pre-commit's own `_pre_push_ns` hands over only the first ref. That is a gate
+redesign rather than a defect repair; #432 carries the evidence.
+
 ### Fixed — the wrapper instructions said `source`; canon ends in `exit` (#474)
 
 Four surfaces told consumers to build their `scripts/pre_push_check_<repo>.sh`

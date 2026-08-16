@@ -387,10 +387,11 @@ assert_eq "$(probe_hits "$probe")" "1" "--silent is caught (GNU synonym for -q)"
 printf '%s\n' 'grep -q needle somefile.txt' > "$probe"
 assert_eq "$(probe_hits "$probe")" "0" "grep -q READING A FILE is not flagged (no writer to signal)"
 
-# The two pre_push_check copies must not drift apart on this fix.
-canon_hunk="$(sed -n '/for phrase in "Multi-agent self-review per OPS-0065"/,/esac/p' scripts/pre_push_check.sh)"
-tmpl_hunk="$(sed -n '/for phrase in "Multi-agent self-review per OPS-0065"/,/esac/p' install/templates/pre_push_check.sh)"
-assert_ok "[ -n \"\$(printf '%s' \"\$canon_hunk\")\" ]" "canon pre_push_check phrase loop located"
-assert_eq "$canon_hunk" "$tmpl_hunk" "scripts/ and install/templates/ pre_push_check phrase loops are identical"
+# The canon/template no-drift guard USED to live here, as a `sed`-scoped
+# comparison of this one phrase-loop hunk under a comment claiming a general
+# invariant. It was not general: the two copies diverged on `BASE=` — outside
+# the sed range — and stayed diverged undetected (#477). Replaced by a
+# whole-file comparison plus behavioural tests run against BOTH copies, in
+# tests/test_pre_push_range.sh, which subsumes this assertion.
 
 suite_summary "test_sigpipe_guard"

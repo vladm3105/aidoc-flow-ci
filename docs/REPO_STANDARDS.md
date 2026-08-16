@@ -1143,6 +1143,57 @@ in `install/templates/pre-commit-hook-block.yaml`.
 `SKIP_LOCAL_AI_REVIEW`. Only bypass path: `git push --no-verify` (git
 primitive; caught by §14.2 CI check).
 
+**Push range — one resolution, two consumers.** The changed-file list
+(`BASE`...`HEAD`) and the OPS-0069 phrase scan (`commit_range`) are derived from
+a single `@{upstream}` resolution, falling back to merge-base with `origin/main`,
+then local `main`, then the **root commit** before a branch's first push.
+Resolving the two independently is what allowed the canon and template copies to
+diverge on `BASE=` — the template shipping the pre-PLAN-015-M3 behaviour, which
+re-lints every pre-existing branch commit on every push — while the phrase range
+stayed in sync and nothing detected the difference (#477).
+
+**The range describes the CHECKED-OUT branch, not the refs being pushed**, and
+that limit is load-bearing. `git push origin feat` from an up-to-date `main`
+produces an empty range while unreviewed commits are in flight; a multi-ref push
+(`git push origin a b`, `git push --all`) is not described at all. Reading the
+pushed refs is the real repair and is tracked as #432 — it requires handling
+multi-ref pushes, deletions, tag pushes and working-tree coverage, and a partial
+version of it was measured letting an unreviewed commit reach a remote.
+
+**Until then, an EMPTY range exits NON-ZERO.** It is not a pass and it is not a
+violation, and the script says so in those terms:
+
+| Surface | Behaviour on an empty range |
+| --- | --- |
+| Mechanical linters | not run — there are no files in range |
+| OPS-0069 phrase | not scanned; **never** reported as a violation |
+| Exit status | `1` — a run that verified nothing must not approve a push |
+| Final banner | `NOTHING VERIFIED`, never `local pre-push checks passed` and never `local pre-push checks FAILED` |
+
+The defect this repairs (#432) is the **message**, not the exit status: an empty
+range raised a hard OPS-0069 failure directing the reader to `git commit --amend`
+a commit that already carried the phrase, while silently skipping every
+mechanical linter in the same run. It was loud in the wrong place and silent in
+the right one. **Exiting 0 instead is not the fix** — that was tried, and because
+an empty range is not proof that nothing is being pushed, it let an unreviewed
+commit through.
+
+**Two further states fail closed, each naming its own cause**, because the
+generic block's only remedies are `git commit --amend` and neither can clear
+them:
+
+| State | Cause | Reported as |
+| --- | --- | --- |
+| unresolvable range | the range's base ref is missing from the clone | `does not resolve`, remedied by fetching the base ref or setting the upstream |
+| `git diff` non-zero | unrelated histories; the status used to be discarded, so zero files were linted and the run still printed the pass banner | `GATE MALFUNCTION`, `rc=1` |
+
+**The two copies are byte-for-byte identical**, asserted with `cmp` in
+`tests/test_pre_push_range.sh`, which also runs every behaviour above against
+both copies. A `sed`-scoped comparison of one hunk previously stood in for this;
+its comment claimed a general no-drift invariant its range did not cover. A
+string comparison is **not** sufficient — `$(cat …)` strips trailing newlines,
+so it calls two files identical when one has extra blank lines.
+
 **Exemption logic (local hook implements 2 of 3):**
 
 - ALL commits in range authored by `dependabot[bot]`, `renovate[bot]`,
