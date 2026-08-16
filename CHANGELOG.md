@@ -5,6 +5,56 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — `DECISIONS.md` CI-0037: the v3 release and its three discharged gates (#454, #471, #472)
+
+CI-0036 closed by naming the gates that still stood before a tag. All of them
+were then discharged, `ci/v3.0.0` was cut on 2026-08-12, and **nothing durable
+recorded that they had.** Three artifacts still asserted the pre-tag state —
+CI-0036 itself, PLAN-025's P6 block, and `HANDOFF.md`, which CI-0028 regenerates
+wholesale, so its citation was scheduled to evaporate at the next wrap. A gate
+discharged with no durable record is indistinguishable from a gate skipped: the
+next session re-derives "still blocked" from sources that agree with each other
+and are all stale.
+
+CI-0037 is the carrier. Release facts each carry the command that re-derives
+them; the three gates carry their evidence. `PLAN-025`'s header, §5 phase table,
+P6, §7 **and §8's blocking-release table** now record the release — §8's rows 3
+and 7 were still live, and leaving them would have left §5 and §8 contradicting
+each other inside one file. `ROADMAP.md` cites the entry instead of saying the
+evidence was "recorded nowhere durable yet".
+
+Two facts recorded against the convenient reading:
+
+- **The PLAN-024 §7 precondition was half satisfied and half deviated from.** §7
+  gave two reasons for shipping Phases A/B/C first. The **gate** reason is
+  discharged — A owned the `litellm-smoke` circularity and the FT-30
+  precondition, both satisfied directly, so nothing about the tag rested on A.
+  The **waste** reason was not: v3 was built around `doc-maintainer`, which A
+  proposes to delete and which is still live on `operations`. `PLAN-024:565` is
+  blunter — *"A and B ship together or the release is worse than not cutting
+  it."* That condition was **not met at the cut**, and CI-0037 says so rather
+  than calling it a discharge.
+- **FT-30 is founder-attested and has no re-derive path.** `ft30-dry-run.sh`
+  writes nothing to the scratch repo and commits no log artifact, so
+  `FT-30 DRY-RUN PASSED` survives only as this record — a weakness the entry
+  names rather than hides, since it is the entry's own thesis.
+
+Also corrected on the way in, all of which would have hardened into an
+append-only record: a past-tense claim that #358's criterion *"had let"* a run
+silently dropping `ai-review.yml` pass (#358 is explicit that `install.sh` is not
+known to drop templates — the gap is counterfactual, and the script postdates the
+one historical drop); a `per CI-0017` mis-citation (the `172.17.0.1` bridge fact
+is in `CLAUDE.md`; CI-0017 is about URL-scheme scoping — the substantive
+mis-dispatch claim is true and now carries runner-label evidence); and
+`litellm-smoke` dated **2026-08-09** local rather than the `2026-08-10` UTC date
+every earlier artifact carried.
+
+**#472** re-pinned the three `PLAN-026` ledger rows that #471's edits shifted.
+Row 17 was a **hard fail rather than drift** — it pinned a symbol inside the §8
+row #471 rewrote, so `--fix` could not repair it. It now cites CI-0037, which is
+a better home for a gate's evidence than a plan's blocker table, and is the
+argument #454 was making.
+
 ### PLAN-023 — §9's "unbounded until measured" discharged for the `mypy` half (#401, #468)
 
 §9 sized PR-1's `ruff` + `mypy` clean-up as *"unbounded until measured"* and told
