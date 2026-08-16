@@ -35,8 +35,8 @@
 #
 # Consumers that need repo-specific extras (e.g., verified-planning
 # `check_plan.py`) point this entry at `scripts/pre_push_check_<repo>.sh`
-# WRAPPER instead — wrapper sources canon + adds its own checks. See
-# PLAN-002 §4.8 for the operations wrapper reference design.
+# WRAPPER instead — the wrapper RUNS canon as a subprocess (never `source` —
+# canon exits) and OR-accumulates its rc, never overwriting it. §14.1.
 
 default_install_hook_types:
 - pre-commit

@@ -1160,16 +1160,31 @@ Wrapper preserves the canon's `set -uo pipefail` + rc-accumulator
 pattern. See PLAN-002 §4.8 for the operations wrapper reference.
 
 **The wrapper must RUN canon as a subprocess, never `source` it.** Canon
-ends in `exit "$rc"`, so sourcing it terminates the wrapper at that line —
-and terminates it with canon's own exit status, so the wrapper reports
-canon's result and **silently runs none of its extras**. There is no error;
-a wrapper built that way looks like it works. Capture the status instead:
+exits — `exit "$rc"` at the end, and `exit 2` at three earlier guard points —
+so sourcing it terminates the wrapper at whichever it reaches first, with
+canon's own status. The wrapper then reports canon's result and **silently
+runs none of its extras**. There is no error; the extras' output is simply
+absent, which an author who has never seen them run has no baseline to
+notice. Capture the status instead:
 
 ```sh
+#!/usr/bin/env bash
+set -uo pipefail   # NOT -e — see below; -e aborts before the extras run
+
 bash "$(dirname "$0")/pre_push_check.sh"; rc=$?
-# ... repo-specific checks accumulate into $rc from here ...
+
+python3 scripts/my_extra_check.py; extra_rc=$?
+rc=$(( rc | extra_rc ))    # OR-accumulate; never `rc=$?` on its own
+
 exit "$rc"
 ```
+
+**`set -euo pipefail` re-creates the defect this rule exists to prevent.**
+Under `-e` the wrapper aborts the moment canon returns non-zero — before any
+extra runs — and exits with canon's status. From the outside that is
+indistinguishable from the `source` form: canon's output, canon's status,
+extras absent. Measured: `-e` and `source` both produce zero extras and
+exit 1, where `set -uo pipefail` produces the extras and exit 1.
 
 **A wrapper must not weaken §14.2.** Whatever it adds, canon's non-zero
 status has to survive it — an extra check that overwrites `rc` instead of
