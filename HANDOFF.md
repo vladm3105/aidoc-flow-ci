@@ -10,10 +10,9 @@ summarises it.
 **State:** **`ci/v3.0.0` is RELEASED** (2026-08-12) and published as Latest. The
 deployable artifact is the **tag**, at `6d68b26` — canon ships by tag, so that is
 the identifier that survives; `main`'s tip moves and is not it. At this wrap
-`main` was **8 commits above the tag**, tree clean, **45** open issues, **0** open
-PRs. **None of the eight reaches a consumer on `ci/v3.0.0`** — re-derive with
-`git log --oneline ci/v3.0.0..origin/main`. This session's merge touched no
-`install/templates/*` and no `.github/workflows/*`.
+`main` is **10 commits above the tag**, tree clean, **46** open issues, **0** open
+PRs. **None of the ten reaches a consumer on `ci/v3.0.0`.** Re-derive with
+`git log --oneline ci/v3.0.0..origin/main`.
 
 | Claim | Command | Value at wrap |
 |---|---|---|
@@ -23,14 +22,11 @@ PRs. **None of the eight reaches a consumer on `ci/v3.0.0`** — re-derive with
 | Suite | `bash tests/run.sh \| sed 's/\x1b\[[0-9;]*m//g' \| grep -oE '[0-9]+ passed, [0-9]+ failed' \| awk '{p+=$1;f+=$3} END{print NR" suites, "p" passed, "f" failed"}'` | **18 suites, 1620 passed, 0 failed** |
 | pre-commit | `pre-commit run --all-files` | exit 0 |
 | Governance table | `python3 install/parse-governance-table.py CLAUDE.md --repo-root .` | PASS |
-| markdownlint | `git ls-files '*.md' \| xargs markdownlint-cli2` | 70 files, 0 errors |
-| Open issues | `gh issue list --state open --limit 200 --json number --jq 'length'` | **45** |
+| markdownlint | `git ls-files '*.md' \| xargs npx markdownlint-cli2` — use `git ls-files`, **never** a `**/*.md` glob, which reaches the gitignored bootstrap scratch trees | 71 files, 0 errors |
+| Ledger gate baseline | `bash scripts/pre_push_check_ci.sh --ledger-only` | **79 failing rows, 14 of 15 gated plans** |
+| Open issues | `gh issue list --state open --limit 200 --json number --jq 'length'` | **46** |
 | Open PRs | `gh pr list --state open --json number --jq 'length'` | **0** |
 | Stale in-progress markers | `gh issue list --state closed --label status:in-progress --json number --jq 'length'` | **0** |
-
-**Lint markdown via `git ls-files`, not a `**/*.md` glob.** The glob reaches the
-gitignored `aidoc-flow-ci-bootstrap-*/` scratch trees and reports errors that are
-not this repo's. Cost one false red at this wrap.
 
 **`pre_push_check.sh` is not in that table on purpose.** Run it on `main` and it
 exits **1** — `origin/main..HEAD` is empty, so it reports a false OPS-0069 failure
@@ -43,39 +39,29 @@ one, not this.**
 
 ## What this session did
 
-**One merge: [#475](https://github.com/vladm3105/aidoc-flow-ci/pull/475), closing
-[#469](https://github.com/vladm3105/aidoc-flow-ci/issues/469).** `check_plan.py`
-now has a reader — `scripts/pre_push_check_ci.sh`, the
-`pre_push_check_<repo>.sh` wrapper §14.1 has described since PLAN-002 §4.8 and
-this repo never had. Wired as an **advisory** `pre-push` hook.
+**One merge: [#479](https://github.com/vladm3105/aidoc-flow-ci/pull/479), closing
+[#474](https://github.com/vladm3105/aidoc-flow-ci/issues/474).** Four surfaces
+told consumers to build their `pre_push_check_<repo>.sh` wrapper by **sourcing**
+canon; canon ends in `exit "$rc"`, so such a wrapper runs none of its extras and
+exits 0. All four corrected to the subprocess form. The three ledger-pinned files
+are **line-count-neutral** (267/260/74 unchanged), so no plan's Claim ledger
+drifted — verified: no failing row cites any file the change touched.
 
-**The scoping decision, which #469 did not anticipate.** It framed the choice as
-baseline-vs-repair. Re-deriving first found a third option, and that is what
-shipped:
+**Two review findings mattered more than the original fix, and both reproduced
+the defect class being fixed.** Kept here only as a pointer; the lessons are in
+auto-memory:
 
-- **Part of "156 rows" was an invocation artifact.** `check_plan.py` takes a
-  repeatable `--root`; without the workspace root, cross-repo citations cannot
-  resolve. Passing it clears **23 rows** with no plan edited.
-- **The live plans were already clean.** PLAN-024/025/026 — the plans governing
-  remaining v3 work — have **zero** failing citation rows.
+- The first draft replaced the rc-accumulator requirement with a
+  `REPO_STANDARDS §14.1` pointer. That file exists in **1** workspace repo; the
+  script ships to **8**. The requirement is now stated in-file.
+- §14.1's skeleton omitted its `set` line. Measured: `set -euo pipefail` aborts
+  the wrapper before any extra runs and exits with canon's status —
+  indistinguishable from the `source` bug. The corrected skeleton was extracted
+  verbatim and executed against a red canon stub before shipping.
 
-So: exempt plans whose `Status:` marks them finished, fail closed on everything
-else, advisory first. **Unit is failing rows, not ledger size** (PLAN-004's
-ledger alone is 61 rows): 23 ledger-bearing plans → 8 exempt / 15 gated; **14 of
-15 gated fail** — 79 citation rows across 11, plus 6 review-log defects in 3.
-
-**Pre-push review found that the gate reproduced #469 three times over**, and all
-three are folded. Kept here only as a pointer, because the lesson is in
-auto-memory and §14.1: an advisory hook without `verbose: true` prints one word
-and discards its output; `LEDGER_GATE_BLOCKING=1` did not block; and `rc=0` from
-`check_plan.py` also means *"not a gated plan; skipped"*.
-
-**[#474](https://github.com/vladm3105/aidoc-flow-ci/issues/474) filed** — five
-surfaces told consumers a wrapper should **`source`** canon. Canon ends in
-`exit "$rc"`, so a wrapper built as documented runs **none** of its extras and
-exits 0. `.pre-commit-config.yaml` is fixed in #475; **four remain**, two of them
-canon body. PLAN-002 §4.8's reference block was always correct — only the prose
-contradicted it.
+**Three issues filed, none fixed:** [#477](https://github.com/vladm3105/aidoc-flow-ci/issues/477),
+[#478](https://github.com/vladm3105/aidoc-flow-ci/issues/478),
+[aidoc-flow-operations#298](https://github.com/vladm3105/aidoc-flow-operations/issues/298).
 
 ## What to do next
 
@@ -85,54 +71,65 @@ Open issues are the backlog — do not restate them here:
 gh issue list --state open --limit 200      # the --limit 30 default truncates silently
 ```
 
-1. **[#474](https://github.com/vladm3105/aidoc-flow-ci/issues/474) — mechanical,
-   and the highest-value thing left.** Four surfaces still prescribe the broken
-   wrapper: `scripts/pre_push_check.sh:17`,
-   `install/templates/pre_push_check.sh:17`,
-   `install/templates/pre-commit-hook-block.yaml:38`, `docs/local-pre-push.md:90`.
-   The middle two are **canon body** and ship on the next tag. Correct wording is
-   in `REPO_STANDARDS` §14.1.
-2. **[#455](https://github.com/vladm3105/aidoc-flow-ci/issues/455) — the rulebook
-   half of #441.** Mechanical. `install/templates/manifest.json:185` still asserts
+1. **[#477](https://github.com/vladm3105/aidoc-flow-ci/issues/477) — needs a
+   DECISION, not a mechanical fix, and it is the highest-value item.** Canon
+   `scripts/pre_push_check.sh` and the shipped
+   `install/templates/pre_push_check.sh` have diverged on `BASE=`: the template
+   ships the **pre-PLAN-015-M3** behaviour, so consumers re-lint every
+   pre-existing branch commit on every push. It does not resolve cleanly —
+   `@{upstream}` is exactly what produces #432's empty-range false failure, so
+   delivering M3 hands consumers #432. Decide the intended behaviour against
+   #432 first, then make both copies match. The durable half is replacing the
+   single-hunk drift guard (`tests/test_sigpipe_guard.sh:390-394`, whose comment
+   claims a general no-drift invariant its `sed` range does not cover) with a
+   whole-file one.
+2. **[#478](https://github.com/vladm3105/aidoc-flow-ci/issues/478) — the
+   pre-commit fragment's marker was not bumped, and a bump alone will not fix
+   it.** The refresh round-trips the *consumer's* body and stamps only the marker
+   line, so comment corrections reach cold-start adopters only; `engramory`,
+   `interlog` and `iplan-standard` carry the stale #474 text today. **Read the
+   ledger-impact section before bumping** — `PLAN-023:1200` pins the `v2` string
+   verbatim as its symbol, and PLAN-023 is gated, so the bump is a hard
+   `symbol not found` that `--fix` cannot repair.
+3. **[#455](https://github.com/vladm3105/aidoc-flow-ci/issues/455) — mechanical,
+   unstarted, still true.** `install/templates/manifest.json:185` asserts
    `auto_install=true` on the line directly above `"auto_install": false`, and
-   ships that way to consumers; `REPO_STANDARDS` §16 still names `pre-commit` as
-   the bootstrap-tier producer.
-3. **The 79-row ledger backlog now has a reader but no repairs.** Run
-   `bash scripts/pre_push_check_ci.sh --ledger-only` for the current rows. Repair
-   is per-plan and independent; `LEDGER_GATE_BLOCKING=1` enforces once a set is
-   clean. **Re-pin drifted lines LAST, after code freeze** (#393).
-4. **Wave 0 self-adoption.** Canon's pins are current but it runs the **v2
-   architecture at a v3 pin** — `ls .github/workflows/ | grep -E
-   'quick-gates|scanners'` is empty and no caller invokes a composite action under
-   `actions/`. Canon dogfoods before Wave 1 pulls, and no consumer has repinned.
-   The two easy-to-get-wrong PLAN-021 edits are in `CLAUDE.md` § "The PLAN-021
-   consumer resume", not here.
-5. **[#456](https://github.com/vladm3105/aidoc-flow-ci/issues/456)** — three docs
-   still framed around the pre-tag state. Not re-verified this session.
+   ships that way; `REPO_STANDARDS` §16 still names `pre-commit` as the
+   bootstrap-tier producer. **Not re-verified this session** — inherited.
+4. **The 79-row ledger backlog has a reader but no repairs.** Run
+   `bash scripts/pre_push_check_ci.sh --ledger-only`. Repair is per-plan and
+   independent; `LEDGER_GATE_BLOCKING=1` enforces once a set is clean.
+   **Re-pin drifted lines LAST, after code freeze** (#393).
+5. **Wave 0 self-adoption.** Canon's pins are current but it runs the **v2
+   architecture at a v3 pin** — `ls .github/workflows/ | grep -E 'quick-gates|scanners'`
+   is empty and no caller invokes a composite action under `actions/`. Canon
+   dogfoods before Wave 1 pulls, and no consumer has repinned. The two
+   easy-to-get-wrong PLAN-021 edits are in `CLAUDE.md` § "The PLAN-021 consumer
+   resume", not here. **Inherited, not re-verified this session.**
 
 ## Blockers
 
 | Blocker | Why | What would clear it |
 | --- | --- | --- |
 | **Runner image is stale on every host but this one** | Until each rebuilds, `scanners` is red on arrival there | [#458](https://github.com/vladm3105/aidoc-flow-ci/issues/458); the `gh`-pin half is [#435](https://github.com/vladm3105/aidoc-flow-ci/issues/435). **Inherited, not re-verified this session** |
-| **PLAN-025 P7 must not run** | Still the only irreversible phase; P9 (rollback) must exist first. **P4** and **P5** are also not started | P9 landing. `docs/MIGRATION_v3.0.0.md` is the migration path, not the P5 documentation set |
+| **PLAN-025 P7 must not run** | Still the only irreversible phase; P9 (rollback) must exist first. **P4** and **P5** are also not started | P9 landing. `docs/MIGRATION_v3.0.0.md` is the migration path, not the P5 documentation set. **Inherited** |
 | **The ledger gate cannot become a CI job** | `check_plan.py` ships with the verified-planning Claude skill, not this repo; the ephemeral runners have no `~/.claude` | Vendoring it — a separate decision with its own drift surface. Until then the pre-push hook is the only reader that can exist |
 
 ## What did NOT change
 
-No consumer repo, no branch protection, no ruleset, no required context, no canon
-workflow, template or script. `install/templates/*` and `.github/workflows/*` are
-untouched, so **nothing this session reaches a consumer on the next tag** — the
-one consumer-read surface edited is `docs/REPO_STANDARDS.md` §14.1. No
-`doc-maintainer` / `docs-sync` / `ai-review` / `secret-scan` behaviour. No plan
-file was edited, so every other plan's ledger is undisturbed.
+No consumer repo, no branch protection, no ruleset, no required context, no
+workflow. `.github/workflows/*` untouched. **`install/templates/*` WAS touched** —
+`pre_push_check.sh` (manifest-walked, reaches consumers on the next tag) and
+`pre-commit-hook-block.yaml` (does **not** propagate to adopted consumers — see
+issue #478). No `doc-maintainer` / `docs-sync` / `ai-review` / `secret-scan`
+behaviour.
+No plan file was edited, so every plan's ledger is undisturbed — the 79-row
+baseline is unchanged from the previous wrap.
 
 `doc-maintainer` live on `operations` and paused on `framework` — **inherited
 from the previous wrap, not re-verified this session.** Re-derive with
 `.github/doc-maintainer.json` in each.
 
-**#469's rows are unrepaired** — the issue is closed because it asked for a
-reader, and the reader exists. The 79 rows are the follow-on work in item 3.
-
-Lessons went to auto-memory, which is **gitignored and machine-local** — safe on
-this host only, not backed up. Read them there; they are not restated here.
+Lessons went to auto-memory, which is **gitignored and machine-local**
+(`~/.claude/.gitignore:5`) — safe on this host only, not backed up. Read them
+there; they are not restated here.
