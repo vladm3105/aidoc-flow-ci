@@ -8,66 +8,75 @@ decision record is `DECISIONS.md`, which is authoritative — this file never
 summarises it.
 
 **State:** **`ci/v3.0.0` is RELEASED** (2026-08-12) and published as Latest. The
-deployable artifact is the **tag**, at `6d68b26` — canon ships by tag, so that
-identifier is the one that survives; `main`'s tip moves and is not it. At this
-wrap `main` was one commit above the tag, tree clean, **41** open issues, **0**
-open PRs. That commit is **#457**, merged 22 minutes after the tag, so **a
-consumer on `ci/v3.0.0` does not have it** — re-derive what is above the tag with
+deployable artifact is the **tag**, at `6d68b26` — canon ships by tag, so that is
+the identifier that survives; `main`'s tip moves and is not it. At this wrap
+`main` was **3 commits above the tag**, tree clean, **46** open issues, **0** open
+PRs. **None of the three reaches a consumer on `ci/v3.0.0`** — all three are docs
+and plans, no canon body — re-derive with
 `git log --oneline ci/v3.0.0..origin/main`.
 
 | Claim | Command | Value at wrap |
 |---|---|---|
 | Released version | `git describe --tags --abbrev=0` | `ci/v3.0.0` |
 | Tag points at | `git ls-remote --tags origin 'refs/tags/ci/v3.0.0^{}'` | `6d68b26` |
-| Release is real | `gh release view ci/v3.0.0 --json isDraft,isPrerelease` | both `false` |
 | Release is Latest | `gh api repos/vladm3105/aidoc-flow-ci/releases/latest --jq .tag_name` — **not** `--json isLatest`, which is not a field | `ci/v3.0.0` |
-| Reachable by consumers | `curl -o /dev/null -w '%{http_code}' https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v3.0.0/install/install.sh` | `200` |
 | Suite | `bash tests/run.sh \| sed 's/\x1b\[[0-9;]*m//g' \| grep -oE '[0-9]+ passed, [0-9]+ failed' \| awk '{p+=$1;f+=$3} END{print NR" suites, "p" passed, "f" failed"}'` | **17 suites, 1542 passed, 0 failed** |
-| pre-commit / pre-push | `pre-commit run --all-files` · `bash scripts/pre_push_check.sh` | both exit 0 |
+| pre-commit | `pre-commit run --all-files` | exit 0 |
 | Governance table | `python3 install/parse-governance-table.py CLAUDE.md --repo-root .` | PASS |
-| Standards drift | `bash sync/check-standards-drift.sh --tier product` | 4/4 families, 2 drift = the deliberate FT-52 profile |
-| Open issues | `gh issue list --state open --limit 200 --json number --jq 'length'` | **41** |
+| Standards drift | `bash sync/check-standards-drift.sh --tier product` | `pin-currency: all pins current` · 4/4 families · 2 drift = the deliberate FT-52 profile. **Read the output, not the exit code** — warning-only without `--strict`, so it exits 0 on drift |
+| Open issues | `gh issue list --state open --limit 200 --json number --jq 'length'` | **46** |
 | Open PRs | `gh pr list --state open --json number --jq 'length'` | **0** |
 
-**The FT-21 red is gone.** `suite` failed on `VERSION != latest published tag`
-on every PR from prep until the cut; it cleared the moment the tag existed. A red
-`suite` from here on is a real red. Likewise the four self-pinned required
-contexts now resolve. **#457 was the first PR after the prep boundary with all
-five required contexts green, and the first to merge without `--admin`** —
-`gh pr checks 452` and `gh pr checks 453` each return exactly one check,
-`suite: fail`, because the other four never reported at all.
+**Correction to the previous wrap's table, which said `pre_push_check.sh` exits
+0.** Run it *on `main`* and it exits **1** — `origin/main..HEAD` is empty, so it
+reports a false OPS-0069 failure **and silently skips every mechanical linter**.
+That is [#432](https://github.com/vladm3105/aidoc-flow-ci/issues/432) reproducing,
+not a red repo — the tell is `no changed files vs base — skipping mechanical
+linters`. It is only meaningful on a branch with commits ahead of `main`; it
+exited 0 on `docs/plan-023-mypy-datum` (PR #468). **Do not record "both exit 0"
+again without naming the branch it was run on** — and note that an OPS-0069
+failure on a branch whose range is *non-empty* is a real one, not this.
 
 ## What this session did
 
-**Cut `ci/v3.0.0`** — 57 merged PRs that no consumer could reach are now
-reachable. Merged #449 (wrap), #452 (prep), #453 (#450's fix), **then tagged**.
-PR #457 (post-release doc truth) merged 22 minutes *after* the tag and is the
-one commit above it.
+**A triage pass over the 49 open issues, and one merge.** Nothing shipped to
+consumers; no canon body changed.
 
-**The ordering in the previous handoff was wrong, and following it would have
-produced a green run about the wrong tree.** It said run FT-30 → prep → tag.
-`docs/RELEASE_CHECKLIST.md:89-96` and `scripts/release.sh:16-18` both say
-prep → merge → **dry-run** → tag, because `prep` edits the cold-start surface
-(it retires the forward-pin markers in five templates). Corrected before running.
+**Merged [#468](https://github.com/vladm3105/aidoc-flow-ci/pull/468)** — PLAN-023
+§9g. §9 had said PR-1's `ruff`/`mypy` clean-up was "unbounded until measured" for
+weeks; it is now measured whole-tree —
+`python3 -m mypy $(git ls-files '*.py')` → **28 errors in 5 files**. (Canon
+declares no `mypy` hook yet; that is the shape PR-1's will have.) Four modules
+share one `fail() -> None` defect and four `NoReturn` annotations clear **28 → 13**;
+the residual 13 is a separate cluster in the two `install/` modules. **PR-1 sizes
+against 28, not 13.** Full record in `CHANGELOG.md` § Unreleased.
 
-**FT-30 passed** — `FT-30 DRY-RUN PASSED` against `vladm3105/ci-coldstart-scratch`
-(public) at `CI_TAG=f9c9c73`, the prep-merge SHA. It installed exactly the
-manifest's `auto_install: true` set — `ai-review`, `composition`, `quick-gates` —
-with `quick-gates` on `ubuntu-latest`, correct for a public target. That verifies
-both #441's bootstrap change and the D7 public-quadrant fix on a real cold start
-rather than in a unit test. **This is recorded nowhere durable — #454.**
+**Closed four issues as stale, each with the evidence in its close comment:**
 
-**Four review passes found real defects, and the last two found defects in the
-fixes for the first two.** Most consequential: the promoted CHANGELOG section —
-which `release.sh tag` publishes *verbatim* as the release body — still said the
-v3 layer was "NOT released" and pinned to "a tag that does not exist". It would
-have shipped as the release notes of the release that falsified it.
+- **#401** — its target (`HANDOFF.md`) had been regenerated away. Its datum is now
+  PLAN-023 §9g, which is *why* #468 existed. Its own fix shape argued the issue
+  was the durable carrier; that is the claim #468 disputes.
+- **#402** — same shape; superseded by `CLAUDE.md` § Durable traps and #412.
+- **#419** — duplicate of #432, same line, #432 strictly broader.
+- **#378** — closed as accepted, **and its central premise corrected**: it claimed
+  dependabot bypassing OPS-0069 was "a gap in the gate's coverage". It is an
+  explicit exemption at both layers (`pre_push_check.sh` via `%an`,
+  `audit-trail-check.yml:126-133` via GitHub-verified `user.type == 'Bot'`), with
+  the asymmetry deliberate and documented at `audit-trail-check.yml:36-40`.
 
-Filed: [#450](https://github.com/vladm3105/aidoc-flow-ci/issues/450) (fixed),
-[#451](https://github.com/vladm3105/aidoc-flow-ci/issues/451),
-[#454](https://github.com/vladm3105/aidoc-flow-ci/issues/454),
-[#455](https://github.com/vladm3105/aidoc-flow-ci/issues/455),
-[#456](https://github.com/vladm3105/aidoc-flow-ci/issues/456).
+**Re-scoped #363** — its suggested fix 2 shipped in `ci/v3.0.0` (`quick-gates` and
+`scanners` are exactly the consolidation it asked for). Only the doc sentence
+survives, and its open question is answered: the autoscaler concurrency limit
+belongs to `operations`, not here.
+
+**Filed [#469](https://github.com/vladm3105/aidoc-flow-ci/issues/469) — the
+biggest thing found.** Nothing in this repo *executes* `check_plan.py` — no hook,
+no workflow, no wrapper; every mention of it is a comment or prose — and the
+ledgers have decayed accordingly:
+**21 of 23 plans fail the gate, 156 ledger rows hard-fail**. Same class as #355.
+Re-derive with the loop in the issue's first comment.
+
+**Cleared stale `status:in-progress` markers** from closed #450, #387, #360.
 
 ## What to do next
 
@@ -78,52 +87,56 @@ gh issue list --state open --limit 200      # the --limit 30 default truncates s
 ```
 
 1. **[#454](https://github.com/vladm3105/aidoc-flow-ci/issues/454) — record the
-   release where its gates were declared.** `plans/PLAN-025_v3-clean-rebuild.md:586`
-   still reads `P6 — Release ci/v3.0.0. ⬜ NOT STARTED`, and FT-30's pass exists
-   only in `ROADMAP.md` prose and this file. `DECISIONS.md` is the carrier a wrap
-   cannot erase; `litellm-smoke`'s only non-plan citation is a handoff line and
-   evaporates at the next regeneration. Top item because it rots fastest.
-2. **[#455](https://github.com/vladm3105/aidoc-flow-ci/issues/455) — the rulebook
-   half of #441.** `install/templates/manifest.json:185` asserts
-   `auto_install=true` on the line above `"auto_install": false`, shipped verbatim
-   to consumers; `docs/REPO_STANDARDS.md` §16 still names `pre-commit` as the
-   bootstrap-tier producer. Behaviour is correct; only the canonical descriptions
-   are wrong.
-3. **Consumer adoption.** No consumer has repinned — measured: `operations`
-   `@ci/v2.0.1`, `framework` `@ci/v2.16.0`, the rest `v1.5.1`–`v1.9.5`.
-   **Wave 0 self-adoption is PARTIAL, not absent:** canon's own callers *are*
-   repinned at `ci/v3.0.0` (`bash sync/check-standards-drift.sh --tier product`
-   → `pin-currency: all pins current`), but the new v3 surfaces are not
-   installed — `ls .github/workflows/ | grep -E 'quick-gates|scanners'` is empty.
-   That gap is Wave 0, and canon dogfoods before Wave 1 pulls. The two
+   release where its gates were declared.** Unchanged and re-verified this
+   session: `plans/PLAN-025_v3-clean-rebuild.md:586` still reads
+   `P6 — Release ci/v3.0.0. ⬜ NOT STARTED`, and the header at `:3` still says
+   In Progress. **Correcting the previous wrap, which said the `litellm-smoke`
+   run id "now survives only inside #454's body":** it is in `ROADMAP.md:39`,
+   `plans/PLAN-025:1002` and `plans/PLAN-026:370` — `git grep -l 31348751529`.
+   #454's real remainder is the `DECISIONS.md` record of the discharged founder
+   gates, not the run id, and that is why it is still top.
+2. **[#469](https://github.com/vladm3105/aidoc-flow-ci/issues/469) — decide the
+   shape before touching a row.** At 156 failing rows this is not a repair task.
+   The two decisions, both open: baseline the gate (fail only on new/edited rows)
+   versus a repair campaign, and whether finished plans are re-pinned at all or
+   exempted by a marker. Wiring it as a blocking hook today reds every
+   plan-touching PR.
+3. **[#455](https://github.com/vladm3105/aidoc-flow-ci/issues/455) — the rulebook
+   half of #441.** Re-verified: `install/templates/manifest.json:185` still
+   asserts `auto_install=true` on the line above `"auto_install": false`.
+4. **Consumer adoption / Wave 0.** Canon's own pins are current
+   (`bash sync/check-standards-drift.sh --tier product` → `pin-currency: all
+   pins current ✅`; the exit code proves nothing here) but the v3
+   surfaces are still not installed here — `ls .github/workflows/ | grep -E
+   'quick-gates|scanners'` is empty. Canon dogfoods before Wave 1 pulls. The two
    easy-to-get-wrong PLAN-021 edits are in `CLAUDE.md` § "The PLAN-021 consumer
    resume", not here.
-4. [#451](https://github.com/vladm3105/aidoc-flow-ci/issues/451) and
-   [#456](https://github.com/vladm3105/aidoc-flow-ci/issues/456) — the
-   promoted-prose scan that would have caught this session's worst defect, and
-   three docs still framed around the pre-tag state.
 
 ## Blockers
 
 | Blocker | Why | What would clear it |
 | --- | --- | --- |
-| **Runner image is stale on every host but this one** | Until each rebuilds, `scanners` is red on arrival there. State and inventory now tracked in [#458](https://github.com/vladm3105/aidoc-flow-ci/issues/458) rather than here, because this row had survived two regenerations — the tell that it is not volatile | #458; the `gh`-pin half is [#435](https://github.com/vladm3105/aidoc-flow-ci/issues/435) |
-| **PLAN-025 P7 must not run** | Still the only irreversible phase; P9 (rollback) must exist first. **P4** (local layer — rewrites `pre_push_check.sh`, ships before P5) and **P5** (the `docs/v3/` documentation set) are also not started | P9 landing. `docs/MIGRATION_v3.0.0.md` is the migration path, not the documentation set |
+| **Runner image is stale on every host but this one** | Until each rebuilds, `scanners` is red on arrival there | [#458](https://github.com/vladm3105/aidoc-flow-ci/issues/458); the `gh`-pin half is [#435](https://github.com/vladm3105/aidoc-flow-ci/issues/435) |
+| **PLAN-025 P7 must not run** | Still the only irreversible phase; P9 (rollback) must exist first. **P4** and **P5** are also not started | P9 landing. `docs/MIGRATION_v3.0.0.md` is the migration path, not the documentation set |
 
-No founder-gated blocker remains for the release itself. The three, with the
-evidence rather than a pointer to it: **FT-30** — passed 2026-08-12, above;
-**`litellm-smoke`** — run `31348751529`, 2026-08-10, both aliases; **OPS-0066** —
-waived, `DECISIONS.md` CI-0036. #454 is the missing durable record, and this
-line is why it is the top task: the previous regeneration already dropped the
-`litellm-smoke` run id, which now survives only inside #454's body.
+No founder-gated blocker remains for the release itself (FT-30 passed 2026-08-12;
+`litellm-smoke` run `31348751529`; OPS-0066 waived, `DECISIONS.md` CI-0036).
 
 ## What did NOT change
 
-No consumer repo, no branch protection, no ruleset, no required context, no
-`doc-maintainer` / `docs-sync` / `ai-review` / `secret-scan` behaviour. The
-throwaway `vladm3105/ci-coldstart-scratch` was left **public** with the canonical
-labels, for the next release's FT-30; nothing was pushed to it beyond labels.
+No consumer repo, no branch protection, no ruleset, no required context, no canon
+workflow, template, script or `REPO_STANDARDS` section. No `doc-maintainer` /
+`docs-sync` / `ai-review` / `secret-scan` behaviour. **The only tracked file this
+session changed outside `plans/` and `CHANGELOG.md` is this one.**
+
+**`#469`'s 156 failing rows were NOT repaired** — the issue is filed, nothing is
+fixed, and PLAN-023's own ledger is still 3 of them.
 
 `doc-maintainer` remains **live on `operations`** and **paused on `framework`** —
 not re-verified this session; re-derive with
 `python3 -c "import json;[print(r, json.load(open(f'../{r}/.github/doc-maintainer.json'))['dry_run'], json.load(open(f'../{r}/.github/doc-maintainer.json'))['kill_switch']) for r in ('operations','framework')]"`.
+
+Two lessons went to auto-memory, which is **gitignored and machine-local** — they
+are safe on this host only: pin a Claim on the behaviour a plan preserves rather
+than the line it deletes, and this repo's lack of a `pyproject.toml` means bare
+`ruff` inherits the umbrella's config.

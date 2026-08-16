@@ -5,6 +5,56 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### PLAN-023 — §9's "unbounded until measured" discharged for the `mypy` half (#401, #468)
+
+§9 sized PR-1's `ruff` + `mypy` clean-up as *"unbounded until measured"* and told
+the reader to measure it first. It had been measured twice; both results lived
+only in `HANDOFF.md`, which CI-0028 regenerates wholesale, so the datum was lost
+each time. The second was filed as [#401](https://github.com/vladm3105/aidoc-flow-ci/issues/401)
+**because the handoff could not hold it** — and #401 then went stale itself when
+the file it cited was regenerated away. §9g gives it a carrier a gate reads.
+
+Measured over all ten modules at once — **not** per-file, because per-file runs
+leave cross-module imports unresolved and emit `[import-not-found]` artifacts a
+whole-tree run never sees. (Canon's `.pre-commit-config.yaml` declares neither a
+`mypy` nor a `ruff` hook today; this is the shape the hook PR-1 adds **will**
+have, not a gate that exists.)
+
+```console
+$ python3 -m mypy $(git ls-files '*.py')
+Found 28 errors in 5 files (checked 10 source files)
+```
+
+**Four** modules define a `fail()` helper annotated `-> None` that never returns
+(`planner.py:27`, `apply.py:32`, `reconcile.py:41`, `litellm_client.py:42`).
+Annotating all four `NoReturn` takes **28 → 13**. The residual 13 is a separate
+cluster in the two `install/` modules, neither of which has a `fail()` helper:
+`parse-governance-table.py` (7 — `json.load` returns `object`, never narrowed)
+and `required-context-map.py` (6 — **5** module-level bare `{}` initialisers plus
+one `misc`, an exception variable assigned outside its `except:` block). So PR-1
+sizes against 28, and §9's paragraph is **scoped rather than replaced**.
+
+Two things the measurement surfaced that were not being asked about:
+
+- **The `ruff` half cannot be measured yet, and it is not small.** This repo
+  ships no `pyproject.toml`, so bare `ruff check` walks up and discovers the
+  *umbrella's* (`/opt/data/aidoc-flow/pyproject.toml`) — not owned here — whose
+  `select` is `["E","W","F","I","B","C4","UP","SIM"]`. Under it,
+  `ruff check $(git ls-files '*.py')` reports **20 findings across 8 files**
+  (6 `I001`, 5 `SIM115`, 3 `UP031`, 3 `B904`, 1 each `UP017`/`SIM118`/`SIM105`);
+  `ruff check --isolated` reports **none**. Same files, same ruff, opposite
+  verdicts — so "canon is ruff-clean" is not a statement until it names the
+  invocation. PR-1 must fix which configuration the pinned hook uses before any
+  ruff count means anything. Same invocation-dependency trap #401 diagnosed for
+  mypy, sitting undetected one sentence away in the ruff half.
+- **Claim 80 pins `raise SystemExit(1)`, deliberately not the signature line.**
+  PR-1 rewrites that signature, which would take a signature pin to a
+  `symbol not found` hard FAIL that `--fix` cannot repair.
+
+The §13 renumbering bullet's line list drifted twice during this work, and its
+line-range `grep -v` filter had begun **excluding a real occurrence**; it is now
+content-based, with both break modes recorded.
+
 ### Fixed — three consumer-facing docs still said v3 was unreleased, after it was released
 
 `ci/v3.0.0` was cut on 2026-08-12 at `6d68b26`. Three documents a consumer reads
