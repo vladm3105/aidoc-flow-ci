@@ -331,6 +331,20 @@ has settled — measured, reproduced, and not expected to change.
   `bash tests/run.sh | sed 's/\x1b\[[0-9;]*m//g' | grep -oE '[0-9]+ passed, [0-9]+ failed' | awk '{p+=$1;f+=$3} END{print NR" suites, "p" passed, "f" failed"}'`
   → `15 suites, 1093 passed, 0 failed` at `ci/v2.16.0`+#405. Measured 2026-08-06,
   after a wrap reported 858 and read it as suites having been dropped.
+- **Lint the markdown with `git ls-files '*.md'`, never a `**/*.md` glob.** The
+  glob reaches the gitignored bootstrap scratch trees, which carry consumer
+  fixtures nobody is linting on purpose, so the run reports errors that are not
+  yours and a clean tree looks dirty. `git ls-files` is the tracked set — 70
+  files at `ci/v3.0.0`+#485.
+- **A change to a REPORTED FORMAT breaks readers the suite does not drive.**
+  `install/required-context-map.py` gained a `!` prefix (#481) and silently broke
+  `install/deploy-ci-wizard.sh` §6, its other reader, which matches that field
+  against installed filenames — `grep -qw '!audit-trail.yml'` can never match, so
+  every product/ops/governance consumer that HAD the caller was told "arming
+  would HANG PRs". The suite stayed green at 1712 assertions because nothing
+  drives the wizard. **Enumerate a derived output's readers before changing its
+  shape**; `tests/test_required_contexts.sh` §8 now pins the symbol vocabulary to
+  the map's own source and asserts every reader handles it.
 - **`sync/check-standards-drift.sh` needs `--tier`, and exits 0 without it.**
   Bare, it warns `--tier required`, verifies **0 of 4** control families and
   still returns success — a gate that checked nothing, reporting pass. With
