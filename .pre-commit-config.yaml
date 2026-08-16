@@ -14,7 +14,8 @@
 #
 # Consumers that need repo-specific extras (e.g., verified-planning
 # `check_plan.py`) point this entry at `scripts/pre_push_check_<repo>.sh`
-# WRAPPER instead — wrapper sources canon + adds its own checks. See
+# WRAPPER instead — the wrapper RUNS canon as a subprocess (canon ends in
+# `exit`, so sourcing it silently skips every extra) + adds its own. See
 # PLAN-002 §4.8 for the operations wrapper reference design.
 
 default_install_hook_types:
@@ -69,5 +70,40 @@ repos:
     # hook locally and the author first learned at PR time. CI was never affected
     # (`pre-commit run --all-files`). A regex duplicating TARGETS is a second list
     # to keep in step; always_run removes it. (#323.)
+    always_run: true
+    pass_filenames: false
+  # Repo-specific extra (NOT part of the consumer canon fragment): give
+  # `check_plan.py` a reader. 23 plans carry a Claim ledger and NOTHING in
+  # this repo invoked the gate that verifies them, so PLAN-023's ledger
+  # asserted the presence of a symbol whose absence PLAN-025 P8 had made the
+  # tested invariant — for weeks, silently. Same defect class as #355
+  # (`governance_check` has no CI reader): a gate that exists, is correct, and
+  # is never invoked reports nothing and looks like coverage. (#469.)
+  #
+  # ADVISORY at this pin — it reports failing rows and exits 0. 79 rows across
+  # 11 gated plans fail today; blocking on day one would red every
+  # plan-touching push, which is how a hook gets `--no-verify`d and then
+  # ignored. Set LEDGER_GATE_BLOCKING=1 to enforce once the gated set is clean.
+  #
+  # `--ledger-only` because canon's pre_push_check.sh is already wired above;
+  # without it the canon checks would run twice on every push.
+  - id: claim-ledger-gate
+    name: Claim ledgers verify against cited sources (#469, advisory)
+    entry: scripts/pre_push_check_ci.sh --ledger-only
+    language: script
+    # `verbose: true` is LOAD-BEARING, not cosmetic. pre-commit shows a hook's
+    # stdout only when the hook FAILS; an advisory hook always exits 0, so
+    # without this the entire gate renders as one word — `Passed` — and every
+    # failing row is discarded. Measured: 14 failing plans and 85 diagnostic
+    # lines swallowed. An advisory hook without `verbose: true` is not
+    # advisory, it is absent — which is #469's own defect, reproduced by its
+    # fix. Any reporting (non-blocking) hook must set it.
+    verbose: true
+    stages:
+    - pre-push
+    # `always_run`, NOT a `files:` filter on plans/*.md. Editing a CITED file
+    # breaks the ledgers of every OTHER plan that cites it, so a filter keyed
+    # to the plan files would miss exactly the case that bites — a code or doc
+    # commit that touches no plan at all and invalidates several.
     always_run: true
     pass_filenames: false

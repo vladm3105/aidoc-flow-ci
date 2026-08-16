@@ -5,6 +5,98 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — `check_plan.py` has a reader: `scripts/pre_push_check_ci.sh` (#469)
+
+23 plans carry a Claim ledger and **nothing in this repo ever invoked the gate
+that verifies them.** The cost was not hypothetical: PLAN-023's ledger asserted
+the presence of a `?non-call` symbol whose *absence* PLAN-025 P8 had made the
+tested invariant, and it sat that way for weeks. Same defect class as #355
+(`governance_check` has no CI reader) — a gate that exists, is correct, and is
+never invoked reports nothing and looks like coverage.
+
+`scripts/pre_push_check_ci.sh` is the `pre_push_check_<repo>.sh` wrapper §14.1
+has described since PLAN-002 §4.8 and which this repo never had. Wired as a
+`pre-push` hook, **advisory**: it prints failing rows and exits 0. 79 rows
+across 11 gated plans fail today, and blocking on day one reds every
+plan-touching push, which is how a hook gets `--no-verify`d and then ignored.
+`LEDGER_GATE_BLOCKING=1` enforces once the gated set is clean.
+
+Three scoping decisions, each measured rather than assumed:
+
+- **Plans marked finished are exempt; everything else fails closed.** The
+  exemption reads the `Status:` line — `SHIPPED`, `COMPLETE`, `IMPLEMENTED`,
+  `DEFERRED`, `SUPERSEDED`, `ABANDONED`, each requiring a word boundary so
+  that `COMPLETEness of the ledger is unknown` does not exempt itself. A plan
+  with **no** parseable `Status:` line is *gated*, not exempt: five plans here
+  have none, and treating an unreadable header as "finished" would drop them
+  silently — the very failure the gate exists to catch.
+
+  Measured split, and **the unit is failing rows, not ledger size** (the
+  ledgers themselves are far larger — PLAN-004's alone runs to 61 rows): 23
+  ledger-bearing plans → **8 exempt, 15 gated**. Of the 15 gated, **14 fail**:
+  79 hard-failing citation rows across 11 of them, plus 6 review-log defects in
+  the other 3. The 8 exempt plans carry a further 54 failing rows, unverified
+  by design.
+- **The workspace root is passed as an extra `--root`.** Cross-repo citations
+  (`operations/CLAUDE.md`, `framework/CHANGELOG.md`, …) cannot resolve against
+  this repo alone, so 23 rows failed as `path does not exist` purely because of
+  how the gate was invoked — an invocation artifact, not a plan defect.
+  Re-derive: run the gate with and without `LEDGER_EXTRA_ROOT=` and diff the
+  `does not exist` counts.
+- **This cannot become a CI job as-is.** `check_plan.py` ships with the
+  verified-planning Claude skill, not with this repo, and the ephemeral
+  single-use runners are fresh containers with no `~/.claude`. A `plans-gate`
+  job needs the script vendored first — a separate decision with its own drift
+  surface.
+
+**The first draft of this gate reproduced #469's own defect three times over,
+and pre-push review caught all three.** Recorded because the pattern is the
+point, not the individual bugs:
+
+- **An advisory hook without `verbose: true` is not advisory, it is absent.**
+  pre-commit shows a hook's stdout only when the hook *fails*; an advisory hook
+  always exits 0, so the entire gate rendered as one word — `Passed` — with 14
+  failing plans and 85 diagnostic lines discarded. A correct gate wired into a
+  surface that throws away its output is #469 verbatim.
+- **`LEDGER_GATE_BLOCKING=1` did not block.** Three skip paths exited 0
+  unconditionally, so `CHECK_PLAN=/nonexistent` disabled the gate even in
+  enforcing mode — an env-var escape hatch of exactly the kind OPS-0069 removed
+  from canon, and it falsified this script's own claim that enforcing was a
+  one-variable change.
+- **`rc=0` from `check_plan.py` does not mean "verified".** It also means
+  `(not a gated plan; skipped)`. The selector matched `## Claim ledger` as a
+  prefix while `check_plan.py` keys on the exact heading, so `## Claim ledger
+  (cited)` was selected here, declined there, and reported as ✅. The selector
+  now mirrors `check_plan.py`'s own gating (either `## Claim ledger` or
+  `## Review log`, anchored), a disagreement between the two is a hard error,
+  and a non-zero status with no parseable rows is reported as a **gate
+  malfunction** rather than as a stale ledger — advisory mode covers "your
+  ledger is stale", never "the gate broke".
+
+### Fixed — §14.1 prescribed a wrapper design that cannot work (#469)
+
+§14.1 told consumers the wrapper should `source` canon. Canon ends in
+`exit "$rc"`, so sourcing it **terminates the wrapper at that line, with
+canon's own exit status** — the wrapper reports canon's result and silently
+runs none of its extras. There is no error; a wrapper built that way looks like
+it works. §14.1 now prescribes running canon as a subprocess and capturing
+`$?`, and adds the property a wrapper must not break: canon-red plus
+extras-green must still exit non-zero, or the wrapper turns off the OPS-0069
+gate without touching it. §14.1 also now requires `verbose: true` on any
+reporting (non-blocking) hook.
+
+**Five surfaces carried the `source` wording, not two.** `.pre-commit-config.yaml`
+is fixed here because this change already edits it. The remaining four are
+tracked as #474 — `scripts/pre_push_check.sh`, `install/templates/pre_push_check.sh`,
+`install/templates/pre-commit-hook-block.yaml` and `docs/local-pre-push.md` §4,
+the last of which is the adopter-facing instruction for building exactly this
+wrapper. Two of the four are canon body and propagate to consumers on the next
+tag, so they need their own change record and version bump.
+
+Worth noting in canon's favour: PLAN-002 §4.8's **reference code block** already
+showed the subprocess form. The prose surfaces contradicted the reference
+design; the design itself was right.
+
 ### Added — `DECISIONS.md` CI-0037: the v3 release and its three discharged gates (#454, #471, #472)
 
 CI-0036 closed by naming the gates that still stood before a tag. All of them

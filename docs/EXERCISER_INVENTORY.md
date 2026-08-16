@@ -98,6 +98,7 @@ installer/update path plus the offline tests that drive it.
 | `.lychee.toml` | `links.yml` config; consumer-populated | descoped — consumer-customized |
 | `install/templates/pre-commit-hook-block.yaml` | `test_install.sh` Part 4 (stage-matching hook) + `test_precommit_merge.sh` (URL-keyed merge, pseudo-repo exemption, fail-closed) | offline-test — MERGED into the consumer file, not a 1:1 `manifest.json` surface |
 | `scripts/pre_push_check.sh` | canon's own pre-push hook + `test_scripts.sh` | self-caller + offline-test |
+| `scripts/pre_push_check_ci.sh` | canon's own `claim-ledger-gate` pre-push hook + `test_ledger_gate.sh` (fixture repo: gated/exempt classification, fail-closed on a missing `Status:` line, `--root` and empty-argument handling, advisory vs `LEDGER_GATE_BLOCKING`, canon-rc survival, `--ledger-only`) | self-caller + offline-test — repo-specific wrapper, NOT shipped to consumers |
 | `CLAUDE.md` | `install.sh` template-fill (`test_install.sh`); `check-governance` | offline-test |
 
 ## Canonical scripts
