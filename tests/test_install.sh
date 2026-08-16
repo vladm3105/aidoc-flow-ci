@@ -625,10 +625,11 @@ echo "== bootstrap resolves visibility from the LIVE repo, not from the flag def
 # reading one: `VISIBILITY` defaults to `private` and the bootstrap block reads
 # it, while `update_mode` and `add_surface_mode` both resolve from the live repo.
 # So a PUBLIC cold start run without `--visibility public` installed
-# `composition-private.yml` — and, once #441 lands, `quick-gates-private.yml`, a
-# self-hosted caller whose job executes the PR's own files. That is the D7 /
-# fork-code-on-self-hosted violation CLAUDE.md says NEVER to make, arriving via
-# the default value of a flag nobody passed.
+# `composition-private.yml`. That is the D7 / fork-code-on-self-hosted violation
+# CLAUDE.md says NEVER to make, arriving via the default value of a flag nobody
+# passed. It would extend to `quick-gates-private.yml` — a self-hosted caller
+# whose job executes the PR's own files — whenever quick-gates rejoins the
+# bootstrap set, which #481 deferred to the combined §C0 change.
 VIS_BLK="$(mktemp)"
 sed -n '/^# --- visibility, resolved from the LIVE repo/,/^fi$/p' "$INSTALL" > "$VIS_BLK"
 assert_ok "[ -s '$VIS_BLK' ]" "the visibility-resolution block was located in install.sh"
@@ -670,59 +671,96 @@ assert_ok "[ '${_vis_line:-0}' -gt '${_tier_line:-0}' ]" \
   "visibility detection runs AFTER every pure-argument validation (line ${_vis_line:-?} > ${_tier_line:-?})"
 rm -f "$VIS_BLK"
 
-echo "== the bootstrap tier gate has a producer, and does not double-install (#438) =="
+echo "== the bootstrap tier gate has a producer, and installs no unrequired caller (#438/#481) =="
 # THE HAZARD: `apply-standards.sh` PUTs the tier branch-protection file as one
 # whole payload, so if bootstrap does not install a producer for the context that
 # file requires, a COLD START arms a required check nothing satisfies — and
-# consumer tiers have no `--admin` escape. Before v3 that producer was
-# `pre-commit.yml`; v3 folds three checks into `quick-gates`, so the auto_install
-# flag has to move with the context.
+# consumer tiers have no `--admin` escape.
 #
-# THE COUNTER-HAZARD, which is why the flag alone is not the fix: flipping it
-# makes a RE-bootstrap on a not-yet-migrated consumer install v3 alongside v2.
-# Both directions are driven here, by evaluating the SHIPPED block — the same
-# harness Part 2 uses, so it cannot drift from what install.sh actually does.
+# THE INVARIANT IS AN EQUALITY, AND #481 IS WHAT BREAKING IT LOOKS LIKE: the
+# caller bootstrap installs and the caller the tier templates require must be the
+# SAME ONE. v3 means to move that from `pre-commit.yml` to `quick-gates.yml`, but
+# that is two edits — the `auto_install` flag, and PLAN-026 §C0 substituting the
+# context into the four tier templates. #441 landed the flag alone, so bootstrap
+# installed `quick-gates.yml` while the templates still required pre-commit's
+# context, and a cold start bricked. Reverted here until both can land together,
+# after C1–C5 put quick-gates.yml on the fleet.
+#
+# So this drives BOTH directions: the required producer must be installed, and a
+# caller no tier requires must NOT be. Each evaluates the SHIPPED block — the
+# same harness Part 2 uses, so it cannot drift from what install.sh actually does.
 _bootstrap_in() {   # $1=sandbox  $2=visibility ; echoes resolved "template<TAB>dest" lines
+  # Also leaves the block's stdout in $TMP/bs-log and its exit status in
+  # $TMP/bs-rc. Both are load-bearing: the block's own status used to be
+  # discarded by `|| true`, so a stanza that aborted under `set -euo pipefail`
+  # was indistinguishable from one that ran — and every ABSENCE claim made
+  # against the capture then passed for the wrong reason.
   local sandbox="$1" vis="$2" out="$TMP/bs-out"
-  : > "$out"
+  : > "$out"; : > "$TMP/bs-log"
   (
     set -euo pipefail
     cd "$sandbox" || exit 1
     # shellcheck disable=SC2034
     VISIBILITY="$vis"
+    # The stub RECORDS the call and also MATERIALISES the destination. Recording
+    # alone made every "is the existing file left byte-unchanged" assertion
+    # vacuous: nothing in the evaluated block writes to the filesystem, so such a
+    # check passed even if the stanza dropped its `[ -f ]` guard entirely.
     # shellcheck disable=SC2317,SC2329
-    fetch_template() { printf '%s\t%s\n' "$1" "$2" >> "$out"; }
+    fetch_template() {
+      printf '%s\t%s\n' "$1" "$2" >> "$out"
+      mkdir -p "$(dirname "$2")" && printf 'FETCHED %s\n' "$1" > "$2"
+    }
     # shellcheck disable=SC1090
-    . "$TMP/block.sh" >/dev/null 2>&1
-  ) || true
+    . "$TMP/block.sh" >>"$TMP/bs-log" 2>&1
+  ); printf '%s' "$?" > "$TMP/bs-rc"
   cat "$out"
 }
 
 # (a) COLD START — nothing installed. The tier gate's producer must land.
 _cold="$TMP/bs-cold"; mkdir -p "$_cold/.github/workflows"
 _cold_out="$(_bootstrap_in "$_cold" public)"
-assert_contains "$_cold_out" ".github/workflows/quick-gates.yml" \
-  "cold start installs quick-gates — the producer for the context the tier template requires"
+assert_contains "$_cold_out" ".github/workflows/pre-commit.yml" \
+  "cold start installs pre-commit — the producer for the context the tier templates require"
+# ASYMMETRIC (§16.9): the PUBLIC variant is the bare name. A `-public` form is a
+# file canon does not ship, and `|| exit 1` would abort the install.
+assert_contains "$_cold_out" "workflows/pre-commit.yml	" \
+  "public cold start resolves the BARE template name, not pre-commit-public.yml"
 
 # (b) PRIVATE cold start resolves the labelled variant, not the generic.
 _coldp="$TMP/bs-coldp"; mkdir -p "$_coldp/.github/workflows"
-assert_contains "$(_bootstrap_in "$_coldp" private)" "workflows/quick-gates-private.yml" \
+assert_contains "$(_bootstrap_in "$_coldp" private)" "workflows/pre-commit-private.yml" \
   "private cold start resolves the self-hosted variant (D1/OPS-0049)"
 
-# (c) RE-BOOTSTRAP on a v2 consumer — must NOT add v3 behind their back.
-for _v2 in pre-commit markdown-lint links; do
-  _mig="$TMP/bs-mig-$_v2"; mkdir -p "$_mig/.github/workflows"
-  printf 'v2 caller\n' > "$_mig/.github/workflows/$_v2.yml"
-  assert_absent "$(_bootstrap_in "$_mig" public)" ".github/workflows/quick-gates.yml" \
-    "re-bootstrap with $_v2.yml present SKIPS quick-gates (no v2+v3 double-install, #429)"
-done
+# (c) #481, THE OTHER DIRECTION — bootstrap must not install a caller whose
+#     context no tier template requires. Asserted against (a)'s output, which
+#     assert_contains above has already proven NON-EMPTY: `assert_absent` passes
+#     on the empty string, so an absence claim made against an unproven capture
+#     is a check that cannot fail.
+assert_absent "$_cold_out" ".github/workflows/quick-gates.yml" \
+  "cold start does NOT install quick-gates — no tier requires its context yet (#481)"
 
-# (d) Already migrated — quick-gates present, v2 gone. Preserved, not re-fetched.
+# (d) An existing caller is a local override — preserved, never re-fetched.
+#     Captured to a variable and proven non-empty FIRST, for the same reason (c)
+#     is asserted against (a)'s output: `_bootstrap_in` suppresses stderr and
+#     swallows the status, so a block that aborted under `set -euo pipefail`
+#     yields an empty capture, and an absence claim against it cannot fail.
 _done="$TMP/bs-done"; mkdir -p "$_done/.github/workflows"
-printf 'local override\n' > "$_done/.github/workflows/quick-gates.yml"
-assert_absent "$(_bootstrap_in "$_done" public)" ".github/workflows/quick-gates.yml" \
-  "an existing quick-gates.yml is preserved, never re-fetched"
-assert_eq "$(cat "$_done/.github/workflows/quick-gates.yml")" "local override" \
+printf 'local override\n' > "$_done/.github/workflows/pre-commit.yml"
+_done_out="$(_bootstrap_in "$_done" public)"
+# Anchor on the block's EXIT STATUS and on the stanza under test, not on an
+# earlier stanza. `composition` is the SECOND of three (ai-review, composition,
+# pre-commit), so its presence proves only that the block got that far — an
+# abort anywhere after it would still satisfy it and leave the absence claim
+# below passing vacuously. On this sandbox the pre-commit stanza emits a
+# `preserve` line rather than a fetch, so the proof of arrival is in the log.
+assert_eq "$(cat "$TMP/bs-rc")" "0" \
+  "the override sandbox ran clean under set -euo pipefail"
+assert_contains "$(cat "$TMP/bs-log")" "preserve  .github/workflows/pre-commit.yml" \
+  "the block REACHED the pre-commit stanza and took the preserve branch"
+assert_absent "$_done_out" ".github/workflows/pre-commit.yml" \
+  "an existing pre-commit.yml is preserved, never re-fetched"
+assert_eq "$(cat "$_done/.github/workflows/pre-commit.yml")" "local override" \
   "...and is left byte-unchanged"
 
 echo ""

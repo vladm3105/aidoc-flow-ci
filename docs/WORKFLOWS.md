@@ -276,7 +276,13 @@ order — each step depends on the prior:
    this step is already done on a fresh `install.sh` run; it is listed here for
    ordering context and for repos adopting workflows by hand. Its check is
    required on every tier that has required checks at all (REPO_STANDARDS
-   §16.9), which is why it is no longer optional.
+   §16.9), which is why it is no longer optional. **It is still the bootstrap
+   producer under `ci/v3.0.0`** — v3's `quick-gates.yml` supersedes it, but only
+   once PLAN-026 §C0 substitutes the `quick-gates` context into the tier
+   templates, which cannot precede the fleet rollout (C1–C5). Adopting
+   `quick-gates` before then is a per-repo decision, not a bootstrap default:
+   `install.sh <repo> --add-surface .github/workflows/quick-gates.yml`, then
+   `docs/MIGRATION_v3.0.0.md` steps 3–5. Background: #481, REPO_STANDARDS §16.9.
 2. **`markdown-lint.yml`** + **`links.yml` (offline mode)** — doc-quality
    floor.
 3. **`secret-scan.yml`** — defense-in-depth against accidental commit of

@@ -182,8 +182,8 @@
       },
       "substitute": [],
       "safe_to_replace": true,
-      "_note": "PLAN-018 F2: auto_install=true — this caller emits `call / Lint / format / security hooks`, a REQUIRED status check on every tier that has required checks at all, and the bootstrap tier's only one. It is the sole exception to the auto_install=false-for-every-non-bootstrap-surface rule, because without a producer, armed protection pins every PR on a check that never reports. Naming is ASYMMETRIC (public variant is the bare name) — see REPO_STANDARDS.md §16.9.",
-      "auto_install": false
+      "_note": "PLAN-018 F2: auto_install=true — this caller emits `call / Lint / format / security hooks`, a REQUIRED status check on every tier that has required checks at all, and the bootstrap tier's only one. It is the sole exception to the auto_install=false-for-every-non-bootstrap-surface rule, because without a producer, armed protection pins every PR on a check that never reports. Naming is ASYMMETRIC (public variant is the bare name) — see REPO_STANDARDS.md §16.9. STILL TRUE UNDER v3, and #481 is why: quick-gates only becomes the bootstrap producer when PLAN-026 §C0 substitutes its context into the four tier templates, and §C0 cannot land until the fleet actually HAS quick-gates.yml (C1–C5). Until both land together, THIS caller is what the templates require, so this flag and that substitution move as one change or one of them is wrong.",
+      "auto_install": true
     },
     {
       "path": ".github/workflows/secret-scan.yml",
@@ -199,14 +199,14 @@
     {
       "path": ".github/workflows/quick-gates.yml",
       "template": "workflows/quick-gates.yml",
-      "_note": "PLAN-025 v3: consolidates pre-commit + markdownlint + links into ONE job via composite actions, so three checks share one runner instead of paying three provisioning cycles. Emits the BARE context `quick-gates` — a plain job has no `<jobkey> / ` prefix (that shape comes only from a reusable call). visibility_variants are REQUIRED here: the job carries a literal `runs-on:`, so without a private variant `--update` re-applies the label-less generic and private jobs queue forever (D1).",
+      "_note": "PLAN-025 v3: consolidates pre-commit + markdownlint + links into ONE job via composite actions, so three checks share one runner instead of paying three provisioning cycles. Emits the BARE context `quick-gates` — a plain job has no `<jobkey> / ` prefix (that shape comes only from a reusable call). visibility_variants are REQUIRED here: the job carries a literal `runs-on:`, so without a private variant `--update` re-applies the label-less generic and private jobs queue forever (D1). auto_install=false is DELIBERATE and is #481: #441 set it true as the bootstrap producer, but its other half — PLAN-026 §C0, substituting `quick-gates` into the four tier templates — never landed, so bootstrap installed this while the templates still required pre-commit's context and a cold start armed a check nothing produced. It flips back to true in the SAME change as §C0, and not before C1–C5 have put quick-gates.yml on the fleet. Adopt it deliberately meanwhile: install.sh --add-surface .github/workflows/quick-gates.yml.",
       "visibility_variants": {
         "public": "workflows/quick-gates.yml",
         "private": "workflows/quick-gates-private.yml"
       },
       "substitute": [],
       "safe_to_replace": true,
-      "auto_install": true,
+      "auto_install": false,
       "replaces": [
         ".github/workflows/pre-commit.yml",
         ".github/workflows/markdown-lint.yml",

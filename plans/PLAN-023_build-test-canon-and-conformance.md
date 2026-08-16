@@ -850,7 +850,10 @@ second consumer:**
    contexts" line instead of vanishing (Claim 76). Iterating column 1 alone would
    trade the ruleset silent-drop for the umbrella silent-drop — the same defect,
    one tier over. The wizard's `?non-call` arm (Claim 64) is deleted with the
-   test's.
+   test's — **already done, ahead of this PR, by #481**, which had to teach the
+   same `case` statement the new `!` symbol and could not leave a silently-passing
+   arm next to it. PR-4 inherits it done; the union-iteration half is untouched
+   and still owed.
 
 **`tests/test_checknames.sh` is deliberately NOT extended.** It is canon's other
 context enumerator and is also `branch-protection-*.json`-only (Claim 65), but it
@@ -1224,7 +1227,7 @@ team member either), correcting an earlier draft of this section.
 | 61 | The map resolves a job's check name as `name:` if declared, else the job key | `nm = jb.get("name", jk) if isinstance(jb, dict) else jk` | install/required-context-map.py:57 |
 | 62 | The map decides call-vs-bare by splitting the context on `" / "` | `if " / " not in ctx:` | install/required-context-map.py:110 |
 | 63 | The wizard filters map rows on column 1 equalling a branch-protection tier, so a non-tier column-1 value is dropped | `done < <(printf '%s\n' "$mapout" \| awk -F'\t' -v tt="$t" '$1==tt{print $2"\t"$3}')` | install/deploy-ci-wizard.sh:211 |
-| 64 | The wizard carries its own `?non-call` pass arm, a second copy of the token §9d removes | `'?non-call') : ;;` | install/deploy-ci-wizard.sh:207 |
+| 64 | The wizard's `?non-call` pass arm — the second copy of the token §9d removes — is GONE, removed ahead of PR-4 by #481; the label now reports as the defect it signals rather than passing | `'?'\|'?non-call') missing="$missing\n       · $ctx → canon ships NO producer — canon defect" ;;` | install/deploy-ci-wizard.sh:210 |
 | 65 | Canon's other context enumerator is also branch-protection-only | `for tpl in install/templates/branch-protection-*.json; do` | tests/test_checknames.sh:32 |
 | 66 | The wizard checks the *target* repo's installed callers, the half the map cannot supply | `local have; have="$($GH api "repos/$repo/contents/.github/workflows?ref=$defbr"` | install/deploy-ci-wizard.sh:156 |
 | 67 | `--apply` exits 2 without `--tier`, so no apply run is section-scoped | `"") echo "apply-standards: --apply requires --tier <governance\|product\|ops\|umbrella\|bootstrap>" >&2; exit 2 ;;` | install/apply-standards.sh:151 |

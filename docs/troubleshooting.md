@@ -750,3 +750,41 @@ here with a named cause instead of mid-PR.
 **Not this.** GitHub-hosted callers (`ubuntu-latest`) are never affected. This is
 also not tied to a particular `ci/vX.Y.Z` — node24 actions reach back into the
 early `ci/v1.x` series; it simply went undocumented until #342.
+
+## 20. Every PR pins on a check that never reports, right after onboarding
+
+**Symptom.** A repo bootstrapped at `ci/v3.0.0`, then armed with
+`apply-standards.sh --apply --tier <any tier but umbrella>`, shows every PR
+waiting on `call / Lint / format / security hooks` — *"Expected — Waiting for
+status to be reported"* — forever. Nothing is red; nothing ever reports. Consumer
+tiers set `enforce_admins`, so there is no `--admin` escape either.
+
+**Cause.** [#481](https://github.com/vladm3105/aidoc-flow-ci/issues/481). At the
+`ci/v3.0.0` tag, bootstrap installs `quick-gates.yml` (which emits the bare
+context `quick-gates`), while all four tier templates still require
+`call / Lint / format / security hooks` — produced only by `pre-commit.yml`,
+which that tag does not install. `apply-standards.sh` PUTs the tier file as one
+whole payload, so the armed set is exactly the template's.
+
+**This is not a runner problem**, which is what it looks like: the same
+"waiting forever" symptom is what an unmatched self-hosted label produces (§13,
+`docs/runners.md`). Tell them apart by asking whether the check has a **producer
+workflow installed at all** — here there is no workflow, so there is no queued
+job to inspect:
+
+```sh
+ls .github/workflows/pre-commit.yml        # absent on an affected repo
+gh api repos/<owner>/<repo>/branches/main/protection \
+  --jq '.required_status_checks.contexts[]'
+```
+
+**Fix.** Install the missing producer. No protection change is needed, and no
+context is renamed:
+
+```sh
+bash install.sh <owner/repo> --add-surface .github/workflows/pre-commit.yml
+```
+
+**Who is affected.** Only a **cold start** at `ci/v3.0.0`. A repo that already
+carried `pre-commit.yml` never lost it — nothing removes it — so the existing
+fleet is not exposed. Fixed on `main`; the fix reaches consumers at the next tag.

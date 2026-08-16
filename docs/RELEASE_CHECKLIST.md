@@ -79,16 +79,20 @@ the 🔴 dry-run for you.
   > shipped.** The gate cannot detect this: it is doing exactly what it was
   > asked, against the wrong input.
   >
-  > **Concretely, and this is live as of 2026-08-10:** PR #441 changes
-  > `install/install.sh`'s bootstrap block and `manifest.json`'s `auto_install`
-  > flags — both squarely on the cold-start surface `coldstart_surface()`
-  > derives. Running FT-30 on `main` today would pass, and would have validated
-  > a bootstrap that installs `pre-commit.yml`, when the tagged one installs
-  > `quick-gates.yml`.
+  > **Concretely, and this has now happened twice on the same surface:** both
+  > #441 and its revert #481 change `install/install.sh`'s bootstrap block and
+  > `manifest.json`'s `auto_install` flags — squarely on the cold-start surface
+  > `coldstart_surface()` derives. As of #481 the direction is inverted from the
+  > example this note used to carry: `main`'s bootstrap installs
+  > `pre-commit.yml` while the **tagged** one (`ci/v3.0.0`) still installs
+  > `quick-gates.yml`, so an FT-30 run against `main` validates an installer no
+  > consumer has yet. The lesson is the surface, not either direction: **any
+  > change to the bootstrap block or the `auto_install` flags must be dry-run
+  > against the prep-merge SHA.**
   >
   > **The ordering that works:**
   >
-  > 1. Land the bootstrap-path change (#441) **in the prep branch**, or merge it
+  > 1. Land the bootstrap-path change **in the prep branch**, or merge it
   >    immediately before `prep`.
   > 2. `release.sh prep <ver>` → merge the prep PR.
   > 3. **Then** `ft30-dry-run.sh --target …` — `CI_TAG` now resolves to the

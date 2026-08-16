@@ -234,6 +234,21 @@ produces.
 
 ## Known issues
 
+- **A cold start at `ci/v3.0.0` followed by `apply-standards.sh --apply` arms a
+  required context with no producer** ([#481](https://github.com/vladm3105/aidoc-flow-ci/issues/481)).
+  At that tag, bootstrap installs `quick-gates.yml` while every tier template
+  still requires `call / Lint / format / security hooks`, produced only by
+  `pre-commit.yml`. Every PR then pins on *"Expected — Waiting for status to be
+  reported"*, and consumer tiers set `enforce_admins`, so there is no `--admin`
+  escape. **Fixed on `main`; the fix reaches you at the next tag.** Recovery on
+  an affected repo — install the missing producer, no protection change needed:
+
+  ```sh
+  bash install.sh <owner/repo> --add-surface .github/workflows/pre-commit.yml
+  ```
+
+  Only a **cold start** is affected. A repo that already had `pre-commit.yml`
+  never lost it, and nothing removes it.
 - **`sast-scan` needs the rebuilt image.** See "Before you start" step 1. This
   is the single most likely cause of a red `scanners` on day one.
 - **The full `docs/v3/` documentation set is not written** (PLAN-025 P5). This
@@ -256,13 +271,11 @@ canon.** To go back:
      The span covers the WHOLE list: an ignore-end between items splits the
      ordered list and reds MD029. -->
 1. Re-add the six v2 caller files at your previous tag. **Do not rely on a bare
-   bootstrap for this** — since #441 flipped `pre-commit.yml` to
-   `auto_install: false`, **none** of the six is `auto_install: true`, so
-   `bash install.sh <owner/repo>` restores **zero of six** and installs
-   `quick-gates.yml` instead. Step 2 then arms six contexts of which none has a
-   producer. That is the hang this procedure exists to end, re-created by it —
-   worse than the one-of-six this step used to describe. Restore each one
-   explicitly:
+   bootstrap for this** — only `pre-commit.yml` is `auto_install: true` (#481
+   reverted #441's flip), so `bash install.sh <owner/repo>` restores **one of
+   six**, and step 2 then arms six contexts of which **five** have no producer.
+   That is the hang this procedure exists to end, re-created by it. Restore each
+   one explicitly:
 
    ```sh
    CI_TAG=ci/v2.16.0 bash install.sh <owner/repo> \

@@ -5,6 +5,65 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — bootstrap installed one producer while the tier templates required another (#481, #455)
+
+`#441` shipped one half of a two-half change. It moved `auto_install` from
+`pre-commit.yml` to `quick-gates.yml`, on the condition — stated in its own PR
+body — that it land *"next to PLAN-026 C0's template substitution"*. §C0 never
+followed. So canon shipped a state where a cold start installed
+`quick-gates.yml` while all four tier templates still required
+`call / Lint / format / security hooks`, whose only producer is
+`pre-commit.yml`. `apply-standards.sh` PUTs the tier file as one whole payload,
+so a post-`ci/v3.0.0` cold start followed by `--apply` armed a required context
+nothing produced — and consumer tiers set `enforce_admins`, so there is no
+`--admin` escape. Existing consumers were unaffected: they already carry
+`pre-commit.yml`, and nothing removes it.
+
+**The flags are reverted, not the decision.** `pre-commit.yml` returns to
+`auto_install: true` and `quick-gates.yml` to `false`. §C0 and the flip now land
+**together, after PLAN-026 C1–C5** have put `quick-gates.yml` on the fleet,
+because landing §C0 alone is the same brick from the other side: all eight
+consumers carrying required contexts have `pre-commit.yml` and none has
+`quick-gates.yml`. `quick-gates` stays adoptable per repo via `--add-surface`.
+The full reasoning, and the ordering rule it establishes, are in `DECISIONS.md`
+CI-0038; the standing rule is `REPO_STANDARDS.md` §16.9.
+
+**No branch-protection template, ruleset, required context or consumer repo is
+touched by this change.**
+
+**The durable half is the detector, because nothing was red in either
+direction.** `install/required-context-map.py` only ever asked *"does canon ship
+a producer?"* — and canon did, in both broken states, so all fifteen rows read
+green throughout. It now also asks whether a **cold start** will have that
+producer, marking one shipped at `auto_install: false` with `!`, and
+`tests/test_required_contexts.sh` §5 reds the suite when the bootstrap tier
+depends on one. It catches §C0 landing alone; it cannot catch §C0 landing with
+the flag flip before the rollout, because `auto_install` describes a cold start
+and canon cannot read consumer repos. That ordering is review-enforced, and a
+green suite is not clearance for it.
+
+Mutation-proven, each mutation asserted to have applied: `auto_install: false`
+on the bootstrap producer reds 2 assertions in `test_install.sh` and 2 in
+`test_required_contexts.sh`; pointing bootstrap back at `quick-gates` reds 6.
+Both edit only `manifest.json` and leave every template alone, so a map ignoring
+`auto_install` still resolves the producer and stays green — which is exactly
+what shipped.
+
+Two of `test_install.sh`'s four bootstrap cases would have been left **vacuous**
+by the revert — `assert_absent` against a `quick-gates` stanza the revert
+removes passes on anything — so they were rewritten to assert absence against a
+capture already proven non-empty. Separately, the harness stub recorded
+`fetch_template` calls without materialising the destination, which made every
+"left byte-unchanged" assertion in that section unable to fail; it now writes
+the file.
+
+Issue #455 closes with this: its three sites (`manifest.json`'s two `_note`s,
+`REPO_STANDARDS.md` §16.9, `docs/WORKFLOWS.md` §4 step 1) are accurate again
+under this direction. Two further sites were found stale in the same pass and
+corrected — `docs/MIGRATION_v3.0.0.md`'s rollback step 1, whose restore
+arithmetic had inverted to "zero of six", and `docs/UPDATE_GUIDE.md`'s
+`auto_install` paragraph.
+
 ### Fixed — the two `pre_push_check.sh` copies had diverged on `BASE=` (#477)
 
 `scripts/pre_push_check.sh` and `install/templates/pre_push_check.sh` had

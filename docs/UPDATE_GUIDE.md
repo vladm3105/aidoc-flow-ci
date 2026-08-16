@@ -346,9 +346,10 @@ document already uses: `--repin` rewrites `uses:` tag strings, and `--update`
 walks only files the consumer already has, so neither introduces a file that is
 absent — which all three v3 callers are
 ([#429](https://github.com/vladm3105/aidoc-flow-ci/issues/429)). What
-`auto_install` governs is narrower: a **bootstrap** picks up `quick-gates.yml`
-and not `scanners.yml` or `links-external.yml`, so a consumer adopting by
-bootstrap still needs `--add-surface` for the other two. A consumer several
+`auto_install` governs is narrower, and as of #481 it excludes **all three**:
+`quick-gates.yml` joined `scanners.yml` and `links-external.yml` at
+`auto_install: false`, so a **bootstrap** picks up none of them and a consumer
+adopting by bootstrap needs `--add-surface` for all three. A consumer several
 minors behind additionally needs body adoption — see
 [Body adoption vs re-pin](#body-adoption-vs-re-pin--pick-the-right-operation-first)
 and reconcile the diff.
