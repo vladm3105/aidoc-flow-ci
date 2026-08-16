@@ -357,7 +357,7 @@ only `B ──► C`, which reads as "C is next after B" when C cannot start at 
 | 4 | The hook-block marker's trailing vN is the refresh key that lets a fragment change reach an adopted repo | `REFRESH KEY` | install/templates/pre-commit-hook-block.yaml:3 |
 | 5 | P5's new set is SEVEN documents under docs/v3/; MIGRATION_v3.0.0.md is the eighth row and already exists | `docs/v3/ARCHITECTURE.md` | plans/PLAN-025_v3-clean-rebuild.md:414 |
 | 6 | RULES.md's acceptance test is that every §2 defense row appears as a rule | `docs/v3/RULES.md` | plans/PLAN-025_v3-clean-rebuild.md:440 |
-| 7 | P7 step 0 is updating the branch-protection templates in the same release | `branch-protection-*.json` in the same release | plans/PLAN-025_v3-clean-rebuild.md:595 |
+| 7 | P7 step 0 is updating the branch-protection templates in the same release | `branch-protection-*.json` in the same release | plans/PLAN-025_v3-clean-rebuild.md:605 |
 | 8 | apply-standards.sh PUTs the tier branch-protection file as one whole payload | `branch-protection-${TIER}.json` | install/apply-standards.sh:706 |
 | 9 | PLAN-025 conditions P7 on a dry-run-capable rollback helper existing first, and records P9 NOT STARTED | `P9 — Rollback` | plans/PLAN-025_v3-clean-rebuild.md:580 |
 | 10 | PLAN-025 P8 lists the wizard as a remaining, unaddressed v3 tooling gap | `install/deploy-ci-wizard.sh` | plans/PLAN-025_v3-clean-rebuild.md:570 |
@@ -367,7 +367,7 @@ only `B ──► C`, which reads as "C is next after B" when C cannot start at 
 | 14 | secret-scan keeps its existing context through the migration | `call / gitleaks` | docs/MIGRATION_v3.0.0.md:67 |
 | 15 | Canon's main carries FIVE required checks, not two — so a two-name migration list strands three | `5 required checks` | docs/RELEASE_CHECKLIST.md:129 |
 | 16 | The #349 image fix is delivered PER HOST with no registry push, so a host that has not rebuilt still reds `scanners` | `per host with no registry push` | docs/MIGRATION_v3.0.0.md:78 |
-| 17 | litellm-smoke passed — run 31348751529, both aliases | `LiteLLM smoke PASSED` | plans/PLAN-025_v3-clean-rebuild.md:1002 |
+| 17 | litellm-smoke passed — run 31348751529, both aliases. Re-pinned from PLAN-025's §8 blocker table to the durable record, which is where the evidence now lives | `PASSED 2026-08-09 22:03 EDT` | DECISIONS.md:2477 |
 | 18 | Canon cannot invoke its own composite actions until the ci/v3.0.0 tag exists (FT-21) — so C cannot start before P6 | `cannot call its own composite actions until` | docs/EXERCISER_INVENTORY.md:51 |
 | 19 | The migration is add 2 / remove up to 6, not a two-name rename | `collapse into` | docs/MIGRATION_v3.0.0.md:52 |
 | 20 | Only ONE of the six retiring contexts appears in a tier template, so C0 and the live edit are different lists | `call / Lint / format / security hooks` | install/templates/branch-protection-product.json:10 |
@@ -379,7 +379,7 @@ only `B ──► C`, which reads as "C is next after B" when C cannot start at 
 | 26 | deploy-ci-wizard.sh hardcodes the v2 caller roster | `ALL_WF=` | install/deploy-ci-wizard.sh:50 |
 | 27 | AI_CI_DEPLOYMENT.md fronts the wizard as the cold-start fast path | `Fast path` | docs/AI_CI_DEPLOYMENT.md:15 |
 | 28 | The wizard sits deliberately outside the FT-30 gate, so nothing catches a stale roster | `deploy-ci-wizard.sh` / `apply-standards.sh` (entry points a | docs/RELEASE_CHECKLIST.md:87 |
-| 29 | PLAN-025 §7 makes PLAN-024 Phases A/B/C a precondition for v3 | `ship first and separately` | plans/PLAN-025_v3-clean-rebuild.md:634 |
+| 29 | PLAN-025 §7 makes PLAN-024 Phases A/B/C a precondition for v3 — now recorded as DEVIATED FROM, not met (CI-0037) | `ship first and separately` | plans/PLAN-025_v3-clean-rebuild.md:644 |
 | 30 | cli2 parity is a LOCAL-hook-to-CI rule: local markdownlint must be cli2 with canon's config | `Tool parity is mandatory` | plans/PLAN-025_v3-clean-rebuild.md:388 |
 | 31 | The CI half of that parity is already asserted; the hook half is not | `does NOT use cli1` | tests/test_actions.sh:370 |
 | 32 | pre_push_check.sh is auto_install:true, so a fail-closed rewrite reaches every adopted consumer | `scripts/pre_push_check.sh` | install/templates/manifest.json:314 |
