@@ -5,6 +5,48 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — the wrapper instructions said `source`; canon ends in `exit` (#474)
+
+Four surfaces told consumers to build their `scripts/pre_push_check_<repo>.sh`
+wrapper by **sourcing** canon. Canon's last line is `exit "$rc"`, so sourcing it
+terminates the wrapper there, with canon's own status — the wrapper reports
+canon's result and **runs none of its own checks**. No error, no missing output,
+exit 0 on a healthy push. A wrapper built exactly as documented looks like it
+works.
+
+Corrected to the subprocess form on all four: `scripts/pre_push_check.sh:17`,
+`install/templates/pre_push_check.sh:17`,
+`install/templates/pre-commit-hook-block.yaml:38`, `docs/local-pre-push.md` §4.
+`REPO_STANDARDS` §14.1 was already correct and stays the canonical statement;
+the comment surfaces now point at it rather than restating it, and
+`docs/local-pre-push.md` §4 drops its byte-identical copy of the §14.1
+skeleton — two hand-maintained copies of one executable snippet, with no
+reader comparing them.
+
+**Propagation is not uniform, and the two canon-body surfaces differ.**
+`install/templates/pre_push_check.sh` is manifest-walked, so it reaches
+consumers on the next tag. `install/templates/pre-commit-hook-block.yaml` does
+**not**: bootstrap re-merges the fragment only when a consumer's marker version
+is lower, the merge round-trips the *consumer's* body and stamps only the
+marker line, and `--update` excludes the file entirely. A corrected comment in
+it therefore reaches cold-start adopters only. Three consumers
+(`engramory`, `interlog`, `iplan-standard`) carry the stale text today. Tracked
+as #478 with the marker-version bump, which is a separate change because it
+rewrites a string PLAN-023's Claim ledger pins as a symbol.
+
+Two review findings folded, both of which reproduced the defect class being
+fixed: the first draft deleted the rc-accumulator requirement from the shipped
+headers (an extra check that overwrites `rc` turns the OPS-0069 gate off
+silently, and `REPO_STANDARDS.md` exists in only one repo, so the pointer that
+replaced it does not resolve where the script lands); and the §14.1 skeleton
+omitted its `set` line, where the conventional `set -euo pipefail` aborts the
+wrapper before any extra runs — measured as indistinguishable from the `source`
+form, zero extras and exit 1 for both.
+
+Found while building the #469 wrapper — the documented design was the first
+thing tried, and it silently did nothing. Same class as #355 and #469: a check
+that never runs reports nothing and reads as coverage.
+
 ### Added — `check_plan.py` has a reader: `scripts/pre_push_check_ci.sh` (#469)
 
 23 plans carry a Claim ledger and **nothing in this repo ever invoked the gate

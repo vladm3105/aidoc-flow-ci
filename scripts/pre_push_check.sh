@@ -14,8 +14,8 @@
 #
 # Repo-specific extra checks (e.g., verified-planning `check_plan.py`,
 # operations classify-parity) live in a consumer-side wrapper
-# `scripts/pre_push_check_<repo>.sh` that sources this canon + adds its
-# own. Wrapper preserves this script's rc-accumulator pattern.
+# `scripts/pre_push_check_<repo>.sh` that RUNS this canon as a subprocess (never
+# `source` — it exits) and OR-accumulates its rc, never overwriting it. §14.1.
 #
 # OPS-0069 says: this hook does NOT — and cannot — perform the mandatory
 # multi-agent SELF-REVIEW for you. That is an agent step (dispatch the

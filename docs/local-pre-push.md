@@ -87,14 +87,29 @@ Repos with domain-specific checks not in the canon (e.g., verified-
 planning `check_plan.py`, operations classify-parity) ship a thin
 wrapper `scripts/pre_push_check_<repo>.sh` that:
 
-1. Sources the canon script FIRST (audit-trail is the load-bearing
-   check; deferring it under repo-only checks would let mechanical
-   linting errors mask a missing phrase).
-2. Runs the repo-specific extras AFTER, accumulating into `rc`.
-3. Points `.pre-commit-config.yaml` at the WRAPPER (not the canon).
+1. Runs the canon script FIRST — audit-trail is the load-bearing check;
+   deferring it under repo-only checks would let mechanical linting errors
+   mask a missing phrase.
+2. Runs the repo-specific extras AFTER, OR-accumulating into `rc`.
+3. Points `.pre-commit-config.yaml` at the WRAPPER (not the canon), **or**
+   wires the wrapper as a second hook alongside the canon entry. This repo
+   does the latter — `.pre-commit-config.yaml` keeps `pre_push_check.sh`
+   and adds `pre_push_check_ci.sh --ledger-only` — because canon is already
+   wired here as its own hook, and repointing that entry would drift
+   canon's config from the fragment it ships.
 
-Reference: `aidoc-flow-operations/scripts/pre_push_check_ops.sh` (added
-as part of the Wave 2 rollout per PLAN-002 §5.5).
+**Run canon as a subprocess; never `source` it.** Canon exits, so sourcing
+it terminates the wrapper at that point and silently skips every extra.
+Under `set -e` the wrapper aborts the same way. Both failure modes, the
+skeleton to copy, and the rc-accumulation requirement are stated once, in
+[`REPO_STANDARDS.md`](REPO_STANDARDS.md) §14.1 — build the wrapper from
+there, not from this section.
+
+Reference implementations: `scripts/pre_push_check_ci.sh` in this repo
+(#469, the Claim-ledger gate) and
+`aidoc-flow-operations/scripts/pre_push_check_ops.sh` (Wave 2 rollout per
+PLAN-002 §5.5; its own header comment is stale — the code is correct, see
+`aidoc-flow-operations#298`).
 
 ## 5. Prerequisites
 
