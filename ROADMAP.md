@@ -35,24 +35,23 @@ The three founder-gated items that blocked the tag:
 
 | Gate | Discharged | Evidence |
 | --- | --- | --- |
-| 🔴 FT-30 cold-start dry-run | 2026-08-12 | `FT-30 DRY-RUN PASSED` against `vladm3105/ci-coldstart-scratch` (public) at `CI_TAG=f9c9c73`, the prep-merge SHA. **Recorded nowhere durable yet** — see the issue filter below |
-| 🔴 `litellm-smoke` | 2026-08-10 | run `31348751529`, both aliases |
+| 🔴 FT-30 cold-start dry-run | 2026-08-12 | `FT-30 DRY-RUN PASSED` against `vladm3105/ci-coldstart-scratch` (public) at `CI_TAG=f9c9c73`, the prep-merge SHA — `DECISIONS.md` **CI-0037** |
+| 🔴 `litellm-smoke` | 2026-08-09 | run `31348751529`, both aliases — `DECISIONS.md` **CI-0037**. Local date; `2026-08-10T02:03:45Z` UTC, which earlier artifacts recorded as "2026-08-10" |
 | 🔴 OPS-0066 | 2026-08-10 | waived — `DECISIONS.md` CI-0036 |
 
 **Phase status is the owning plan's, not this file's.** PLAN-025's header and
-its P6 row still read `NOT STARTED — blocked on a 🔴 founder step`, which the
-tag falsifies; reconciling them is tracked, not done here. What this file
-asserts is only what the tag itself settles: the release happened. **P4** (local
-layer), **P5** (the `docs/v3/` set), **P7** (per-repo context migration) and
-**P9** (rollback) are not done, and P8 remains core-done with items open. P7
-stays the only irreversible phase.
+P6 row now record the release, and `DECISIONS.md` CI-0037 is the durable record
+of it. **P4** (local layer), **P5** (the `docs/v3/` set), **P7** (per-repo
+context migration) and **P9** (rollback) are not done, and P8 remains core-done
+with items open. P7 stays the only irreversible phase and must not run before P9
+exists.
 
-PLAN-025 §7 makes PLAN-024 Phases A/B/C a precondition and PLAN-024 is still
-`Status: Draft — no phase executed`, so the tag was cut ahead of that
-precondition rather than after it. §7's stated reason for A is the
-`litellm-smoke` circularity and the FT-30 precondition, and both were discharged
-directly — but the plan has not been amended to say so, which is part of the
-same reconciliation.
+PLAN-025 §7 made PLAN-024 Phases A/B/C a precondition, and the tag was cut with
+A and B unexecuted. §7 and CI-0037 now record that honestly: the **gate** half of
+§7's rationale was discharged directly (`litellm-smoke`, FT-30), but the **waste**
+half was not — v3 was built around `doc-maintainer`, which Phase A proposes to
+delete and which is still live on `operations`. **A and B are no longer release
+gates**, but A's question is open and now more expensive.
 
 ## Earlier release — ci/v2.10.0: FT-15 pinned-asset-fetch fix (PLAN-017)
 
