@@ -5,6 +5,53 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — `check_plan.py` has a reader: `scripts/pre_push_check_ci.sh` (#469)
+
+23 plans carry a Claim ledger and **nothing in this repo ever invoked the gate
+that verifies them.** The cost was not hypothetical: PLAN-023's ledger asserted
+the presence of a `?non-call` symbol whose *absence* PLAN-025 P8 had made the
+tested invariant, and it sat that way for weeks. Same defect class as #355
+(`governance_check` has no CI reader) — a gate that exists, is correct, and is
+never invoked reports nothing and looks like coverage.
+
+`scripts/pre_push_check_ci.sh` is the `pre_push_check_<repo>.sh` wrapper §14.1
+has described since PLAN-002 §4.8 and which this repo never had. Wired as a
+`pre-push` hook, **advisory**: it prints failing rows and exits 0. 79 rows
+across 11 gated plans fail today, and blocking on day one reds every
+plan-touching push, which is how a hook gets `--no-verify`d and then ignored.
+`LEDGER_GATE_BLOCKING=1` enforces once the gated set is clean.
+
+Three scoping decisions, each measured rather than assumed:
+
+- **Plans marked finished are exempt; everything else fails closed.** The
+  exemption reads the `Status:` line — `SHIPPED`, `COMPLETE`, `IMPLEMENTED`,
+  `DEFERRED`, `SUPERSEDED`. A plan with **no** parseable `Status:` line is
+  *gated*, not exempt: five plans here have none, and treating an unreadable
+  header as "finished" would drop them silently — the very failure the gate
+  exists to catch. Measured split: 8 exempt (54 rows), 15 gated (79 rows).
+- **The workspace root is passed as an extra `--root`.** Cross-repo citations
+  (`operations/CLAUDE.md`, `framework/CHANGELOG.md`, …) cannot resolve against
+  this repo alone, so 23 rows failed as `path does not exist` purely because of
+  how the gate was invoked — an invocation artifact, not a plan defect.
+- **This cannot become a CI job as-is.** `check_plan.py` ships with the
+  verified-planning Claude skill, not with this repo, and the ephemeral
+  single-use runners are fresh containers with no `~/.claude`. A `plans-gate`
+  job needs the script vendored first — a separate decision with its own drift
+  surface.
+
+### Fixed — §14.1 prescribed a wrapper design that cannot work (#469)
+
+§14.1 and both `pre_push_check.sh` headers told consumers the wrapper should
+`source` canon. Canon ends in `exit "$rc"`, so sourcing it **terminates the
+wrapper at that line, with canon's own exit status** — the wrapper reports
+canon's result and silently runs none of its extras. No error, no output, exit
+0. §14.1 now prescribes running canon as a subprocess and capturing `$?`, and
+adds the property a wrapper must not break: canon-red plus extras-green must
+still exit non-zero, or the wrapper turns off the OPS-0069 gate without
+touching it. The two script headers still carry the old wording and are tracked
+as #474 — they are canon body and propagate to consumers on the next tag, so
+they need their own change record and version bump.
+
 ### Added — `DECISIONS.md` CI-0037: the v3 release and its three discharged gates (#454, #471, #472)
 
 CI-0036 closed by naming the gates that still stood before a tag. All of them

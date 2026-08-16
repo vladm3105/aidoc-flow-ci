@@ -1155,9 +1155,45 @@ primitive; caught by §14.2 CI check).
 
 **Repo-specific extras** (e.g., verified-planning `check_plan.py`,
 operations classify-parity) live in a consumer wrapper
-`scripts/pre_push_check_<repo>.sh` that sources canon + adds its own
-checks. Wrapper preserves the canon's `set -uo pipefail` + rc-accumulator
+`scripts/pre_push_check_<repo>.sh` that runs canon + adds its own checks.
+Wrapper preserves the canon's `set -uo pipefail` + rc-accumulator
 pattern. See PLAN-002 §4.8 for the operations wrapper reference.
+
+**The wrapper must RUN canon as a subprocess, never `source` it.** Canon
+ends in `exit "$rc"`, so sourcing it terminates the wrapper at that line —
+and terminates it with canon's own exit status, so the wrapper reports
+canon's result and **silently runs none of its extras**. There is no error;
+a wrapper built that way looks like it works. Capture the status instead:
+
+```sh
+bash "$(dirname "$0")/pre_push_check.sh"; rc=$?
+# ... repo-specific checks accumulate into $rc from here ...
+exit "$rc"
+```
+
+**A wrapper must not weaken §14.2.** Whatever it adds, canon's non-zero
+status has to survive it — an extra check that overwrites `rc` instead of
+accumulating into it turns the OPS-0069 audit-trail gate off without
+touching it. Assert this directly: canon-red plus extras-green must still
+exit non-zero.
+
+**This repo's own wrapper is `scripts/pre_push_check_ci.sh`** (#469). It
+reads `check_plan.py` over the Claim ledgers of every plan whose `Status:`
+line does not mark it finished, with the workspace root passed as an extra
+`--root` so cross-repo citations resolve. Two properties worth stating
+because both are load-bearing and neither is obvious:
+
+- **It fails closed.** A plan with no parseable `Status:` line is _gated_,
+  not exempt. Treating an unreadable header as "finished" would drop plans
+  from the gate silently, which is the defect the gate exists to catch.
+- **It is advisory** (`LEDGER_GATE_BLOCKING=1` enforces). The exemption
+  marker lives in the file the gate checks, so a plan can escape by
+  declaring itself SHIPPED; the exempt set is therefore printed on every
+  run rather than applied silently.
+
+`check_plan.py` ships with the verified-planning Claude skill, **not** with
+this repo, so this gate cannot become a CI job without vendoring it first —
+the ephemeral runners have no `~/.claude`.
 
 ### 14.1a The canon fragment MUST carry commit-stage hooks
 
