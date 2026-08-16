@@ -2420,6 +2420,116 @@ that has been reviewed are different claims, and the tag depends on the second.
 
 ---
 
+## CI-0037: `ci/v3.0.0` is released — the three founder gates, discharged with their evidence (2026-08-12)
+
+**Context**
+
+CI-0036 closed with the sentence *"the founder gates remaining before a tag are
+the FT-30 cold-start dry run and the timed merge of #441."* Both then happened,
+the tag was cut, and **nothing durable recorded that they had.** Three artifacts
+still asserted the pre-tag state — `DECISIONS.md` CI-0036 itself, PLAN-025's
+`P6 — Release ci/v3.0.0` block (at `:586` as of `main@eefa791`; **this entry's own
+change moves it**, which is why the symbol is cited rather than only the line),
+and `HANDOFF.md`, which CI-0028 regenerates wholesale at every wrap, so its
+citation was scheduled to evaporate.
+
+**A gate discharged with no durable record is indistinguishable from a gate
+skipped.** The next session re-derives "still blocked" from three sources that
+agree with each other and are all stale. Filed as
+[#454](https://github.com/vladm3105/aidoc-flow-ci/issues/454).
+
+**Decision**
+
+**`ci/v3.0.0` is RELEASED, and this entry is the durable record of it.** The
+release is real, and every gate that stood before it is discharged with evidence
+recorded here rather than by pointer.
+
+| Fact | Value | Re-derive |
+| --- | --- | --- |
+| Tag peels to | `6d68b269` | `git ls-remote --tags origin 'refs/tags/ci/v3.0.0^{}'` |
+| Published | 2026-08-12 (`2026-08-13T01:27:59Z`) | `gh release view ci/v3.0.0 --json publishedAt` |
+| Not draft, not prerelease | both `false` | `gh release view ci/v3.0.0 --json isDraft,isPrerelease` |
+| Marked Latest | `ci/v3.0.0` | `gh api repos/vladm3105/aidoc-flow-ci/releases/latest --jq .tag_name` — **not** `--json isLatest`, which is not a field |
+
+The three gates:
+
+1. **FT-30 cold-start dry run (🔴 founder) — PASSED 2026-08-12.**
+   `FT-30 DRY-RUN PASSED` against `vladm3105/ci-coldstart-scratch` (public), at
+   `CI_TAG=f9c9c731af43e959cdf3c49cc59c41e714942c6a` — the **prep-merge SHA**
+   (#452), which is what makes the run meaningful: `prep` is what retires the
+   forward-pin markers, so a run against any earlier tree would have verified a
+   surface no consumer receives. It installed exactly the manifest's
+   `auto_install: true` set — `ai-review.yml`, `composition.yml`,
+   `quick-gates.yml` — with `quick-gates.yml` on `ubuntu-latest`, correct for a
+   public target. That exercises **both** #441's bootstrap producer change and
+   the D7 public-quadrant fix on a real cold start rather than in a unit test,
+   and it is the installed-file-set criterion added by #358. **That criterion
+   closed a counterfactual gap, not a live defect** — #358 is explicit that
+   *"`install.sh` is not known to drop templates — this is about what the gate
+   can detect"*; a bootstrap silently dropping `ai-review.yml` **would** have
+   passed every prior criterion. No run is known to have done so, and the script
+   postdates the one historical drop (the pre-`ci/v2.2.0` F1 404, which the
+   existing `no 404s` criterion already caught).
+   **This gate is founder-attested and has no re-derive path** — unlike the four
+   release facts above. `ft30-dry-run.sh` writes nothing to the scratch repo and
+   no log artifact is committed, so `FT-30 DRY-RUN PASSED` survives only as this
+   record. That is a weakness this entry names rather than hides.
+2. **`litellm-smoke` (MAJOR gate) — PASSED 2026-08-09 22:03 EDT**
+   (`2026-08-10T02:03:45Z`; earlier artifacts record the UTC date as
+   "2026-08-10"). Run `31348751529`, `LiteLLM agent smoke`, conclusion
+   `success`, both the review and documentation aliases. This gate had never been
+   green before. The 2026-07-13 failures were a **mis-dispatch onto
+   `ubuntu-latest`** — verifiable, not inferred: those jobs report
+   `labels: ["ubuntu-latest"]` while the passing run reports
+   `["self-hosted","ci-runner","single-use"]`
+   (`gh api repos/vladm3105/aidoc-flow-ci/actions/runs/<id>/jobs --jq '.jobs[].labels'`).
+   A GitHub-hosted runner cannot reach the host proxy on the docker bridge at
+   `172.17.0.1` — see `CLAUDE.md` § "Ephemeral single-use runners", **not**
+   CI-0017, which is about `litellm_allow_insecure_http` being scoped by URL
+   scheme. Not a code defect either way.
+3. **OPS-0066 three-pass cap — WAIVED 2026-08-10**, CI-0036. Unchanged by this
+   entry; recorded here so all three appear in one place.
+
+**Consequences**
+
+- **CI-0036's closing sentence is superseded, not wrong.** It was true when
+  written. `DECISIONS.md` is append-only, so it stands as written and this entry
+  is the forward reference. A reader arriving at CI-0036 should read on to here.
+- **`PLAN-025` P6 is DONE**, and its header and phase table say so in the same
+  change as this entry.
+- **The PLAN-024 §7 precondition was HALF satisfied and half deviated from —
+  recorded honestly, because the convenient reading is available and wrong.**
+  §7 gave two reasons for shipping PLAN-024 A/B/C first. The **gate** reason is
+  satisfied: A owned the `litellm-smoke` circularity and the FT-30 precondition,
+  and both were discharged directly (items 1 and 2 above), so nothing about the
+  tag rested on A. The **waste** reason was not: *"Building v3 around a flow
+  being deleted would waste the work"* — v3 was built around `doc-maintainer`,
+  which A proposes to delete and which is **still live on `operations`** (paused
+  on `framework`). `PLAN-024:565` is blunter: *"A and B ship together or the
+  release is worse than not cutting it."* That condition was **not met at the
+  cut**. **A, B and C are no longer release gates** — the tag is out and cannot
+  be gated retroactively — but A's question is open and now more expensive, since
+  v3 work touching `doc-maintainer` is work A would discard. That is a founder
+  decision, not one this entry makes. **Phase C** (`ci/v3.0.0` release mechanics
+  — "release currency, the library's own CD", `PLAN-024:244`) is named by §7
+  alongside A and B and is equally unexecuted: the release was cut by hand with
+  `scripts/release.sh`, not by the CD that Phase C describes. PLAN-024's header
+  still reads `Status: Draft — no phase executed`, which stays accurate for all
+  three.
+- **No consumer is affected by this entry.** It records a state that already
+  existed; it changes no behaviour, no template and no workflow.
+- **What this does NOT discharge:** PLAN-025 **P4** (local layer), **P5**
+  (documentation set), **P7** (required-context migration — still the only
+  irreversible phase) and **P9** (rollback) are all still not started. P7 must
+  not run before P9 exists. `docs/MIGRATION_v3.0.0.md` is the migration path, not
+  the P5 documentation set.
+- **Wave 0 self-adoption is PARTIAL.** Canon's own callers are repinned at
+  `ci/v3.0.0`, but the v3 surfaces are not installed here —
+  `ls .github/workflows/ | grep -E 'quick-gates|scanners'` is empty. Canon
+  dogfoods before Wave 1 pulls.
+
+---
+
 <!-- Append new entries above this line (or into a previously reserved ID
 slot — see the ordering rule at the top); append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal

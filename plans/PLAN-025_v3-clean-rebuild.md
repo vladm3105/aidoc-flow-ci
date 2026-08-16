@@ -1,7 +1,9 @@
 # PLAN-025 — `ci/v3.0.0` clean rebuild: composite-action architecture + new documentation set
 
-**Status:** In Progress — P1/P2/P3/P3a done, P8 core done (plan-status governance:
-execution started, so this is no longer Draft)
+**Status:** In Progress — P1/P2/P3/P3a **and P6 done** (`ci/v3.0.0` released
+2026-08-12; all three founder gates discharged — `DECISIONS.md` **CI-0037**),
+P8 core done. Remaining: P4, P5, P7, P9. Not Completed, because P7 and P9 are
+unstarted and P7 is the only irreversible phase.
 **Owner:** canon (aidoc-flow-ci)
 **Origin:** founder directive 2026-08-08 — implement the target configuration as a
 new release built from scratch, archiving the existing flows so stale docs cannot
@@ -455,7 +457,7 @@ as a rule.** That mapping is the acceptance test for §4.4.
 > | P3a | `security` splits in two | ✅ **DONE** — `scanners` + `secret-scan` |
 > | P4 | Local layer | ⬜ not started |
 > | P5 | Documentation set | ⬜ not started — largest remaining build item |
-> | P6 | Release `ci/v3.0.0` | ⬜ blocked on 🔴 founder FT-30 dry run |
+> | P6 | Release `ci/v3.0.0` | ✅ **DONE** — released 2026-08-12; three gates discharged, `DECISIONS.md` CI-0037 |
 > | P7 | Required-context migration | ⬜ unblocked by P8, not started |
 > | P8 | Tooling and distribution | 🟨 core done; wizard + D44 remain |
 > | P9 | Rollback | ⬜ not started |
@@ -583,9 +585,17 @@ documented revert is "restore the v2 callers from the tag, re-add the old
 contexts to live protection **and** any ruleset." Ten repos hand-run with no
 script is not a plan; P9 ships a dry-run-capable helper or P7 is not started.
 
-**P6 — Release `ci/v3.0.0`.** ⬜ **NOT STARTED — blocked on a 🔴 founder step.**
-Migration guide, LiteLLM smoke (MAJOR gate), FT-30
-cold-start dry run (🔴 founder). Canon self-adopts first (Wave 0).
+**P6 — Release `ci/v3.0.0`.** ✅ **DONE — released 2026-08-12**, tag peels to
+`6d68b269`, published and marked Latest. All three gates discharged: FT-30
+cold-start dry run PASSED 2026-08-12 at the prep-merge SHA; `litellm-smoke`
+PASSED 2026-08-10 (run `31348751529`); OPS-0066 waived (CI-0036). Migration guide
+shipped as `docs/MIGRATION_v3.0.0.md`. **The evidence lives in `DECISIONS.md`
+CI-0037, not here** — a plan is not the durable record of its own release.
+
+**Wave 0 self-adoption is PARTIAL and remains owed.** Canon's callers are
+repinned at `ci/v3.0.0`, but the v3 surfaces are not installed on canon itself —
+`ls .github/workflows/ | grep -E 'quick-gates|scanners'` is empty. The plan says
+canon self-adopts *first*; that half did not happen before the cut.
 
 **P7 — Per-repo required-context migration.** ⬜ **NOT STARTED.** Unblocked by
 P8's core, and now migrating **two** context names rather than three —
@@ -634,6 +644,29 @@ PLAN-024 Phases **A** (eliminate `doc-maintainer`), **B** (`docs-sync` reduction
 and **C** (`ci/v3.0.0` release mechanics) **ship first and separately.** Building
 v3 around a flow being deleted would waste the work, and A already owns the
 `litellm-smoke` circularity and the FT-30 precondition that P6 inherits.
+
+**Overtaken by events — the ordering was NOT followed. Half of its rationale was
+satisfied another way; the other half was DEVIATED FROM.** P6 shipped on
+2026-08-12 with PLAN-024 A and B unexecuted. The paragraph above gives two
+reasons, and they did not fare the same:
+
+- **The gate reason is satisfied.** A owned the `litellm-smoke` circularity and
+  the FT-30 precondition; both were discharged **directly** — `litellm-smoke`
+  passed 2026-08-10 (run `31348751529`), FT-30 passed 2026-08-12 at the
+  prep-merge SHA (`DECISIONS.md` **CI-0037**). Nothing about the tag rested on A.
+- **The waste reason was NOT satisfied, and is now realised.** *"Building v3
+  around a flow being deleted would waste the work"* — v3 was built around
+  `doc-maintainer`, which A proposes to delete and which is **still live on
+  `operations`**. PLAN-024 puts it more strongly still: *"A and B ship together
+  or the release is worse than not cutting it"* (`PLAN-024:565`). That condition
+  was **not** met at the cut.
+
+**So this is a deviation, not a discharge**, and it is recorded as one. What
+changes: **A and B are no longer release *gates*** — the tag is out and cannot be
+gated retroactively. What does not change: A's underlying question is open and
+now more expensive, because any v3 work touching `doc-maintainer` is work A would
+discard. Whether to eliminate it is a founder decision that this plan does not
+make.
 
 PLAN-024 Phases **D, E, F, G** are **superseded** by this plan: D's `ai-review`
 decomposition is moot once job consolidation is the organising idea, E and F are
@@ -999,11 +1032,11 @@ unblocks P7**.
 | --- | --- | --- |
 | ~~1~~ | ~~P2 incomplete~~ — **DONE 2026-08-08.** All six actions ported; the `scanners` caller added with the D27 job-level fork guard, per-category SARIF uploads and a collect-then-fail verdict | ✅ |
 | 2 | **P5 not started** — the whole v3 documentation set, plus the §2→`RULES.md` mapping §4.4 requires | build |
-| 3 | **P6 — build side DISCHARGED; only FT-30's real run remains.** `MIGRATION_v3.0.0.md` **written** (mapping, add-new→observe→remove-old across protection *and* rulesets, runner-image prerequisite, rollback; CI-0024 marker-guarded and verified against a simulated `ci/v3.1.0` cut). FT-30 **preflight is clean** — `scripts/ft30-dry-run.sh --check` reports the gate owed, `CI_TAG` resolvable and pushed, `gh` authenticated; only the real run remains, and it writes to a throwaway repo, which is a founder act. **LiteLLM smoke PASSED 2026-08-10 — run `31348751529`, both the review and documentation aliases, conclusion `success`.** This gate had never been green. The 2026-07-13 failures were a **mis-dispatch onto `ubuntu-latest`**, which per CI-0017 cannot reach the bridge proxy at `172.17.0.1` — not a code defect; the workflow's own default was already the pool. Cleared by registering an ephemeral single-use runner against canon (founder-authorised), dispatching with the input defaults plus `allow_insecure_http: true`, then tearing the pool down: canon is back to **0** registered runners. Re-running it needs a pool again | **founder** |
+| ~~3~~ | ~~P6 — build side DISCHARGED; only FT-30's real run remains~~ — **RELEASED 2026-08-12.** FT-30's real run PASSED at the prep-merge SHA; `litellm-smoke` and the OPS-0066 waiver likewise discharged. Evidence and the founder-attested caveat: `DECISIONS.md` **CI-0037**. ✅ | ~~founder~~ |
 | 4 | **P7** — the per-repo required-context migration. The only irreversible phase, and **post-tag work rather than a tag gate** (CI-0036): canon cannot self-adopt its composite actions until `ci/v3.0.0` exists (FT-21), so P7 necessarily follows the cut | founder + build |
 | 5 | **P9 not started** — rollback. Ten repos hand-run with no script is not a plan | build |
 | 6 | **P8 remainder — the `auto_install` move is DONE 2026-08-09**, and it was worse than "remaining work": the three v3 callers were `auto_install: false` with **no install path at all** — bootstrap installs only the auto_install set, `--update` never introduces a new surface, `--repin` rewrites strings. Shipped and uninstallable ([#429](https://github.com/vladm3105/aidoc-flow-ci/issues/429)). Closed by `install.sh --add-surface`, a general third mode: live-visibility variant resolution, never overwrites, warns via the manifest's new `replaces` array, arms nothing. **NOT** closed by flipping `auto_install`, which would install v3 alongside v2 on any re-bootstrap. `deploy-ci-wizard.sh` remains | build |
-| 7 | **PLAN-024 Phases A/B/C ship first** (§7) — building v3 around `doc-maintainer` while it is being deleted wastes the work | build |
+| ~~7~~ | ~~PLAN-024 Phases A/B/C ship first (§7)~~ — **NOT MET; the tag was cut anyway.** §7's *gate* half was discharged directly, its *waste* half was not — `doc-maintainer` is still live on `operations`. A/B/C are no longer release gates but A's question is open and now more expensive. §7 and `DECISIONS.md` CI-0037 record it as a deviation, not a discharge | ~~build~~ |
 | ~~8~~ | ~~OPS-0065 medium/low tail~~ — **FOLDED 2026-08-08 (cycle 2).** The D11 guard now counts hooks *selected at the runner's stage* and refuses at zero (verified against the reproduced manual-only config); `links-external` gained a report step that warns and writes a summary without failing; `markdownlint`'s guard compares the index against the worktree and errors on a sparse checkout; **D44 closed** — the completeness guard discovers `actions/*/action.yml` and all six now carry inventory rows (mutation-verified: an unaccounted action fails it) | ✅ |
 
 ### The honest caveat on process
