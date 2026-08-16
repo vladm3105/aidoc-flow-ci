@@ -1001,38 +1001,53 @@ else
   echo "  add       .github/workflows/composition.yml (public)"
 fi
 
-# quick-gates — THE BOOTSTRAP TIER'S REQUIRED-CONTEXT PRODUCER, as of ci/v3.0.0.
+# pre-commit — THE BOOTSTRAP TIER'S REQUIRED-CONTEXT PRODUCER. ASYMMETRIC: the
+# PUBLIC variant is the bare name (§16.9).
 #
-# WHY THIS MOVED HERE FROM pre-commit (aidoc-flow-ci#438). The tier templates
-# require the context this caller emits, and `apply-standards.sh` PUTs the tier
-# file as one whole payload — so if bootstrap does not install a producer, a cold
-# start arms a required context that nothing satisfies and the repo is bricked on
-# arrival, with no `--admin` escape on consumer tiers. Before v3 that producer was
-# `pre-commit.yml`; v3 folds three checks into `quick-gates`, so the flag moves
-# with the context. The two must move TOGETHER or one of them is wrong.
+# PLAN-018 F2: installed UNCONDITIONALLY, not gated on --tier. `call / Lint /
+# format / security hooks` — emitted by this caller — is a required status check
+# on every tier that has required checks at all, and is the bootstrap tier's ONLY
+# required context. Without a producer, arming protection pins every PR on
+# "Expected — Waiting for status to be reported" forever. TIER defaults to "" and
+# the README's documented one-liner passes none, so a tier-gated fix would leave
+# the primary documented path undefined. On the umbrella tier (no required checks
+# at all) the installed caller is simply advisory — additive, not harmful.
 #
-# THE `replaces` SKIP IS WHAT MAKES THE FLAG SAFE. Flipping `auto_install` alone
-# would make a RE-bootstrap on a not-yet-migrated consumer install v3 alongside
-# its v2 callers — doubled jobs on a serial self-hosted pool and two sets of
-# contexts, which is the double-install `--add-surface` exists to avoid (#429).
-# So: if any caller `quick-gates` replaces is still present, this is a v2
-# consumer mid-migration and bootstrap must NOT add v3 behind their back. They
-# adopt deliberately, via `--add-surface`, per docs/MIGRATION_v3.0.0.md.
-if [ -f ".github/workflows/quick-gates.yml" ]; then
-  echo "  preserve  .github/workflows/quick-gates.yml (already exists — local override)"
-elif [ -f ".github/workflows/pre-commit.yml" ] \
-  || [ -f ".github/workflows/markdown-lint.yml" ] \
-  || [ -f ".github/workflows/links.yml" ]; then
-  echo "  skip      .github/workflows/quick-gates.yml — the v2 callers it replaces are still"
-  echo "            installed. Adding it now would run BOTH. Migrate deliberately:"
-  echo "            install.sh <repo> --add-surface .github/workflows/quick-gates.yml"
-  echo "            then docs/MIGRATION_v3.0.0.md steps 3-5."
+# WHY THIS IS STILL pre-commit UNDER v3, AND WHAT MOVES IT (aidoc-flow-ci#481).
+# v3 folds three checks into `quick-gates`, so the producer is MEANT to become
+# `quick-gates.yml` — but that is two edits, not one: the flag here, and PLAN-026
+# §C0 substituting the `quick-gates` context into the four tier templates.
+# #441 landed the flag alone. `apply-standards.sh` PUTs the tier file as one whole
+# payload, so between the two a cold start installed `quick-gates.yml` while the
+# templates still required THIS caller's context — a new repo bricked on arrival,
+# with no `--admin` escape on consumer tiers. That is #481, and reverting the flag
+# is what closes it.
+#
+# §C0 CANNOT SIMPLY LAND INSTEAD. Measured 2026-08-16: every consumer that has
+# required contexts at all carries `pre-commit.yml` and NONE has
+# `quick-gates.yml` — and a re-bootstrap will never give them one, because
+# `quick-gates.yml` is `auto_install: false` and this block installs only the
+# three callers hardcoded here. (It is NOT a `replaces`-driven skip. Nothing on
+# any bootstrap path reads `replaces`; its only reader is the duplicate-run WARN
+# in `add_surface_mode`, which installs anyway.) So substituting the templates
+# first arms a context the whole fleet lacks a producer for — the same brick from
+# the other side. The order is C1–C5 (put quick-gates on the fleet), then §C0 and
+# this flag together, as ONE change. Until then quick-gates is adopted
+# deliberately: `--add-surface .github/workflows/quick-gates.yml`, per
+# docs/MIGRATION_v3.0.0.md.
+#
+# `tests/test_required_contexts.sh` §5 reds the suite if the bootstrap tier ever
+# again requires a context a cold start omits. It cannot see the fleet-ordering
+# constraint above — canon cannot read consumer repos — so a green suite is not
+# clearance to land §C0.
+if [ -f ".github/workflows/pre-commit.yml" ]; then
+  echo "  preserve  .github/workflows/pre-commit.yml (already exists — local override)"
 elif [ "$VISIBILITY" = "private" ]; then
-  fetch_template "workflows/quick-gates-private.yml" ".github/workflows/quick-gates.yml" || exit 1
-  echo "  add       .github/workflows/quick-gates.yml (private)"
+  fetch_template "workflows/pre-commit-private.yml" ".github/workflows/pre-commit.yml" || exit 1
+  echo "  add       .github/workflows/pre-commit.yml (private)"
 else
-  fetch_template "workflows/quick-gates.yml" ".github/workflows/quick-gates.yml" || exit 1
-  echo "  add       .github/workflows/quick-gates.yml (public)"
+  fetch_template "workflows/pre-commit.yml" ".github/workflows/pre-commit.yml" || exit 1
+  echo "  add       .github/workflows/pre-commit.yml (public)"
 fi
 # <<< BOOTSTRAP-CALLERS <<<
 

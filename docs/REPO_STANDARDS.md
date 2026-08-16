@@ -1649,6 +1649,38 @@ convention — it ships three:
 The bootstrap set is exactly the `auto_install: true` workflow entries in
 `manifest.json` (§16.8) — `ai-review` + `composition` + `pre-commit`.
 
+**`pre-commit` remains the bootstrap producer under `ci/v3.0.0`, and
+`quick-gates` does not replace it until PLAN-026 §C0 lands (#481).** v3 folds
+`pre-commit` + `markdownlint` + `links` into `quick-gates`, so the producer is
+_meant_ to move — but that is two edits, not one: this flag, and §C0
+substituting the bare `quick-gates` context into the four tier templates that
+carry `call / Lint / format / security hooks`. They must land as **one change**.
+Landing either alone arms a required context with no installed producer, and
+both halves have now been live separately:
+
+| Landed alone | Who breaks |
+| --- | --- |
+| the flag (`#441`, reverted here) | a **cold start** installs `quick-gates` while the templates still require `pre-commit`'s context — a new repo bricked on arrival, and consumer tiers have no `--admin` escape |
+| §C0 alone | **every already-installed consumer** — measured 2026-08-16, all eight consumers that carry required contexts have `pre-commit.yml` and none has `quick-gates.yml` (the umbrella tier requires no checks at all). A re-bootstrap never supplies one, because `quick-gates.yml` is `auto_install: false` and the bootstrap block installs only its three hardcoded callers |
+
+The order is therefore PLAN-026 C1–C5 first (put `quick-gates.yml` on the
+fleet), then §C0 and the flag together. Until then `quick-gates` is adopted
+deliberately, per surface: `install.sh <repo> --add-surface
+.github/workflows/quick-gates.yml`.
+
+`install/required-context-map.py` now marks with `!` a producer canon ships but
+a cold start omits (`auto_install: false`), and
+`tests/test_required_contexts.sh` §5 reds the suite when the **bootstrap** tier
+depends on one. The script previously answered only "does canon **ship** a
+producer?", which is why every row read green in both broken directions.
+
+**What that check does and does not cover.** It stops either half landing alone
+without reddening — §C0 alone leaves `quick-gates` at `auto_install: false`, so
+the newly-required context resolves to `!`. It does **not** enforce the ordering
+above: `auto_install` describes a _cold start_, whereas the fleet hazard is about
+what already-installed consumers have on disk, and canon cannot read consumer
+repos. A green suite is not clearance to land §C0.
+
 **`pre-commit` is bootstrapped unconditionally, not gated on `--tier`**, and is
 the one deliberate exception to `auto_install: false` for every non-bootstrap
 surface. It emits `call / Lint / format / security hooks`, a required status

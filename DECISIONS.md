@@ -2528,6 +2528,89 @@ The three gates:
   `ls .github/workflows/ | grep -E 'quick-gates|scanners'` is empty. Canon
   dogfoods before Wave 1 pulls.
 
+## CI-0038: the bootstrap producer stays `pre-commit` until §C0 and the flag land together, after C1–C5 (2026-08-16)
+
+**Context**
+
+CI-0037 recorded the release. What it did not record is that **#441 shipped one
+half of a two-half change.** Its own PR body set the condition — *"this must land
+AT the `ci/v3.0.0` tag cut … Merging is the founder's call and belongs next to
+PLAN-026 C0's template substitution"* — and it merged without §C0.
+
+The two halves are the `auto_install` flag (`quick-gates.yml` → `true`,
+`pre-commit.yml` → `false`) and §C0 (substituting the bare `quick-gates` context
+into the four tier templates that carry `call / Lint / format / security hooks`).
+Between them, canon shipped a state where **bootstrap installs one producer and
+the tier templates require a different one**, and `apply-standards.sh` PUTs the
+tier file as one whole payload (`install/apply-standards.sh:706`). A post-v3 cold
+start followed by `--apply --tier <any but umbrella>` therefore arms a context
+nothing produces; consumer tiers set `enforce_admins`, so there is no `--admin`
+escape. Filed as [#481](https://github.com/vladm3105/aidoc-flow-ci/issues/481),
+with the stale prose as [#455](https://github.com/vladm3105/aidoc-flow-ci/issues/455).
+
+**Landing §C0 now is the same brick from the other side.** Measured 2026-08-16,
+all eight consumers that carry required contexts have `pre-commit.yml` and
+**none** has `quick-gates.yml` (the umbrella tier requires no checks at all) —
+and a re-bootstrap never supplies one, because `quick-gates.yml` is
+`auto_install: false` and the bootstrap block installs only its three hardcoded
+callers. **This is not a `replaces`-driven skip.** Nothing on any bootstrap path
+reads `replaces`; its only reader is the duplicate-run WARN in
+`add_surface_mode`, which installs anyway. The conclusion is unchanged and in
+fact stronger, but the mechanism matters: an earlier draft of this entry
+attributed it to a skip that the same change deletes. #438 recommended the flag-first direction on the reasoning that it
+"makes the tier gate true at cold start"; that reasoning was sound when written
+and the fleet measurement inverts it, because the population it protects (new
+repos) is empty and the population it exposes is every existing consumer that
+has required contexts at all — all eight.
+
+**Decision**
+
+1. **`pre-commit.yml` returns to `auto_install: true` and `quick-gates.yml` to
+   `false`** — a precise revert of #441's two flag edits and its bootstrap
+   stanza. #438's decision is **not** reversed; it is re-sequenced.
+2. **§C0 and the flag flip land as ONE change, and not before PLAN-026 C1–C5**
+   have put `quick-gates.yml` on the fleet. Neither half may ship alone again.
+3. **Until then `quick-gates` is adopted per repo, deliberately** —
+   `install.sh <repo> --add-surface .github/workflows/quick-gates.yml`, then
+   `docs/MIGRATION_v3.0.0.md` steps 3–5. `--add-surface` and its duplicate-run
+   `replaces` warning are unchanged and remain correct.
+
+**Why the detector is the durable half.** The defect was live in **both**
+directions without a single red check, because
+`install/required-context-map.py` only ever asked *"does canon ship a producer?"*
+— and canon did, in both states. It now also asks *"will a **cold start** have
+it?"*, marking with `!` a producer canon ships at `auto_install: false`.
+`tests/test_required_contexts.sh` §5 reds the suite when the **bootstrap** tier
+depends on one. Scoped to bootstrap on purpose: higher tiers legitimately require
+callers adopted later via `--update` / `--add-surface`, and a check that reds
+permanently gets tuned out.
+
+**And the limit of it, which is part of this decision rather than a caveat on
+it.** `!` catches §C0 landing alone. It does **not** catch §C0 landing together
+with the flag flip before C1–C5 — the ordering item 2 above exists to prevent —
+because `auto_install` describes a cold start while that hazard is about what
+already-installed consumers have on disk, and canon cannot read consumer repos.
+**No check in this repo can enforce item 2**, so it is enforced by review, and a
+green suite is not clearance to land §C0. An earlier draft of this entry claimed
+a second symbol (`~`) covered it; that symbol described a `replaces`-driven
+bootstrap skip which this very change deletes, and it was removed rather than
+shipped as a guard nobody could rely on.
+
+**Consequences**
+
+- A cold start again installs `ai-review` + `composition` + `pre-commit`. New
+  repos onboard onto the v2 lint caller and migrate with everyone else at C1–C5;
+  this is deliberate, and it is the state the whole fleet is already in.
+- **No consumer repo, branch-protection template, ruleset or required context is
+  touched by this change.** The four tier templates still require
+  `call / Lint / format / security hooks`, which every repo produces.
+- `docs/REPO_STANDARDS.md` §16.9 carries the rule and the two-directions table;
+  `docs/WORKFLOWS.md` §4 step 1 and `manifest.json`'s two `_note`s carry it at
+  the point of use. That closes #455, whose three sites are accurate again under
+  this direction rather than needing the rewrite it anticipated.
+- PLAN-026 §C0's blocker is **not** discharged. It is re-ordered after C5 and
+  its resolution note is corrected to say so.
+
 ---
 
 <!-- Append new entries above this line (or into a previously reserved ID

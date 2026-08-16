@@ -200,12 +200,23 @@ preflight() {
     local tiers; tiers="$(ls "$HERE"/templates/branch-protection-*.json 2>/dev/null | sed -E 's#.*/branch-protection-(.*)\.json#\1#' | sort -u)"
     local t
     for t in $tiers; do
-      local missing="" ctx producer nreq=0
+      local missing="" ctx producer prod nreq=0
       while IFS=$'\t' read -r ctx producer; do
         nreq=$((nreq+1))
+        # THE PRODUCER FIELD IS SYMBOL-PREFIXED (#481). `required-context-map.py`
+        # reports `!<file>` when canon ships the producer at `auto_install:false`
+        # — a real answer about canon, and NOT a statement about this consumer,
+        # who may well have adopted it. Strip before matching against `$have`:
+        # `grep -qw '!audit-trail.yml'` can never match a filename, so leaving it
+        # unstripped reports "NOT installed" for every product/ops/governance
+        # consumer that HAS the caller, and names a file that does not exist.
         case "$producer" in
-          '?non-call') : ;;  # a bare (repo-local) required context — no canon producer expected, not a defect
-          '?') missing="$missing\n       · $ctx → canon ships NO producer — canon defect" ;;
+          # `?non-call` is retired in the map (PLAN-025 P8). It used to pass here
+          # as "repo-local, no canon producer expected", which is the hole P8
+          # closed — if it ever reappears, treat it as the defect it signals.
+          '?'|'?non-call') missing="$missing\n       · $ctx → canon ships NO producer — canon defect" ;;
+          '!'*) prod="${producer#!}"
+                echo "$have" | grep -qw "$prod" || missing="$missing\n       · $ctx → needs $prod (NOT installed; it is auto_install:false, so a bootstrap does not add it — use: install.sh <repo> --add-surface .github/workflows/$prod)" ;;
           *) echo "$have" | grep -qw "$producer" || missing="$missing\n       · $ctx → needs $producer (NOT installed)" ;;
         esac
       done < <(printf '%s\n' "$mapout" | awk -F'\t' -v tt="$t" '$1==tt{print $2"\t"$3}')

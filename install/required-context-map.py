@@ -15,10 +15,35 @@ the F1 failure mode — a future template addition silently invalidates it). Cha
     -> a caller TEMPLATE that `uses:` that reusable               [install/templates/workflows/*.yml]
     -> that template's CONSUMER path basename                     [manifest.json]
 
-Output: TSV `<tier>\\t<context>\\t<producer-basename-or-?>` on stdout, one row per
-required context per tier. A `?` producer means canon requires a context it ships
-no producer for — F2 latent in canon itself. Prints the single line `SKIP` when
-PyYAML is unavailable (suite convention).
+Output: TSV `<tier>\\t<context>\\t<producer>` on stdout, one row per required
+context per tier. The producer field carries TWO failure symbols, because
+"canon ships a producer" and "a cold start installs that producer" are different
+questions and only the first used to be asked:
+
+  `pre-commit.yml`   OK — canon ships it and a cold start installs it.
+  `?`                canon ships NO producer for this context (the original F2).
+  `!pre-commit.yml`  canon ships it, but `auto_install: false` — a COLD START
+                     does not install it, so a new repo arms this context with
+                     nothing to satisfy it.
+
+Both are failures. `!` exists because aidoc-flow-ci#481 was live in BOTH
+directions without detection: #438/#441 moved `auto_install` from
+`pre-commit.yml` to `quick-gates.yml` while the tier templates still required
+`pre-commit.yml`'s context, and this script reported every row green because it
+only ever asked whether canon SHIPS a producer.
+
+WHAT THIS STILL CANNOT SEE, stated because the gap is the whole point of the
+file. `auto_install` is canon's declaration about a COLD START. It says nothing
+about what an EXISTING consumer has on disk, and canon cannot read consumer
+repos. So `!` catches PLAN-026 §C0 landing alone — substituting `quick-gates`
+into the tier templates while its entry is still `auto_install: false` — but
+nothing here can catch §C0 landing together with the flag flip BEFORE the C1–C5
+fleet rollout, which would arm a context every already-installed consumer lacks
+a producer for. That ordering is a documented sequencing rule (DECISIONS.md
+CI-0038), enforced by review, not by this script. Do not read a green map as
+clearance to land §C0.
+
+Prints the single line `SKIP` when PyYAML is unavailable (suite convention).
 """
 import glob
 import json
@@ -104,16 +129,44 @@ try:
 except (OSError, ValueError) as e:
     print("ERR:manifest %s" % e, file=sys.stderr)
     raise SystemExit(1)
+# `consumer_install` is KEYED by the manifest's consumer PATH; `tmpl_to_consumer`
+# and `reusable_to_consumer` carry that PATH as their VALUE. Neither uses the
+# basename as an identity. Two entries may share a basename
+# (`doc-maintainer.yml` / `doc-maintainer.json` are the near miss today), and a
+# basename key would resolve the chain through one entry while reporting the
+# OTHER entry's install symbol — a silent false pass in exactly the direction
+# this script exists to catch. Basename is applied once, at print.
 tmpl_to_consumer = {}
+# consumer path -> the install symbol its manifest entry earns. This is the
+# `auto_install` half of the chain: WITHOUT it the script answers "does canon
+# ship a producer?" and silently passes that off as "will a cold start have
+# one?". See the module docstring for why both directions of that gap shipped.
+consumer_install = {}
 for e in manifest["files"]:
-    cb = os.path.basename(e["path"])
+    cp = e["path"]
     tb = os.path.basename(e.get("template", ""))
     if tb:
-        tmpl_to_consumer[tb] = cb
+        tmpl_to_consumer[tb] = cp
     for v in (e.get("visibility_variants") or {}).values():
-        tmpl_to_consumer[os.path.basename(v)] = cb
+        tmpl_to_consumer[os.path.basename(v)] = cp
+    consumer_install[cp] = "" if e.get("auto_install") else "!"
 
-# reusable -> consumer caller basename (via any caller template that uses it).
+
+def producer(cons):
+    """Render a resolved consumer path as `[symbol]<basename>`, or `?`.
+
+    FAILS CLOSED. An unknown path defaults to `!`, not to the passing empty
+    string: this function's whole purpose is detecting a producer a cold start
+    will not have, so the default for "I could not determine that" must be the
+    failing answer. (`?` would NOT work as the default — the callers match `?`
+    exactly to mean "no producer at all", so `?foo.yml` would fall through to
+    the pass arm.)
+    """
+    if not cons:
+        return "?"
+    return consumer_install.get(cons, "!") + os.path.basename(cons)
+
+# reusable -> consumer caller PATH (via any caller template that uses it).
 reusable_to_consumer = {}
 for tmpl, reu in tmpl_to_reusable.items():
     cb = tmpl_to_consumer.get(tmpl)
@@ -139,7 +192,7 @@ for tpl in sorted(glob.glob(os.path.join(ROOT, "install/templates/branch-protect
             # branch-protection template requires a context, canon must ship
             # something that produces it, whatever the packaging.
             cons = tmpl_to_consumer.get(plainjob_to_tmpl.get(ctx, ""), None)
-            print("%s\t%s\t%s" % (tier, ctx, cons or "?"))
+            print("%s\t%s\t%s" % (tier, ctx, producer(cons)))
             continue
         jobid, name = ctx.split(" / ", 1)
         reu = name_to_reusable.get(name)
@@ -151,4 +204,4 @@ for tpl in sorted(glob.glob(os.path.join(ROOT, "install/templates/branch-protect
         # under an unproduced job-key is NOT a producer.
         if cons and jobid not in reusable_to_jobkeys.get(reu, set()):
             cons = None
-        print("%s\t%s\t%s" % (tier, ctx, cons or "?"))
+        print("%s\t%s\t%s" % (tier, ctx, producer(cons)))

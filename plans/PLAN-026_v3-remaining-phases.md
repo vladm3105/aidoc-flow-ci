@@ -1,10 +1,11 @@
 # PLAN-026 — `ci/v3.0.0` remaining phases: local layer, documentation set, context migration, rollback
 
-**Status:** Draft — no phase executed. **NOT READY**, and the reason narrowed:
-§C0's blocker has a proposed resolution (implemented, mutation-tested, awaiting
-a founder merge at the tag cut — see #438), but the OPS-0066 three-pass review
-cap is spent on this plan, so the plan itself still needs a waiver rather than a
-fourth pass.
+**Status:** Draft — no phase executed. **NOT READY**, for two independent
+reasons. §C0 is **🔴 BLOCKED and re-ordered: it runs after C5, not before C1**
+(`DECISIONS.md` CI-0038) — the resolution this header previously advertised as
+awaiting a founder merge shipped as #441, bricked a post-v3 cold start, and was
+reverted as #481. Separately, the OPS-0066 three-pass review cap is spent on this
+plan, so the plan itself still needs a waiver rather than a fourth pass.
 **Owner:** canon (aidoc-flow-ci)
 **Scope:** PLAN-025's unstarted phases — P4 (local layer), P5 (documentation
 set), P7 (required-context migration), P9 (rollback), and the P8 remainder
@@ -184,7 +185,7 @@ Only one of the six old contexts appears in any tier template —
 - **C1–C5 (per repo, live):** add 2, observe green, remove up to 6 from live
   protection **and** rulesets, delete the old callers, then verify.
 
-> ### 🟡 RESOLUTION PROPOSED — see the PR that carries this edit; NOT yet merged
+> ### 🔴 BLOCKED — C0 RUNS AFTER C5, NOT BEFORE C1 (DECISIONS.md CI-0038)
 >
 > **Substituting `quick-gates` into the tier templates arms a context that
 > bootstrap does not install.** `quick-gates.yml` is `auto_install: false`
@@ -195,35 +196,53 @@ Only one of the six old contexts appears in any tier template —
 > `--admin` escape. The same hazard hits any not-yet-migrated repo where someone
 > runs `--apply` between the tag and their own C1–C5.
 >
-> Nothing catches it: `branch-protection-*.json` is deliberately outside the
+> Nothing caught it: `branch-protection-*.json` is deliberately outside the
 > FT-30 gate's scope (Claim 34). PLAN-025 raised the question at `:577-578` and
 > its blocker table closed it with `--add-surface`, which does not address the
 > **tier gate**.
 >
-> Two options, and neither is free:
+> #### What was tried, and why it is reverted
 >
-> 1. **Flip `quick-gates.yml` to `auto_install: true` at the tag** — then
->    bootstrap installs the producer. Cost: a re-bootstrap on a not-yet-migrated
->    repo installs v3 *alongside* v2, which is the double-install `--add-surface`
->    exists to avoid.
-> 2. **Hold the template edit until the fleet is migrated** — accept that any
->    `--apply` in the interim restores the old contexts, and say so explicitly.
+> An earlier resolution flipped the flags — `quick-gates.yml` to `true`,
+> `pre-commit.yml` to `false` — with a bootstrap stanza skipping `quick-gates`
+> wherever a caller it `replaces` was still present. It shipped as **#441**,
+> whose own merge condition was that it *"belongs next to PLAN-026 C0's template
+> substitution"*. **§C0 never followed**, so canon ran for four days with
+> bootstrap installing one producer and the tier templates requiring another —
+> the identical brick, arriving from the opposite side. Filed as **#481**,
+> reverted under **CI-0038**, and Claims 13 and 22 are true again as written.
 >
-> **A third option removes option A's cost, and is implemented in the PR that
-> carries this edit — deliberately UNMERGED.** Flip `quick-gates.yml` to
-> `auto_install: true` and `pre-commit.yml` to `false` (the flag moves with the
-> context), **and** make the bootstrap stanza skip `quick-gates` when any caller
-> it `replaces` is still present. Cold start installs the producer, so the tier
-> gate is honest; a re-bootstrap on a not-yet-migrated consumer skips, so there
-> is no double-install. Both directions are driven by the shipped block in
-> `tests/test_install.sh` and mutation-tested — removing the skip reds 3
-> assertions, reverting the flag reds 2.
+> #### The ordering constraint, which is what actually blocks C0
 >
-> **It must not merge before the `ci/v3.0.0` tag.** Pre-tag, `quick-gates.yml`
-> pins a tag that does not exist, so flipping the flag today would make every
-> cold start install a caller that `startup_failure`s while removing the
-> producer the current templates require — the same brick, sooner. The PR states
-> this; merging it is the founder's call and belongs at the tag cut.
+> The flag flip and §C0 are **one change, and it runs after C5.** Measured
+> 2026-08-16: all eight consumers that carry required contexts have
+> `pre-commit.yml`, **none** has `quick-gates.yml` (the umbrella tier requires no
+> checks at all), and a re-bootstrap never supplies one — because
+> `quick-gates.yml` is `auto_install: false` and the bootstrap block installs
+> only its three hardcoded callers, NOT because of any `replaces`-driven skip. So §C0 landing first arms a required context the entire fleet lacks a
+> producer for — `apply-standards.sh` PUTs the tier file as one whole payload
+> (Claim 8), so it is not partial. The population §C0-first protects (new repos)
+> is empty; the population it exposes is all nine.
+>
+> **Sequence: C1–C5 put `quick-gates.yml` on the fleet → then §C0 and the
+> `auto_install` flip land together, in one change.** Neither half ships alone
+> again.
+>
+> #### Half of it is no longer undetected — and know which half
+>
+> `install/required-context-map.py` now asks whether a **cold start** will have
+> the producer, not only whether canon ships one: `!` marks a producer canon
+> ships at `auto_install: false`. `tests/test_required_contexts.sh` §5 reds the
+> suite when the bootstrap tier depends on one. **That catches §C0 landing
+> alone** — substituting `quick-gates` into the templates while its entry is
+> still `auto_install: false`.
+>
+> **It does NOT catch this phase's actual hazard, and no check can.**
+> `auto_install` is a statement about a cold start; the risk here is what the
+> nine *already-installed* consumers have on disk, and canon cannot read consumer
+> repos. So §C0-plus-the-flag landing before C1–C5 passes every gate in this
+> repo. The ordering is enforced by this note and CI-0038, by review — **a green
+> suite is not clearance to land §C0.**
 
 **C2's precondition is the runner-image rebuild** on every host serving that
 repo (Claim 16). Arming `scanners` before the rebuild arms a context that is red
