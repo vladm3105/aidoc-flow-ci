@@ -664,8 +664,72 @@ graduate deliberately. No consumer is touched.
 
 **PR-1 is the largest and may need splitting** — canon's ten Python modules
 passing new `ruff` + `mypy` hooks under a required context (§2a) is unbounded
-until measured. Measure it first; if the fixes are large, land the clean-up
-ahead of the hook addition.
+until measured. **The `mypy` half is now measured (§9g): 28 errors, of which
+four `NoReturn` annotations clear 15. The `ruff` half is still unmeasured and
+cannot be measured until PR-1 fixes which configuration the hook pins (§9g).**
+Land the clean-up ahead of the hook addition only if the `ruff` half, once
+measurable, turns out large — the `mypy` half on its own does not force it.
+
+### 9g. The `mypy` measurement — four annotations clear 15 of 28
+
+Measured 2026-08-15 at `2371444`, mypy 1.19.1. **This answers "measure it first"
+in the PR-1 paragraph above for the `mypy` half only** — the `ruff` half is still
+unmeasured, and the last subsection below says why that is not a formality.
+
+Measure the way the gate will, in ONE invocation over all ten modules — the
+`mypy` hook runs `pre-commit run --all-files`, so per-file runs are a different
+measurement (they leave imports unresolved and report `[import-not-found]`
+artifacts that the real gate never sees):
+
+```console
+$ python3 -m mypy $(git ls-files '*.py')
+Found 28 errors in 5 files (checked 10 source files)
+```
+
+**Four modules define a `fail()` helper annotated `-> None` that never returns**
+— `planner.py:27`, `apply.py:32`, `reconcile.py:41`, `litellm_client.py:42`.
+Each raises `SystemExit` (Claim 80), so mypy reads every guarded block as a
+fall-through and the narrowed value stays `Any | None`; that one shape produces
+the `attr-defined`, `union-attr`, `arg-type`, `return` and `list-item` families.
+Annotating all four `NoReturn` takes **28 → 13**:
+
+| | Errors | Where |
+| --- | --- | --- |
+| Baseline | 28 | 5 modules |
+| After 4 × `NoReturn` | 13 | 2 modules |
+
+Each annotation is two edits, not one — the signature plus a `typing` import that
+`from __future__ import annotations` does not remove the need for. Those added
+import lines are what shift PLAN-021's citations into `planner.py`.
+
+**The residual 13 is a genuinely separate clean-up**, in the two `install/`
+modules, neither of which has a `fail()` helper at all:
+
+| Module | Errors | Cause |
+| --- | --- | --- |
+| `install/parse-governance-table.py` | 7 | `json.load` returns `object`, never narrowed (5 `attr-defined`, 1 `operator`, 1 `index`) |
+| `install/required-context-map.py` | 6 | module-level bare `{}` initialisers (5 `var-annotated`, 1 `misc`) |
+
+**Consequence for PR-1's scope.** Size against **28**, not 13: the annotation
+pattern is the dominant fix and worth taking first, but it is four annotations
+across four modules, and 13 errors in `install/` need individual sites. Whether
+that justifies splitting PR-1 is a judgement this measurement informs rather than
+settles — it is bounded work now, which is what §9 asked for.
+
+**The `ruff` half is invocation-dependent and remains unmeasured.** This repo
+ships **no** `pyproject.toml`, so bare `ruff check` walks up and discovers the
+**umbrella's** (`/opt/data/aidoc-flow/pyproject.toml`), which this repo does not
+own and whose `select` includes `I`. `planner.py` passes
+`ruff check --isolated` and fails bare `ruff check` with `I001` on that config.
+**PR-1 must fix which configuration the pinned hook uses before any ruff count
+means anything**; today's default-rule result does not predict it.
+
+**Re-derive; the numbers drift.** #401 measured 13 for `planner.py` alone on
+2026-08-06 and it is 15 today. The durable claims are the *shape* — one
+annotation pattern across four modules, a separate `install/` cluster, and an
+unpinned ruff configuration — not the counts. Carried from #401, whose
+reproduction target was a `HANDOFF.md` since regenerated away; #393 holds the
+re-pin discipline for the ledger citations into `planner.py`.
 
 ### 9a. PR-1's gate must test PR-1's content
 
@@ -1028,12 +1092,22 @@ inconsistent with the flow this plan ships.
   while this plan was still unREADY, so **PR-1 takes §26**. The yield this plan
   declared is now called: **every remaining `§24` in this document is a forward
   reference to the section PR-1 will write, and PR-1 must renumber them all to
-  §26** — **eleven occurrences across nine lines** (143, 215, 330, 660×2, 673,
-  675, 696, 951, 988×2), deliberately left in place because renumbering them now
+  §26** — **eleven occurrences across nine lines** (143, 215, 330, 660×2, 737,
+  739, 760, 1015, 1052×2), deliberately left in place because renumbering them now
   would drift this plan's Claim-ledger citations for no benefit before PR-1
   exists. **This bullet's own `§24` mentions are NOT among them and must not be
-  renumbered** — "§24 went to PLAN-021" stays true. List them with
-  `grep -n '§24' plans/PLAN-023_*.md | grep -v '^102[0-9]:\|^103[0-9]:'`.
+  renumbered** — "§24 went to PLAN-021" stays true. **The line numbers above
+  drift whenever anything is inserted above them** — they drifted twice while
+  §9g was being written — so re-derive rather than trust them, with a filter
+  that keys on content instead of line ranges:
+  `grep -n '§24' plans/PLAN-023_*.md | grep -v 'PLAN-021\|forward reference\|remaining\|bullet\|grep -n'`.
+  **Run it from the repo root** — from `plans/` the glob matches nothing and
+  grep exits 2, which reads as a count of zero. The stable assertion is the
+  **count** (11 across 9); the numbers are a convenience. Two known break modes:
+  the exclusion terms are ordinary English words, so a future forward reference
+  whose line contains one is dropped **silently**, and the previous line-range
+  filter had already started excluding a real occurrence after the first drift.
+  Check the count, not the list
   **`DECISIONS.md` CI-0031 remains reserved for PR-0** — #387 took **CI-0032**
   rather than disturb the three places this plan already cites CI-0031
 - `docs/overrides.md` §5 — the three override modes this plan extends
@@ -1166,6 +1240,7 @@ team member either), correcting an earlier draft of this section.
 | 71 | `--apply` refuses `CI_TAG=main` without an explicit override | `apply-standards: --apply refuses CI_TAG=main (mutable canon = supply-chain risk)` | install/apply-standards.sh:204 |
 | 72 | PLAN-020 fixes ruleset identity as target + normalized ref pattern, never the name | `Names are free text and mutable` | plans/PLAN-020_canon-self-adoption-and-ruleset-canon.md:129 |
 | 73 | Rules and conditions come only from a per-ruleset detail GET, so identity matching is an N+1 | `**Fetch shape.** The list endpoint returns only` | plans/PLAN-020_canon-self-adoption-and-ruleset-canon.md:135 |
+| 80 | `planner.py`'s `fail()` terminates unconditionally, so `NoReturn` is the correct annotation and the current `-> None` is what makes mypy read each guarded block as a fall-through (§9g). Pinned on the `raise`, NOT on the signature line — PR-1 rewrites the signature, which would take a signature pin to a `symbol not found` hard FAIL that `--fix` cannot repair | `raise SystemExit(1)` | scripts/doc-maintainer/planner.py:29 |
 
 ## Review log
 
@@ -1450,3 +1525,38 @@ converged. §9e's meta-strip is closed. §9f is **split out, not folded**, which
 what the OPS-0066 cap exists to force at cycle 3. The plan is ready for PR-0
 through PR-3 and half-ready for PR-4; §9f needs its own decision, not another
 review cycle.
+
+### Pass 11 - 2026-08-15 - self + independent (§9g only)
+
+Scoped pass: adds §9g and Claim 80, discharging §9's "unbounded until measured"
+for the `mypy` half. **Does not reopen the §9f split or any Pass-10 finding.**
+
+Two independent reviewers, one with a shell and one without. Four findings folded,
+each of which had made the section wrong rather than merely thin:
+
+1. **The conclusion outran its measurement.** §9g first measured `planner.py`
+   alone and concluded for all ten modules. Re-measured in the gate's own
+   invocation (`python3 -m mypy $(git ls-files '*.py')`): **28**, and the
+   `NoReturn` shape generalises to **four** `fail()` helpers, not one, clearing
+   15. The residual 13 is an unrelated `install/` cluster. The first correction
+   was itself mis-scoped — it claimed 15 errors each needing an individual site,
+   when 2 of those 15 fall to the same annotation pattern.
+2. **The measurement was not the gate's.** Per-file `mypy` leaves imports
+   unresolved and reports `[import-not-found]` artifacts the real gate never
+   sees. Restated on the single-invocation form.
+3. **Claim 80 pinned the line PR-1 deletes** — a `symbol not found` hard FAIL
+   that `--fix` cannot repair. Re-pinned to `raise SystemExit(1)`, which
+   survives the signature rewrite.
+4. **`ruff`-clean did not reproduce.** This repo ships no `pyproject.toml`, so
+   bare `ruff check` discovers the **umbrella's** and reports `I001`. Recorded as
+   a PR-1 precondition rather than a measurement.
+
+The §26 renumbering list at §13 was re-derived twice — the insertion shifted it,
+and the fold shifted it again. Its line-range `grep -v` filter was replaced with
+a content-based one, because after the first shift the old filter would have
+**excluded a real occurrence**. That filter's terms are ordinary English words,
+so a future forward reference containing one is dropped silently; the count
+(11 across 9) is the assertion to check, and it must be run from the repo root.
+
+**Result:** no new findings — ready for the §9g scope only. The plan's overall
+status is unchanged by this pass, and Pass 10's **NOT READY** on §9f stands.
