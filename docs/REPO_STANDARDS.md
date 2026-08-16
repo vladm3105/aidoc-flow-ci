@@ -1177,6 +1177,21 @@ accumulating into it turns the OPS-0069 audit-trail gate off without
 touching it. Assert this directly: canon-red plus extras-green must still
 exit non-zero.
 
+**Any REPORTING (non-blocking) hook MUST set `verbose: true`.** `pre-commit`
+prints a hook's stdout only when that hook **fails**. A hook that reports and
+exits 0 therefore renders as a single word — `Passed` — and its entire output
+is discarded. Measured on this repo's own `claim-ledger-gate`: 14 failing plans
+and 85 diagnostic lines swallowed, by a gate whose stated purpose was to print
+them. An advisory hook without `verbose: true` is not advisory, it is absent —
+the same "a gate nothing reads" shape §14.1 exists to prevent, arriving through
+a config default rather than a missing script.
+
+**A skip must respect the mode it is skipping.** Where a wrapper's extra check
+can be unavailable (an absent interpreter, a tool that ships outside the repo),
+the skip is legitimate in reporting mode and is a **hard failure** in enforcing
+mode. A skip path that exits 0 unconditionally is an env-var escape hatch, and
+§14.1's whole point is that canon deliberately has none.
+
 **This repo's own wrapper is `scripts/pre_push_check_ci.sh`** (#469). It
 reads `check_plan.py` over the Claim ledgers of every plan whose `Status:`
 line does not mark it finished, with the workspace root passed as an extra

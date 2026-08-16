@@ -14,7 +14,8 @@
 #
 # Consumers that need repo-specific extras (e.g., verified-planning
 # `check_plan.py`) point this entry at `scripts/pre_push_check_<repo>.sh`
-# WRAPPER instead — wrapper sources canon + adds its own checks. See
+# WRAPPER instead — the wrapper RUNS canon as a subprocess (canon ends in
+# `exit`, so sourcing it silently skips every extra) + adds its own. See
 # PLAN-002 §4.8 for the operations wrapper reference design.
 
 default_install_hook_types:
@@ -90,6 +91,14 @@ repos:
     name: Claim ledgers verify against cited sources (#469, advisory)
     entry: scripts/pre_push_check_ci.sh --ledger-only
     language: script
+    # `verbose: true` is LOAD-BEARING, not cosmetic. pre-commit shows a hook's
+    # stdout only when the hook FAILS; an advisory hook always exits 0, so
+    # without this the entire gate renders as one word — `Passed` — and every
+    # failing row is discarded. Measured: 14 failing plans and 85 diagnostic
+    # lines swallowed. An advisory hook without `verbose: true` is not
+    # advisory, it is absent — which is #469's own defect, reproduced by its
+    # fix. Any reporting (non-blocking) hook must set it.
+    verbose: true
     stages:
     - pre-push
     # `always_run`, NOT a `files:` filter on plans/*.md. Editing a CITED file
