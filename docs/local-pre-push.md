@@ -17,8 +17,11 @@ model, see [`security.md`](security.md). For the full canon rule, see
 
 ## 1. What the local hook does
 
-The canon `pre_push_check.sh` runs 5 checks on the changed files vs.
-`origin/main`:
+The canon `pre_push_check.sh` runs 5 checks on the files the push ADDS
+— not on every file that differs from `origin/main`. The range is
+`@{upstream}..HEAD`, falling back to the merge-base with `origin/main`
+before a branch's first push. Full resolution order and its known limits:
+`REPO_STANDARDS.md` §14.1.
 
 1. `markdownlint` on changed `.md` files (skipped-with-notice if not
    installed).
@@ -166,7 +169,35 @@ Hook prints the linter output. Fix per the linter's guidance; re-push.
 If the linter is unavailable locally but you want to push anyway, CI
 will catch it — but the hook still enforces the audit-trail phrase.
 
-### 7.3 Emergency bypass
+### 7.3 `NOTHING VERIFIED` — the push range is empty
+
+Run **after** `git push`, `@{upstream}` is already `HEAD`, so nothing is
+in range. The hook exits `1` and prints `NOTHING VERIFIED` — neither the
+pass banner nor a `FAILED` one, because nothing was checked and so
+nothing failed. It is **not** an OPS-0069 violation; amending a commit
+will not change it.
+
+Recovery: run it BEFORE the push. To inspect a branch that is already
+pushed, read `git log --oneline origin/main..HEAD`. The exit status is
+non-zero deliberately: the range describes the checked-out branch, so an
+empty range is not proof that nothing is being pushed (#432).
+
+### 7.4 `does not resolve` — the range's base ref is missing
+
+The range's base ref is not in this clone — a repo whose default branch
+is not `main`, or a ref never fetched. Exits `1`. **Amending the commit
+will not clear this** — the phrase is not the problem. Fetch the base ref
+the range names, or set the branch's upstream:
+`git fetch origin && git branch --set-upstream-to=origin/<branch>`.
+
+### 7.5 `GATE MALFUNCTION` — the changed-file list could not be computed
+
+`git diff` exited non-zero, typically unrelated histories after an
+upstream was re-pointed. Exits `1`, and no file was linted. Fix the
+branch's upstream (`git branch --set-upstream-to=<correct ref>`) rather
+than re-running.
+
+### 7.6 Emergency bypass
 
 `git push --no-verify` bypasses the hook entirely (git primitive). This
 does NOT bypass the CI `call / verify` reusable on the resulting PR —
