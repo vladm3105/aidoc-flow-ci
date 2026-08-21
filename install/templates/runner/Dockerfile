@@ -42,29 +42,80 @@
 #
 # No registry push — the image is built locally on each runner host. That keeps
 # the supply chain on this repo + the official actions-runner image + the
-# official cli.github.com apt repo + Ubuntu apt.
+# gh from its immutable GitHub release asset (#435) + Ubuntu apt for the rest.
 
 FROM ghcr.io/actions/actions-runner@sha256:0cfdcc701ce933c6d243c6b0b2da767366dc9f2e99961d4c3754b0b78084cdda
 
 # The actions-runner image runs as the unprivileged `runner` user. Install as
-# root, then drop back. apt-get + gpg manipulation needs root.
+# root, then drop back. apt-get needs root.
 USER root
 
-# Install gh from cli.github.com's official apt repo (the canonical install
-# path for Debian/Ubuntu per https://github.com/cli/cli/blob/trunk/docs/install_linux.md).
-ARG GH_VERSION=2.97.0
+# gh is installed from its IMMUTABLE RELEASE ASSET, not from the apt repo.
+#
+# WHY (#435): cli.github.com's apt repo carries only the CURRENT release, so an
+# exact `gh=${GH_VERSION}` pin stops being installable the moment upstream ships
+# the next one — with no change to this repo, and with nothing detecting it. The
+# image then cannot be rebuilt BY ANYONE, which is worse than a stale pin: it
+# makes every fix that requires a rebuild undeliverable while it sits merged.
+# That already happened once — `sast-scan` could not install semgrep (#349), the
+# fix landed here, and the image had been unbuildable since 2.97.0 shipped.
+#
+# MEASURED TWICE, which is why this is a class fix and not another bump:
+#   2026-08-09  pinned 2.96.0, apt carried only 2.97.0  -> unbuildable
+#   2026-08-20  pinned 2.97.0, apt carried only 2.98.0  -> unbuildable again
+# The second is the same defect re-arming itself with no commit in between.
+#
+# A GitHub release asset is immutable, so an exact pin against one never
+# expires. Verified: the 2.97.0 .deb is still downloadable after 2.98.0 shipped.
+# Checksums come from the release's own published `gh_<version>_checksums.txt`
+# and are verified BEFORE install (D20 — a downloaded artifact is mutable state
+# on infrastructure we do not control, and canon installs tools as verified
+# BINARIES rather than trusting a package index, per REPO_STANDARDS §4.3).
+#
+# TO BUMP: change GH_VERSION and BOTH checksums together, from
+#   curl -sSfL https://github.com/cli/cli/releases/download/v<V>/gh_<V>_checksums.txt
+# A version bumped without its checksums fails the build loudly, which is the
+# intended failure mode.
+# ── IMAGE CONTRACT (#458) ────────────────────────────────────────────────────
+# The image is built PER HOST with no registry push, so a host that has not
+# re-run build-image.sh keeps the old one and NOTHING prompts it. That state used
+# to exist in exactly one place — HANDOFF.md — which CI-0028 regenerates wholesale
+# at every wrap, so it was re-summarised or dropped on each pass.
+#
+# The fix is not a hand-maintained list of hosts (that is a second queue, and it
+# goes stale the same way). It is to make the image STATE ITS OWN VERSION, so
+# "which hosts have rebuilt?" is answerable from any run instead of remembered.
+#
+# BUMP THIS whenever a change here must reach every host before it takes effect
+# — a new package a gate depends on, a base-digest move, a gh bump. Then raise
+# `RUNNER_CONTRACT_MIN` in run-ephemeral.sh in the SAME change: the supervisor
+# refuses to start a runner on an image below the minimum, and says how to fix it.
+ARG RUNNER_CONTRACT=2
+# LABEL only, deliberately: every consumer (build-image.sh, run-ephemeral.sh,
+# the README's one-liner) reads the label. An ENV would be a second copy of the
+# same fact, injected into every job container, with no reader.
+LABEL org.opencontainers.image.title="aidoc-flow-runner" \
+      dev.aidoc-flow.runner.contract="${RUNNER_CONTRACT}"
+
+ARG GH_VERSION=2.98.0
+ARG GH_SHA256_AMD64=f65a3fa2fa0eb2e97c445ee3f5e087a40aae03b64847f45a8f13805e504535d6
+ARG GH_SHA256_ARM64=bbc4ac7964c2a091fd555cd1758d10a7cfcfdc472e405f0b0fb958f05d535cb6
 RUN set -eux; \
     apt-get update -qq; \
-    apt-get install -y -qq --no-install-recommends ca-certificates curl gnupg; \
-    install -d -m 0755 /etc/apt/keyrings; \
-    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-      | gpg --dearmor -o /etc/apt/keyrings/githubcli-archive-keyring.gpg; \
-    chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg; \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-      > /etc/apt/sources.list.d/github-cli.list; \
-    apt-get update -qq; \
+    apt-get install -y -qq --no-install-recommends ca-certificates curl; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      amd64) gh_sha="${GH_SHA256_AMD64}" ;; \
+      arm64) gh_sha="${GH_SHA256_ARM64}" ;; \
+      *) echo "ERROR: no pinned gh checksum for architecture '${arch}' — refusing to install an unverified gh." >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/gh.deb \
+      "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${arch}.deb"; \
+    printf '%s  %s\n' "${gh_sha}" /tmp/gh.deb | sha256sum --check --strict; \
+    apt-get install -y -qq --no-install-recommends /tmp/gh.deb; \
+    rm -f /tmp/gh.deb; \
     apt-get install -y -qq --no-install-recommends \
-      "gh=${GH_VERSION}" ripgrep libatomic1 python3-venv python3-pip python3-yaml; \
+      ripgrep libatomic1 python3-venv python3-pip python3-yaml; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*; \
     gh --version | head -1; \

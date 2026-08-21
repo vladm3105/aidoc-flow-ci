@@ -5,6 +5,73 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — the runner image's `gh` pin expired on its own, twice (#435, #458)
+
+`install/templates/runner/Dockerfile` pinned `gh` with an exact apt version
+against `cli.github.com`. **That repo carries only the current release**, so the
+pin stopped being installable the moment upstream shipped the next one — with no
+change to this repo and nothing detecting it. Measured:
+
+| Date | Pinned | apt offered | Result |
+|---|---|---|---|
+| 2026-08-09 | 2.96.0 | 2.97.0 only | unbuildable |
+| 2026-08-20 | 2.97.0 | 2.98.0 only | unbuildable again |
+
+The second occurrence had **no commit between it and the first fix** — the
+defect re-armed itself, which is why this is a class fix rather than a bump.
+Confirmed by running the shipped install path in a container:
+`E: Version '2.97.0' for 'gh' was not found`.
+
+An unbuildable image is worse than a stale one: it makes every fix that needs a
+rebuild undeliverable while it sits merged and looking done. #349 was spent that
+way — the `sast-scan` semgrep fix landed here and could not be delivered.
+
+`gh` now comes from its **immutable release asset**, checksum-verified before
+install (D20), with a pinned digest per architecture and a hard refusal on any
+architecture that has none. Verified end to end: the block builds, and the
+resulting image reports `gh version 2.98.0`, `PyYAML 6.0.1`, a working
+`python3 -m venv`, and `ripgrep`.
+
+**And the paired half (#458): a stale host now announces itself.** The image is
+built per host with no registry push, so a host that skipped a rebuild keeps the
+old one — and since #349 an old image makes `scanners` **red on arrival** with a
+failure that names semgrep rather than the image. That state lived only in
+`HANDOFF.md`, which is regenerated wholesale at every wrap.
+
+The fix is not a list of hosts — a hand-maintained list is a second queue that
+goes stale the same way. The image now **states its own version**: it carries a
+`dev.aidoc-flow.runner.contract` label, `build-image.sh` proves the stamp
+landed, and `run-ephemeral.sh` checks it at startup.
+
+**Two outcomes, and the split is the safety property.** The unit runs under
+`Restart=always` / `RestartSec=5`, so a hard refusal on a condition true of every
+host on landing would not "stop the fleet" — it would crash-loop it, fleet-wide,
+every five seconds. A **missing** label therefore warns and continues (every host
+is in that state until it rebuilds once), and only a label **below a deliberately
+raised minimum** refuses, with exit 78 named in the unit's
+`RestartPreventExitStatus` so it stops with a stated cause. A `docker inspect`
+failure warns rather than refusing, since a daemon not ready at boot is transient.
+Driven against four real states — current, stale, pre-stamp, and absent image.
+
+**`tests/test_runner_image.sh` is new, because nothing tested this directory at
+all** — which is how the same defect armed itself twice. 22 assertions, offline
+by design so a network blip cannot red the gate. Mutation-checked: restoring the
+apt pin, truncating a checksum, moving the checksum after the install, drifting
+the two contract numbers apart, making the no-label arm exit, and removing the
+unit's `RestartPreventExitStatus` each red the suite.
+
+Rules: `REPO_STANDARDS.md` § "A pinned tool must be pinned to something
+IMMUTABLE" and § "Per-host build state must be READABLE, not remembered".
+
+**Operator action required, and it is the one thing this change cannot do:**
+every runner host must run `bash install/templates/runner/build-image.sh` once.
+Until it does, that host keeps serving jobs from an unstamped image and logs a
+warning at startup — it is **not** refused, deliberately, because refusing a
+state that is true of every host on landing would crash-loop the fleet rather
+than stop it. A host that has also not re-run `provision-runner.sh` is never
+refused at all, since the refusal verifies that the installed unit makes exit 78
+terminal before using it.
+
 ### Fixed — the §27 sigpipe guard was evadable by wrapping the pipeline (#422)
 
 `tests/test_sigpipe_guard.sh` matched **physical** lines, so a pipeline split
