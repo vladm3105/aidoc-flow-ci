@@ -834,6 +834,70 @@ than silently excepted:
 `trivy-scan` and `dep-scan` across both the actions and the reusables, and added
 rules 2 and 6–9 from what that work measured.
 
+#### 4.3f A pinned tool must be pinned to something IMMUTABLE (#435)
+
+`install/templates/runner/Dockerfile` pinned `gh` with an exact apt version
+against `cli.github.com`. **That repo carries only the current release**, so the
+pin stopped being installable the moment upstream shipped the next one — with no
+change to this repo, and with nothing detecting it.
+
+Measured twice, which is what makes it a class and not a bump:
+
+| Date | Pinned | apt offered | Result |
+|---|---|---|---|
+| 2026-08-09 | 2.96.0 | 2.97.0 only | unbuildable |
+| 2026-08-20 | 2.97.0 | 2.98.0 only | unbuildable again |
+
+The second occurrence had **no commit between it and the first fix** — the
+defect re-armed itself.
+
+**An unbuildable image is worse than a stale one.** It makes every fix that
+requires a rebuild undeliverable while it sits merged and looking done: #349
+(`sast-scan` cannot install semgrep) was fixed by editing this Dockerfile, and
+the fix could not be delivered by anyone for the life of the expired pin.
+
+**Rules.**
+
+1. Pin to an artifact that **cannot be withdrawn** — a release asset, a digest,
+   a commit SHA. A package index that carries only `latest` is not one.
+2. Verify the artifact's **checksum before use** (D20), and keep the checksum
+   next to the version so a bump that forgets it fails loudly.
+3. State the **bump procedure** where the bumper will look, including where the
+   checksums come from.
+4. Fail closed on an unhandled variant (an architecture with no pinned digest)
+   rather than installing something unverified.
+
+**Origin:** #435.
+
+#### 4.3g Per-host build state must be READABLE, not remembered (#458)
+
+The runner image is built per host with no registry push, so a host that skipped
+a rebuild keeps the old one and nothing prompts it. The record of which hosts had
+rebuilt lived only in `HANDOFF.md`, which CI-0028 regenerates wholesale at every
+wrap — so it was re-summarised or dropped on every pass, and it survived two
+regenerations in near-identical wording before anyone noticed it was not
+volatile state at all.
+
+**The fix is not a list of hosts.** A hand-maintained list is a second queue and
+goes stale exactly the same way. The artifact states its own version instead:
+
+1. **Stamp the artifact** with a contract version it carries at run time.
+2. **Declare the minimum** where the artifact is consumed, and check it there —
+   at the supervisor, not inside the job. A job-side failure is remote,
+   repo-shaped and names the wrong cause; a supervisor-side one is local, names
+   the host, and states the command that fixes it.
+2a. **Match the severity to how the check will be RESTARTED.** A supervised
+   process under `Restart=always` turns any refusal into a crash-loop, so a
+   condition that is true of every host on landing must WARN, and only a
+   deliberately-raised minimum may refuse — with a distinct exit code the unit
+   names in `RestartPreventExitStatus`, so the unit stops with a stated cause.
+   A gate that is right about the defect and wrong about the restart policy
+   takes down more than the defect did.
+3. **Raise both in one change**, and assert they agree — two files stating one
+   fact is the drift class that produced #423, #426 and #428.
+
+**Origin:** #458.
+
 ### 4.4 `markdown-lint` config template (`install/templates/.markdownlint.json`)
 
 The canon `.markdownlint.json` is the recommended ruleset consumers **copy**

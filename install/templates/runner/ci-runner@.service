@@ -23,6 +23,10 @@ ExecStartPre=@DOCKER_BIN@ info
 ExecStart=@RUNNER_HOME@/run-ephemeral.sh
 Restart=always
 RestartSec=5
+# 78 = run-ephemeral.sh refused a stale runner image (#458). Without this the
+# refusal would crash-loop every RestartSec instead of stopping, and the operator
+# would see a scrolling log rather than a failed unit with a stated cause.
+RestartPreventExitStatus=78
 # The supervisor calls docker (group-accessible) + gh (host auth); no root.
 
 [Install]

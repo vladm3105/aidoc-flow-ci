@@ -122,3 +122,47 @@ prefer TLS whenever the proxy can provide it.
 Host-side network diagnostics (probing api.github.com reachability from the
 runner host) are operator-side tooling, deliberately not part of these
 templates.
+
+## The image contract — how a stale host announces itself (#458)
+
+The image is built **per host with no registry push**, so a host that has not
+re-run `build-image.sh` keeps the old one and nothing prompts it. Since #349 an
+old image lacks `python3-venv` / `python3-yaml`, which makes `sast-scan` inert
+and takes the whole consolidated `scanners` job down with it — **red on arrival**
+for every repo whose jobs land on that host, with a failure that names semgrep
+rather than the image.
+
+That state used to live in exactly one place, `HANDOFF.md`, which is regenerated
+wholesale at every wrap. It is not tracked by hand now — the image **states its
+own version**, so "which hosts have rebuilt?" is answerable from any run:
+
+```bash
+# what this host has
+docker image inspect --format '{{ index .Config.Labels "dev.aidoc-flow.runner.contract" }}' aidoc-flow-runner:latest
+
+# what canon requires
+grep RUNNER_CONTRACT_MIN run-ephemeral.sh
+```
+
+`run-ephemeral.sh` checks the label at startup, with **two outcomes** — and the
+split is deliberate, because this unit runs under `Restart=always` /
+`RestartSec=5`:
+
+| Image state | Outcome |
+|---|---|
+| no label at all | **warns and continues.** Every host is in this state until it rebuilds once; landing the check must not take CI down. |
+| label below the minimum | **refuses, exit 78.** That state exists only after someone deliberately raised the contract. `RestartPreventExitStatus=78` in the unit makes it terminal, so `systemctl status` shows the reason instead of a five-second crash-loop. |
+| `docker inspect` fails | warns and continues — a daemon not ready at boot is transient, not evidence of a stale image. |
+
+It checks at the supervisor rather than letting the job discover it: the
+job-side failure is remote, repo-shaped and misleading, while this one is local
+and actionable.
+
+**Raising the contract** — do both in one change, or every host is refused (or
+none is): bump `ARG RUNNER_CONTRACT` in the `Dockerfile` **and**
+`RUNNER_CONTRACT_MIN` in `run-ephemeral.sh`. `tests/test_runner_image.sh`
+asserts they agree. Bump it whenever a change must reach every host before it
+takes effect — a new package a gate depends on, a base-digest move, a `gh` bump.
+
+`RUNNER_SKIP_CONTRACT_CHECK=1` exists for a deliberate one-off and should not
+appear in a unit file.

@@ -6,8 +6,12 @@
 # Usage (from any directory — the script resolves its own location):
 #   bash build-image.sh                               # builds aidoc-flow-runner:latest
 #   IMAGE_TAG=aidoc-flow-runner:2026-07-20 bash build-image.sh
-#   GH_VERSION=<newer> bash build-image.sh   # if the pinned gh version has
-#                                            # rotated out of the apt repo
+#
+# There is deliberately NO GH_VERSION env override. It used to exist for when the
+# apt pin rotated out of the repo (#435) — a failure mode that no longer exists —
+# and it cannot work now: the version and its two checksums must move together,
+# and the checksums are only settable by editing the Dockerfile. An override that
+# can only ever fail the checksum is worse than none.
 #
 # After building, run-ephemeral.sh uses the local image automatically via
 # RUNNER_IMAGE (see README.md in this directory). No service restart is needed
@@ -38,16 +42,18 @@ else
   # Decide on the captured OUTPUT, never on the pipeline's status (CI-0033):
   # `tee` is the last stage, so `$?` here is tee's, not docker's.
   case "$(cat "$build_log")" in
-    *"for 'gh' was not found"*)
-      pinned="$(grep -oE "Version '[^']+' for 'gh'" "$build_log" | head -1 | cut -d"'" -f2)"
-      echo "" >&2
-      echo "❌ the pinned gh version (${pinned:-see above}) is NO LONGER IN THE APT REPO." >&2
-      echo "   This is not a defect in your change: cli.github.com keeps only the" >&2
-      echo "   CURRENT release, so the pin expires on its own at every gh release." >&2
-      echo "   Find what is available and bump ARG GH_VERSION in the Dockerfile:" >&2
-      echo "     docker run --rm --user root <base> bash -c 'apt-get update -qq; apt-cache madison gh'" >&2
-      echo "   or take the newest from https://github.com/cli/cli/releases" >&2
-      ;;
+  *"sha256sum"*|*"does not match"*|*"WARNING: 1 computed checksum did NOT match"*)
+    echo "❌ the pinned gh checksum did not match the downloaded asset." >&2
+    echo "   Either GH_VERSION was bumped without its checksums, or the download was corrupted." >&2
+    echo "   Re-derive both from the release's own checksums file:" >&2
+    echo "     curl -sSfL https://github.com/cli/cli/releases/download/v<VERSION>/gh_<VERSION>_checksums.txt" >&2
+    echo "   then set GH_VERSION, GH_SHA256_AMD64 and GH_SHA256_ARM64 in the Dockerfile TOGETHER." >&2
+    ;;
+  *"curl"*|*"404"*)
+    echo "❌ the pinned gh release asset could not be downloaded." >&2
+    echo "   Release assets are immutable, so a 404 means GH_VERSION names a release that does not exist" >&2
+    echo "   (a typo, or a version never published for this architecture) — not that a pin expired (#435)." >&2
+    ;;
     *)
       echo "" >&2
       echo "❌ image build failed — see the output above." >&2
@@ -105,6 +111,18 @@ if yaml_check="$(docker run --rm "${IMAGE_TAG}" python3 -c 'import yaml; print("
 else
   echo "❌ PyYAML not importable in ${IMAGE_TAG} — actions/pre-commit's D11 guard will red quick-gates." >&2
   printf '%s\n' "$yaml_check" >&2
+  exit 1
+fi
+
+echo "==> verifying the image carries its contract stamp (#458)"
+# Without the label the supervisor cannot tell a current host from a stale one,
+# and #458's whole point is that the state must be readable rather than
+# remembered. No pipe: the exit status is the decision (CI-0033 / §27.1).
+if contract="$(docker image inspect --format '{{ index .Config.Labels "dev.aidoc-flow.runner.contract" }}' "${IMAGE_TAG}" 2>&1)" \
+   && [ -n "$contract" ] && [ "$contract" != "<no value>" ]; then
+  echo "runner contract ${contract}"
+else
+  echo "❌ ${IMAGE_TAG} carries no dev.aidoc-flow.runner.contract label — run-ephemeral.sh will refuse it." >&2
   exit 1
 fi
 
