@@ -1,6 +1,7 @@
 # PLAN-024 — aidoc-flow-ci library optimization
 
-**Status:** Draft — no phase executed; superseded in part by PLAN-025 (D/E/F/G)
+**Status:** PARTIALLY EXECUTED — Phase A **A5 is done**; A1/A2/A3/A6/A7 and all
+other phases Draft; superseded in part by PLAN-025 (D/E/F/G)
 **Owner:** canon (aidoc-flow-ci)
 **Scope:** this repo's own artifacts — reusable workflows, install templates,
 canonical scripts, `docs/REPO_STANDARDS.md`. Consumer repos and other projects
@@ -9,6 +10,18 @@ are out of scope (narrowed 2026-08-06).
 when Phase G (drop four CI flows into the hook layer) was added on 2026-08-07 —
 it changes the surface every consumer adopts. Phase H is C2: after its own
 withdrawal it is a docs + fragment change, not a workflow build.
+
+> **A5 executed 2026-08-20** on the founder's deprecation of `doc-maintainer`
+> — decision of record `DECISIONS.md` **CI-0040**. All eleven defects are closed
+> *not planned*. **No artifact or wiring has been removed:** 33 tracked files
+> still reference the flow and three `manifest.json` entries still make it
+> installable through the supported bootstrap path. The remainder is tracked as
+> **#496**, which also carries A4's `litellm-smoke` alias circularity — that
+> gate blocks the next tag.
+>
+> **A5 deviated on one issue.** #404 was carved out of the closure by A5's own
+> text (*"#404 must NOT be closed"*) and was closed anyway. Its defect survives
+> verbatim in `docs-sync`; re-filed as **#495**.
 
 ## 1. What this plan found — and mostly withdrew
 

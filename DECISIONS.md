@@ -2672,3 +2672,115 @@ as a required question of any canon fix.
   §14.1b now carries the rules that keep it honest (anchor on the outcome, never
   on a padding width; pin `--color=never`; `env -u SKIP`). If upstream ever ships
   a structured report, it supersedes the parsing.
+
+## CI-0040: `doc-maintainer` is deprecated — the decision of record, and what it does NOT yet discharge (2026-08-21)
+
+**Context**
+
+CI-0037 left PLAN-024 Phase A's proposal to eliminate `doc-maintainer` as an
+open founder decision, in its own words: *"That is a founder decision, not one
+this entry makes."* It has since been answered — the founder deprecated the flow
+on **2026-08-20**, and PLAN-024 Phase A **A5** was executed against that answer:
+all eleven `doc-maintainer` defects were closed *not planned — flow deprecated*
+(#372, #384, #389, #390, #391, #403, #404, #406, #408, #409, #413).
+
+**That answer had no durable carrier.** Until this entry, the decision of record
+existed only in a GitHub issue closing comment — #404's, which states the gap
+itself: *"`DECISIONS.md` carries no deprecation entry… This closure is the
+founder's answer to that question, recorded here until it lands in
+`DECISIONS.md`."* A decision that governs a removal across 33 tracked files
+cannot live in the comment thread of a closed issue.
+
+**Decision**
+
+1. **`doc-maintainer` is deprecated and will be eliminated from the library**,
+   per PLAN-024 Phase A. Not paused, not graduated. This entry is the record
+   CI-0037 deferred and #404's closing comment placeheld.
+2. **`docs-sync` becomes the workspace's sole doc automation** (Phase A A6).
+3. **A5 is executed; A1, A2, A3, A6 and A7 are not.** Tracked as #496.
+
+**The state this leaves, stated because the tracker and the tree disagree**
+
+The eleven issues are closed, so the tracker reads as though the flow is gone.
+It is not: `git grep -l "doc-maintainer"` over tracked files, excluding the
+append-only surfaces and `plans/`, returns **33** — exactly the count PLAN-024
+A1 recorded when the phase was written. Nothing has been removed. The reusable
+(561 lines), the caller template, the config and conventions templates, and
+`scripts/doc-maintainer/` (593 lines of Python) all still ship, and **three
+`manifest.json` entries still make the flow installable through the supported
+bootstrap path.** A deprecation invisible to every adoption path is not yet a
+deprecation.
+
+**Two obligations this entry names rather than leaves to be rediscovered**
+
+- **The MAJOR-bump smoke gate is circular** (PLAN-024 A4).
+  `docs/RELEASE_CHECKLIST.md:42` requires `litellm-smoke` to pass with both
+  canonical aliases, one of which is `ai-doc-maintainer` — the alias the removal
+  deletes. `tests/test_contract.sh:203` asserts the purpose-scoped keys by
+  reading `.github/workflows/doc-maintainer.yml` directly; `:204` separately
+  asserts that `litellm-smoke.yml` names both aliases. Two assertions, only
+  the first of which reads the removed file. **The removal cannot land without
+  editing all of these in the same change, and until it does, the next tag
+  cannot be cut.**
+- **`operations` is running the flow live** — `dry_run: false` AND
+  `kill_switch: false` on `origin/main`. **`framework` is inert, not merely
+  dry-run**: it carries `dry_run: true` *and* `kill_switch: true`, and per
+  that config's own comment `kill_switch` exits before incurring LiteLLM cost,
+  so it does not execute at all. CI-0037 called it "paused" and was right; a
+  dry-run-only framing here would be a step back in precision. Deleting the
+  reusable from canon breaks that caller. The consumer-side removal is that
+  repo's business and 🔴 cross-repo per the autonomy tiers — it must land
+  **before** canon deletes the reusable, not after.
+
+**A5 deviated from Phase A in TWO places, not one**
+
+*First — the #404 carve-out.*
+
+A5 carved **#404** out of the closure explicitly: *"#404 must NOT be closed. Its
+defect… survives verbatim in `docs-sync`, the flow A6 makes sole."* It was
+closed anyway. Verified against `main` today: `.github/workflows/docs-sync.yml`
+does `mkdir -p .docs-sync-scripts` at `:184` with **no preceding `rm -rf`**, then
+imports by path at `:198`/`:204`/`:210` — and unlike `doc-maintainer.yml:561` it
+has no post-run purge either. Re-filed as **#495**. Recording the deviation
+rather than quietly re-filing, because the carve-out was correct and the closure
+pass did not honour it.
+
+*Second — the dangling citations were never paired.* A5 also required: *"Two
+closes dangle a live citation. #413 is cited in the rulebook as the filed §20.2
+gap, and #372 is carried in `REPO_STANDARDS.md` and twice in `DECISIONS.md` as
+a deliberately-unfixed defect. Pair each close with its citation edit."* That
+pairing was not done, and **four sites still cite the two issues as live gaps**
+while both are closed:
+
+| Site | Text |
+| --- | --- |
+| `docs/REPO_STANDARDS.md:2331` | "a known gap, filed as #413, not a compliance" |
+| `docs/REPO_STANDARDS.md:2870` | "deliberately not fixed here; it is #372" |
+| `DECISIONS.md:1657` | "not fixed — #372" |
+| `DECISIONS.md:1733` | "Do not cite PLAN-021 as closing the pilot's failure set" |
+
+**So "A5 is executed" above means A5's closures happened — not that A5's own
+definition of done was met.** The two `REPO_STANDARDS.md` sites are folded into
+**#496** rather than fixed here, because PLAN-024 **A3** rewrites those same
+rulebook sections and a separate edit now would collide with it. The two
+`DECISIONS.md` sites need no edit: this file is append-only, and this paragraph
+is the new text A5 asked for.
+
+**Consequences**
+
+- **PLAN-024's header is corrected in this same change.** It reads *"Draft — no
+  phase executed"*, which A5 falsified. The plan is now partially executed, and
+  a status line that hides that is how the other half gets lost.
+- **CI-0037 is answered, not superseded.** `DECISIONS.md` is append-only; that
+  entry stands as written and this is its forward reference.
+- **Three open `docs-sync` defects gain weight** as it becomes sole: #495
+  (above), #462 (`dry_run` falls back to live, contradicting the §4.0a
+  dry-run-first contract — its "match `doc-maintainer`" framing is retired by
+  this entry and the fix now rests on the contract itself), and #461 (canon's own
+  `self-docs-sync` runs on `ubuntu-latest`, so the self-hosted path consumers get
+  is never exercised).
+- **What this does NOT do:** it removes nothing. No artifact, manifest entry,
+  wizard reference or LiteLLM key wiring changes here — this entry is the record,
+  #496 is the removal. `CHANGELOG.md`, this file and
+  `docs/MIGRATION_v2.0.0.md` are append-only history and are **not** to be
+  scrubbed of the flow.
