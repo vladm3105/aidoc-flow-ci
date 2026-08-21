@@ -5,6 +5,92 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Security — a PR could choose its own scanner coverage on `trivy-scan` and `dep-scan` (#425)
+
+`sast-scan` carried D23 — strip any PR-committed ignore/config file before
+scanning, because the scanner honours it independently of `--config`. The other
+two scanners had **no equivalent**, on either of the surfaces that ship them:
+the composite actions **and** the `workflow_call` reusables of the same names,
+which carry their own inline bodies and are what
+`install/templates/workflows/{dep,trivy}-scan.yml` pin.
+
+Measured 2026-08-20 against the pinned tool versions (trivy 0.72.0,
+osv-scanner 2.4.0), committing the file into the scanned repo:
+
+| Committed by the PR | Effect |
+|---|---|
+| `.trivyignore` listing the AVD IDs | misconfigurations **3 → 0** |
+| `trivy.yaml` narrowing `severity` | misconfigurations **3 → 0** |
+| `osv-scanner.toml` beside a manifest | results **24 → 0** |
+| `.gitignore` naming one service's manifest | results **70 → 24**, exit 1 |
+| `.gitignore` naming the only manifest | exit 128, **no SARIF written** |
+
+**Two harms, and the second outlives the PR.** Under PLAN-014 Phase 5
+(`fail-on-findings: true`) a PR silences its own findings and the gate passes.
+Worse, the run still writes a *legitimate* zero-result SARIF, so the
+`scanners.yml` purge cannot see it — that purge catches a PR **supplying** a
+report, not a PR **causing** an empty one. `hashFiles` is non-empty, the upload
+runs, and because Code Scanning keys an analysis by `category`, the `push: main`
+run **replaces** that category's analysis and erases every open alert it held.
+
+**All four surfaces now strip before scanning**, matching `-type f` **and
+`-type l`** (git stores symlinks natively and the scanner follows the link),
+with a post-condition that refuses to scan on any survivor. The strip and the
+post-condition read **one** expression, so they cannot drift the way `sast-scan`
+did (#423).
+
+**The strip is scoped to each tool's real discovery, which differs.** trivy
+reads config and ignore file from the working directory only — measured, the
+same file in a subdirectory has no effect — so `trivy.yaml` is stripped at depth
+1 and a nested `deploy/trivy.yaml` (a plausible Kubernetes manifest, and
+kubernetes is a scanned type) is left alone. osv-scanner is the inverse: config
+is discovered beside each manifest, so that strip is recursive.
+
+**`dep-scan` now runs `osv-scanner --no-ignore`.** `.gitignore` cannot be
+stripped — every repo has a legitimate one — so the discovery is disabled
+gate-side instead. D12's zero-coverage guard keys on exit 128 and therefore
+never fires on the *targeted* case above. **Expect a coverage change:** vendored
+trees (`node_modules/`, `vendor/`) are no longer skipped, so finding counts rise
+on repos that gitignore their dependencies. That is coverage the gate did not
+previously have.
+
+**Four further defects found by the pre-push review and fixed in the same
+change**, each measured rather than argued:
+
+- `scan-path` is an action input, and `find` reads a leading `-` as an option:
+  `scan-path: -delete` produces `find -delete . …` with no path operand, which
+  **empties the workspace** — after which the post-condition finds nothing and
+  certifies the empty tree clean. Now rejected, along with a path that is not an
+  existing directory (previously reported as an ignore-file supply-chain error).
+- `ferr="$(mktemp)"` was a bare assignment, so under `set -e` a temp-file failure
+  aborted the step **before** any `::error::` — the exact shape the adjacent
+  `|| fst=$?` exists to prevent.
+- The strip's `-print` emitted PR-controlled paths unfolded. Newlines are legal
+  in git paths and the runner parses every line for `::command::`, so a crafted
+  path could forge `::stop-commands::` and suppress the refusal's own
+  `::error::`. Folded now, and the strip's stderr is appended to the error file
+  rather than discarded, so a delete failure is no longer reported with an empty
+  `find_stderr`.
+- A **directory** at trivy's config path makes trivy exit FATAL, which the tool
+  error arm reported as "infrastructure/tool error … Re-run" — a permanent red
+  whose stated remedy can never work. Named explicitly now.
+
+A repo committing one of these on purpose gets a `::warning::` and a step-summary
+line naming the file and the gate-side alternative, rather than silent deletion.
+
+`tests/test_actions.sh` slices the block out of each of the four surfaces and
+**drives** it, asserting that the planted files are **gone** rather than that the
+step exited 0 — because strip and post-condition share one expression, a
+symmetric scoping regression is self-consistent and otherwise silent. Both
+directions, plus the `-delete` scan-path, the bad scan-path, the `mktemp`
+failure and the directory collision. Five mutations were confirmed to red the
+suite, including dropping `-type l` and dropping `--no-ignore`.
+`test_actions.sh`: **222 → 314 assertions**, 0 failed.
+
+Rule: `REPO_STANDARDS.md` §4.3e, which also records what D23 does **not** cover
+(in-line `#trivy:ignore:` suppressions) and the two `sast-scan` surfaces that do
+not yet satisfy it (#423 and the reusable's post-condition-free strip).
+
 ### Fixed — bootstrap installed one producer while the tier templates required another (#481, #455)
 
 `#441` shipped one half of a two-half change. It moved `auto_install` from

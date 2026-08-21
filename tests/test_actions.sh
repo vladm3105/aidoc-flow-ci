@@ -89,6 +89,56 @@ for j in (d.get("jobs") or {}).values():
 PY_NB
 }
 
+# Every `run:` body of a file, for EITHER shape — `runs.steps` (composite action)
+# or `jobs.*.steps` (reusable workflow). `runbody` handles only the first and
+# returns EMPTY for a reusable, which makes any assertion against it vacuous.
+anybody() {
+  python3 - "$1" "${2:-action}" <<'PY_AB'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+steps = []
+if sys.argv[2] == "job":
+    for j in (d.get("jobs") or {}).values():
+        steps += (j.get("steps") or [])
+else:
+    steps = (d.get("runs") or {}).get("steps") or []
+for s in steps:
+    if "run" in s:
+        print(str(s["run"]))
+PY_AB
+}
+
+# The EXECUTABLE D23 segment of a scanner surface — from the banner to the
+# scanner invocation that follows it. Sliced (never hand-copied) so the test
+# drives the SHIPPED code: a hand-copy is a second statement of the same fact
+# and drifts silently.
+#
+# `set -euo pipefail` is PREPENDED because the slice starts BELOW the run body's
+# own `set` line. Without it the driver runs under different shell options than
+# production, and every `set -e` property the block's comments call load-bearing
+# is unfalsifiable — a verification narrower than its claim.
+# $1 = file, $2 = end marker, $3 = "job" for a reusable workflow (else action).
+d23_block() {
+  python3 - "$1" "$2" "${3:-action}" <<'PY_D23'
+import sys, yaml
+f, end, kind = sys.argv[1], sys.argv[2], sys.argv[3]
+d = yaml.safe_load(open(f)) or {}
+steps = (list((d.get("jobs") or {}).values())[0].get("steps") or []) if kind == "job" \
+        else ((d.get("runs") or {}).get("steps") or [])
+for s in steps:
+    r = str(s.get("run", ""))
+    if "# \u2500\u2500 D23" in r and end in r:
+        seg = r[r.index("# \u2500\u2500 D23"):r.index(end)]
+        print("set -euo pipefail")
+        # $1 is the scan-path under test. The action supplies it via `env:`; the
+        # driver supplies it positionally. Unbound under `set -u` aborts instantly.
+        print('SCAN_PATH="${1:-.}"')
+        print('summary() { :; }')
+        print(seg)
+        break
+PY_D23
+}
+
 # Sorted action basenames a caller invokes — catches a silently dropped check.
 invoked_actions() {
   python3 - "$1" <<'PY_IA'
@@ -579,6 +629,158 @@ if [ -f actions/trivy-scan/action.yml ]; then
   assert_absent "$sclist" "helm" "trivy: helm NOT in --misconfig-scanners (fetches remote charts)"
   assert_contains "$ts" "sha256sum --check --strict" "trivy: tarball checksum-verified (D20)"
 fi
+# D23 IS NOT SAST-ONLY (#425), and it is not ACTION-only either. Four shipped
+# surfaces run a scanner: the two composite actions AND the two `workflow_call`
+# reusables of the same names, which carry their own inline bodies and are what
+# `install/templates/workflows/{dep,trivy}-scan.yml` pin. Assert all four, then
+# DRIVE them — a static assertion passes against code that deletes nothing.
+#
+# MEASURED bypasses this closes (pinned tool versions):
+#   trivy 0.72.0        root `.trivyignore` / `trivy.yaml`  -> misconfigs 3 -> 0
+#   osv-scanner 2.4.0   `osv-scanner.toml` beside a manifest -> results 24 -> 0
+#   osv-scanner 2.4.0   `.gitignore` naming a manifest       -> 70 -> 24 (targeted,
+#                       exit 1 so D12's zero-coverage arm never fires) or rc=128
+D23_SURFACES="actions/trivy-scan/action.yml:trivy:action actions/dep-scan/action.yml:dep:action .github/workflows/trivy-scan.yml:trivy:job .github/workflows/dep-scan.yml:dep:job"
+d23_end() { if [ "$1" = trivy ]; then printf '# STATIC scanners ONLY'; else printf '# `--no-ignore` IS A D23 DEFENSE'; fi; }
+
+for _e in $D23_SURFACES; do
+  _act="${_e%%:*}"; _rest="${_e#*:}"; _kind="${_rest%%:*}"; _shape="${_rest##*:}"
+  if [ ! -f "$_act" ]; then _r "D23: $_act missing — a scanner surface vanished from the guard"; continue; fi
+  _b="$(d23_block "$_act" "$(d23_end "$_kind")" "$_shape")"
+  if [ -z "$_b" ]; then _r "D23: no D23 block found in $_act — the strip is absent or the slice broke"; continue; fi
+  _g "D23: $_act carries a D23 block"
+  # Comments are stripped for the static asserts: the block deliberately QUOTES
+  # the banned `-print -quit | grep -q .` pattern in order to explain CI-0033,
+  # and an assert_absent against the raw text matches that explanation.
+  _code="$(printf '%s\n' "$_b" | grep -vE '^[[:space:]]*#' || true)"
+  assert_contains "$_code" "-delete" "$_act: the strip is EXECUTED, not described"
+  assert_contains "$_code" "-type l" "$_act: the strip matches SYMLINKS (git stores mode 120000)"
+  assert_contains "$_code" "exit 1" "$_act: D23 refuses rather than scanning with attacker-chosen coverage"
+  # §27.1 / CI-0033: decide on captured OUTPUT, never a pipeline's exit status.
+  assert_absent "$_code" "-print -quit | grep" "$_act: D23 does not decide on a pipeline (CI-0033)"
+  # ONE definition read by strip and post-condition — the #423 drift class.
+  assert_eq "$(printf '%s' "$_code" | grep -c 'd23_scan ')" "2" \
+    "$_act: strip AND post-condition call the SAME d23_scan (cannot cover different sets)"
+  # scan-path is PR-controllable; `find` reads a leading '-' as an OPTION.
+  assert_contains "$_code" "may not begin with" "$_act: scan-path is validated before it reaches find"
+done
+
+# `--no-ignore` is a D23 defense on dep-scan, not a tuning knob: osv-scanner
+# honours `.gitignore` by default and `.gitignore` cannot be stripped (every repo
+# has a legitimate one), so the discovery is disabled gate-side instead.
+for _dep in actions/dep-scan/action.yml .github/workflows/dep-scan.yml; do
+  [ -f "$_dep" ] || continue
+  _shape=action; case "$_dep" in .github/*) _shape=job ;; esac
+  assert_contains "$(anybody "$_dep" "$_shape" | grep -vE '^[[:space:]]*#' || true)" "--no-ignore" \
+    "$_dep: osv-scanner runs with --no-ignore (a PR-committed .gitignore otherwise picks the coverage)"
+done
+
+# RUN THE SHIPPED BLOCK. Both directions, and asserting EFFECT rather than exit
+# status: because the strip and the post-condition share one expression, any
+# SYMMETRIC scoping regression is self-consistent — the strip stops deleting,
+# the check stops looking, rc=0, green. Dropping `-type l` was measured to do
+# exactly that, leaving the symlinked config on disk with the suite passing.
+_d23="$(mktemp -d)" || _d23=""
+if [ -z "$_d23" ] || [ ! -d "$_d23" ]; then
+  _r "D23: could not allocate a temp dir — the driven D23 cases did not run"
+else
+_d23_fixture() {
+  rm -rf "$1"; mkdir -p "$1/sub/deep" "$1/deploy"
+  : > "$1/.trivyignore"; : > "$1/trivy.yaml"
+  : > "$1/sub/deep/osv-scanner.toml"; : > "$1/sub/osv-scanner.toml"
+  ln -sf /etc/hostname "$1/sub/.trivyignore"
+  mkdir -p "$1/svc"
+  ln -sf /etc/hostname "$1/svc/osv-scanner.toml"
+  : > "$1/sub/README.md"
+  # SCANNABLE CONTENT that shares a config name. `deploy/trivy.yaml` is a
+  # plausible Kubernetes manifest and kubernetes is in --misconfig-scanners;
+  # MEASURED: trivy reads its config from the working directory ONLY, so a
+  # recursive strip of that name would delete coverage in the name of coverage.
+  : > "$1/deploy/trivy.yaml"
+}
+for _e in $D23_SURFACES; do
+  _act="${_e%%:*}"; _rest="${_e#*:}"; _kind="${_rest%%:*}"; _shape="${_rest##*:}"
+  [ -f "$_act" ] || continue
+  _tag="$(basename "$(dirname "$_act")")/$(basename "$_act")"
+  d23_block "$_act" "$(d23_end "$_kind")" "$_shape" > "$_d23/blk.sh"
+  assert_ok "[ -s '$_d23/blk.sh' ]" "$_tag: a D23 block was found to drive"
+
+  # (a) CLEAN DIRECTION — exits 0, and the configs this scanner owns are GONE.
+  _d23_fixture "$_d23/t"
+  ( cd "$_d23/t" && bash "$_d23/blk.sh" . >/dev/null 2>&1 )
+  assert_eq "$?" "0" "$_tag: D23 exits 0 on a tree it can clean"
+  if [ "$_kind" = trivy ]; then
+    assert_fail "[ -e '$_d23/t/.trivyignore' ]"     "$_tag: the root .trivyignore is actually GONE (not just rc=0)"
+    assert_fail "[ -e '$_d23/t/trivy.yaml' ]"       "$_tag: the root trivy.yaml is actually GONE"
+    assert_fail "[ -L '$_d23/t/sub/.trivyignore' ]" "$_tag: the SYMLINKED .trivyignore is GONE (the reproduced bypass)"
+    assert_ok   "[ -e '$_d23/t/deploy/trivy.yaml' ]" \
+      "$_tag: a NESTED trivy.yaml SURVIVES — trivy reads config from CWD only, so stripping it would delete coverage"
+  else
+    assert_fail "[ -e '$_d23/t/sub/osv-scanner.toml' ]"      "$_tag: a nested osv-scanner.toml is GONE (config is per-directory)"
+    assert_fail "[ -e '$_d23/t/sub/deep/osv-scanner.toml' ]" "$_tag: a DEEPER osv-scanner.toml is GONE"
+    assert_fail "[ -L '$_d23/t/svc/osv-scanner.toml' ]"      "$_tag: a SYMLINKED osv-scanner.toml is GONE (the reproduced bypass)"
+  fi
+  assert_ok "[ -e '$_d23/t/sub/README.md' ]" "$_tag: D23 strips configs, NOT the repo"
+
+  # (b) SURVIVOR DIRECTION — a post-condition that cannot red is decoration.
+  _d23_fixture "$_d23/t"
+  sed 's/-print -delete/-print/' "$_d23/blk.sh" > "$_d23/mut.sh"
+  _out="$( cd "$_d23/t" && bash "$_d23/mut.sh" . 2>&1 || true )"
+  assert_fail "( cd '$_d23/t' && bash '$_d23/mut.sh' . >/dev/null 2>&1 )" \
+    "$_tag: D23 FAILS CLOSED when a config survives the strip"
+  assert_contains "$_out" "::error::" "$_tag: ...and says why, rather than dying under set -e"
+  assert_contains "$_out" "D23" "$_tag: ...and names the defense it is enforcing"
+
+  # (c) scan-path as a find OPTION. MEASURED: `find -delete . …` has no path
+  # operand, so -delete evaluates against the WHOLE tree and empties the
+  # workspace — after which the post-condition certifies the empty tree clean.
+  _d23_fixture "$_d23/t"
+  # The directory makes `[ ! -d "$SCAN_PATH" ]` PASS, so only the `case -*)` guard
+  # can refuse here. Without it the earlier guard masks the mutation and this case
+  # certifies a validation that is not there.
+  mkdir -p "$_d23/t/-delete"
+  _out="$( cd "$_d23/t" && bash "$_d23/blk.sh" '-delete' 2>&1 || true )"
+  assert_fail "( cd '$_d23/t' && bash '$_d23/blk.sh' '-delete' >/dev/null 2>&1 )" \
+    "$_tag: a scan-path beginning with '-' is REFUSED, not handed to find"
+  assert_ok "[ -e '$_d23/t/sub/README.md' ]" "$_tag: ...and the workspace still exists"
+  # Assert the VALIDATION's own message, not merely that something refused. The
+  # post-condition also fails closed here (find errors, `fst != 0`), so a generic
+  # ::error:: check certifies a guard that may not exist — "a guard that cannot be
+  # observed to fail is not a guard".
+  assert_contains "$_out" "may not begin with" \
+    "$_tag: ...refused by the scan-path VALIDATION, not incidentally by the post-condition"
+
+  # (d) a scan-path that does not exist must red with the RIGHT diagnosis, not a
+  # supply-chain story about ignore files.
+  _d23_fixture "$_d23/t"
+  _out="$( cd "$_d23/t" && bash "$_d23/blk.sh" 'no/such/dir' 2>&1 || true )"
+  assert_contains "$_out" "not an existing directory" "$_tag: a bad scan-path is diagnosed as a bad scan-path"
+
+  # (e) mktemp failure must not abort before the ::error:: — the bare-assignment
+  # shape the block's own `|| fst=$?` comment exists to prevent.
+  _d23_fixture "$_d23/t"
+  _out="$( cd "$_d23/t" && TMPDIR=/nonexistent-d23-dir bash "$_d23/blk.sh" . 2>&1 || true )"
+  assert_contains "$_out" "D23" "$_tag: a mktemp failure still names the gate that refused"
+done
+
+# (f) trivy only: a DIRECTORY at the config path. MEASURED: trivy exits FATAL
+# ("read trivy.yaml: is a directory"), which the tool-error arm reports as
+# "infrastructure/tool error … Re-run." — a permanent red whose stated remedy can
+# never work. D23 must name the real cause instead.
+for _act in actions/trivy-scan/action.yml .github/workflows/trivy-scan.yml; do
+  [ -f "$_act" ] || continue
+  _shape=action; case "$_act" in .github/*) _shape=job ;; esac
+  d23_block "$_act" "$(d23_end trivy)" "$_shape" > "$_d23/blk.sh"
+  _d23_fixture "$_d23/t"; rm -f "$_d23/t/trivy.yaml"; mkdir -p "$_d23/t/trivy.yaml/x"
+  _out="$( cd "$_d23/t" && bash "$_d23/blk.sh" . 2>&1 || true )"
+  assert_fail "( cd '$_d23/t' && bash '$_d23/blk.sh' . >/dev/null 2>&1 )" \
+    "$_act: a DIRECTORY occupying trivy's config path is REFUSED"
+  assert_contains "$_out" "NOT an infrastructure error" \
+    "$_act: ...and is not mis-sold as an infrastructure failure with a useless 'Re-run'"
+done
+rm -rf "$_d23"
+fi
+
 if [ -f actions/sast-scan/action.yml ]; then
   ss="$(runbody actions/sast-scan/action.yml)"
   # The strip must be an executed `find … -delete`, not a mention.
