@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # set-litellm-secrets.sh — provision LiteLLM CI secrets on the aidoc-flow fleet.
 # PLAN-009 Phase 0 (founder-executed). Sets REPOSITORY-level GitHub Actions secrets:
-#   LITELLM_BASE_URL, LITELLM_REVIEW_API_KEY  (+ optional LITELLM_DOC_API_KEY)
+#   LITELLM_BASE_URL, LITELLM_REVIEW_API_KEY
 #
 # SECURITY:
 #   * Never hardcodes secret VALUES — reads them from env vars.
@@ -10,13 +10,15 @@
 #   * GitHub stores them encrypted + write-only; they are masked in Actions logs.
 #   * Store only the SCOPED virtual key — never the LiteLLM master key.
 #
-# SAFETY (issue #350): a run to add the OPTIONAL doc key also rewrote the two
-# secrets that were already correct, from an environment holding a loopback URL.
+# SAFETY (issue #350): a run adding ONE optional secret also rewrote the two
+# that were already correct, from an environment holding a loopback URL.
 # All three writes printed ✓, the script exited 0, and a REQUIRED ai-review gate
 # on a consumer went red until the key was re-provisioned by hand. Hence:
-#   * An EXISTING secret is NEVER replaced without --overwrite. Adding the doc
-#     key to a provisioned repo therefore writes that key and nothing else, and
-#     needs only LITELLM_DOC_API_KEY exported.
+#   * An EXISTING secret is NEVER replaced without --overwrite, so a run that
+#     adds one secret to a provisioned repo writes that secret and nothing else.
+#     (The incident's vehicle was the `--doc` key, retired with `doc-maintainer`
+#     per CI-0040. The rule is general and outlives it — do NOT delete it on the
+#     grounds that its original trigger is gone.)
 #   * A loopback LITELLM_BASE_URL is refused (--allow-loopback forces it): it
 #     resolves to the job CONTAINER, not the host running the proxy, so it works
 #     in every check an operator can run locally and fails only in CI (CI-0017).
@@ -46,7 +48,7 @@
 #
 # TWO MODES:
 #   shared : one review key applied to every repo.
-#            export LITELLM_BASE_URL LITELLM_REVIEW_API_KEY [LITELLM_DOC_API_KEY]
+#            export LITELLM_BASE_URL LITELLM_REVIEW_API_KEY
 #   mint   : mint a fresh, per-repo, review-scoped virtual key from the master key
 #            (revocable per repo; tagged with the repo name). --mint
 #            export LITELLM_BASE_URL LITELLM_MASTER_KEY
@@ -58,8 +60,6 @@
 #   bash set-litellm-secrets.sh                     # all 7 consumers
 #   bash set-litellm-secrets.sh --repos "vladm3105/aidoc-flow-framework vladm3105/iplan-runner"
 #   bash set-litellm-secrets.sh --dry-run          # print the per-secret plan; no writes, no network
-#   export LITELLM_DOC_API_KEY="<key>"
-#   bash set-litellm-secrets.sh --doc              # add the doc-maintainer key (existing secrets kept)
 #   bash set-litellm-secrets.sh --overwrite        # REPLACE secrets that already exist
 #   bash set-litellm-secrets.sh --allow-loopback   # permit a loopback base URL (rarely correct)
 #   bash set-litellm-secrets.sh --skip-validate    # skip the pre-write proxy probe
@@ -87,14 +87,13 @@ CONSUMERS=(
 PILOT="aidoc-flow-engramory"
 BRIDGE_DEFAULT="http://172.17.0.1:4001/v1"
 
-DRY_RUN=0; MINT=0; SET_DOC=0; BUDGET=50
+DRY_RUN=0; MINT=0; BUDGET=50
 OVERWRITE=0; ALLOW_LOOPBACK=0; VALIDATE=1
 REPOS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run)        DRY_RUN=1 ;;
     --mint)           MINT=1 ;;
-    --doc)            SET_DOC=1 ;;
     --overwrite)      OVERWRITE=1 ;;
     --allow-loopback) ALLOW_LOOPBACK=1 ;;
     --skip-validate)  VALIDATE=0 ;;
@@ -214,14 +213,6 @@ if [ "$MINT" -eq 1 ]; then
   command -v jq   >/dev/null || { echo "ERROR: jq required for --mint" >&2; exit 1; }
   command -v curl >/dev/null || { echo "ERROR: curl required for --mint" >&2; exit 1; }
   : "${LITELLM_MASTER_KEY:?export LITELLM_MASTER_KEY for --mint}"
-elif [ "$SET_DOC" -eq 1 ]; then
-  # Adding the doc key to a provisioned repo must not require re-exporting the
-  # review key — demanding it is what sends an operator back to the stale shell
-  # value that caused #350. It stays OPTIONAL here; `provision` refuses to write
-  # an empty value, so a repo that genuinely needs the review key CREATED still
-  # gets a named error instead of a blank secret.
-  : "${LITELLM_DOC_API_KEY:?export LITELLM_DOC_API_KEY for --doc}"
-  LITELLM_REVIEW_API_KEY="${LITELLM_REVIEW_API_KEY:-}"
 else
   : "${LITELLM_REVIEW_API_KEY:?export LITELLM_REVIEW_API_KEY (or use --mint)}"
 fi
@@ -296,11 +287,10 @@ elif [ "$VALIDATE" -eq 1 ]; then
   if [ "$MINT" -eq 1 ]; then
     validate_or_die LITELLM_MASTER_KEY "the master key"
   else
-    # Probe only the keys this run can actually write. With --doc on a
-    # provisioned repo the review key is unset and would be kept, so probing it
-    # would abort the run over a secret nobody is touching.
+    # Probe only the keys this run can actually write. A key that is unset
+    # would be KEPT, so probing it would abort the run over a secret nobody is
+    # touching.
     if [ -n "$LITELLM_REVIEW_API_KEY" ]; then validate_or_die LITELLM_REVIEW_API_KEY LITELLM_REVIEW_API_KEY; fi
-    if [ "$SET_DOC" -eq 1 ]; then validate_or_die LITELLM_DOC_API_KEY LITELLM_DOC_API_KEY; fi
   fi
 fi
 
@@ -349,8 +339,8 @@ provision() {  # provision SECRET_NAME REPO VALUE_VARNAME
   act="$(action_for "$name")"
   if [ "$act" = keep ]; then report_keep "$name"; return 0; fi
   if [ -z "${!var}" ]; then
-    # Only reachable in shared --doc mode, where the review key is optional: this
-    # repo needs it CREATED and nothing was exported. Never write a blank secret.
+    # This repo needs the secret CREATED and nothing was exported.
+    # Never write a blank secret.
     printf '    ✗ %-23s (needs to be %s, but $%s is empty — export it and re-run)\n' "$name" "$act" "$var" >&2
     FAILED=$((FAILED+1)); return 0
   fi
@@ -370,7 +360,7 @@ provision() {  # provision SECRET_NAME REPO VALUE_VARNAME
   if [ "$act" = create ]; then CREATED=$((CREATED+1)); else OVERWROTE=$((OVERWROTE+1)); fi
 }
 
-echo "LiteLLM secret provisioning — mode=$([ "$MINT" -eq 1 ] && echo mint || echo shared)  dry_run=$DRY_RUN  repos=${#REPOS[@]}  doc=$SET_DOC  overwrite=$OVERWRITE  validate=$VALIDATE"
+echo "LiteLLM secret provisioning — mode=$([ "$MINT" -eq 1 ] && echo mint || echo shared)  dry_run=$DRY_RUN  repos=${#REPOS[@]}  overwrite=$OVERWRITE  validate=$VALIDATE"
 for repo in "${REPOS[@]}"; do
   echo "• $repo"
   if ! gh repo view "$repo" >/dev/null 2>&1; then
@@ -413,27 +403,8 @@ for repo in "${REPOS[@]}"; do
       fi
       unset MINTED_REVIEW
     fi
-    # shellcheck disable=SC2034  # MINTED_DOC is read via ${!var} in `provision`
-    if [ "$SET_DOC" -eq 1 ]; then
-      if [ "$(action_for LITELLM_DOC_API_KEY)" = keep ]; then
-        report_keep LITELLM_DOC_API_KEY
-      else
-        MINTED_DOC="(dry-run — not minted)"
-        if [ "$DRY_RUN" -eq 0 ]; then
-          MINTED_DOC="$(mint "$repo" ci-docs ai-doc-maintainer)" || MINTED_DOC=""
-        fi
-        if [ -n "$MINTED_DOC" ]; then
-          provision LITELLM_DOC_API_KEY "$repo" MINTED_DOC
-        else
-          printf '    ✗ %-23s (mint produced no key)\n' LITELLM_DOC_API_KEY >&2
-          FAILED=$((FAILED+1))
-        fi
-        unset MINTED_DOC
-      fi
-    fi
   else
     provision LITELLM_REVIEW_API_KEY "$repo" LITELLM_REVIEW_API_KEY
-    if [ "$SET_DOC" -eq 1 ]; then provision LITELLM_DOC_API_KEY "$repo" LITELLM_DOC_API_KEY; fi
   fi
 done
 

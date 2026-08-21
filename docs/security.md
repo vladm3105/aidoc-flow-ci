@@ -100,7 +100,7 @@ therefore depends entirely on whether a fork can reach a job that **executes PR
 code** — and that differs between the two classes of flow.
 
 **The AI-flows are safe on self-hosted, public OR private (PLAN-013).** The
-uniform protected model runs `ai-review`, `doc-maintainer`, and `docs-sync`
+uniform protected model runs `ai-review` and `docs-sync`
 (and `autofix`, a gated job within `ai-review` — PLAN-012, §3b) on the ephemeral self-hosted single-use
 pool on every repo, with **no `-public`/`-private` split** (so a visibility flip
 is a no-op). This is safe because **a fork never reaches a job that executes PR
@@ -111,8 +111,8 @@ code**:
   metadata — it runs **zero PR code**. The heavy review job is `needs: trust`-gated
   and forks are **never trusted**, so a fork never reaches it. `autofix` is
   likewise trust-gated (forks excluded).
-- `doc-maintainer` + `docs-sync` are **post-merge** (`push: main`) — a fork PR
-  cannot trigger them at all.
+- `docs-sync` is **post-merge** (`push: main`) — a fork PR cannot trigger it at
+  all.
 
 So the only fork-triggered work on the pool is the no-PR-code trust decision on an
 isolated `--rm` container. This is **not** the "untrusted code on your box" case
@@ -240,7 +240,6 @@ LiteLLM process.
 | Workflow | Secrets required |
 |---|---|
 | `ai-review` | `APP_REVIEWER_1_ID` + `APP_REVIEWER_1_KEY`; `LITELLM_BASE_URL` + `LITELLM_REVIEW_API_KEY` |
-| `doc-maintainer` | `LITELLM_BASE_URL` + `LITELLM_DOC_API_KEY`; live mode also requires `AIDOC_FLOW_BOT_ID` + `AIDOC_FLOW_BOT_KEY` |
 | `composition` | None beyond `GITHUB_TOKEN` (auto-provided by Actions) |
 | `labeler` | None beyond `GITHUB_TOKEN` |
 | `codeql` | None beyond `GITHUB_TOKEN` |
@@ -252,9 +251,11 @@ LiteLLM process.
 
 The `APP_REVIEWER_1_*` names are the canonical reviewer-App contract and are
 declared explicitly by `ai-review.yml`. LiteLLM credentials deliberately use
-separate purpose-scoped names: `LITELLM_REVIEW_API_KEY` for review and
-`LITELLM_DOC_API_KEY` for documentation maintenance. Never reuse the proxy
-master key or one unrestricted virtual key for both agents.
+separate purpose-scoped names: `LITELLM_REVIEW_API_KEY` for the review step and
+`LITELLM_FIX_API_KEY` for autofix. Never reuse the proxy master key or one
+unrestricted virtual key across agents. (`LITELLM_DOC_API_KEY` was the third
+such name; it retired with `doc-maintainer` per CI-0040 — the convention is
+unchanged, only its membership.)
 
 ## 5. `pull_request_target` vs `pull_request` — why `_target`
 

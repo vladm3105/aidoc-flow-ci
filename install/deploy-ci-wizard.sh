@@ -47,7 +47,7 @@ GH="${GH:-gh}"
 # dep-scan/trivy-scan/sast-scan (PLAN-014 own security scanners) are OPTIONAL +
 # report-only — surveyed here + offered by plan(), but NOT in scaffold()'s default
 # list (deliberate per-repo adoption; pass them explicitly to scaffold).
-ALL_WF="pre-commit:1 links:2 markdown-lint:2 labeler:2 secret-scan:3 dep-scan:3 trivy-scan:3 sast-scan:3 audit-trail:4 ai-review:5 composition:5 auto-merge-ai-prs:6 doc-maintainer:7 docs-sync:7 codeql:8 standards-drift:8"
+ALL_WF="pre-commit:1 links:2 markdown-lint:2 labeler:2 secret-scan:3 dep-scan:3 trivy-scan:3 sast-scan:3 audit-trail:4 ai-review:5 composition:5 auto-merge-ai-prs:6 docs-sync:7 codeql:8 standards-drift:8"
 
 c_ok() { printf '  \033[32m🟢 %s\033[0m\n' "$*"; }
 c_no() { printf '  \033[31m🔴 %s\033[0m\n' "$*"; }
@@ -77,7 +77,7 @@ preflight() {
   hdr "2. Reviewer App secrets + bot-id (for ai-review + composition)"
   local secs; secs="$($GH secret list -R "$repo" --json name -q '.[].name' 2>/dev/null || echo '')"
   local missing=0
-  for s in APP_REVIEWER_1_ID APP_REVIEWER_1_KEY LITELLM_BASE_URL LITELLM_REVIEW_API_KEY LITELLM_DOC_API_KEY; do
+  for s in APP_REVIEWER_1_ID APP_REVIEWER_1_KEY LITELLM_BASE_URL LITELLM_REVIEW_API_KEY; do
     echo "$secs" | grep -qx "$s" && c_ok "secret $s set" || { c_no "secret $s MISSING → 🔴 founder sets it (+ installs the aidoc-reviewer App)"; missing=1; }
   done
   local botid; botid="$($GH variable list -R "$repo" --json name,value -q '.[]|select(.name=="APP_REVIEWER_1_BOT_ID")|.value' 2>/dev/null || echo '')"
@@ -246,8 +246,8 @@ plan() {
    4. audit-trail          (needs skip-audit-trail label)
    5. ai-review + composition   (needs 🔴 App+secrets+ 🟢 bot-id var)
    6. auto-merge-ai-prs    (inert without ai-review)
-   7. doc-maintainer (dry-run)  (LiteLLM required; live-mode App is 🔴)
-      docs-sync is legacy and should not be co-installed on new v2 adopters.
+   7. docs-sync (dry-run)  (the sole doc automation since CI-0040; no model
+                            call, so no LiteLLM secret; live mode needs the App)
    8. codeql               (skip docs-only repos; PRIVATE repos need GHAS —
                             without Advanced Security codeql-action/init errors)
   Variant: $([ "$vis" = PRIVATE ] && echo 'PRIVATE → runner_labels ["self-hosted","ci-runner","single-use"]' || echo 'PUBLIC → ubuntu-latest')
@@ -258,7 +258,7 @@ EOF
 
 scaffold() {
   local repo="$1" dir="$2"; shift 2 || true
-  local wfs="${*:-pre-commit links markdown-lint labeler secret-scan audit-trail ai-review composition auto-merge-ai-prs doc-maintainer}"
+  local wfs="${*:-pre-commit links markdown-lint labeler secret-scan audit-trail ai-review composition auto-merge-ai-prs}"
   # FAIL CLOSED: never guess PUBLIC — a private repo scaffolded as public gets
   # ubuntu-latest callers that queue forever (OPS-0049 policy). If visibility is
   # unreadable, stop rather than pick the unsafe variant.
@@ -347,7 +347,7 @@ PY
     fi
   done
   # config files
-  for pair in ".markdownlint.json:.markdownlint.json" ".lychee.toml:.lychee.toml" "docs-sync.json:.github/docs-sync.json" "doc-maintainer.json:.github/doc-maintainer.json" "doc-maintainer-conventions.md:.github/doc-maintainer-conventions.md"; do
+  for pair in ".markdownlint.json:.markdownlint.json" ".lychee.toml:.lychee.toml" "docs-sync.json:.github/docs-sync.json"; do
     local from="${pair%%:*}" to="${pair##*:}"
     if [ -f "$TPL/$from" ]; then mkdir -p "$dir/$(dirname "$to")"; cp "$TPL/$from" "$dir/$to"; c_ok "config $to"; fi
   done

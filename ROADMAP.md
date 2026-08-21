@@ -49,7 +49,7 @@ exists.
 PLAN-025 §7 made PLAN-024 Phases A/B/C a precondition, and the tag was cut with
 A and B unexecuted. §7 and CI-0037 now record that honestly: the **gate** half of
 §7's rationale was discharged directly (`litellm-smoke`, FT-30), but the **waste**
-half was not — v3 was built around `doc-maintainer`, which Phase A proposes to
+half was not — v3 was built around `doc-maintainer`, which Phase A proposed to
 delete and which is still live on `operations`. **A and B are no longer release
 gates**, but A's question is open and now more expensive.
 
@@ -116,7 +116,7 @@ the still-open autofix-App enablement + fleet re-pin. READ `HANDOFF.md` for live
 | `verified_allowed` supply-chain boundary (CI-0011) | ✅ DECIDED 2026-07-24 — narrowed: verified marketplace dropped, `patterns_allowed` = own account `vladm3105/*` |
 | Server-side pre-prod blockers (composition-required on business/iplanic; branch protection on the 3 unprotected repos incl. canon) | Founder + ops/inbox (cross-repo) |
 | PLAN-007 W4 fleet branch-protection arming | Founder-gated |
-| PLAN-007 W3 docs-sync dry-run → live | Founder-gated (App provisioning or doc-maintainer supersession) |
+| PLAN-007 W3 docs-sync dry-run → live | Founder-gated (App provisioning); the `doc-maintainer` supersession is withdrawn — CI-0040 retired that flow and `docs-sync` is now sole |
 | PLAN-008 pre-prod gap closure | COMPLETE (v2.0.0 cut) |
 | PLAN-009 fleet v2 cutover | In flight (Phase 0 🔴-gated; target reconciled to `ci/v2.8.0`, PLAN-015 B1) |
 | PLAN-010 adoption model | DRAFT — NOT READY (split recommended; see the plan) |
@@ -201,7 +201,8 @@ consumer-feedback-driven evolution.
   required across all consumers. Founder-executed; runbook at
   `docs/FLEET_BRANCH_PROTECTION_ARMING.md`.
 - **W3 docs-sync dry-run → live** — provision `aidoc-flow-bot` App or fold
-  into `doc-maintainer.yml` supersession.
+  the `aidoc-flow-bot` App. (An earlier option — folding this into a
+  `doc-maintainer.yml` supersession — is gone: CI-0040 retired that flow.)
 - **Canon label sync** — reconcile label taxonomies across the 9
   non-paused repos (some use `bug/enhancement/documentation`, others
   use `feat/fix/chore/docs`). Canon should ship a preferred set +

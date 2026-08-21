@@ -89,7 +89,7 @@ echo "== PLAN-013 uniform protected AI-flows (public+private, one self-hosted te
 # The AI-flow callers ship as ONE protected template each — no -public/-private
 # split — so a repo visibility flip is a no-op. Each MUST carry self-hosted labels,
 # have NO variant siblings, and NO visibility_variants in the manifest.
-for flow in ai-review doc-maintainer docs-sync; do
+for flow in ai-review docs-sync; do
   tpl="install/templates/workflows/${flow}.yml"
   assert_ok "test -f '$tpl'" "AI-flow $flow: single protected template exists"
   assert_absent "$(ls install/templates/workflows/ 2>/dev/null)" "${flow}-private.yml" "AI-flow $flow: no -private variant (uniform)"
@@ -154,54 +154,23 @@ print(repr(inp.get("default")))
 PYEOF
 )"
 assert_eq "$mdl_default" "True" "markdown-lint fail-on-findings input defaults to True (blocking gate; FT-41 — a flip to false must go red)"
-assert_absent "$(grep 'git commit' .github/workflows/doc-maintainer.yml)" '[skip ci]' "doc-maintainer bot commits do not suppress normal CI"
-# Asserts the STEP, not its action version: a version literal here makes the
-# assertion a dependabot tripwire that fails on a bump which changes nothing it
-# claims to test (it did, on #365). Floating/unpinned refs are already covered
-# generically above. What must hold is that the dry-run patch is uploaded and
-# that a missing patch fails the step rather than passing silently.
-assert_ok "python3 - <<'PYEOF'
-import sys, yaml
-d = yaml.safe_load(open('.github/workflows/doc-maintainer.yml'))
-steps = [s for j in d['jobs'].values() for s in j.get('steps', [])]
-up = [s for s in steps
-      if str(s.get('uses', '')).startswith('actions/upload-artifact@')
-      and s.get('with', {}).get('path') == '.doc-maintainer-proposed.patch']
-sys.exit(0 if len(up) == 1 and up[0]['with'].get('if-no-files-found') == 'error' else 1)
-PYEOF" "doc-maintainer preserves dry-run patches as an artifact"
-assert_ok "jq -e '.auto_merge.high_risk_paths | index(\"**/DECISIONS.md\") and index(\"**/ROADMAP.md\") and index(\"**/HANDOFF.md\")' install/templates/doc-maintainer.json >/dev/null" "nested governance documents are high-risk by default"
-assert_ok "jq -e '.allowed_paths | index(\"DECISIONS.md\")' install/templates/doc-maintainer.json >/dev/null" "high-risk root decisions file is consistently allowlisted"
-# §24.3 — a default canon recommends must be executable by the code that
-# consumes it. `low_risk_paths` is the knob that matters: it is what routes a
-# path into apply.py, the only holder of the 200 KB refusal. So CHANGELOG.md
-# must NOT be low-risk.
-assert_ok "jq -e '.auto_merge.low_risk_paths | index(\"CHANGELOG.md\") | not' install/templates/doc-maintainer.json >/dev/null" "#354 the template does not mark CHANGELOG.md low-risk — apply refuses it once it passes 200 KB, and a changelog only grows"
-# ...and it must STAY allowlisted. De-allowlisting relocates the failure rather
-# than removing it: the conventions template canon installs alongside this file
-# tells the model to use CHANGELOG.md and the merge's changed-file list reaches
-# it unfiltered, so it is still proposed — and a non-allowlisted proposal is a
-# run-killing `return 1`, where a high-risk one is an issue for a human.
-# #360 narrowed the INVENTORY, which was the third route, and added an allowlist
-# imperative — advisory, not enforcement (§20.2 rule 8), so this pair stands.
-# Reverse this pair and a fresh adopter's first changelog-touching merge reds.
-assert_ok "jq -e '(.allowed_paths | index(\"CHANGELOG.md\")) != null and (.auto_merge.high_risk_paths | index(\"CHANGELOG.md\")) != null' install/templates/doc-maintainer.json >/dev/null" "#354 CHANGELOG.md stays allowlisted and is high-risk, so a proposal reaches a human instead of failing the run"
-assert_ok "grep -q 'CHANGELOG.md' install/templates/doc-maintainer-conventions.md" "#354 the conventions template still names CHANGELOG.md — the pair above is what keeps canon from contradicting itself (§24.3)"
-# One declaration of the limit, imported rather than copied. An untested
-# duplicate drifts, and the planner would then pre-filter on a number apply no
-# longer enforces — which fails silently in the safe-looking direction.
-# Count ASSIGNMENTS, not the literal: a second declaration written `= 200000`
-# carries no underscore, so a grep for the literal token cannot see it, and the
-# import assertion below still matches. That mutation survives a literal grep.
-assert_eq "$(grep -hE '^[[:space:]]*MAX_APPLY_BYTES[[:space:]]*=' scripts/doc-maintainer/*.py | wc -l)" "1" "#354 exactly one assignment to MAX_APPLY_BYTES exists across the doc-maintainer scripts"
-assert_eq "$(grep -hE '200_?000' scripts/doc-maintainer/*.py | wc -l)" "1" "#354 ...and the limit appears as a literal exactly once, so no caller re-states the number inline"
-assert_ok "grep -q '^from apply import MAX_APPLY_BYTES$' scripts/doc-maintainer/planner.py" "#354 the planner imports that declaration instead of re-stating it"
-# ...which only resolves because the workflow fetches both scripts into one
-# directory. Nothing else asserts that co-fetch, and dropping `apply` from the
-# loop would make the planner ImportError at import time, before any annotation.
-assert_ok "grep -q 'for op in planner apply reconcile; do' .github/workflows/doc-maintainer.yml" "#354 the fetch loop still co-fetches planner and apply, which is what makes that import resolve"
+# --- RETIRED CHECK DECLARATION (PLAN-024 A7, DECISIONS.md CI-0040) ---
+# The doc-maintainer assertions that stood here are REMOVED with the flow.
+# They were the ONLY automated readers of REPO_STANDARDS.md §24.3 ("a default
+# canon recommends must be executable by the code that consumes it") — that
+# rule now has ZERO automated readers and is enforced by review alone.
+#
+# This is stated rather than left to be discovered: the workspace rule is that
+# a change retiring a check must SAY SO in the change that retires it. §24.3
+# itself is kept, because the rule is general and doc-maintainer was only its
+# worked example. Do not re-add a reader against a deleted template.
 assert_ok "jq -e '.version == 2 and .litellm.model == \"ai-reviewer\"' install/templates/config.json.template >/dev/null && jq -e '.properties.version.const == 2 and (.required | index(\"litellm\"))' schemas/ai-review-config-v2.schema.json >/dev/null" "AI-review config and schema share the v2 contract"
-assert_ok "grep -q 'secrets.LITELLM_REVIEW_API_KEY' .github/workflows/ai-review.yml && grep -q 'secrets.LITELLM_DOC_API_KEY' .github/workflows/doc-maintainer.yml" "AI workflows use separate purpose-scoped LiteLLM keys"
-assert_ok "grep -q 'LITELLM_REVIEW_API_KEY' .github/workflows/litellm-smoke.yml && grep -q 'LITELLM_DOC_API_KEY' .github/workflows/litellm-smoke.yml && grep -q 'ai-reviewer' .github/workflows/litellm-smoke.yml && grep -q 'ai-doc-maintainer' .github/workflows/litellm-smoke.yml" "real-proxy smoke workflow covers both canonical aliases and keys"
+assert_ok "grep -q 'secrets.LITELLM_REVIEW_API_KEY' .github/workflows/ai-review.yml && grep -q 'secrets.LITELLM_FIX_API_KEY' .github/workflows/ai-review.yml" "ai-review uses separate purpose-scoped LiteLLM keys for review and autofix"
+# CI-0040: the smoke had a second arm for the ai-doc-maintainer alias and
+# LITELLM_DOC_API_KEY. Both retired with doc-maintainer; ai-reviewer is now the
+# only canonical alias, so the MAJOR-bump gate asserts one arm, not two.
+assert_ok "grep -q 'LITELLM_REVIEW_API_KEY' .github/workflows/litellm-smoke.yml && grep -q 'ai-reviewer' .github/workflows/litellm-smoke.yml" "real-proxy smoke workflow covers the canonical review alias and key"
+assert_absent "$(cat .github/workflows/litellm-smoke.yml)" 'LITELLM_DOC_API_KEY' "CI-0040: the smoke carries no retired doc-key arm"
 assert_ok "jq -e 'length == 21 and ([.[].name | ascii_downcase] | unique | length == 21)' install/templates/labels.json >/dev/null" "canonical labels are complete and case-insensitively unique"
 assert_ok "jq -e 'all(.[]; (.description | length) <= 100)' install/templates/labels.json >/dev/null" "canonical label descriptions fit GitHub's 100-character limit"
 # §5.4 issue-lifecycle labels. The count above pins the set size; these pin the
@@ -358,11 +327,10 @@ done
 # these declare their secrets → explicit map, never inherit. FT-42 added ai-review
 # to this set (its reusable now declares a secrets: block, so the caller can pass
 # an explicit least-privilege map instead of blanket inherit).
-for f in ai-review doc-maintainer docs-sync auto-merge-ai-prs-public auto-merge-ai-prs-private; do
+for f in ai-review docs-sync auto-merge-ai-prs-public auto-merge-ai-prs-private; do
   assert_ok "! grep -qE '^[[:space:]]*secrets: inherit' '$TW/$f.yml'" "$f: no blanket secrets: inherit"
   assert_ok "grep -qE '^[[:space:]]*secrets:' '$TW/$f.yml'" "$f: has an explicit secrets: map"
 done
-assert_ok "grep -q 'AIDOC_FLOW_BOT_ID: \${{ secrets.AIDOC_FLOW_BOT_ID }}' '$TW/doc-maintainer.yml'" "doc-maintainer: explicit bot-id secret"
 assert_ok "grep -q 'APP_REVIEWER_1_ID: \${{ secrets.APP_REVIEWER_1_ID }}' '$TW/auto-merge-ai-prs-private.yml'" "auto-merge: explicit reviewer secret"
 # FT-42: ai-review's reusable now DECLARES its secrets (was the FT-27 exception —
 # no secrets: block existed, forcing inherit). Assert the contract both ways:

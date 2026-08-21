@@ -10,7 +10,7 @@ if a workflow doesn't appear here, it doesn't exist in the library.
 > covers how a new company project onboards. [`overrides.md`](overrides.md)
 > covers the 3 override modes. This doc is the workflow-catalog layer.
 
-## 1. Complete workflow catalog (16 reusables)
+## 1. Complete workflow catalog (15 reusables)
 
 Every workflow ships as `workflow_call` at
 `vladm3105/aidoc-flow-ci/.github/workflows/<name>.yml@ci/vX.Y.Z`.
@@ -28,7 +28,6 @@ Pin at a released tag; never `@main` in a consumer.
 | 8 | `links.yml` | Link checking via the lychee **musl static binary**, installed + SHA-256-verified in a `run:` step — NOT the `lycheeverse/lychee-action` wrapper (allowlist-blocked; fixed `ci/v1.9.4`; musl not gnu, which needs GLIBC 2.38+ and dies on older self-hosted Debian runners). Two modes: blocking (offline / internal-only) + weekly (external / soft-fail). Cross-repo `../sibling/` links need a `.lychee.toml` exclude (they resolve only in the local multi-repo workspace). | ~30-90 s (offline); ~2-5 min (external) | Standard doc-quality gate |
 | 9 | `labeler.yml` | Path-based PR labeling. Reads consumer's `.github/labeler.yml` (v5+ format: `changed-files: any-glob-to-any-file:`) and applies labels. Labels must pre-exist. | ~10 s | Framework `labeler.yml` pattern |
 | 10 | `docs-sync.yml` | Mechanical post-merge doc fixer. Runs deterministic transformations (version-reference propagation, structural bump propagation) + commits + opens PR if changes are made. | ~30-60 s | IPLAN-0018 (operations 2026-06-25) |
-| 11 | `doc-maintainer.yml` | AI-driven post-merge doc-of-record maintainer. **Supersedes** `docs-sync.yml` in `ci/v2.0.0`. LiteLLM selects the documentation that a merged PR made stale, then proposes bounded edits under the repository's path/risk policy. | ~2-5 min | IPLAN-0025 (operations 2026-06-28) |
 | 14 | `trivy-scan.yml` | IaC / misconfiguration gate via **trivy binary** (`trivy config` mode only — Dockerfile/IaC misconfig; NOT `trivy fs`, which would duplicate dep-scan + secret-scan). SHA-256-verified `run:` install (not `aquasecurity/trivy-action`, allowlist-blocked §4.3). **Uniform protected + fork-guarded** (PLAN-014). Data-only, **SSRF-hardened** — restricted to static scanners (`--misconfig-scanners dockerfile,kubernetes,cloudformation,azure-arm`) because trivy's terraform/helm/ansible scanners fetch PR-controlled remote sources. `fail-on-findings` (default false → report-only). Best-effort SARIF → Code scanning. | ~20-90 s | PLAN-014 (`ci/v2.5.0`) |
 | 15 | `sast-scan.yml` | SAST (static code analysis) gate via **semgrep** (VERSION-pinned pip into an isolated venv — semgrep is Python, not a static binary; no third-party action, §4.3). Complements native CodeQL (which needs GHAS → N/A on private), so this gates PRIVATE repos too. **Uniform protected + fork-guarded** (PLAN-014). Data-only static AST analysis; `--metrics off` (no telemetry to semgrep.dev) + EXPLICIT `--config` (never repo-local auto-discovery, so a PR can't inject rules); strips PR-supplied `.semgrepignore` (gate owns coverage). `config` input (default `p/default`). `fail-on-findings` (default false → report-only). Optional `autofix-preview` (`ci/v2.7.0`, default false): surfaces semgrep's **deterministic** rule-provided `--autofix` patch in the job summary — **preview only, nothing pushed** (no App); model-based push-back is autofix (PLAN-012). Best-effort SARIF → Code scanning. | ~40-120 s (×2 w/ preview) | PLAN-014 (`ci/v2.6.0`, `ci/v2.7.0`) |
 | 13 | `dep-scan.yml` | Dependency-vulnerability (SCA) gate via **osv-scanner binary** (SHA-256-verified `run:` install — NOT `google/osv-scanner-action`, allowlist-blocked §4.3). **Uniform protected** (PLAN-014): one self-hosted template, public+private, no visibility split (a flip is a no-op); **fork-guarded** (forks skip → human review; data-only, never `--call-analysis`). `fail-on-findings` (default false → report-only rollout). Best-effort SARIF → Code scanning (`continue-on-error`; no-ops on private w/o GHAS). | ~20-60 s | PLAN-014 (`ci/v2.4.0`) |
@@ -64,20 +63,20 @@ iplan-standard `ai-review.yml`/`composition.yml`/`pre-commit.yml` — so those c
 are now ✅. Remaining `⚠️ GAP` cells (e.g. engramory/iplanic/interlog `codeql`
 Python-maturing) are genuine, not stale.
 
-| Repo (visibility) | ai-review | composition | auto-merge | pre-commit | codeql | secret-scan | markdown-lint | links | labeler | docs-sync | doc-maintainer | audit-trail |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `aidoc-flow-operations` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (scripts/*.py) | ✅ | 🕳 custom (`docs-lint.yml`) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `aidoc-flow-framework` (public) | ✅ | ✅ | ⏸ (spec tier — human-merge) | ✅ | ✅ | ✅ | 🕳 own (pre-commit markdownlint) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
-| `aidoc-flow-business` (private) | ✅ | ✅ | ✅ | ✅ | N/A (docs-only) | 🕳 custom (`security.yml`) | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
-| `aidoc-flow-iplanic` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (runtime Python) | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
-| `iplan-runner` (public) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
-| `aidoc-flow-engramory` (public) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (Python maturing) | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
-| `aidoc-flow-iplan-standard` (public) | ✅ | ✅ | ✅ | ✅ | N/A (docs-only) | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
-| `aidoc-flow-interlog` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (Python-planned) | 🕳 custom (`security.yml`) | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ⏸ per-need | ✅ |
-| `aidoc-flow-ci` (public — ships the reusables) | ⏸ (self-ref) | ⏸ (self-ref) | ⏸ (gov tier) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (ships) | ✅ (ships) | ✅ |
-| `aidoc-flow` (umbrella; private) | ⏸ (pointer PRs only) | ⏸ (same) | ⏸ (admin-merge per OPS-0062) | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | ⏸ advisory (umbrella `required_status_checks: null`) |
-| `aidoc-flow-knowledge-rag` (paused) | — | — | — | — | — | — | — | — | — | — | — | — |
-| `aidoc-flow-site` (paused) | — | — | — | — | — | — | — | — | — | — | — | — |
+| Repo (visibility) | ai-review | composition | auto-merge | pre-commit | codeql | secret-scan | markdown-lint | links | labeler | docs-sync | audit-trail |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `aidoc-flow-operations` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (scripts/*.py) | ✅ | 🕳 custom (`docs-lint.yml`) | ✅ | ✅ | ✅ | ✅ |
+| `aidoc-flow-framework` (public) | ✅ | ✅ | ⏸ (spec tier — human-merge) | ✅ | ✅ | ✅ | 🕳 own (pre-commit markdownlint) | ✅ | ✅ | ✅ (dry-run) | ✅ |
+| `aidoc-flow-business` (private) | ✅ | ✅ | ✅ | ✅ | N/A (docs-only) | 🕳 custom (`security.yml`) | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ✅ |
+| `aidoc-flow-iplanic` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (runtime Python) | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ✅ |
+| `iplan-runner` (public) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ✅ |
+| `aidoc-flow-engramory` (public) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (Python maturing) | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ✅ |
+| `aidoc-flow-iplan-standard` (public) | ✅ | ✅ | ✅ | ✅ | N/A (docs-only) | ✅ | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ✅ |
+| `aidoc-flow-interlog` (private) | ✅ | ✅ | ✅ | ✅ | ⚠️ GAP (Python-planned) | 🕳 custom (`security.yml`) | ✅ (report-only) | ✅ | ✅ | ✅ (dry-run) | ✅ |
+| `aidoc-flow-ci` (public — ships the reusables) | ⏸ (self-ref) | ⏸ (self-ref) | ⏸ (gov tier) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (ships) | ✅ |
+| `aidoc-flow` (umbrella; private) | ⏸ (pointer PRs only) | ⏸ (same) | ⏸ (admin-merge per OPS-0062) | N/A | N/A | N/A | N/A | N/A | N/A | N/A | ⏸ advisory (umbrella `required_status_checks: null`) |
+| `aidoc-flow-knowledge-rag` (paused) | — | — | — | — | — | — | — | — | — | — | — |
+| `aidoc-flow-site` (paused) | — | — | — | — | — | — | — | — | — | — | — |
 
 **Content-check surface is COMPLETE** (`secret-scan` / `markdown-lint` /
 `links` / `labeler` / `docs-sync`) across every active repo — via the canon
@@ -111,9 +110,9 @@ open graduations:
   doc-fixes as a PR comment; no push-back). Graduating to auto-commit needs
   the **`aidoc-flow-bot` App + `AIDOC_FLOW_BOT_ID`/`AIDOC_FLOW_BOT_KEY`
   secrets** provisioned per repo (🔴 founder action; only `ci` + `operations`
-  have it). Note `docs-sync` is also slated for `doc-maintainer.yml`
-  supersession at `ci/v2.0.0` (§3.8) — treat these dry-run adoptions as the
-  interim mechanical layer.
+  have it). **`docs-sync` is the workspace's sole doc automation** — the
+  `doc-maintainer` supersession is withdrawn (CI-0040), so these are not an
+  interim layer awaiting replacement.
 
 **Remaining true gaps (non-content-check):**
 
@@ -223,27 +222,22 @@ canonical skip patterns:
 - **Live-mode graduation** (`dry_run: false`) needs the `aidoc-flow-bot` App +
   secrets per repo (🔴 founder) — do this only where mechanical auto-commit
   earns its keep.
-- **Superseded by `doc-maintainer.yml`** in `ci/v2.0.0` (IPLAN-0025 P8).
-  Existing dry-run callers may remain during migration, but new consumers
-  should adopt `doc-maintainer.yml`.
+- **NOT superseded — this is the sole doc flow.** IPLAN-0025 P8 planned a
+  `doc-maintainer.yml` supersession; that flow is retired and deleted
+  (`DECISIONS.md` CI-0040), so the supersession is **withdrawn**. New consumers
+  adopt this workflow. It makes no model call — its three operations are
+  deterministic Python — so it needs no LiteLLM secret.
 
-### 3.9 `doc-maintainer.yml`
+### 3.9 `doc-maintainer.yml` — RETIRED
 
-- **Skip on:** repos where the maintenance burden isn't yet a real problem
-  (small repos, low PR volume). Adopt when doc-of-record drift becomes a
-  recurring theme in review cycles.
-- **Behavior:** after a merged PR reaches the default branch, the workflow
-  sends bounded, redacted PR metadata/patches, the repository's Markdown
-  inventory, and `.github/doc-maintainer-conventions.md` to the configured
-  LiteLLM alias (default `ai-doc-maintainer`). The model decides which docs
-  require updates. Its JSON plan is schema/path/cap validated. In dry-run mode
-  the proposed patch is retained as an artifact and the plan is posted to the
-  merged PR. In live mode, allowlisted low-risk edits become a bot PR and
-  high-risk edits become a `docs` issue for human judgment.
-- **Required consumer files:** `.github/doc-maintainer.json` and
-  `.github/doc-maintainer-conventions.md`; starter templates ship in
-  `install/templates/`. Begin with `dry_run: true` and inspect at least five
-  coherent plans before enabling live mode.
+Retired and deleted per `DECISIONS.md` **CI-0040**. The reusable, both caller
+and config templates, and `scripts/doc-maintainer/` are gone from canon; the
+`ai-doc-maintainer` alias and `LITELLM_DOC_API_KEY` went with them.
+
+**Consumers still pinned to a tag that carries it: delete the caller, do NOT
+`--repin`.** A re-pin moves you to a tag where the called workflow does not
+exist, which fails the run rather than removing it. Section number retained so
+the numbering below does not shift.
 
 ### 3.10 `audit-trail-check.yml`
 
@@ -299,10 +293,9 @@ order — each step depends on the prior:
 7. **`codeql.yml`** — when the repo has runtime code (Python/JS/etc.).
 8. **`links.yml` weekly external mode** — when the repo has non-trivial
    external link surface.
-9. **`doc-maintainer.yml`** — after 3-6 months when doc-drift is a
-   recurring theme.
-
-**Don't adopt** `docs-sync.yml` on new repos — it's being superseded.
+**Don't adopt** `doc-maintainer.yml` — retired (CI-0040). `docs-sync.yml` is
+the doc automation, and adopting it on new repos is correct: the supersession
+that once made it interim is withdrawn.
 
 ## 5. Version pinning
 

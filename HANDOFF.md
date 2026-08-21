@@ -148,18 +148,29 @@ is empty, confirmed 0 this wrap).
 **No consumer repo, no branch protection, no ruleset, no required context.** The
 four tier templates still require `call / Lint / format / security hooks`, which
 every consumer produces — #485 deliberately touched no
-`install/templates/branch-protection-*.json`. No `doc-maintainer` / `docs-sync` /
-`ai-review` / `secret-scan` behaviour.
+`install/templates/branch-protection-*.json`. No `docs-sync` / `ai-review` /
+`secret-scan` behaviour.
 
 The Claim-ledger baseline is **unchanged at 79 rows, verified as an identical row
 set** rather than an identical count (`PLAN-023`'s Claim 64 was re-authored in the
 same change, because #485 removed the wizard arm it pinned).
 
-`doc-maintainer` live on `operations` (`kill_switch=false`) and paused on
-`framework` (`kill_switch=true`) — **re-verified this wrap**, not inherited:
+**`doc-maintainer` is RETIRED** — `DECISIONS.md` CI-0040, executed in the same
+change that carries this line. Canon no longer ships the reusable, the caller or
+config templates, `scripts/doc-maintainer/`, the three `manifest.json` entries,
+the `ai-doc-maintainer` alias or `LITELLM_DOC_API_KEY`.
+
+**Consumers are NOT broken and must NOT `--repin`.** `operations` (live,
+`kill_switch=false`) and `framework` (inert, `kill_switch=true`) both pin
+immutable tags — `ci/v2.0.1` and `ci/v2.16.0` — so their callers still resolve.
+A re-pin would move them to a tag where the workflow does not exist. **They
+delete the caller instead.** Re-derive both the pin and the state:
 
 ```sh
-python3 -c "import json;[print(r, json.load(open(f'/opt/data/aidoc-flow/{r}/.github/doc-maintainer.json'))['kill_switch']) for r in ('operations','framework')]"
+for d in operations framework; do
+  git -C /opt/data/aidoc-flow/$d show origin/main:.github/workflows/doc-maintainer.yml \
+    | grep -m1 'uses:.*aidoc-flow-ci'
+done
 ```
 
 Lessons went to auto-memory, which is **gitignored and machine-local**

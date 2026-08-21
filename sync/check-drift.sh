@@ -15,7 +15,7 @@
 #
 # COVERAGE (was: a hardcoded `for wf in ai-review composition`, so drift in a
 # consumer's labeler / links / pre-commit / secret-scan / codeql /
-# doc-maintainer / auto-merge-ai-prs / markdown-lint / docs-sync caller was
+# auto-merge-ai-prs / markdown-lint / docs-sync caller was
 # structurally invisible to the tool whose job is finding drift). The loop is
 # now driven by the consumer's OWN pinned callers and resolved through
 # install/templates/manifest.json, so a newly-manifested canon workflow is

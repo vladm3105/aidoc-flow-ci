@@ -132,7 +132,8 @@ except (OSError, ValueError) as e:
 # `consumer_install` is KEYED by the manifest's consumer PATH; `tmpl_to_consumer`
 # and `reusable_to_consumer` carry that PATH as their VALUE. Neither uses the
 # basename as an identity. Two entries may share a basename
-# (`doc-maintainer.yml` / `doc-maintainer.json` are the near miss today), and a
+# (the near miss was `doc-maintainer.yml` / `doc-maintainer.json`, retired per
+# CI-0040 — the hazard is structural and outlives that pair), and a
 # basename key would resolve the chain through one entry while reporting the
 # OTHER entry's install symbol — a silent false pass in exactly the direction
 # this script exists to catch. Basename is applied once, at print.

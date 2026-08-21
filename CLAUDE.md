@@ -216,7 +216,7 @@ self-hosted" anti-pattern**, because a fork never reaches a job that executes PR
 code: for `ai-review` a fork triggers only the `trust` job, which checks out the
 **trusted config repo** (never the PR head) and reads PR metadata — **zero PR
 code**; the review job is `needs: trust`-gated and forks are never trusted;
-`doc-maintainer`/`docs-sync` are post-merge so forks can't trigger them. The
+`docs-sync` is post-merge so forks can't trigger it. The
 AI-flows ship as ONE protected template (`runner_labels_routine`/`_review` both
 self-hosted), no `-public`/`-private` split, so a visibility flip is a no-op.
 **The fork-code-running lint flows (`markdown-lint`, `links`, `pre-commit`,
@@ -431,19 +431,6 @@ the previous cycle's finding.
   timeout's status. Any pipeline whose exit status is a *decision* must decide
   on the captured OUTPUT, not on the status. Same shape as the `printf | grep -q`
   SIGPIPE inversion in `action_for`.
-
-### The PLAN-021 consumer resume — two edits that are easy to get wrong
-
-Carried across three handoff regenerations unchanged, which is the tell that it
-was never volatile:
-
-- **`operations` must edit `auto_merge.low_risk_paths`, NOT `allowed_paths`.**
-  The latter's `"*.md"` catch-all makes the edit a no-op.
-- **Answer `[k]` at any interactive `--update` drift prompt** on that repo.
-- **`framework`'s `.github/doc-maintainer.json` carries a stale
-  `RESUME REQUIRES #352 AND #353` note** — both closed; it needs **#354 and
-  #360**. Verify before acting:
-  `python3 -c "import json;print(json.load(open('../framework/.github/doc-maintainer.json')))"`.
 
 ### Process
 
