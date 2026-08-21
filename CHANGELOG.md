@@ -5,6 +5,60 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — the §27 sigpipe guard was evadable by wrapping the pipeline (#422)
+
+`tests/test_sigpipe_guard.sh` matched **physical** lines, so a pipeline split
+after the `|` — the ordinary way to wrap a long one inside a `run: |` block —
+was invisible to it:
+
+```bash
+printf '%s' "$SCAN_PATH" |
+  grep -q .
+```
+
+Planted in `actions/sast-scan/action.yml`, the suite reported **119 passed, 0
+failed** with the banned construct sitting in a security-gate action.
+
+The instructive half is which spelling *was* covered: a trailing `\` before the
+newline was caught, but only incidentally — the literal `| grep -q` still lands
+on one physical line. The guard appeared to handle continuations while handling
+exactly one of the two, so nothing looked wrong.
+
+Continuations are now folded into logical lines before matching, carrying the
+**first** physical line number through so a hit still points at real source.
+
+**Two shapes are deliberately NOT folded**, both found by review as latent
+false-REDS — a guard that red-lines correct code gets deleted:
+
+- **A YAML block-scalar header.** `run: |` ends in `|` but is not a shell
+  continuation, and this guard runs over `.yml`/`.yaml` — two of its four
+  declared surfaces. Folding it produced `run: | grep -q x "$f"`, which the
+  pattern matches: the block-scalar `|` binds as the pipe. That accused the
+  author of a §27.1 violation for writing `grep -q` against a **file** — the
+  shape §27.1 explicitly blesses — and pointed at the `run:` line, where there
+  is no grep at all. 78 such headers exist across 29 guarded files. Blank and
+  comment lines are transparent to a pending fold, so the exposure was the first
+  non-blank body line however far down it sat.
+- **`||`.** `cmd ||` + `grep -q x` is an OR-branch, not a pipeline, so §27.1
+  does not apply — but the pattern's `\|` binds the second `|` of `||`. Folding
+  it also closes no hole: in `cmd || bar | grep -q x` the genuine pipe is on the
+  later line and is caught there either way, which a probe now pins.
+
+Both were latent rather than live — zero instances in the tree at the time of
+writing — and both now have negative probes.
+
+Measured, rather than asserted: reverting the two call sites to the per-line
+match reds **three** probes — the trailing-pipe wrap, the doubly-folded wrap,
+and the real-pipe-inside-an-OR-branch case. Removing the block-scalar exemption
+reds two; re-folding `||` reds one. The backslash-wrap probe deliberately does
+**not** red on that revert, because that spelling was already caught per-line —
+it is there to pin the spelling, not the fold.
+
+Rule: `REPO_STANDARDS.md` § "The construct is a LOGICAL line, and the guard must
+fold before matching", which records the general form: a check derived from one
+representation of a fact does not cover the others — the same shape as #423
+and #426.
+
 ### Fixed — the D11 hooks-selected guard was itself a silent green (#426)
 
 `actions/pre-commit` counted hooks by parsing `.pre-commit-config.yaml`. That

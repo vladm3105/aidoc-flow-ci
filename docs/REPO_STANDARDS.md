@@ -3272,6 +3272,62 @@ a container with no `pipefail`, so the writer's `EPIPE` cannot reach the
 decision. An allowlist entry is a claim that must stay true, not a way to
 silence a hit.
 
+### 27.2a The construct is a LOGICAL line, and the guard must fold before matching
+
+`tests/test_sigpipe_guard.sh` enforces §27.1 by matching a regex against the
+guarded files. It matched **physical** lines, so the ordinary way to wrap a long
+pipeline inside a `run: |` block walked past it (#422):
+
+```bash
+printf '%s' "$SCAN_PATH" |
+  grep -q .
+```
+
+Planted in `actions/sast-scan/action.yml`, the suite reported **119 passed, 0
+failed** with the banned construct sitting in a security-gate action.
+
+**Note which half was covered, because it is the instructive part.** The _other_
+continuation spelling — a trailing `\` before the newline — **was** caught, but
+only incidentally: the literal text `| grep -q` still lands on one physical line.
+So the guard appeared to handle continuations while handling exactly one of the
+two spellings. A guard that catches one spelling of a construct and not the
+other is not enforcing the construct; it is enforcing a typography.
+
+**Rules.**
+
+1. Fold shell continuations — a line ending in a **single** `|`, or in a
+   backslash — into one logical line **before** matching.
+1a. **Do not fold what only looks like a continuation.** The guard is a text
+   heuristic over `.sh` **and** `.yml`, and two shapes end in `|` without being
+   shell continuations:
+   - a **YAML block-scalar header** (`run: |`, `script: |`, `run: |-`). Folding
+     it yields `run: | grep -q x "$f"`, which the pattern matches — red-lining
+     `grep -q` against a **file**, the shape §27.1 explicitly blesses, and
+     pointing at a line with no grep on it. Comment and blank lines are
+     transparent to a pending fold, so the exposure is the first non-blank body
+     line, not merely the next one.
+   - **`||`**, which is an OR-branch, not a pipeline. The pattern's `\|` would
+     bind its second `|`. Skipping it closes no hole: a genuine pipe further
+     down the same construct is still caught on its own line.
+   A guard that red-lines correct code is removed by the next person it blocks,
+   so each exemption carries a negative probe.
+2. Carry the **first** physical line number through the fold. A hit that reports
+   the last line sends the reader to the wrong place, which defeats the only
+   reason to report a number.
+3. Probe **both** spellings, and probe the negatives (a wrapped comment, a
+   wrapped legitimate pipeline). A fold that only ever matches more is a fold
+   that will be reverted the first time it fires spuriously.
+
+**Generalise it.** This is the §27 family's own lesson turned on the guard: a
+check derived from one representation of a fact does not cover the others. Note
+the symmetry the fix had to respect — widening a guard creates the opposite
+failure, a false RED, and the review that caught both exemptions found them by
+asking what the wider guard would now match rather than what it would catch. The
+same shape produced #423 (a post-condition scoped to one of two strip roots)
+and #426 (a count predicted from the config rather than read from the run).
+
+**Origin:** #422.
+
 ### 27.3 Why review did not catch it
 
 The line entered on 2026-07-07 in `e827ab8` (PLAN-002 PR-U3, #64), under a

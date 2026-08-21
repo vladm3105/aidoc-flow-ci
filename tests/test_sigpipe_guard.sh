@@ -209,6 +209,68 @@ echo "== structural: the shape must not reappear on any OPS-0069 surface =="
 # against it would force those warnings to be deleted to stay green.
 code_only() { sed -E 's/^[[:space:]]*#.*$//' "$1"; }
 
+# §27 bans a CONSTRUCT, and a construct is a LOGICAL line — but this guard
+# matched PHYSICAL ones, so the ordinary way to wrap a long pipeline inside a
+# `run: |` block walked straight past it (#422):
+#
+#     printf '%s' "$SCAN_PATH" |
+#       grep -q .
+#
+# MEASURED: planted in `actions/sast-scan/action.yml`, the suite reported
+# "119 passed, 0 failed" with the banned construct sitting in a security-gate
+# action. Note which half was covered and which was not — the OTHER continuation
+# spelling (a trailing `\` before the newline) WAS caught, but only incidentally:
+# the literal text `| grep -q` still lands on one physical line. It is
+# specifically the trailing-PIPE form that escaped, and a guard that catches one
+# spelling of a construct and not the other is not enforcing the construct.
+#
+# Fold continuations before matching, and carry the FIRST physical line number
+# through so the failure still points at real source.
+#
+# A line continues when it ends in a SINGLE `|` or in a backslash. Two shapes are
+# deliberately NOT folded, because folding them manufactures false positives on
+# correct code — and a guard that red-lines correct code gets deleted:
+#
+#   1. A YAML BLOCK-SCALAR HEADER (`run: |`, `script: |`, `if: |`, `run: |-`).
+#      This guard runs over `.yml`/`.yaml` — two of the four declared surfaces —
+#      where a trailing `|` is not a shell continuation at all. Folding it joins
+#      the header to the first body line and yields `run: | grep -q x "$f"`,
+#      which BANNED_RE matches: the block-scalar `|` binds as the pipe. That
+#      accuses the author of a §27.1 violation for writing `grep -q` against a
+#      FILE — the exact shape §27.1 explicitly blesses — and points them at the
+#      `run:` line, where there is no grep at all. 78 such headers exist across
+#      29 guarded files, so this is a trip-wire on every one of them.
+#      Blank and comment lines are transparent to a pending fold (`code_only`
+#      BLANKS a comment rather than deleting it), so the exposure would be the
+#      first non-blank body line however far down it sits.
+#
+#   2. `||`. `cmd ||` + `grep -q x` is an OR-BRANCH, not a pipeline — grep is not
+#      reading from a pipe, so §27.1 does not apply — but BANNED_RE's `\|` binds
+#      the SECOND `|` of `||` and matches anyway. Folding it closes no hole
+#      either: in `cmd || bar | grep -q x` the genuine pipe is already on the
+#      later line and is caught there, with or without this fold.
+#
+# Both were latent rather than live when found (zero instances in the tree), and
+# both are pinned by negative probes below.
+logical_lines() {
+  code_only "$1" | awk '
+    {
+      cur = $0
+      sub(/[[:space:]]+$/, "", cur)
+      if (pending) { sub(/^[[:space:]]+/, "", cur); sub(/\\$/, "", acc); acc = acc " " cur }
+      else         { start = NR; acc = cur }
+      # a YAML block-scalar header, with or without a chomping/indent indicator
+      is_yaml_scalar = (acc ~ /^[[:space:]]*(-[[:space:]]+)?[A-Za-z0-9_.-]+:[[:space:]]*\|[-+]?[0-9]*[[:space:]]*$/)
+      # a SINGLE trailing pipe: the character before it must not be another pipe
+      single_pipe    = (acc ~ /(^|[^|])\|[[:space:]]*$/)
+      if ((single_pipe && !is_yaml_scalar) || acc ~ /\\$/) { pending = 1; next }
+      pending = 0
+      print start ":" acc
+    }
+    END { if (pending) print start ":" acc }
+  '
+}
+
 # The pattern covers every spelling that makes `grep` leave before EOF, not just
 # `-q`. Each of these was verified to evade the first version of this regex:
 #   … | grep --quiet     (long form)
@@ -349,7 +411,7 @@ for f in "${GUARDED[@]}"; do
   # file would silently report "clean" for a file never opened.
   if [ ! -s "$f" ]; then _r "guard target missing or empty: $f"; continue; fi
   banned_allowed "$f" && continue
-  hits="$(code_only "$f" | grep -nE "$BANNED_RE" || true)"
+  hits="$(logical_lines "$f" | grep -E "$BANNED_RE" || true)"
   # Label with the full path: two of the guarded files share a basename.
   # Label names exactly what BANNED_RE covers. `head -N` / `sed …q` / `awk …exit`
   # are the same mechanism but are NOT banned: `| head -1` for DISPLAY is
@@ -361,7 +423,7 @@ done
 # Guard the guard. These probes are pipe-free on purpose — a probe written in
 # the very construct under test can be satisfied BY an inversion (`assert_fail`
 # passes on any non-zero status, and 141 is non-zero).
-probe_hits() { code_only "$1" | grep -cE "$BANNED_RE" || true; }
+probe_hits() { logical_lines "$1" | grep -cE "$BANNED_RE" || true; }
 probe="$T/probe.sh"
 printf '%s\n' 'echo "$x" | grep -qF "y"' > "$probe"
 assert_eq "$(probe_hits "$probe")" "1" "stripper still sees a real piped grep -q"
@@ -373,6 +435,52 @@ printf '%s\n' 'echo "$x" | grep -F -q y' > "$probe"
 assert_eq "$(probe_hits "$probe")" "1" "q outside the first option cluster is caught"
 printf '%s\n' 'echo "$x" | grep -m1 y' > "$probe"
 assert_eq "$(probe_hits "$probe")" "1" "-m1 is caught (exits early with no -q)"
+
+# ── continuation forms (#422) ────────────────────────────────────────────────
+# The construct is a LOGICAL line. Both shell continuations are probed, because
+# the guard used to catch one of them only by accident: with a trailing `\` the
+# literal `| grep -q` still lands on one PHYSICAL line, so a per-line match
+# appeared to work while the trailing-PIPE spelling walked straight past it.
+printf '%s\n%s\n' 'printf "%s" "$x" |' '  grep -q .' > "$probe"
+assert_eq "$(probe_hits "$probe")" "1" "trailing-PIPE wrap is caught (#422 — the measured evasion)"
+printf '%s\n%s\n' 'printf "%s" "$x" \\' '  | grep -q .' > "$probe"
+assert_eq "$(probe_hits "$probe")" "1" "backslash wrap is caught"
+printf '%s\n%s\n%s\n' 'printf "%s" "$x" |' '  grep -F \\' '  -q .' > "$probe"
+assert_eq "$(probe_hits "$probe")" "1" "a wrap folded TWICE is still one logical line"
+# And the negatives, so the fold is not just "match more".
+printf '%s\n%s\n' '# never write: printf "%s" "$x" |' '#   grep -q .' > "$probe"
+assert_eq "$(probe_hits "$probe")" "0" "a wrapped shape inside COMMENTS is still ignored"
+printf '%s\n%s\n' 'printf "%s" "$x" |' '  head -1' > "$probe"
+assert_eq "$(probe_hits "$probe")" "0" "a wrapped legitimate pipeline is NOT flagged"
+printf '%s\n%s\n' 'echo a || echo b' 'echo c | grep -q d' > "$probe"
+assert_eq "$(probe_hits "$probe")" "1" "an unwrapped line following another is still matched on its own"
+# The reported number must be the FIRST physical line of the logical line, or the
+# failure sends the reader to the wrong place — the whole point of reporting one.
+printf '%s\n%s\n%s\n' 'echo filler' 'printf "%s" "$x" |' '  grep -q .' > "$probe"
+assert_eq "$(logical_lines "$probe" | grep -E "$BANNED_RE" | cut -d: -f1)" "2" \
+  "the hit reports the FIRST physical line of the folded construct, not the last"
+
+# The two shapes the fold must NOT join. Both were found by review as latent
+# false-REDS — the fold matched code that is correct, on a required check.
+# A YAML block-scalar header ends in `|` but is not a shell continuation, and
+# `grep -q` reading a FILE is explicitly blessed by §27.1.
+probe_y="$T/probe.yml"
+printf '%s\n%s\n' '      - run: |' "          grep -q 'needle' \"\$f\"" > "$probe_y"
+assert_eq "$(probe_hits "$probe_y")" "0" \
+  "a YAML block-scalar header is NOT folded into its body (§27.1 blesses grep -q on a FILE)"
+printf '%s\n%s\n%s\n' '      - run: |' '          # a comment first' "          grep -q 'needle' \"\$f\"" > "$probe_y"
+assert_eq "$(probe_hits "$probe_y")" "0" \
+  "...even with a comment between, which a pending fold would otherwise pass through"
+printf '%s\n%s\n' '      - run: |-' "          grep -q 'needle' \"\$f\"" > "$probe_y"
+assert_eq "$(probe_hits "$probe_y")" "0" "...and for the chomping-indicator spelling"
+# `cmd || grep -q x` is an OR-BRANCH: grep is not reading from a pipe, so §27.1
+# does not apply — but BANNED_RE's `\|` would bind the SECOND `|` of `||`.
+printf '%s\n%s\n' 'some_cmd ||' '  grep -q pattern file' > "$probe"
+assert_eq "$(probe_hits "$probe")" "0" "a wrapped '||' OR-branch is NOT folded into a false pipe match"
+# ...and skipping the `||` fold closes no hole: a genuine pipe further down the
+# same construct is still caught on its own line.
+printf '%s\n%s\n%s\n' 'foo ||' '  bar |' '  grep -q x' > "$probe"
+assert_eq "$(probe_hits "$probe")" "1" "...and a REAL pipe inside an OR-branch is still caught"
 # These three spellings were unprobed, so a weakening of BANNED_RE that broke
 # them survived every probe. -Fq and -m 1 were already caught by the shipped
 # regex; --max-count=1 was NOT, and is the reason for the new alternation branch.
