@@ -5,6 +5,25 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — a pin bump reached canon but not the shipped templates (#487)
+
+Dependabot bumped `github/codeql-action` v4.37.6 → v4.37.7 in
+`.github/workflows/`, and `tests/test_contract.sh` went red — correctly.
+Dependabot's `github-actions` ecosystem scans `.github/workflows/` and
+`action.yml` files only, so it structurally **cannot** reach
+`install/templates/workflows/scanners.yml`, which is the file consumers
+actually install. `.github/dependabot.yml` already names this gap and states
+that the test, not the config, is the guard.
+
+This lands the same bump across **both trees** — all ten `codeql-action` pins
+move as one unit, so canon does not ship consumers a pin it has itself moved
+past. Mild for a first-party patch bump; not mild when a bump is a security
+fix, because canon would be patched while every consumer stayed exposed.
+
+The pin was verified against upstream rather than trusted from the PR diff:
+the `v4.37.7` annotated tag dereferences to `ff2f1c62`. Supersedes the
+dependabot PR, which moved one tree of the two.
+
 ### Fixed — the runner image's `gh` pin expired on its own, twice (#435, #458)
 
 `install/templates/runner/Dockerfile` pinned `gh` with an exact apt version
