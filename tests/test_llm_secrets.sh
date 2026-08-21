@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# tests/test_litellm_secrets.sh — guards for install/set-litellm-secrets.sh.
+# tests/test_llm_secrets.sh — guards for install/set-llm-secrets.sh.
 #
 # WHY THIS EXISTS: issue #350. A run to add ONE optional secret also rewrote
-# LITELLM_BASE_URL and LITELLM_REVIEW_API_KEY from the operator's environment,
+# LLM_URL and LLM_API_KEY from the operator's environment,
 # with no validation of either. Both writes reported ✓ and the script exited 0;
 # the break surfaced only on the next PR, as a red REQUIRED ai-review gate on a
 # consumer. The inventory had this script as "low risk; accepted-no-FT" — that
@@ -27,9 +27,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tests/lib.sh
 . "$HERE/lib.sh"
 ROOT="$(cd "$HERE/.." && pwd)"
-SCRIPT="$ROOT/install/set-litellm-secrets.sh"
+SCRIPT="$ROOT/install/set-llm-secrets.sh"
 
-assert_ok "[ -f '$SCRIPT' ]" "set-litellm-secrets.sh exists"
+assert_ok "[ -f '$SCRIPT' ]" "set-llm-secrets.sh exists"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -103,9 +103,9 @@ run() {
   local review="$REVIEW_KEY"
   [ "${NO_REVIEW_KEY:-0}" = 1 ] && review=""
   OUT="$(PATH="$BIN:$PATH" \
-     LITELLM_BASE_URL="${BASE:-$BRIDGE}" \
-     LITELLM_REVIEW_API_KEY="$review" \
-     LITELLM_MASTER_KEY="$MASTER_KEY" \
+     LLM_URL="${BASE:-$BRIDGE}" \
+     LLM_API_KEY="$review" \
+     LLM_MASTER_KEY="$MASTER_KEY" \
      STUB_EXISTING="${STUB_EXISTING:-}" \
      STUB_EXISTING_repoA="${STUB_EXISTING_repoA:-}" \
      STUB_EXISTING_repoB="${STUB_EXISTING_repoB:-}" \
@@ -127,7 +127,7 @@ run() {
 }
 
 # ---------------------------------------------------------------------------
-echo "== a loopback LITELLM_BASE_URL is refused before anything is written =="
+echo "== a loopback LLM_URL is refused before anything is written =="
 # The incident's first half. Loopback resolves to the job CONTAINER, so it
 # passes every check the operator can run from the host and fails only in CI.
 # The variants below are not hypothetical: each was verified to reach 127.0.0.1
@@ -170,7 +170,7 @@ assert_ok "[ $RC -eq 0 ]" "a real proxy host is not misclassified as loopback"
 echo "== --allow-loopback is the documented escape hatch =="
 BASE="http://127.0.0.1:4001/v1" STUB_EXISTING="" run --allow-loopback
 assert_ok "[ $RC -eq 0 ]" "--allow-loopback proceeds"
-assert_contains "$GH_OUT" "SET LITELLM_BASE_URL" "--allow-loopback still writes"
+assert_contains "$GH_OUT" "SET LLM_URL" "--allow-loopback still writes"
 assert_contains "$OUT" "WARN" "--allow-loopback still warns"
 
 echo "== the URL+key pair is probed before any write =="
@@ -180,7 +180,7 @@ assert_absent "$GH_OUT" "SET " "401: nothing is written"
 # Match the refusal wording, not just the secret name: an earlier version of
 # this assertion passed against the old SUCCESS line, which named the same key.
 assert_contains "$OUT" "proxy REJECTS" "401: the message says the proxy rejected the key"
-assert_contains "$OUT" "LITELLM_REVIEW_API_KEY (HTTP 401)" "401: the message names the rejected secret"
+assert_contains "$OUT" "LLM_API_KEY (HTTP 401)" "401: the message names the rejected secret"
 
 STUB_EXISTING="" STUB_HTTP_CODE=000 run
 assert_ok "[ $RC -ne 0 ]" "an unreachable proxy aborts"
@@ -220,27 +220,27 @@ assert_absent "$GH_ARGV_OUT" "$MASTER_KEY" "mint: master key appears on no gh ar
 echo "== an EXISTING secret is kept unless --overwrite (issue #350) =="
 # The exact incident, re-expressed on the surviving pair: a run against a
 # fully-provisioned repo must write NOTHING and say so.
-STUB_EXISTING="LITELLM_BASE_URL
-LITELLM_REVIEW_API_KEY" run
+STUB_EXISTING="LLM_URL
+LLM_API_KEY" run
 assert_ok "[ $RC -eq 0 ]" "a fully-provisioned repo succeeds"
-assert_absent "$GH_OUT" "SET LITELLM_BASE_URL" "the working base URL is NOT touched"
-assert_absent "$GH_OUT" "SET LITELLM_REVIEW_API_KEY" "the working review key is NOT touched"
+assert_absent "$GH_OUT" "SET LLM_URL" "the working base URL is NOT touched"
+assert_absent "$GH_OUT" "SET LLM_API_KEY" "the working review key is NOT touched"
 assert_contains "$OUT" "0 created, 0 overwritten, 2 kept" "the summary counts the kept secrets"
 assert_contains "$OUT" "--overwrite" "the report names the flag that would replace them"
 
 # A partially-provisioned repo creates only what is missing — the half of the
 # rule that a keep-everything run cannot prove.
-STUB_EXISTING="LITELLM_BASE_URL" run
+STUB_EXISTING="LLM_URL" run
 assert_ok "[ $RC -eq 0 ]" "a partially-provisioned repo succeeds"
-assert_contains "$GH_OUT" "SET LITELLM_REVIEW_API_KEY" "the MISSING key IS created"
-assert_absent "$GH_OUT" "SET LITELLM_BASE_URL" "the PRESENT base URL is NOT touched"
+assert_contains "$GH_OUT" "SET LLM_API_KEY" "the MISSING key IS created"
+assert_absent "$GH_OUT" "SET LLM_URL" "the PRESENT base URL is NOT touched"
 assert_contains "$OUT" "1 created, 0 overwritten, 1 kept" "the summary counts one of each"
 
 # A repo that genuinely needs the review key CREATED must not get a blank one.
 NO_REVIEW_KEY=1 STUB_EXISTING="" run
 assert_ok "[ $RC -ne 0 ]" "a missing review key that must be CREATED fails the run"
-assert_absent "$GH_OUT" "SET LITELLM_REVIEW_API_KEY = " "no blank secret is ever written"
-assert_contains "$OUT" "LITELLM_REVIEW_API_KEY" "the error names the variable to export"
+assert_absent "$GH_OUT" "SET LLM_API_KEY = " "no blank secret is ever written"
+assert_contains "$OUT" "LLM_API_KEY" "the error names the variable to export"
 
 echo "== a rejected key aborts before any write =="
 STUB_EXISTING="" STUB_HTTP_CODE=401 run
@@ -248,22 +248,56 @@ assert_ok "[ $RC -ne 0 ]" "a rejected review key aborts before any write"
 assert_absent "$GH_OUT" "SET " "401: nothing is written"
 
 echo "== --overwrite is the explicit opt-in =="
-STUB_EXISTING="LITELLM_BASE_URL
-LITELLM_REVIEW_API_KEY" run --overwrite
-assert_contains "$GH_OUT" "SET LITELLM_BASE_URL" "--overwrite replaces the base URL"
-assert_contains "$GH_OUT" "SET LITELLM_REVIEW_API_KEY" "--overwrite replaces the review key"
+STUB_EXISTING="LLM_URL
+LLM_API_KEY" run --overwrite
+assert_contains "$GH_OUT" "SET LLM_URL" "--overwrite replaces the base URL"
+assert_contains "$GH_OUT" "SET LLM_API_KEY" "--overwrite replaces the review key"
 assert_contains "$OUT" "0 created, 2 overwritten, 0 kept" "the summary counts the overwrites"
+
+echo "== the printed Verify hint matches the names actually provisioned =="
+# The script ends by printing a `gh secret list | grep ...` one-liner. That hint
+# drifted silently through the LITELLM->LLM rename: it still filtered on
+# `-i litellm`, which matches NEITHER name the script writes, so an operator
+# following the script's own instructions saw an empty list right after a
+# successful run and read it as "nothing was set". Nothing asserted the hint
+# against the writes, so nothing caught it. This does.
+#
+# NOTE the assertions below use _g/_r directly, never assert_ok: the hint text
+# contains a literal `$r` (from its own `for r in ...` loop), and assert_ok
+# EVALS its argument, so passing the hint through it dies on `unbound variable`.
+STUB_EXISTING="" run
+_hint="$(printf '%s' "$OUT" | grep -F 'gh secret list' || true)"
+if [ -n "$_hint" ]; then _g "the run prints a Verify hint at all"
+else _r "the run prints a Verify hint at all"; fi
+_pat="$(printf '%s' "$_hint" | sed -nE "s/.*grep -E '([^']*)'.*/\\1/p")"
+if [ -n "$_pat" ]; then _g "the Verify hint uses an extractable grep -E pattern"
+else _r "the Verify hint uses an extractable grep -E pattern"; fi
+_written="$(printf '%s' "$GH_OUT" | sed -nE 's/^SET ([A-Z0-9_]+).*/\1/p' | sort -u)"
+if [ -n "$_written" ]; then _g "the run actually wrote at least one secret to match against"
+else _r "the run actually wrote at least one secret to match against"; fi
+# An EMPTY pattern must NOT pass here: `grep -Eq ""` matches every line, so a
+# hint whose pattern could not be extracted would satisfy this vacuously — the
+# same shape as asserting a negation against a missing file. Fail closed.
+if [ -z "$_pat" ]; then
+  _unmatched="<no pattern extracted>"
+else
+  _unmatched=""
+  for _n in $_written; do
+    printf '%s\n' "$_n" | grep -Eq "$_pat" || _unmatched="$_unmatched $_n"
+  done
+fi
+assert_eq "$_unmatched" "" "every provisioned secret name matches the Verify hint's own pattern"
 
 echo "== a fresh repo still provisions in one run, no flag needed =="
 STUB_EXISTING="" run
-assert_contains "$GH_OUT" "SET LITELLM_BASE_URL" "fresh: base URL created"
-assert_contains "$GH_OUT" "SET LITELLM_REVIEW_API_KEY" "fresh: review key created"
+assert_contains "$GH_OUT" "SET LLM_URL" "fresh: base URL created"
+assert_contains "$GH_OUT" "SET LLM_API_KEY" "fresh: review key created"
 assert_contains "$OUT" "2 created, 0 overwritten, 0 kept" "fresh: summary"
 
 echo "== the written VALUES go to the right SECRET and the right REPO =="
 STUB_EXISTING="" run
-assert_contains "$GH_OUT" "SET LITELLM_REVIEW_API_KEY -> owner/repo = $REVIEW_KEY" "review key: name, repo and value"
-assert_contains "$GH_OUT" "SET LITELLM_BASE_URL -> owner/repo = $BRIDGE" "base URL: name, repo and value"
+assert_contains "$GH_OUT" "SET LLM_API_KEY -> owner/repo = $REVIEW_KEY" "review key: name, repo and value"
+assert_contains "$GH_OUT" "SET LLM_URL -> owner/repo = $BRIDGE" "base URL: name, repo and value"
 
 echo "== fail closed when the existing set cannot be read =="
 # Writing blind is how a silent overwrite happens; an unreadable list is not
@@ -283,28 +317,28 @@ assert_ok "[ $RC -ne 0 ]" "no-access repo: the run exits non-zero"
 assert_contains "$OUT" "1 repo(s) skipped" "the summary counts the skip"
 
 echo "== --dry-run writes nothing, sends nothing, and shows the plan =="
-STUB_EXISTING="LITELLM_BASE_URL" run --dry-run
+STUB_EXISTING="LLM_URL" run --dry-run
 assert_ok "[ $RC -eq 0 ]" "dry-run exits 0"
 assert_absent "$GH_OUT" "SET " "dry-run writes nothing"
 # The probe transmits a live bearer token; --dry-run must not do that at all.
 assert_absent "$CURL_OUT" "models" "dry-run makes NO network request"
 assert_absent "$HDR_OUT" "$REVIEW_KEY" "dry-run never writes the key to a header file"
-assert_contains "$OUT" "[dry-run] LITELLM_REVIEW_API_KEY" "dry-run names the secret it would create"
+assert_contains "$OUT" "[dry-run] LLM_API_KEY" "dry-run names the secret it would create"
 assert_contains "$OUT" "would be created" "dry-run states the action"
 assert_contains "$OUT" "(exists, kept" "dry-run marks the existing secret kept"
 assert_contains "$OUT" "(dry-run — nothing written)" "the summary cannot be misread as a real run"
 
-STUB_EXISTING="LITELLM_BASE_URL" run --dry-run --overwrite
+STUB_EXISTING="LLM_URL" run --dry-run --overwrite
 assert_contains "$OUT" "would be OVERWRITTEN" "dry-run shouts a pending overwrite"
 assert_absent "$GH_OUT" "SET " "dry-run --overwrite still writes nothing"
 
 echo "== --mint does not burn a key it would not write =="
-STUB_EXISTING="LITELLM_BASE_URL
-LITELLM_REVIEW_API_KEY" run --mint
+STUB_EXISTING="LLM_URL
+LLM_API_KEY" run --mint
 assert_absent "$CURL_OUT" "key/generate" "mint: no key minted when the secret is kept"
 STUB_EXISTING="" run --mint
 assert_contains "$CURL_OUT" "key/generate" "mint: a key IS minted for a fresh repo"
-assert_contains "$GH_OUT" "SET LITELLM_REVIEW_API_KEY -> owner/repo = sk-minted-" "mint: the minted key is written"
+assert_contains "$GH_OUT" "SET LLM_API_KEY -> owner/repo = sk-minted-" "mint: the minted key is written"
 STUB_EXISTING="" run --mint --dry-run
 assert_absent "$CURL_OUT" "key/generate" "mint: --dry-run mints nothing"
 
@@ -313,11 +347,11 @@ echo "== the loop keeps per-repo state separate and aggregates counters =="
 # aggregation, per-repo isolation, and that an unreadable repo cannot leak its
 # state into the next one.
 REPOS_ARG="owner/repoA owner/repoB owner/repoC" \
-  STUB_EXISTING_repoA="LITELLM_BASE_URL
-LITELLM_REVIEW_API_KEY" \
+  STUB_EXISTING_repoA="LLM_URL
+LLM_API_KEY" \
   STUB_LIST_FAIL_REPOS="owner/repoC" run
 assert_contains "$OUT" "2 created, 0 overwritten, 2 kept, 1 repo(s) skipped" "counters aggregate across repos"
-assert_contains "$GH_OUT" "SET LITELLM_BASE_URL -> owner/repoB" "repoB is provisioned independently of repoA"
+assert_contains "$GH_OUT" "SET LLM_URL -> owner/repoB" "repoB is provisioned independently of repoA"
 assert_absent "$GH_OUT" "-> owner/repoA" "repoA's existing secrets are untouched"
 assert_absent "$GH_OUT" "-> owner/repoC" "nothing is written to the unreadable repo"
 assert_ok "[ $RC -ne 0 ]" "a partially-skipped fan-out does not exit 0"
@@ -392,7 +426,7 @@ SECRET_SCAN="$TMP/tmpdir"; rm -rf "$SECRET_SCAN"; mkdir -p "$SECRET_SCAN"
 OUT="$(PATH="$BIN:$PATH" TMPDIR="$SECRET_SCAN" \
    GH_LOG="$TMP/gh.log" GH_ARGV_LOG="$TMP/gh-argv.log" \
    CURL_LOG="$TMP/curl.log" CURL_HDR_LOG="$TMP/hdr.log" \
-   LITELLM_BASE_URL="$BRIDGE" LITELLM_REVIEW_API_KEY="$REVIEW_KEY" \
+   LLM_URL="$BRIDGE" LLM_API_KEY="$REVIEW_KEY" \
    STUB_EXISTING="" STUB_HTTP_CODE=200 \
    bash "$SCRIPT" --repos owner/repo 2>&1)"
 leftover="$(find "$SECRET_SCAN" -type f 2>/dev/null | wc -l)"
@@ -412,4 +446,4 @@ assert_eq "0" "$grepped" "no surviving file contains the bearer key"
 assert_eq "1" "$(awk '/^TMPFILES /{print $2}' "$TMP/curl.log" | sort -n | tail -1)" \
   "a probe holds exactly one header file, and never two at once"
 
-suite_summary "test_litellm_secrets.sh"
+suite_summary "test_llm_secrets.sh"

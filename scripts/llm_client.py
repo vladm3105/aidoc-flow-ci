@@ -53,7 +53,7 @@ def in_container() -> bool:
     Used only to sharpen an error message, never to gate behaviour, so a false
     negative just restores the previous (vaguer) diagnostics.
     """
-    if os.environ.get("LITELLM_ASSUME_CONTAINER", "").lower() == "true":
+    if os.environ.get("LLM_ASSUME_CONTAINER", "").lower() == "true":
         return True
     # Probe the filesystem markers BEFORE reading /proc: on a hardened or Podman
     # runner /proc/self/cgroup can be masked, and an OSError there must not
@@ -77,7 +77,7 @@ def loopback_hint(base_url: str) -> str:
     host = urllib.parse.urlsplit(base_url).hostname
     if host in LOOPBACK_HOSTS and in_container():
         return (
-            f" — LITELLM_BASE_URL points at loopback ({host}) while running INSIDE a"
+            f" — LLM_URL points at loopback ({host}) while running INSIDE a"
             " container, so it resolves to the container itself, not the host running"
             " the proxy. Use the Docker bridge gateway instead (default"
             " http://172.17.0.1:4001/v1). This URL works when tested from the host and"
@@ -89,27 +89,29 @@ def loopback_hint(base_url: str) -> str:
 def auth_hint(code: int) -> str:
     """Name the likely cause of a rejected token instead of a bare status line.
 
-    LITELLM_API_KEY is populated from a repository secret — LITELLM_REVIEW_API_KEY
-    for ai-review's review step, LITELLM_FIX_API_KEY for its autofix step — so a
-    401 here is a secret-provisioning problem, not a code one. The bare status
+    LLM_API_KEY is populated from the repository secret of the same name (or,
+    on a consumer not yet re-provisioned, the deprecated LITELLM_REVIEW_API_KEY /
+    LITELLM_FIX_API_KEY) — so a 401 here is a secret-provisioning problem, not a
+    code one. The bare status
     named neither the secret nor a cause, which is what made #350 expensive: a
-    set-litellm-secrets.sh run adding one optional key silently overwrote a
+    set-llm-secrets.sh run adding one optional key silently overwrote a
     working review key, and this message was all CI had to say about it.
     """
     if code == 401:
         return (
-            " — the proxy rejected the bearer token. LITELLM_API_KEY comes from a"
-            " repository secret: LITELLM_REVIEW_API_KEY (ai-review's review step)"
-            " or LITELLM_FIX_API_KEY (its autofix step). For the review key, a"
-            " recent install/set-litellm-secrets.sh run may have overwritten the"
-            " value; that script does not manage the fix key. Re-provision the affected"
+            " — the proxy rejected the bearer token. LLM_API_KEY comes from a"
+            " repository secret LLM_API_KEY — or, if this repo has not been"
+            " re-provisioned yet, the deprecated LITELLM_REVIEW_API_KEY /"
+            " LITELLM_FIX_API_KEY the caller still forwards. A recent"
+            " install/set-llm-secrets.sh run may have overwritten the"
+            " value. Re-provision the affected"
             " secret — GitHub secrets are write-only, so the value cannot be read"
             " back or recovered from CI. (#350.)"
         )
     if code == 403:
         # Deliberately NOT the re-provision message. 403 means the token
         # authenticated and is not authorized for this model — which is why
-        # set-litellm-secrets.sh accepts 403 when probing /models. Telling the
+        # set-llm-secrets.sh accepts 403 when probing /models. Telling the
         # operator to re-provision a key the provisioner just certified would
         # send them back into the hand-re-provisioning loop #350 was about.
         return (
@@ -122,10 +124,10 @@ def auth_hint(code: int) -> str:
 
 def endpoint(base_url: str) -> str:
     parsed = urllib.parse.urlsplit(base_url)
-    allow_http = os.environ.get("LITELLM_ALLOW_INSECURE_HTTP", "").lower() == "true"
+    allow_http = os.environ.get("LLM_ALLOW_INSECURE_HTTP", "").lower() == "true"
     if parsed.scheme not in ({"https", "http"} if allow_http else {"https"}):
         fail(
-            "LITELLM_BASE_URL must use HTTPS (or explicitly allow HTTP). If your proxy"
+            "LLM_URL must use HTTPS (or explicitly allow HTTP). If your proxy"
             " is reached over http:// — which is the case for every consumer on the"
             " shared self-hosted pool, since the Docker bridge gateway is plain HTTP on"
             " a private network — set `litellm_allow_insecure_http: true` on the"
@@ -133,7 +135,7 @@ def endpoint(base_url: str) -> str:
             " public repos need it too. See docs/MIGRATION_v2.0.0.md §1. (CI-0017.)"
         )
     if not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
-        fail("LITELLM_BASE_URL contains a forbidden or missing URL component")
+        fail("LLM_URL contains a forbidden or missing URL component")
     value = base_url.rstrip("/")
     if value.endswith("/chat/completions"):
         return value
@@ -145,20 +147,20 @@ def endpoint(base_url: str) -> str:
 def completion(
     prompt: str, *, model: str, json_mode: bool, timeout: int, verdict_mode: bool = False
 ) -> str:
-    base_url = os.environ.get("LITELLM_BASE_URL", "").strip()
-    api_key = os.environ.get("LITELLM_API_KEY", "").strip()
+    base_url = os.environ.get("LLM_URL", "").strip()
+    api_key = os.environ.get("LLM_API_KEY", "").strip()
     if not base_url:
-        fail("LITELLM_BASE_URL is not set")
+        fail("LLM_URL is not set")
     if not api_key:
-        fail("LITELLM_API_KEY is not set")
+        fail("LLM_API_KEY is not set")
     if not model:
-        fail("no model alias supplied (--model or LITELLM_MODEL)")
+        fail("no model alias supplied (--model or LLM_MODEL)")
     if not MODEL_PATTERN.fullmatch(model):
         fail("model alias must match [A-Za-z0-9][A-Za-z0-9._:/-]{0,127}")
     # PLAN-011 T1: a verdict for a large diff (many findings) needs more output
     # headroom than a plain --json call — 4096 truncates the JSON mid-object on
     # big PRs, which surfaces as ResponseShapeError. Verdict mode defaults higher;
-    # plain callers keep 4096. The LITELLM_MAX_TOKENS override wins for both, so an
+    # plain callers keep 4096. The LLM_MAX_TOKENS override wins for both, so an
     # operator can tune per-model without a code edit (model-agnostic).
     # PLAN-011 PC-1 (VERIFIED live 2026-07-17): deepseek-v4-pro (the ai-reviewer
     # alias) accepts max_tokens well past this — 32768 and even 65536 return HTTP
@@ -168,17 +170,17 @@ def completion(
     # reported ResponseShapeError was a reasoning spike truncating at the old 4096
     # default. 24576 (3x the first 8192 pick) covers a heavy-reasoning spike on a
     # near-400KB diff with wide margin. Higher costs nothing extra (billing is per
-    # ACTUAL output token; finish_reason is normally `stop`), and LITELLM_MAX_TOKENS
+    # ACTUAL output token; finish_reason is normally `stop`), and LLM_MAX_TOKENS
     # can raise it to the 32768 cap if a residual truncation ever surfaces (the F4
     # infra signal would show it).
     verdict_default_max_tokens = "24576"
     default_max_tokens = verdict_default_max_tokens if verdict_mode else "4096"
     try:
-        max_tokens = int(os.environ.get("LITELLM_MAX_TOKENS", default_max_tokens))
+        max_tokens = int(os.environ.get("LLM_MAX_TOKENS", default_max_tokens))
     except ValueError:
-        fail("LITELLM_MAX_TOKENS must be an integer")
+        fail("LLM_MAX_TOKENS must be an integer")
     if not 1 <= max_tokens <= 32768:
-        fail("LITELLM_MAX_TOKENS must be between 1 and 32768")
+        fail("LLM_MAX_TOKENS must be between 1 and 32768")
 
     payload: dict[str, object] = {
         "model": model,
@@ -298,7 +300,7 @@ def validate_verdict(value: object) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default=os.environ.get("LITELLM_MODEL", ""))
+    parser.add_argument("--model", default=os.environ.get("LLM_MODEL", ""))
     parser.add_argument("--json", action="store_true", dest="json_mode")
     parser.add_argument("--verdict", action="store_true", dest="verdict_mode")
     parser.add_argument("--timeout", type=int, default=600)

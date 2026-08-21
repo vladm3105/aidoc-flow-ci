@@ -17,10 +17,10 @@ and prints a 🟢/🔴 report — run it first.
 
 | Prerequisite | Why | Where |
 |---|---|---|
-| A reachable **LiteLLM proxy** (OpenAI-compatible) | `ai-review` connects to it via `LITELLM_BASE_URL`; without it the review job `exit 1`s. It is **yours to operate** — canon does not provide one. | `../docs/AI_CI_DEPLOYMENT.md` §1 |
+| A reachable **LiteLLM proxy** (OpenAI-compatible) | `ai-review` connects to it via `LLM_URL`; without it the review job `exit 1`s. It is **yours to operate** — canon does not provide one. | `../docs/AI_CI_DEPLOYMENT.md` §1 |
 | The **reviewer GitHub App** (id + private key) | mints the token that submits the App approval `composition` enforces | `../docs/REVIEWER_APP_ONBOARDING.md` |
 | A **runner pool** for private repos | private consumers run on `["self-hosted","ci-runner","single-use"]`; this account has no GitHub-hosted minutes for private repos (OPS-0049), so an unregistered pool queues every job forever | `../docs/runners.md` |
-| **Per-repo secrets + the bot-id var** | `APP_REVIEWER_1_ID/_KEY`, `LITELLM_BASE_URL`, `LITELLM_REVIEW_API_KEY`, and `vars.APP_REVIEWER_1_BOT_ID` | set BEFORE the first PR; the wizard preflight lists which are missing |
+| **Per-repo secrets + the bot-id var** | `APP_REVIEWER_1_ID/_KEY`, `LLM_URL`, `LLM_API_KEY`, and `vars.APP_REVIEWER_1_BOT_ID` | set BEFORE the first PR; the wizard preflight lists which are missing |
 
 **Public-repo caveat:** the LiteLLM proxy is private-network-only, so a public
 repo's ai-review *review* job must run on the self-hosted pool
@@ -191,7 +191,7 @@ templates select `ubuntu-latest`.
 ## What it does NOT do
 
 - **Doesn't add secrets** — the founder adds `APP_REVIEWER_1_ID` /
-  `APP_REVIEWER_1_KEY` plus `LITELLM_BASE_URL` and `LITELLM_REVIEW_API_KEY`. See
+  `APP_REVIEWER_1_KEY` plus `LLM_URL` and `LLM_API_KEY`. See
   [`../docs/REVIEWER_APP_ONBOARDING.md`](../docs/REVIEWER_APP_ONBOARDING.md).
 - **Doesn't change branch protection** — the required checks
   (`call / ai-review`, `call / composition`, `call / verify`) must be
@@ -217,7 +217,7 @@ discovered during framework Phase A):
 |---|---|---|
 | **Actions allowlist** | If the consumer is in `selected actions` mode, `patterns_allowed` must admit canon — `vladm3105/*` (canonical) or the older `vladm3105/aidoc-flow-ci/*` — or the reusable returns `startup_failure` | [`../docs/troubleshooting.md` §13](../docs/troubleshooting.md) |
 | **Caller `permissions:` block** | If the consumer's repo-default `workflow_permissions: read`, the reusable's `contents: write` is rejected — add an explicit `permissions:` block to the caller | [`../docs/troubleshooting.md` §14](../docs/troubleshooting.md) |
-| **LiteLLM secrets** (ci/v2.0.0) | `LITELLM_BASE_URL` + `LITELLM_REVIEW_API_KEY` are required for the ai-review gate to connect to the LiteLLM proxy. Set per-repo or at org level. | [`../docs/REVIEWER_APP_ONBOARDING.md`](../docs/REVIEWER_APP_ONBOARDING.md), [`../docs/MIGRATION_v2.0.0.md`](../docs/MIGRATION_v2.0.0.md) |
+| **LiteLLM secrets** (ci/v2.0.0) | `LLM_URL` + `LLM_API_KEY` are required for the ai-review gate to connect to the LiteLLM proxy. Set per-repo or at org level. | [`../docs/REVIEWER_APP_ONBOARDING.md`](../docs/REVIEWER_APP_ONBOARDING.md), [`../docs/MIGRATION_v2.0.0.md`](../docs/MIGRATION_v2.0.0.md) |
 
 See [`../docs/troubleshooting.md`](../docs/troubleshooting.md) for the full
 troubleshooting guide.

@@ -181,7 +181,7 @@ has "Restore one file:" \
 
 has "review job pins the self-hosted pool even on public repos" \
   && ok "runner-pool probe printed" || bad "runner-pool probe missing (PLAN-018 F4)"
-has "LITELLM_BASE_URL + LITELLM_REVIEW_API_KEY" \
+has "LLM_URL + LLM_API_KEY" \
   && ok "LiteLLM secrets note printed" || bad "LiteLLM note missing"
 
 grep -qE '^\s+FAIL ' "$LOG" && { bad "installer emitted FAIL line(s):"; grep -E '^\s+FAIL ' "$LOG" | sed 's/^/         /'; } \

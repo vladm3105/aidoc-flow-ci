@@ -1547,9 +1547,9 @@ else
 fi
 echo "    3. Add secrets to the consumer NOW (the ai-review gate hard-fails without them):"
 echo "         - APP_REVIEWER_1_ID + APP_REVIEWER_1_KEY   (reviewer GitHub App)"
-echo "         - LITELLM_BASE_URL + LITELLM_REVIEW_API_KEY (ai-review proxy; REQUIRED since ci/v2.0.0)"
+echo "         - LLM_URL + LLM_API_KEY (ai-review proxy; REQUIRED since ci/v2.0.0)"
 echo "       You must already operate a reachable LiteLLM proxy — see docs/AI_CI_DEPLOYMENT.md §1."
-# PLAN-018 F4 — the LiteLLM HTTP flag. litellm_client.py hard-fails unless the
+# PLAN-018 F4 — the LiteLLM HTTP flag. llm_client.py hard-fails unless the
 # proxy scheme is HTTPS or litellm_allow_insecure_http is set, and the flag
 # ships COMMENTED OUT in the ai-review caller template. The workspace's only
 # proxy is HTTP on the docker bridge (172.17.0.1), so an adopter of it needs the

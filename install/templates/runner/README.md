@@ -115,7 +115,7 @@ no benefit.)
 | `RUNNER_DNS` | `1.1.1.1 8.8.8.8` | container resolvers (`""` = host resolver) |
 
 Before enabling AI workflows, verify a single-use container can reach the
-configured `LITELLM_BASE_URL` without exposing other host services. HTTP
+configured `LLM_URL` without exposing other host services. HTTP
 endpoints require the callers' explicit `litellm_allow_insecure_http: true`;
 prefer TLS whenever the proxy can provide it.
 

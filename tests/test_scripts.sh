@@ -80,9 +80,9 @@ _EXPECT_TAG="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 assert_ok "grep -q '@${_EXPECT_TAG}' '$TMP/scaffold/.github/workflows/ai-review.yml'" "wizard emits coherent v2 LiteLLM callers (pinned at VERSION=${_EXPECT_TAG})"
 
 echo "== LiteLLM OpenAI-compatible adapter =="
-assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
+assert_ok "python3 - '$ROOT/scripts/llm_client.py' <<'PY'
 import importlib.util, json, os, sys
-spec = importlib.util.spec_from_file_location('litellm_client', sys.argv[1])
+spec = importlib.util.spec_from_file_location('llm_client', sys.argv[1])
 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
 seen = {}
 class Response:
@@ -96,8 +96,8 @@ def fake_urlopen(request, timeout):
     seen['timeout'] = timeout
     return Response()
 module.open_no_redirect = fake_urlopen
-os.environ['LITELLM_BASE_URL'] = 'https://proxy.example/v1/'
-os.environ['LITELLM_API_KEY'] = 'test-key'
+os.environ['LLM_URL'] = 'https://proxy.example/v1/'
+os.environ['LLM_API_KEY'] = 'test-key'
 result = module.completion('review', model='ai-reviewer', json_mode=True, timeout=30)
 assert result.startswith('{\"decision\"')
 assert seen['url'] == 'https://proxy.example/v1/chat/completions'
@@ -111,16 +111,16 @@ PY" "adapter sends the expected authenticated chat-completions request"
 # while the URLError path already named its cause precisely. The asymmetry is
 # what made the incident expensive to diagnose, so the 401 path is asserted to
 # name the secret it cannot read back.
-assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
+assert_ok "python3 - '$ROOT/scripts/llm_client.py' <<'PY'
 import importlib.util, io, os, sys, urllib.error
 import contextlib
-spec = importlib.util.spec_from_file_location('litellm_client', sys.argv[1])
+spec = importlib.util.spec_from_file_location('llm_client', sys.argv[1])
 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
 def raise_401(request, timeout):
     raise urllib.error.HTTPError(request.full_url, 401, 'Unauthorized', {}, None)
 module.open_no_redirect = raise_401
-os.environ['LITELLM_BASE_URL'] = 'https://proxy.example/v1'
-os.environ['LITELLM_API_KEY'] = 'test-key'
+os.environ['LLM_URL'] = 'https://proxy.example/v1'
+os.environ['LLM_API_KEY'] = 'test-key'
 err = io.StringIO()
 with contextlib.redirect_stderr(err):
     try:
@@ -130,14 +130,14 @@ with contextlib.redirect_stderr(err):
         pass
 msg = err.getvalue()
 assert 'HTTP 401' in msg, msg
-assert 'LITELLM_REVIEW_API_KEY' in msg, msg
-assert 'set-litellm-secrets.sh' in msg, msg
+assert 'LLM_API_KEY' in msg, msg
+assert 'set-llm-secrets.sh' in msg, msg
 # A retryable status keeps the bare form — the hint is for auth failures only.
 assert module.auth_hint(429) == '' and module.auth_hint(500) == ''
 assert module.auth_hint(200) == '' and module.auth_hint(404) == ''
 # 403 must NOT tell the operator to re-provision: it means the token
 # authenticated but is not authorized for this model, which is exactly why
-# install/set-litellm-secrets.sh ACCEPTS 403 when probing /models. Sending them
+# install/set-llm-secrets.sh ACCEPTS 403 when probing /models. Sending them
 # to re-provision a key the provisioner just certified is the loop #350 was.
 h403 = module.auth_hint(403)
 assert h403 != '', 'a 403 still deserves a hint'
@@ -145,9 +145,9 @@ assert 'not authorized' in h403, h403
 assert 're-provision' not in h403.lower(), h403
 PY" "a 401 names the secret to re-provision; a 403 says the opposite"
 
-assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
+assert_ok "python3 - '$ROOT/scripts/llm_client.py' <<'PY'
 import importlib.util, json, os, sys
-spec = importlib.util.spec_from_file_location('litellm_client', sys.argv[1])
+spec = importlib.util.spec_from_file_location('llm_client', sys.argv[1])
 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
 attempts = {'count': 0}
 class Response:
@@ -160,16 +160,16 @@ class Response:
         return json.dumps({'choices':[{'message':{'content':content}}]}).encode()
 module.open_no_redirect = lambda request, timeout: Response()
 module.time.sleep = lambda _delay: None
-os.environ['LITELLM_BASE_URL'] = 'https://proxy.example/v1'
-os.environ['LITELLM_API_KEY'] = 'test-key'
+os.environ['LLM_URL'] = 'https://proxy.example/v1'
+os.environ['LLM_API_KEY'] = 'test-key'
 result = module.completion('review', model='ai-reviewer', json_mode=True, timeout=30)
 assert attempts['count'] == 3
 assert result == '{\"ok\":true}'
 PY" "adapter retries empty responses and normalizes fenced JSON"
 
-assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
+assert_ok "python3 - '$ROOT/scripts/llm_client.py' <<'PY'
 import importlib.util, sys
-spec = importlib.util.spec_from_file_location('litellm_client', sys.argv[1])
+spec = importlib.util.spec_from_file_location('llm_client', sys.argv[1])
 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
 valid = {'decision':'approve','summary':'ok','findings':[]}
 module.validate_verdict(valid)
@@ -190,10 +190,10 @@ for value in invalid:
 PY" "verdict validator rejects schema violations fail-closed"
 
 # PLAN-011 T1: verdict mode gets a larger max_tokens default than a plain call,
-# and LITELLM_MAX_TOKENS overrides both.
-assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
+# and LLM_MAX_TOKENS overrides both.
+assert_ok "python3 - '$ROOT/scripts/llm_client.py' <<'PY'
 import importlib.util, json, os, sys
-spec = importlib.util.spec_from_file_location('litellm_client', sys.argv[1])
+spec = importlib.util.spec_from_file_location('llm_client', sys.argv[1])
 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
 seen = {}
 class Response:
@@ -203,26 +203,26 @@ class Response:
 def fake(request, timeout):
     seen['payload'] = json.loads(request.data); return Response()
 module.open_no_redirect = fake
-os.environ['LITELLM_BASE_URL'] = 'https://proxy.example/v1'
-os.environ['LITELLM_API_KEY'] = 'test-key'
-os.environ.pop('LITELLM_MAX_TOKENS', None)
+os.environ['LLM_URL'] = 'https://proxy.example/v1'
+os.environ['LLM_API_KEY'] = 'test-key'
+os.environ.pop('LLM_MAX_TOKENS', None)
 module.completion('r', model='ai-reviewer', json_mode=True, timeout=30, verdict_mode=True)
 assert seen['payload']['max_tokens'] == 24576, seen['payload']['max_tokens']
 module.completion('r', model='ai-reviewer', json_mode=True, timeout=30)
 assert seen['payload']['max_tokens'] == 4096, seen['payload']['max_tokens']
-os.environ['LITELLM_MAX_TOKENS'] = '3000'
+os.environ['LLM_MAX_TOKENS'] = '3000'
 module.completion('r', model='ai-reviewer', json_mode=True, timeout=30, verdict_mode=True)
 assert seen['payload']['max_tokens'] == 3000, seen['payload']['max_tokens']
-PY" "verdict mode budgets 24576 tokens (vs 4096 plain); LITELLM_MAX_TOKENS overrides"
+PY" "verdict mode budgets 24576 tokens (vs 4096 plain); LLM_MAX_TOKENS overrides"
 
 # PLAN-011 F1/F2 (SECURITY LOCK): the strict parser was NOT loosened. It must
 # still REJECT prose-wrapped and multi-object completions — a reasoning model's
 # preamble, or a diff-planted verdict quoted before the real one, must fail
 # closed, not be extracted. If a future edit loosens normalize_json_object, this
 # test goes red.
-assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
+assert_ok "python3 - '$ROOT/scripts/llm_client.py' <<'PY'
 import importlib.util, sys
-spec = importlib.util.spec_from_file_location('litellm_client', sys.argv[1])
+spec = importlib.util.spec_from_file_location('llm_client', sys.argv[1])
 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
 # bare + fenced still accepted (regression)
 assert module.normalize_json_object('{\"decision\":\"approve\"}') == '{\"decision\":\"approve\"}'
@@ -243,9 +243,9 @@ for text in must_reject:
     raise AssertionError('parser accepted what it must reject: ' + repr(text))
 PY" "strict JSON parser stays strict — rejects prose-wrapped + multi-object (PLAN-011 F1/F2 lock)"
 
-assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
+assert_ok "python3 - '$ROOT/scripts/llm_client.py' <<'PY'
 import importlib.util, sys
-spec = importlib.util.spec_from_file_location('litellm_client', sys.argv[1])
+spec = importlib.util.spec_from_file_location('llm_client', sys.argv[1])
 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
 secret = 'sk-' + 'A' * 24
 redacted, mapping = module.redact_secret_shaped('before ' + secret + ' after')
@@ -494,13 +494,13 @@ assert_contains "$ro_out" "NOT verified: repo-settings" "drift: the unverified l
 assert_contains "$rw_out" "coverage — verified 4/4" "drift: a fully-readable run reports full coverage"
 
 # ── CI-0017: the http:// opt-in and the loopback-in-container diagnosis ───────
-assert_ok "python3 - '$ROOT/scripts/litellm_client.py' <<'PY'
+assert_ok "python3 - '$ROOT/scripts/llm_client.py' <<'PY'
 import importlib.util, os, sys
 spec = importlib.util.spec_from_file_location('lc', sys.argv[1])
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 
 # http:// is REJECTED without the opt-in, regardless of host.
-os.environ.pop('LITELLM_ALLOW_INSECURE_HTTP', None)
+os.environ.pop('LLM_ALLOW_INSECURE_HTTP', None)
 try:
     m.endpoint('http://172.17.0.1:4001/v1')
     raise AssertionError('http:// accepted without the opt-in')
@@ -508,12 +508,12 @@ except SystemExit:
     pass
 # ...and ACCEPTED with it. The flag is keyed on the SCHEME, not on any
 # visibility/repo signal — that is the whole point of CI-0017.
-os.environ['LITELLM_ALLOW_INSECURE_HTTP'] = 'true'
+os.environ['LLM_ALLOW_INSECURE_HTTP'] = 'true'
 assert m.endpoint('http://172.17.0.1:4001/v1') == 'http://172.17.0.1:4001/v1/chat/completions'
 assert m.endpoint('https://proxy.example/v1') == 'https://proxy.example/v1/chat/completions'
 
 # Inside a container, loopback gets a NAMED cause; the bridge address does not.
-os.environ['LITELLM_ASSUME_CONTAINER'] = 'true'
+os.environ['LLM_ASSUME_CONTAINER'] = 'true'
 for host in ('127.0.0.1', 'localhost', '::1'):
     url = f'http://[{host}]:4001/v1' if host == '::1' else f'http://{host}:4001/v1'
     hint = m.loopback_hint(url)
@@ -523,7 +523,7 @@ assert m.loopback_hint('https://proxy.example/v1') == ''
 
 # Outside a container the hint is silent — it must never fire on a developer
 # host, where loopback is legitimately correct.
-os.environ['LITELLM_ASSUME_CONTAINER'] = 'false'
+os.environ['LLM_ASSUME_CONTAINER'] = 'false'
 m.Path = m.Path  # keep reference explicit
 if not (m.Path('/.dockerenv').exists() or m.Path('/run/.containerenv').exists()):
     assert m.loopback_hint('http://127.0.0.1:4001/v1') == '' or m.in_container()
@@ -663,11 +663,11 @@ cat > "$_ft30_good" <<'GOODLOG'
        Pre-write backup of everything that already existed (FT-57):
        Restore one file:  cp "/b/<path>" /c/<path>
        review job pins the self-hosted pool even on public repos):
-         - LITELLM_BASE_URL + LITELLM_REVIEW_API_KEY (ai-review proxy; REQUIRED since ci/v2.0.0)
+         - LLM_URL + LLM_API_KEY (ai-review proxy; REQUIRED since ci/v2.0.0)
 GOODLOG
 assert_eq "$(_ft30_drive "$_ft30_good" 0)" "0" "a complete run passes every criterion"
 # Each removal must be caught individually — a criterion that never fails is decoration.
-for _m in "creating canonical labels" "backup: no pre-existing" "Restore one file" "self-hosted pool even on public repos" "LITELLM_BASE_URL"; do
+for _m in "creating canonical labels" "backup: no pre-existing" "Restore one file" "self-hosted pool even on public repos" "LLM_URL"; do
   _mut="$(mktemp)"; grep -vF "$_m" "$_ft30_good" > "$_mut"
   assert_ok "[ \"\$(_ft30_drive '$_mut' 0)\" -ge 1 ]" "removing '$_m' from the log is caught"
   rm -f "$_mut"

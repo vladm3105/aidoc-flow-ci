@@ -5,6 +5,50 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — unified LLM credentials: `LLM_URL` + `LLM_API_KEY` (founder, 2026-08-21)
+
+Every `LITELLM_*` name is now `LLM_*`, and the two remaining API keys collapse
+into **one**. The canonical surface is two secrets:
+
+| Secret | Purpose |
+|---|---|
+| `LLM_URL` | proxy base URL |
+| `LLM_API_KEY` | the LLM virtual key — review AND autofix |
+
+**Nothing breaks before you re-provision.** `ai-review.yml` declares both the
+new and the deprecated names and resolves
+`${{ secrets.LLM_URL || secrets.LITELLM_BASE_URL }}` (same for the key, at both
+call sites). Callers forward secrets **explicitly** — the FT-42 least-privilege
+map, not `secrets: inherit` — so a consumer still on the pre-rename caller
+forwards only the old three and the fallback picks them up. The refreshed caller
+template forwards **both** sets, so any combination of caller version and repo
+secrets resolves. Delete the deprecated three from your caller once `LLM_URL` +
+`LLM_API_KEY` are set; canon removes them a release later.
+
+**Renamed internals** (no consumer impact): `LITELLM_MAX_TOKENS`,
+`LITELLM_FAKE_MODE`, `LITELLM_MODEL`, `LITELLM_FIXER_MODEL`,
+`LITELLM_ALLOW_INSECURE_HTTP`, `LITELLM_PROMPT_CAPTURE`,
+`LITELLM_ASSUME_CONTAINER`, `LITELLM_MASTER_KEY`, `LITELLM_API_KEY` → `LLM_*`.
+
+**Renamed files:** `scripts/litellm_client.py` → `scripts/llm_client.py`,
+`.github/workflows/litellm-smoke.yml` → `llm-smoke.yml`,
+`install/set-litellm-secrets.sh` → `set-llm-secrets.sh`,
+`tests/test_litellm_secrets.sh` → `test_llm_secrets.sh`. Consumers fetch these
+from their pinned tag, so an older pin is unaffected.
+
+**Security trade-off, stated not buried.** Canon previously required one virtual
+key per model alias, so a leaked key was revocable for that purpose alone.
+Collapsing review and autofix onto `LLM_API_KEY` gives that up: revoking it now
+stops both. The master-key boundary is unchanged — `LLM_API_KEY` is still a
+scoped virtual key, and the autofix *push* credential is a separate App token.
+`docs/security.md` §4.3 records this.
+
+**NOT renamed — deferred.** The caller input `litellm_allow_insecure_http` and
+the trusted-config `litellm.model` block are consumer-facing contracts:
+`schemas/ai-review-config-v2.schema.json` lists `litellm` in `required`, and
+CI-0014 asserts `version == 2` before reading any field. Renaming them needs a
+schema v3 and a fleet config migration.
+
 ### Removed — `doc-maintainer` is retired, and `LITELLM_DOC_API_KEY` with it (CI-0040, PLAN-024 A1/A2/A3/A6/A7)
 
 **BREAKING for any consumer still calling `doc-maintainer.yml`.** The flow was

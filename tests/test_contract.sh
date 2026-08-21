@@ -165,12 +165,18 @@ assert_eq "$mdl_default" "True" "markdown-lint fail-on-findings input defaults t
 # itself is kept, because the rule is general and doc-maintainer was only its
 # worked example. Do not re-add a reader against a deleted template.
 assert_ok "jq -e '.version == 2 and .litellm.model == \"ai-reviewer\"' install/templates/config.json.template >/dev/null && jq -e '.properties.version.const == 2 and (.required | index(\"litellm\"))' schemas/ai-review-config-v2.schema.json >/dev/null" "AI-review config and schema share the v2 contract"
-assert_ok "grep -q 'secrets.LITELLM_REVIEW_API_KEY' .github/workflows/ai-review.yml && grep -q 'secrets.LITELLM_FIX_API_KEY' .github/workflows/ai-review.yml" "ai-review uses separate purpose-scoped LiteLLM keys for review and autofix"
+# UNIFIED CREDENTIALS: one URL, one key. The reusable must read the new names
+# with the deprecated ones as a `||` fallback, so a consumer still on the
+# pre-rename caller (which forwards only the old three) keeps working.
+assert_ok "grep -q 'secrets.LLM_URL || secrets.LITELLM_BASE_URL' .github/workflows/ai-review.yml" "ai-review resolves LLM_URL with the deprecated LITELLM_BASE_URL as fallback"
+assert_eq "$(grep -c 'secrets.LLM_API_KEY || secrets.LITELLM_' .github/workflows/ai-review.yml)" "2" "both ai-review LLM call sites (review + autofix) fall back to their deprecated key"
+assert_ok "grep -qE '^      LLM_URL:' .github/workflows/ai-review.yml && grep -qE '^      LLM_API_KEY:' .github/workflows/ai-review.yml" "ai-review DECLARES the unified secrets (an undeclared secret is never forwarded)"
+assert_ok "grep -qE '^      LITELLM_BASE_URL:' .github/workflows/ai-review.yml" "ai-review still declares the deprecated secrets, or the fallback can never fire"
 # CI-0040: the smoke had a second arm for the ai-doc-maintainer alias and
 # LITELLM_DOC_API_KEY. Both retired with doc-maintainer; ai-reviewer is now the
 # only canonical alias, so the MAJOR-bump gate asserts one arm, not two.
-assert_ok "grep -q 'LITELLM_REVIEW_API_KEY' .github/workflows/litellm-smoke.yml && grep -q 'ai-reviewer' .github/workflows/litellm-smoke.yml" "real-proxy smoke workflow covers the canonical review alias and key"
-assert_absent "$(cat .github/workflows/litellm-smoke.yml)" 'LITELLM_DOC_API_KEY' "CI-0040: the smoke carries no retired doc-key arm"
+assert_ok "grep -q 'secrets.LLM_API_KEY' .github/workflows/llm-smoke.yml && grep -q 'ai-reviewer' .github/workflows/llm-smoke.yml" "real-proxy smoke workflow covers the canonical review alias and unified key"
+assert_absent "$(cat .github/workflows/llm-smoke.yml)" 'LITELLM_DOC_API_KEY' "CI-0040: the smoke carries no retired doc-key arm"
 assert_ok "jq -e 'length == 21 and ([.[].name | ascii_downcase] | unique | length == 21)' install/templates/labels.json >/dev/null" "canonical labels are complete and case-insensitively unique"
 assert_ok "jq -e 'all(.[]; (.description | length) <= 100)' install/templates/labels.json >/dev/null" "canonical label descriptions fit GitHub's 100-character limit"
 # §5.4 issue-lifecycle labels. The count above pins the set size; these pin the
@@ -204,7 +210,7 @@ assert_ok "grep -E \"DENY_RE:.*governance/.*[.]github/.*framework/.*templates/ai
 assert_ok "grep -q '120000' '$AR' && grep -q 'symlink-escape guard' '$AR'" "autofix rejects staged symlinks (mode 120000)"
 assert_ok "grep -q 'could not read the PR commit history to enforce the round cap' '$AR' && grep -q 'issues/\$PR/timeline' '$AR'" "autofix round cap is fail-closed with a rewrite-proof timeline backstop"
 assert_ok "grep -q 'issues: write' '$AR' && grep -q 'pull-requests: write' '$AR'" "autofix job can write labels + comments (escalation surfaces to a human)"
-assert_ok "grep -q 'LITELLM_ALLOW_INSECURE_HTTP: \${{ inputs.litellm_allow_insecure_http }}' '$AR'" "autofix fixer honors the private-HTTP opt-in (functional on the HTTP bridge)"
+assert_ok "grep -q 'LLM_ALLOW_INSECURE_HTTP: \${{ inputs.litellm_allow_insecure_http }}' '$AR'" "autofix fixer honors the private-HTTP opt-in (functional on the HTTP bridge)"
 # Dedicated autofix App, contents:write, minted per-run (NOT a PAT).
 assert_ok "grep -q 'app-id: \${{ secrets.APP_AUTOFIX_ID }}' '$AR' && grep -q 'permission-contents: write' '$AR'" "autofix mints a DEDICATED App token with contents:write (not a PAT)"
 # Two-step push: the App token appears ONLY in the dedicated push step, never in the
@@ -776,7 +782,7 @@ assert_ok "grep -q 'never evidence that something is absent' '$RP'" "rubric stat
 # .2 The rubric must enumerate the blocks the assembly actually appends, by the
 #    SAME tag names in the SAME order, and there must be exactly three. Either
 #    half drifting on its own is the CI-0022 defect returning.
-_asm=$(sed -n '/^          if ! {/,/} | python3 reviewer-assets\/litellm_client.py/p' "$AR")
+_asm=$(sed -n '/^          if ! {/,/} | python3 reviewer-assets\/llm_client.py/p' "$AR")
 assert_ok "[ -n \"\$_asm\" ]" "prompt-assembly block extracted (the assertions below are not vacuous)"
 _asm_tags=$(printf '%s' "$_asm" | grep -o '<untrusted_[a-z_]*>' | tr -d '<>' | awk '!seen[$0]++' | tr '\n' ' ')
 _rp_tags=$(grep -o '<untrusted_[a-z_]*>' "$RP" | tr -d '<>' | awk '!seen[$0]++' | tr '\n' ' ')

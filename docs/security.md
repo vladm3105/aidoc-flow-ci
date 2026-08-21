@@ -174,7 +174,7 @@ is re-reviewed and capped — but it is a real surface, not "fully mitigated." T
 dedicated App uses an **ephemeral** installation token (not the standing PAT
 operations retired in OPS-0043). Credential: `APP_AUTOFIX_ID/KEY` (a SEPARATE App from
 the reviewer App, preserving judge≠generator at the identity level) + a fix-scoped
-`LITELLM_FIX_API_KEY`.
+`LLM_API_KEY` (the same key the review step uses).
 
 ## 3c. Own security scanners (PLAN-014)
 
@@ -239,7 +239,7 @@ LiteLLM process.
 
 | Workflow | Secrets required |
 |---|---|
-| `ai-review` | `APP_REVIEWER_1_ID` + `APP_REVIEWER_1_KEY`; `LITELLM_BASE_URL` + `LITELLM_REVIEW_API_KEY` |
+| `ai-review` | `APP_REVIEWER_1_ID` + `APP_REVIEWER_1_KEY`; `LLM_URL` + `LLM_API_KEY` |
 | `composition` | None beyond `GITHUB_TOKEN` (auto-provided by Actions) |
 | `labeler` | None beyond `GITHUB_TOKEN` |
 | `codeql` | None beyond `GITHUB_TOKEN` |
@@ -251,11 +251,24 @@ LiteLLM process.
 
 The `APP_REVIEWER_1_*` names are the canonical reviewer-App contract and are
 declared explicitly by `ai-review.yml`. LiteLLM credentials deliberately use
-separate purpose-scoped names: `LITELLM_REVIEW_API_KEY` for the review step and
-`LITELLM_FIX_API_KEY` for autofix. Never reuse the proxy master key or one
-unrestricted virtual key across agents. (`LITELLM_DOC_API_KEY` was the third
-such name; it retired with `doc-maintainer` per CI-0040 — the convention is
-unchanged, only its membership.)
+**one unified credential pair: `LLM_URL` + `LLM_API_KEY`.** Never use the proxy
+master key.
+
+**This supersedes the earlier per-purpose key convention, and the trade-off is
+stated rather than buried.** Canon previously shipped `LITELLM_REVIEW_API_KEY`,
+`LITELLM_FIX_API_KEY` and `LITELLM_DOC_API_KEY` — one virtual key per model
+alias, so a leaked key was revocable for that purpose alone. The doc key retired
+with `doc-maintainer` (CI-0040); the remaining two are now **one key** by
+founder decision. What is given up is per-purpose revocability: revoking the
+review key now also stops autofix. What is NOT given up is the master-key
+boundary — `LLM_API_KEY` is still a scoped virtual key, and the autofix *push*
+credential is a separate App token, not this key. An operator who wants the old
+isolation can still mint per-alias keys at the proxy; canon no longer requires
+it.
+
+The deprecated names remain declared in `ai-review.yml` and forwarded by the
+caller template so a consumer keeps working until it re-provisions. They are
+removed in the release after the fleet has `LLM_URL` + `LLM_API_KEY`.
 
 ## 5. `pull_request_target` vs `pull_request` — why `_target`
 

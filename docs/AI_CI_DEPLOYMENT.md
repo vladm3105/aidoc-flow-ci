@@ -47,7 +47,7 @@ secrets), [`runners.md`](runners.md) (self-hosted pools),
 | 🔴 Founder-only | Why you can't |
 | --- | --- |
 | Install the reviewer **App** on the repo (+ on `aidoc-flow-operations`) | App installation is F5 blast-radius; needs org/repo admin UI |
-| Set the AI **secrets** (`APP_REVIEWER_1_ID`, `APP_REVIEWER_1_KEY`, `LITELLM_BASE_URL`, `LITELLM_REVIEW_API_KEY`) | You don't hold the App private key / token values |
+| Set the AI **secrets** (`APP_REVIEWER_1_ID`, `APP_REVIEWER_1_KEY`, `LLM_URL`, `LLM_API_KEY`) | You don't hold the App private key / token values |
 | Register a self-hosted **runner pool** for a private repo | Provisions infra on the runner host; use the canon `install/templates/runner/provision-runner.sh` (see below) |
 | Merge the first CI-adoption PR (pull_request_target chicken-and-egg) | ai-review/composition can't self-trigger until the workflows are on `main`; admin-merge the adoption PR, then verify on a follow-up test PR |
 
@@ -129,7 +129,7 @@ A working ai-review repo has FOUR repo-level secrets and ONE variable
 **per-repo**):
 
 ```bash
-gh secret   list -R <owner/repo> | grep -E 'APP_REVIEWER_1_ID|APP_REVIEWER_1_KEY|LITELLM_BASE_URL|LITELLM_REVIEW_API_KEY'
+gh secret   list -R <owner/repo> | grep -E 'APP_REVIEWER_1_ID|APP_REVIEWER_1_KEY|LLM_URL|LLM_API_KEY'
 gh variable list -R <owner/repo> | grep APP_REVIEWER_1_BOT_ID
 ```
 
@@ -214,7 +214,7 @@ patterns block several workflows from firing on the adoption PR itself:
 | Order | Action | Why this order |
 |---|---|---|
 | 1 | **Provision the runner** | Private repos need a `[ci-runner, single-use]` pool before any job can be picked up (§1.2). |
-| 2 | **Set App secrets + bot-id variable** | `APP_REVIEWER_1_ID`/`_KEY`, `LITELLM_BASE_URL`/`_REVIEW_API_KEY`, `APP_REVIEWER_1_BOT_ID` — all required for trust + ai-review + composition. |
+| 2 | **Set App secrets + bot-id variable** | `APP_REVIEWER_1_ID`/`_KEY`, `LLM_URL`, `LLM_API_KEY`, `APP_REVIEWER_1_BOT_ID` — all required for trust + ai-review + composition. |
 | 3 | **Create canonical labels** | `apply-standards.sh --apply` on the target repo creates the 21 canon labels that the labeler, ai-review and the issue-lifecycle conventions expect. |
 | 4 | **Open the CI adoption PR** | Add caller workflows, `.github/labeler.yml`, `.pre-commit-config.yaml`, config files. This PR CANNOT trigger ai-review/composition/labeler (they read from `main`, which doesn't have them yet). |
 | 5 | **Merge via admin** | Admin-merge the adoption PR. The workflows are now on `main`. |

@@ -300,7 +300,7 @@ Quick-reference:
      boundary from inside the v2.0.0 section, skipping the context surgery the
      v3 migration below requires (#450). Its twin in MIGRATION_v2.0.0.md was
      already marked; this one was the outlier. -->
-1. Add `LITELLM_BASE_URL` + `LITELLM_REVIEW_API_KEY` secrets
+1. Add `LLM_URL` + `LLM_API_KEY` secrets
 2. Set `.github/ai-review/config.json` to the **v2 shape** — BOTH fields, since
    CI-0014 asserts `version == 2` before reading anything and `litellm.model`
    has no default:
