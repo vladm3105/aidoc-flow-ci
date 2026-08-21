@@ -1442,13 +1442,18 @@ discovered later:
   per-repo decisions for the rollout worklist — do **not** "fix" them by
   overwriting a consumer's pin or wrapper.
 
-**Detecting this class in general is deliberately NOT on the gating path.**
-`pre-commit run` exits 0 and prints nothing whether zero hooks matched or all
-hooks passed, so the only in-reusable implementation is an output-emptiness
-heuristic — and it would flip any consumer running `run-stage: manual` with no
-`manual` hooks from pass to fail on re-pin. The detector belongs operator-side
-(`install.sh`, the wizard preflight, the release checklist); moving it into the
-reusable is a separate proposal needing its own decision (FT-31).
+**SUPERSEDED by `DECISIONS.md` CI-0039 (2026-08-20); the operator-side detectors
+below still stand.** This paragraph read: _"Detecting this class in general is
+deliberately NOT on the gating path … the only in-reusable implementation is an
+output-emptiness heuristic … moving it into the reusable is a separate proposal
+needing its own decision (FT-31)."_ Both halves were overtaken by #426. The
+implementation is **not** an emptiness heuristic — `pre-commit` prints one line
+per hook it executes and nothing for a hook the stage did not select, so the run
+is counted, not guessed — and the named risk (a consumer on `run-stage: manual`
+with no `manual` hooks flipping to fail on re-pin) **is** the defect: that check
+was passing while inspecting nothing. The detector is now on the gating path on
+both surfaces; see §14.1b. The operator-side detectors (`install.sh`, the wizard
+preflight, the release checklist) remain, and catch it earlier.
 
 **Already-adopted consumers DO now receive fragment changes (FT-32, resolved).**
 The `CANON:` marker is **versioned** (`# CANON: aidoc-flow-ci pre_push_check vN`)
@@ -1485,6 +1490,85 @@ requires `ruamel.yaml` — under the `pyyaml` fallback the round-trip **strips
 the consumer's comments**. Adding canon's lines flips repos to `DRIFT` under
 `apply-standards.sh --check`, which is **expected signal and the rollout
 worklist**, not breakage.
+
+#### 14.1b D11 is asserted on the RUN, not predicted from the config
+
+§14.1a's rule is about what the fragment ships. This is about how the gate
+**proves** it worked, and the two are not the same check.
+
+`actions/pre-commit` parses `.pre-commit-config.yaml` to count hooks selected at
+the requested stage. That prediction is **structurally incomplete**: when a hook
+entry omits `stages:` and `default_stages` is absent, the **hook repo's remote
+manifest** decides the stage, and no parser of the consumer's config can see it.
+
+Reproduced at `pre-commit` 4.5.1 — a hook repo whose manifest declares
+`stages: [pre-push]`, referenced by a config that says nothing about stages:
+
+```console
+$ # the guard's prediction
+pre-commit: 1 hook(s) selected at stage 'pre-commit'      → exit 0  PASS
+$ pre-commit run --all-files --hook-stage pre-commit
+                                                          → exit 0  (no output)
+```
+
+A green required check that inspected nothing — the exact D11 shape the guard
+exists to prevent, surviving _inside_ the guard. Worse, the guard's own comment
+and a test's assertion name both encoded the wrong premise ("no `stages:`
+anywhere means the hook runs at every stage"), so the suite ratified it.
+
+**Rules.**
+
+1. The config parse is a **fast pre-check** for an obviously empty stage. It is
+   never the evidence that hooks ran.
+2. The **post-condition is on the run**: capture `pre-commit`'s output and
+   require at least one executed hook. `pre-commit` prints one dotted line per
+   hook it executes and nothing for a hook the stage did not select, so the
+   count is an observation, not an inference.
+3. A hook that ran with no matching files (`(no files to check)Skipped`) **counts
+   as executed** — the stage selected it, which is what D11 asserts. Conflating
+   it with zero-selection reds every repo whose hooks are file-scoped.
+4. The post-condition is scoped to **`rc == 0`**. A non-zero run already fails
+   with `pre-commit`'s own diagnosis, and firing D11 there replaces a real cause
+   (unparseable config, missing hook repo) with a misleading one.
+5. Read the run's status from **`PIPESTATUS[0]`**, not `$?`. Be precise about
+   why: `set +e` does not clear `pipefail`, so `$?` agrees whenever `tee`
+   succeeds; it stops agreeing when `tee` fails, and then reports tee's failure
+   as the tool's. Capture the whole array in **one** command — `rc=${PIPESTATUS[0]}`
+   is itself a command and resets `PIPESTATUS`, so a second read dies under
+   `set -u`. Give the capture failure its own arm: a truncated log makes the
+   count meaningless, and reporting that as a hook-selection problem names the
+   wrong cause.
+6. **Anchor on the outcome, never on a padding width.** The dot padding is
+   computed per run from the longest selected hook name, and for that hook's
+   `(no files to check)` line it collapses to **three** dots. A pattern requiring
+   four missed the legitimate line while still matching the illegitimate one —
+   a false red on a correct config, diagnosed as stage selection.
+7. **Refuse `SKIP`.** It makes `pre-commit` print a `Skipped` line per named hook
+   and exit 0; measured, that read as "2 hook(s) EXECUTED … satisfied" with
+   nothing run. A required check does not let its environment choose what runs —
+   invoke under `env -u SKIP`. Do NOT read `SKIP` into a shell variable to warn
+   about it: every step declares the env it reads, and this is an ambient var the
+   step defends against rather than consumes.
+8. **Pin `--color=never`.** Colour wraps the outcome word in ANSI, so the line no
+   longer ends in the outcome and every line is missed.
+9. **All hooks reporting `(no files to check)` is zero inspection too**, and reds
+   with its own diagnosis. One such hook counts as executed — the stage selected
+   it — but all of them means nothing was read.
+10. **Do not attest on a run where the check did not execute.** Printing
+    "post-condition satisfied" beside a failing run states a conclusion the step
+    never reached.
+11. **Both surfaces.** A composite action and its `workflow_call` reusable are
+    two shipped implementations; a rule that binds one and not the other is not
+    in force. Ask which surface the fleet actually runs — see CI-0039.
+
+**Generalise it.** A gate that predicts what a tool _will_ inspect is only as
+good as its model of that tool. Where the tool can report what it _did_ inspect,
+the report is the gate and the prediction is a convenience. The corollary bit
+twice here: the new counter's own model of `pre-commit`'s output was wrong about
+the padding, and hand-written test fixtures could only ratify that model.
+**Generate fixtures from the real tool.**
+
+**Origin:** #426; the gating-path decision is `DECISIONS.md` CI-0039.
 
 ### 14.2 CI belt-and-suspenders
 

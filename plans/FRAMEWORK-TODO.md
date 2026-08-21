@@ -760,7 +760,7 @@ existing design and keeps one code path; (b) is more explicit but adds a mode.
 Either way `manifest.json:12`'s note and `install/README.md` step 6 must be
 corrected in the same PR.
 
-### FT-31 — ⚠️ **PARTIAL** — no mechanism to detect a required check that selected zero hooks
+### FT-31 — ✅ **CLOSED** (2026-08-20, #426 / CI-0039) — no mechanism to detect a required check that selected zero hooks
 
 **Found:** 2026-07-21, PLAN-018 Pass-1 review (deferred out of F3).
 **Status:** CLOSED (PLAN-018 Workstream C / PR C2, 2026-07-22) —
@@ -783,9 +783,12 @@ canon-shipped fragment, and its fix contract is scoped to canon-*installed*
 configs — a consumer's own hook-less config can still produce a vacuous pass.
 > ⚠️ **PARTIAL — the residual below is why this is not closed.**
 
-**Needs:** a real signal (upstream feature request, or a canon-side pre-flight
-that parses the resolved config and counts stage-matching hooks) before this can
-be closed without breaking consumers.
+**Closed by #426 / `DECISIONS.md` CI-0039.** The "real signal" this asked for
+turned out to be the run's own output: `pre-commit` prints one dotted line per
+hook it EXECUTES and nothing for a hook the stage did not select, so the gate
+counts what ran instead of parsing the config (which cannot see the hook repo's
+remote manifest). Gating on both `pre-commit` surfaces; consumers feel it on
+re-pin, and a repo that reds was never being checked.
 
 ### FT-30 — the cold-start path has no exerciser, and drifted unnoticed for 9 releases
 

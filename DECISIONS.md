@@ -2618,3 +2618,57 @@ slot — see the ordering rule at the top); append-only. Never rewrite
 history; if a decision is reversed, add a NEW entry citing the reversal
 and update the superseded entry's "Consequences" section to reference
 the reversal ID. -->
+
+## CI-0039: FT-31 resolved — the zero-hook detector goes on the gating path, on BOTH `pre-commit` surfaces (2026-08-20)
+
+**Context**
+
+`REPO_STANDARDS.md` §14.1a reserved this move: *"Detecting this class in general
+is deliberately NOT on the gating path … the only in-reusable implementation is
+an output-emptiness heuristic … moving it into the reusable is a separate
+proposal needing its own decision (FT-31)."*
+
+Issue #426 changed the facts that reservation rested on.
+
+**What changed**
+
+1. **The objection's premise no longer holds.** §14.1a assumed the only
+   in-reusable implementation was an *output-emptiness heuristic*. It is not:
+   `pre-commit` prints one dotted line per hook it EXECUTES and nothing for a
+   hook the stage did not select, so the run can be counted rather than guessed.
+   The implementation distinguishes "nothing was selected" from "hooks ran and
+   were quiet", which emptiness cannot.
+2. **The named risk IS the defect.** §14.1a's stated harm was that a consumer
+   running `run-stage: manual` with no `manual` hooks would "flip from pass to
+   fail on re-pin". That consumer's required check is passing while inspecting
+   nothing. Flipping it to fail is the correction, not the regression.
+3. **The config pre-check was already on the gating path** in
+   `actions/pre-commit` (it hard-fails at zero), so the reversal predates this
+   entry; what was inconsistent is that the surface the fleet actually runs had
+   neither check.
+
+**Decision (founder, 2026-08-20)**
+
+The D11 post-condition is **gating**, and lands on **both** surfaces —
+`actions/pre-commit/action.yml` and `.github/workflows/pre-commit.yml`. Canon
+dogfoods it through `self-pre-commit.yml`.
+
+This is the second instance of one lesson in one week: canon ships **two**
+surfaces per check, and a fix on the composite action alone reaches nothing.
+All eight consumers and canon's own self-check call the reusable; #425 hit the
+same wall for the scanners. Treat "which surface does the fleet actually run?"
+as a required question of any canon fix.
+
+**Consequences**
+
+- **§14.1a is amended, not deleted** — its FT-31 sentence is replaced by a
+  pointer here, and §14.1b states the rule.
+- **No consumer changes behaviour until it re-pins.** The eight consumers are
+  pinned between `ci/v1.9.5` and `ci/v2.16.0`; this lands after `ci/v3.0.0`.
+  A repo whose hooks genuinely select nothing at its configured stage WILL red
+  on re-pin, and that is the intended effect — it was never being checked.
+- **What this does NOT do:** the count is read from `pre-commit`'s human output.
+  That is an observation of the tool rather than a machine-readable contract, and
+  §14.1b now carries the rules that keep it honest (anchor on the outcome, never
+  on a padding width; pin `--color=never`; `env -u SKIP`). If upstream ever ships
+  a structured report, it supersedes the parsing.
