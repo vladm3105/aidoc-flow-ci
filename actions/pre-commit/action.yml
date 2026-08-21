@@ -139,10 +139,17 @@ runs:
                 # hook runs at every stage — when the config is silent the hook
                 # repo's remote MANIFEST decides, and this guard cannot see it.
                 # Counting it here is the permissive choice, matching
-                # tests/lib_count_stage_hooks.py; the residual hole (manifest says
-                # pre-push, run selects nothing, guard counts one) is real and
-                # tracked separately. Do not read this branch as proof of
-                # selection.
+                # tests/lib_count_stage_hooks.py.
+                #
+                # THIS PRE-CHECK IS NOT D11's POST-CONDITION (#426). It predicts
+                # selection from the config and is therefore wrong exactly when
+                # the manifest decides: REPRODUCED at pre-commit 4.5.1, a manifest
+                # of `stages: [pre-push]` with a silent config makes this print
+                # "1 hook(s) selected" and exit 0 while the run executes nothing.
+                # It is kept for FAST, LOCAL feedback on an obviously empty stage;
+                # the authority is the "Run hooks" step, which counts the hooks
+                # the run actually executed. Do not read this branch as proof of
+                # selection, and do not re-derive the guard as the gate.
                 if stages is None or accepted.intersection(stages):
                     n += 1
 
@@ -181,18 +188,119 @@ runs:
       run: |
         set -euo pipefail
         # env indirection (sec H4): RUN_STAGE via env, not source interpolation.
+        #
+        # D11's REAL post-condition lives HERE, on the run, not on the config
+        # pre-check above (#426). The pre-check predicts selection by parsing
+        # `.pre-commit-config.yaml`; when a hook entry omits `stages:` and
+        # `default_stages` is absent, the HOOK REPO'S REMOTE MANIFEST decides the
+        # stage and the parser cannot see it. REPRODUCED at pre-commit 4.5.1: a
+        # manifest declaring `stages: [pre-push]` with a silent config gives
+        #     guard:  "pre-commit: 1 hook(s) selected at stage 'pre-commit'"  exit 0
+        #     run:    <no hook output at all>                                 exit 0
+        # — a green required check that inspected nothing, which is the exact D11
+        # shape the guard exists to prevent, surviving inside the guard.
+        #
+        # Prediction cannot close that; observation can. Capture the run's own
+        # output and require that it executed at least one hook.
+        out="$(mktemp)" || { echo "::error::pre-commit action: could not allocate a temp file, so the D11 post-condition cannot run. Refusing rather than reporting a result it did not verify."; exit 1; }
         set +e
+        # `env -u SKIP`: THE GATE DECIDES WHAT RUNS, NOT THE ENVIRONMENT. `SKIP`
+        # makes pre-commit print a `Skipped` line per named hook and exit 0 —
+        # MEASURED: `SKIP=a,b` gave "2 hook(s) EXECUTED … satisfied", exit 0, with
+        # zero hooks run and zero files inspected. A required check that honours
+        # an env var is a required check anyone can switch off, and the
+        # attestation made it worse than silence. Same doctrine as D23.
+        #
+        # `--color=never`: the count reads pre-commit's own line format, and
+        # colour wraps the outcome word in ANSI so the line no longer ENDS in
+        # `Passed` — MEASURED with PRE_COMMIT_COLOR=always: every line missed,
+        # a green run reported as zero-hook and hard-failed. `auto` is already
+        # off through a pipe; this pins it against the env var.
         if [ -n "$RUN_STAGE" ]; then
-          timeout 900 pre-commit run --all-files --show-diff-on-failure --hook-stage "$RUN_STAGE"
+          env -u SKIP timeout 900 pre-commit run --all-files --color=never --show-diff-on-failure --hook-stage "$RUN_STAGE" 2>&1 | tee "$out"
         else
-          timeout 900 pre-commit run --all-files --show-diff-on-failure
+          env -u SKIP timeout 900 pre-commit run --all-files --color=never --show-diff-on-failure 2>&1 | tee "$out"
         fi
-        rc=$?
+        # CI-0033 / §27.1: take the WRITER's status explicitly, not the
+        # pipeline's. Be precise about WHY, because the convenient version of
+        # this claim is wrong: `set +e` clears errexit but NOT `pipefail`, so a
+        # bare `rc=$?` agrees whenever tee SUCCEEDS. It stops agreeing when tee
+        # fails, and then `$?` reports tee's failure as pre-commit's. PIPESTATUS
+        # separates them, which is why tee gets its own arm below.
+        # CAPTURE THE WHOLE ARRAY IN ONE COMMAND. `rc=${PIPESTATUS[0]}` is itself
+        # a command, so it RESETS PIPESTATUS — reading `${PIPESTATUS[1]}` on the
+        # next line then dies with "unbound variable" under `set -u`. Caught by
+        # driving the step; `bash -n` and YAML parsing both pass it.
+        pipes=("${PIPESTATUS[@]}")
+        rc=${pipes[0]}
+        tee_rc=${pipes[1]:-0}
         set -e
         # A killed run is an infrastructure failure. Without this it surfaced as
         # "hook failures", sending the reader to look for a lint problem that
         # does not exist.
         if [ "$rc" -eq 124 ]; then
+          rm -f "$out"
           echo "::error::pre-commit: timed out — infrastructure failure, not hook failures. Re-run."; exit 1
         fi
+        # A tee failure (full disk, unwritable TMPDIR) truncates the capture, so
+        # the count below would be computed from a partial log and reported as a
+        # hook-selection problem. Name the real cause instead.
+        if [ "$tee_rc" -ne 0 ]; then
+          rm -f "$out"
+          echo "::error::pre-commit action: could not capture the run's output (tee exited ${tee_rc}) — infrastructure failure. The D11 post-condition was NOT evaluated. Re-run."; exit 1
+        fi
+
+        # pre-commit prints one line per EXECUTED hook: the name, dot padding,
+        # then the outcome — and nothing at all for a hook the stage did not
+        # select. So this counts what ran.
+        #
+        # ANCHOR ON THE TAIL, NOT ON A PADDING WIDTH. The padding is computed at
+        # runtime from the LONGEST hook name (`cols = max(len+30, 80)`), and for
+        # that longest hook in the no-files case it collapses to THREE dots —
+        # MEASURED, with a 60-character hook name. An earlier `\.\.\.\.+` here
+        # required four and therefore MISSED the legitimate line while still
+        # matching the illegitimate one, hard-failing a correct config with a
+        # message blaming stage selection. Require dots immediately before the
+        # outcome (arbitrary hook stdout does not have that shape) and let the
+        # tool decide how many.
+        # ONE definition of the stage suffix. Inlining `${RUN_STAGE:+ at stage
+        # '$RUN_STAGE'}` in each message is correct — inside `${…:+}` under double
+        # quotes the single quotes are literal and the var does expand — but
+        # ShellCheck reads it as a single-quoted expansion (SC2016) on every
+        # message, and actionlint fails the workflow on it. Precomputing is
+        # clearer than disabling a check that is usually right. (Capitalised
+        # deliberately: a comment BEGINNING `# shellcheck` is parsed as a
+        # directive, and an unparseable one is itself an error — SC1072/SC1073.)
+        stage_note=""
+        if [ -n "$RUN_STAGE" ]; then stage_note=" at stage '$RUN_STAGE'"; fi
+        HOOKLINE='\.+(\(no files to check\))?(Passed|Failed|Skipped)$'
+        executed="$(grep -cE "$HOOKLINE" "$out" || true)"
+        nofiles="$(grep -cE '\.+\(no files to check\)Skipped$' "$out" || true)"
+        case "$executed" in ''|*[!0-9]*) executed=0 ;; esac
+        case "$nofiles"  in ''|*[!0-9]*) nofiles=0 ;; esac
+        rm -f "$out"
+        # Scoped to rc==0 deliberately. A non-zero rc already fails the step with
+        # pre-commit's own diagnosis, and firing D11 there would replace a real
+        # cause (an unparseable config, a missing hook repo) with a misleading
+        # one. The case D11 owns is the GREEN run that inspected nothing.
+        if [ "$rc" -eq 0 ]; then
+          if [ "$executed" -eq 0 ]; then
+            echo "::error::pre-commit action: the run exited 0 having executed ZERO hooks${stage_note} — a green required check that inspected nothing (PLAN-025 D11). The config's hooks are not selected at this stage. When a hook entry omits \`stages:\` the HOOK REPO'S MANIFEST decides, so a config that looks correct can still select nothing: pin the stage explicitly in \`.pre-commit-config.yaml\`, or set run-stage to one the hooks actually run at."
+            exit 1
+          fi
+          # EVERY hook reporting "(no files to check)" is zero inspection too.
+          # Counting a no-files skip as executed is right for ONE hook — the
+          # stage selected it, which is what D11 asserts — but when it is true of
+          # ALL of them nothing was read, which is the same silent green by a
+          # different route: a sparse checkout, or `files:` patterns that drifted
+          # from the tree.
+          if [ "$nofiles" -eq "$executed" ]; then
+            echo "::error::pre-commit action: all ${executed} selected hook(s) reported '(no files to check)'${stage_note} — the run inspected NOTHING and exited 0 (PLAN-025 D11). The hooks are selected but their \`files:\`/\`types:\` patterns match no file in this checkout. Check the patterns, and that the checkout is complete."
+            exit 1
+          fi
+          echo "pre-commit: ${executed} hook(s) EXECUTED${stage_note}, ${nofiles} with no matching files (D11 post-condition satisfied)."
+        fi
+        # NOT attested on a non-zero run. The count was still computed, but D11's
+        # verdict was not evaluated, and printing "satisfied" there stated a
+        # conclusion the step never reached.
         exit "$rc"

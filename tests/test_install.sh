@@ -335,7 +335,14 @@ esac
 # the workflow, not restated here. If the empty-`run-stage` branch ever starts
 # passing --hook-stage, this is what says so out loud.
 PCWF="$ROOT/.github/workflows/pre-commit.yml"
-if grep -qE '^\s*pre-commit run --all-files --show-diff-on-failure$' "$PCWF"; then
+# Assert the PREMISE — the default branch passes no --hook-stage — not a
+# literal command string. #426 added `env -u SKIP`, `timeout` and
+# `--color=never` to both branches; the premise was unchanged but a
+# whole-line match called it a premise change. Extract the else-branch
+# invocation and test the two properties that actually matter.
+_default_inv="$(awk '/^ *else$/{f=1;next} f&&/pre-commit run/{print;exit}' "$PCWF")"
+if [ -n "$_default_inv" ] && printf '%s' "$_default_inv" | grep -q -- '--all-files' \
+   && ! printf '%s' "$_default_inv" | grep -q -- '--hook-stage'; then
   _g "reusable's default branch runs with no --hook-stage (selects pre-commit stage)"
 else
   _r "reusable's default branch no longer runs bare — Part 4's premise changed"
