@@ -5,12 +5,14 @@
 # (https://github.blog/2022-09-28-best-practices-on-rolling-out-code-scanning-at-enterprise-scale/).
 #
 # Design decisions (research findings 2026-06-24):
-#   - SHA-pinned to v4.36.1 (the latest tagged release). v3 enters
-#     deprecation Dec 2026; v4 is the supported major. All three steps
-#     (init / autobuild / analyze) pin the PEELED COMMIT
-#     87557b9c84dde89fdd9b10e88954ac2f4248e463, not the annotated tag
-#     object (21eb7f78…) — the tag object 422s on the commits API and
-#     trips the workspace's mandatory SHA audit (FT-26).
+#   - SHA-pinned to a tagged v4 release. THE PIN LINES BELOW CARRY THE
+#     VERSION AND ARE THE ONLY SOURCE FOR IT — this comment used to
+#     restate it ("v4.36.1") plus both SHAs, and drifted a full minor
+#     behind the actual pins while reading as authoritative (#464).
+#     v3 enters deprecation Dec 2026; v4 is the supported major. All
+#     three steps (init / autobuild / analyze) pin the PEELED COMMIT,
+#     never the annotated tag object — a tag object 422s on the commits
+#     API and trips the workspace's mandatory SHA audit (FT-26).
 #   - PRIVATE repos require GitHub Advanced Security (GHAS). Without it,
 #     `codeql-action/init` errors outright — there is no fork/GHAS guard
 #     here by design (a hard error is the right signal that GHAS is not
@@ -95,7 +97,7 @@ jobs:
           persist-credentials: false
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
           languages: ${{ matrix.language }}
           config-file: ${{ inputs.config-file }}
@@ -103,7 +105,7 @@ jobs:
 
       - name: Autobuild
         if: ${{ inputs.build-command == '' }}
-        uses: github/codeql-action/autobuild@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        uses: github/codeql-action/autobuild@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
 
       - name: Manual build
         if: ${{ inputs.build-command != '' }}
@@ -120,7 +122,7 @@ jobs:
           bash -c "$BUILD_COMMAND"
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
           category: /language:${{ matrix.language }}
           # Fork PRs get a read-only GITHUB_TOKEN (security-events: write is
