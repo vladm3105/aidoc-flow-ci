@@ -39,8 +39,10 @@ the 🔴 dry-run for you.
   independent (fresh-context subagent), ≤3 cycles per OPS-0066. Final pass
   must state zero load-bearing findings.
 - [ ] **LiteLLM smoke passes (MAJOR bumps only):** run `litellm-smoke.yml`
-  manually. Both canonical aliases (`ai-reviewer`, `ai-doc-maintainer`) must
-  return valid responses from the real proxy.
+  manually. The canonical alias (`ai-reviewer`) must return a valid response
+  from the real proxy. (Until CI-0040 this required **two** aliases; the second,
+  `ai-doc-maintainer`, retired with `doc-maintainer` — as did the smoke's second
+  arm and `LITELLM_DOC_API_KEY`.)
 - [ ] **Migration guide published (MAJOR bumps only):** `docs/MIGRATION_vX.Y.Z.md`
   covers required consumer actions (new secrets, removed inputs, config
   changes, repin commands, rollback). Cross-referenced from CHANGELOG and
@@ -204,7 +206,7 @@ the 🔴 dry-run for you.
   was already `read`; the `access` section is **skipped on canon — it is PUBLIC**
   and that endpoint 422s.) Verified safe first: no canon workflow uses a
   verified-creator action, `docs-sync` only `gh pr comment`s, and canon has **no**
-  `self-doc-maintainer` caller, so nothing needed create-and-approve.
+  bot-PR self-caller at all, so nothing needed create-and-approve.
   **⚠️ Do NOT run `apply-standards.sh --apply --tier product` on canon.** It also
   PUTs `branch-protection-product.json`, which requires `call / ai-review` +
   `call / composition` — reusables canon does **not** self-run — so every canon PR

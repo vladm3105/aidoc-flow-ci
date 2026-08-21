@@ -24,7 +24,7 @@ not only visibility (PLAN-013):
 
 | Flow class | Public repo | Private repo | Caller shape |
 | --- | --- | --- | --- |
-| **AI-flows** — `ai-review`, `doc-maintainer`, `docs-sync` (+ `autofix`, a gated job within `ai-review` — PLAN-012) | **self-hosted** `["self-hosted","ci-runner","single-use"]` | **self-hosted** (same) | **ONE protected template** — no `-public`/`-private` split; a visibility flip is a no-op |
+| **AI-flows** — `ai-review`, `docs-sync` (+ `autofix`, a gated job within `ai-review` — PLAN-012) | **self-hosted** `["self-hosted","ci-runner","single-use"]` | **self-hosted** (same) | **ONE protected template** — no `-public`/`-private` split; a visibility flip is a no-op |
 | **Generic checks** — `markdown-lint`, `links`, `pre-commit`, `composition`, `audit-trail`, `secret-scan`, `labeler`, `auto-merge-ai-prs` | GitHub-hosted `ubuntu-latest` | **self-hosted** | the `-public.yml` / `-private.yml` variants |
 
 The AI-flows run uniform self-hosted because **forks never reach a job that
@@ -163,7 +163,7 @@ re-pin) with the following baked in:
 |---|---|
 | `gh` CLI | Required by `ai-review` + `composition` workflows for `gh api` calls; **historical foot-gun** (PR #101 on operations spent ~2h debugging a "network failure" that was actually `gh: not found` in the runner image). **The exact `ARG GH_VERSION` pin EXPIRES ON ITS OWN** — `cli.github.com` carries only the current release, so the image silently becomes unbuildable at each upstream `gh` release with no change here. Measured 2026-08-09: unbuildable since 2.97.0, which meant [#349](https://github.com/vladm3105/aidoc-flow-ci/issues/349)'s fix could not be delivered by anyone. `build-image.sh` now names this cause instead of surfacing a raw `exit code: 100`; the durable fix is [#435](https://github.com/vladm3105/aidoc-flow-ci/issues/435) |
 | `libatomic1` | Node-backed lint tools installed at job time (markdownlint-cli2) crash without it — second shipped instance of the same image-drift class (business #63) |
-| `ripgrep` | fast search for AI-review / doc-maintainer job scripts |
+| `ripgrep` | fast search for AI-review job scripts |
 | `python3` | Runs the dependency-free LiteLLM adapter |
 | `python3-venv`, `python3-pip` | `actions/sast-scan` installs semgrep into an isolated venv (D21). The base image ships the **interpreter** without `ensurepip`, so `python3 -m venv` fails while `command -v python3` succeeds — third shipped instance of the image-drift class ([#349](https://github.com/vladm3105/aidoc-flow-ci/issues/349)). `build-image.sh` now proves it by building a venv, not by checking the package list |
 | `python3-yaml` | `actions/pre-commit`'s D11 guard parses the hook config on the **system** interpreter, before `actions/setup-python` runs — deliberately, so a config selecting zero hooks is refused before anything is provisioned. Without PyYAML the guard fails the whole `quick-gates` gate; it now names the cause instead of raising a traceback, but the package is what makes it work |
@@ -258,8 +258,7 @@ moving private-repo jobs to `ubuntu-latest`.
 
 ### 5a. Public repos on the ephemeral self-hosted pool — the AI-flows run fully self-hosted (safe); the lint flows do NOT
 
-As of PLAN-013 (`ci/v2.2.0`), the **AI-flows** (`ai-review`, `doc-maintainer`,
-`docs-sync`; `autofix` runs as a gated job within `ai-review` — PLAN-012) run **entirely** on the ephemeral
+As of PLAN-013 (`ci/v2.2.0`), the **AI-flows** (`ai-review`, `docs-sync`; `autofix` runs as a gated job within `ai-review` — PLAN-012) run **entirely** on the ephemeral
 self-hosted pool on public repos — trust job included — via one protected template
 with no visibility split. This is **not** the "untrusted code on a self-hosted runner"
 anti-pattern, because **a fork never reaches a job that executes PR code**:
@@ -270,8 +269,8 @@ anti-pattern, because **a fork never reaches a job that executes PR code**:
    `if: needs.trust.outputs.ai_review_ok == 'true'` and forks are **never
    trusted**, so a fork never reaches it; and even for a trusted author the review
    job `curl`s the diff (no PR-head checkout).
-2. **`doc-maintainer` + `docs-sync`** are **post-merge** (`push: main`) — a fork
-   PR cannot trigger them.
+2. **`docs-sync`** is **post-merge** (`push: main`) — a fork PR cannot trigger
+   it.
 
 Combined with single-use isolation (`--rm`, no mounts, no socket, non-root), the
 worst case a fork can cause is a throwaway container running the no-PR-code trust

@@ -5,6 +5,51 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Removed — `doc-maintainer` is retired, and `LITELLM_DOC_API_KEY` with it (CI-0040, PLAN-024 A1/A2/A3/A6/A7)
+
+**BREAKING for any consumer still calling `doc-maintainer.yml`.** The flow was
+deprecated by founder decision on 2026-08-20 and its eleven defects closed then
+(PLAN-024 A5); this removes the artifacts that closure implied.
+
+Deleted: the reusable (`.github/workflows/doc-maintainer.yml`, 561 lines), the
+caller template, `doc-maintainer.json`, `doc-maintainer-conventions.md`, and
+`scripts/doc-maintainer/` (593 lines of Python). Also gone: three
+`manifest.json` entries, four `deploy-ci-wizard.sh` references, the
+`install.sh` secret prompt, and `set-litellm-secrets.sh --doc`.
+
+**`LITELLM_DOC_API_KEY` is retired.** It had exactly one consumer, and
+`docs-sync` — the surviving doc flow — makes **no model call at all**; its three
+operations are deterministic Python. The canonical secret surface is now
+`LITELLM_BASE_URL` + `LITELLM_REVIEW_API_KEY`, plus the optional,
+default-off `LITELLM_FIX_API_KEY` for autofix. The three repos still holding a
+`LITELLM_DOC_API_KEY` secret (`ci`, `operations`, `framework`) can delete it.
+
+**The MAJOR-bump smoke gate is un-blocked.** `litellm-smoke.yml` required
+**both** canonical aliases, one of which this removes — so the next tag could
+not have been cut. Its documentation arm is gone and `ai-reviewer` is now the
+only canonical alias, in `RELEASE_CHECKLIST.md` and `test_contract.sh` too.
+
+**Consumers: delete the caller, do NOT `--repin`.** `operations` (live) and
+`framework` (inert, `kill_switch: true`) pin immutable tags — `ci/v2.0.1` and
+`ci/v2.16.0` — so nothing breaks today. A re-pin would move them to a tag where
+the called workflow does not exist.
+
+**Checks retired, declared rather than discovered (A7).** ~119 assertions go
+with the flow. §24.2 (error-message de-conflation) and §24.3 (executable
+template defaults) now have **zero automated readers** and are enforced by
+review alone; §20.2 rule 8 keeps its rule but loses the prompt that produced it.
+All four rules are **kept** in `REPO_STANDARDS.md` — they are general, and
+doc-maintainer was only the surface that proved them. One further coverage loss
+is declared in `test_litellm_secrets.sh`: with one key left there is one probe,
+so the two-probe header-file interleaving is no longer exercised.
+
+**Two dangling citations resolved.** `REPO_STANDARDS.md` cited #413 and #372 as
+live gaps; both closed *not planned* with the flow. PLAN-024 A5 required pairing
+each close with its citation edit and that was missed — corrected here.
+
+`docs-sync` is now documented as the sole doc automation: the IPLAN-0025
+supersession is **withdrawn**, not pending.
+
 ### Fixed — a pin bump reached canon but not the shipped templates (#487)
 
 Dependabot bumped `github/codeql-action` v4.37.6 → v4.37.7 in

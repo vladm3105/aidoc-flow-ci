@@ -29,7 +29,7 @@ install references in sync).
 
 ## What ships
 
-The library provides **16 reusable workflows**. See
+The library provides **15 reusable workflows**. See
 [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md) for the full catalog (purpose,
 per-repo applicability matrix, and skip guidance) and
 [`docs/architecture.md`](docs/architecture.md) for the per-workflow design
@@ -69,8 +69,7 @@ rationale.
 | `markdown-lint.yml` | Markdown lint with pinned `markdownlint-cli2`; inline PR annotations. |
 | `links.yml` | Link checking with a pinned, checksum-verified lychee binary; blocking internal + weekly external soft-fail. |
 | `labeler.yml` | Path-based PR labeling (`actions/labeler@v7`). |
-| `docs-sync.yml` | Mechanical post-merge doc fixer (deterministic version/structure propagation). |
-| `doc-maintainer.yml` | AI-driven post-merge doc-of-record maintainer (supersedes `docs-sync.yml` at `ci/v2.0.0`). |
+| `docs-sync.yml` | Mechanical post-merge doc fixer (deterministic version/structure propagation). The workspace's **sole** doc automation since CI-0040 retired `doc-maintainer`. |
 | `audit-trail-check.yml` | OPS-0069 audit-trail phrase gate (CI belt-and-suspenders for the local pre-push hook). Check renders as `call / verify`. |
 | `dep-scan.yml` | Dependency-vulnerability / SCA gate via the pinned osv-scanner binary (data-only). Opt-in, report-only first. |
 | `trivy-scan.yml` | IaC / Dockerfile misconfiguration gate via the pinned trivy binary (`config` only, SSRF-hardened static scanners). Opt-in, report-only first. |
@@ -107,7 +106,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v
 |---|---|---|
 | **Actions allowlist** must admit canon — `vladm3105/*` (canonical) or the older `vladm3105/aidoc-flow-ci/*` | If consumer is in `selected actions` mode, the reusable workflow is blocked → `startup_failure` | [`docs/troubleshooting.md` §13](docs/troubleshooting.md) |
 | **Caller `permissions:` block** if repo-default `workflow_permissions: read` | Reusable can't elevate above caller's grant → `startup_failure` | [`docs/troubleshooting.md` §14](docs/troubleshooting.md) |
-| **Reviewer App + LiteLLM secrets** `APP_REVIEWER_1_ID/KEY`, `LITELLM_BASE_URL`, `LITELLM_REVIEW_API_KEY`, `LITELLM_DOC_API_KEY` | AI jobs need scoped keys and a reachable LiteLLM proxy | See [`docs/REVIEWER_APP_ONBOARDING.md`](docs/REVIEWER_APP_ONBOARDING.md) |
+| **Reviewer App + LiteLLM secrets** `APP_REVIEWER_1_ID/KEY`, `LITELLM_BASE_URL`, `LITELLM_REVIEW_API_KEY` | AI jobs need scoped keys and a reachable LiteLLM proxy | See [`docs/REVIEWER_APP_ONBOARDING.md`](docs/REVIEWER_APP_ONBOARDING.md) |
 | **Private runner pool** `[self-hosted, ci-runner, single-use]` | Private callers intentionally never fall back to GitHub-hosted runners | See [`docs/runners.md`](docs/runners.md) |
 | **Repo variable** `APP_REVIEWER_1_BOT_ID` (set immediately — it is App-global, `294948438`; do NOT wait for a first review, or `composition` runs INERT and enforces nothing until it is set) | composition matches App identity by numeric bot id | `gh variable set APP_REVIEWER_1_BOT_ID --repo <consumer> --body "294948438"` |
 | **Branch-protection required checks** | Install runs CI but nothing is enforced until the checks are required | See [`docs/BRANCH_PROTECTION.md`](docs/BRANCH_PROTECTION.md) |

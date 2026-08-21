@@ -68,7 +68,7 @@ docs](https://docs.github.com/en/actions/sharing-automations/reusing-workflows):
 
 ## 2. The shared workflows
 
-16 reusable workflows ship; the table below summarizes the most-used ones. For
+15 reusable workflows ship; the table below summarizes the most-used ones. For
 the canonical enumeration + per-repo applicability matrix + adoption sequencing,
 see [`WORKFLOWS.md`](WORKFLOWS.md).
 
@@ -78,8 +78,7 @@ see [`WORKFLOWS.md`](WORKFLOWS.md).
 | `composition` | [`.github/workflows/composition.yml`](../.github/workflows/composition.yml) | App-approval status check — required for merge; fires GREEN only when a counting reviewer-App approval exists at the current head SHA | `pull_request_review [submitted, dismissed, edited]`, `workflow_run` [completed] (from ai-review). v1.3.0+ install default — `pull_request_target` overrideable per [`overrides.md`](overrides.md). |
 | `auto-merge-ai-prs` | [`.github/workflows/auto-merge-ai-prs.yml`](../.github/workflows/auto-merge-ai-prs.yml) | Server-side enforcer for AI-opened PRs — detects stuck-green PRs (label=`ai:review-passed` + `mergeStateStatus:CLEAN` + `autoMergeRequest:null` + `updatedAt > 2 min`) and re-arms `gh pr merge --auto --merge` under the reviewer App's token. IPLAN-0030 (OPS-0062 companion). | `workflow_run` [completed] (from ai-review + composition), `workflow_dispatch` |
 | `pre-commit` | [`.github/workflows/pre-commit.yml`](../.github/workflows/pre-commit.yml) | Standard `pre-commit run --all-files` runner. Consumer supplies `.pre-commit-config.yaml`; workflow provides caching + Python setup + pinned pre-commit version. | `pull_request`, `push` |
-| `docs-sync` | [`.github/workflows/docs-sync.yml`](../.github/workflows/docs-sync.yml) | **Mechanical** post-merge doc fixer (CHANGELOG stub-entry + version propagation + cross-ref repair). Per IPLAN-0018. Direct-commits to main with `[skip ci]`. **Deprecated by `doc-maintainer` at end of IPLAN-0025 Phase 3 (ci/v2.0.0).** | `push: branches: [main]` |
-| `doc-maintainer` | [`.github/workflows/doc-maintainer.yml`](../.github/workflows/doc-maintainer.yml) | **AI-driven** post-merge doc-of-record maintainer (CHANGELOG / HANDOFF / ROADMAP / IPLAN status / DECISIONS narrative-grade edits). Per IPLAN-0025. Reads merge diff + conventions doc + decides scope via LLM; opens follow-up bot PR for low-risk edits (auto-merges through ai-review chain) AND/OR GitHub issue for high-risk edits (human applies). Available v1.4.0+; supersedes mechanical `docs-sync` at end of Phase 3. | `push: branches: [main]`, `schedule [cron '7,37 * * * *']` (backup reconciler) |
+| `docs-sync` | [`.github/workflows/docs-sync.yml`](../.github/workflows/docs-sync.yml) | **Mechanical** post-merge doc fixer (CHANGELOG stub-entry + version propagation + cross-ref repair). Per IPLAN-0018. Direct-commits to main with `[skip ci]`. **The workspace's sole doc automation** since `doc-maintainer` was retired (`DECISIONS.md` CI-0040); the IPLAN-0025 supersession never completed and is withdrawn. | `push: branches: [main]` |
 | `labeler` | [`.github/workflows/labeler.yml`](../.github/workflows/labeler.yml) | Path-based PR area labeling via `actions/labeler@v7` | `pull_request` |
 | `codeql` | [`.github/workflows/codeql.yml`](../.github/workflows/codeql.yml) | CodeQL security analysis (matrix-driven explicit languages) | `push`, `pull_request`, weekly `schedule`, `workflow_dispatch` |
 | `markdown-lint` | [`.github/workflows/markdown-lint.yml`](../.github/workflows/markdown-lint.yml) | Markdown linting via the `markdownlint-cli2` npm CLI (installed via `actions/setup-node`, not a marketplace action — §4.3) | `pull_request`, `push` |

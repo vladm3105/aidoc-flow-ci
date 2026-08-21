@@ -67,28 +67,6 @@
       "auto_install": false
     },
     {
-      "path": ".github/workflows/doc-maintainer.yml",
-      "template": "workflows/doc-maintainer.yml",
-      "_note": "PLAN-013: single protected template (self-hosted, uniform public+private); no visibility_variants.",
-      "substitute": [],
-      "safe_to_replace": true,
-      "auto_install": false
-    },
-    {
-      "path": ".github/doc-maintainer.json",
-      "template": "doc-maintainer.json",
-      "substitute": [],
-      "safe_to_replace": false,
-      "auto_install": false
-    },
-    {
-      "path": ".github/doc-maintainer-conventions.md",
-      "template": "doc-maintainer-conventions.md",
-      "substitute": [],
-      "safe_to_replace": false,
-      "auto_install": false
-    },
-    {
       "path": ".github/workflows/codeql.yml",
       "template": "workflows/codeql.yml",
       "substitute": [],

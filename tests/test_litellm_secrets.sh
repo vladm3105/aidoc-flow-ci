@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 # tests/test_litellm_secrets.sh — guards for install/set-litellm-secrets.sh.
 #
-# WHY THIS EXISTS: issue #350. A run to add the OPTIONAL doc key also rewrote
+# WHY THIS EXISTS: issue #350. A run to add ONE optional secret also rewrote
 # LITELLM_BASE_URL and LITELLM_REVIEW_API_KEY from the operator's environment,
 # with no validation of either. Both writes reported ✓ and the script exited 0;
 # the break surfaced only on the next PR, as a red REQUIRED ai-review gate on a
 # consumer. The inventory had this script as "low risk; accepted-no-FT" — that
 # row was wrong, and this suite is what replaces it.
+#
+# The incident's vehicle was `--doc` / LITELLM_DOC_API_KEY, retired with
+# `doc-maintainer` (DECISIONS.md CI-0040). The RULE it proved — an existing
+# secret is never replaced without --overwrite — is general and is still
+# asserted below, now via the two surviving secrets. Do not delete these cases
+# on the grounds that the flag they were written against is gone.
 #
 # HOW THE STUBS STAY HONEST: `gh` and `curl` are stubbed on PATH and LOG THEIR
 # ARGV, to a log kept SEPARATE from the one holding secret values. Asserting on
@@ -80,7 +86,6 @@ STUB
 chmod +x "$BIN/gh" "$BIN/curl"
 
 REVIEW_KEY="sk-review-secret-value"
-DOC_KEY="sk-doc-secret-value"
 MASTER_KEY="sk-master-secret-value"
 BRIDGE="http://172.17.0.1:4001/v1"
 
@@ -100,7 +105,6 @@ run() {
   OUT="$(PATH="$BIN:$PATH" \
      LITELLM_BASE_URL="${BASE:-$BRIDGE}" \
      LITELLM_REVIEW_API_KEY="$review" \
-     LITELLM_DOC_API_KEY="$DOC_KEY" \
      LITELLM_MASTER_KEY="$MASTER_KEY" \
      STUB_EXISTING="${STUB_EXISTING:-}" \
      STUB_EXISTING_repoA="${STUB_EXISTING_repoA:-}" \
@@ -205,67 +209,60 @@ assert_contains "$OUT" "validate=0" "--skip-validate announces itself in the ban
 
 echo "== the bearer key never reaches argv (PLAN-015 L3) =="
 # Blanket, not positional: assert the VALUE appears on no argv line at all.
-STUB_EXISTING="" run --doc
+STUB_EXISTING="" run
 assert_absent "$CURL_OUT" "$REVIEW_KEY" "probe: review key absent from curl argv"
-assert_absent "$CURL_OUT" "$DOC_KEY" "probe: doc key absent from curl argv"
 assert_contains "$HDR_OUT" "$REVIEW_KEY" "probe: review key travelled in a header file"
 assert_absent "$GH_ARGV_OUT" "$REVIEW_KEY" "gh: review value appears on no argv line"
-assert_absent "$GH_ARGV_OUT" "$DOC_KEY" "gh: doc value appears on no argv line"
 STUB_EXISTING="" run --mint
 assert_absent "$CURL_OUT" "$MASTER_KEY" "mint: master key absent from curl argv"
 assert_absent "$GH_ARGV_OUT" "$MASTER_KEY" "mint: master key appears on no gh argv line"
 
 echo "== an EXISTING secret is kept unless --overwrite (issue #350) =="
-# The exact incident: --doc on a provisioned repo must add the doc key ONLY.
+# The exact incident, re-expressed on the surviving pair: a run against a
+# fully-provisioned repo must write NOTHING and say so.
 STUB_EXISTING="LITELLM_BASE_URL
-LITELLM_REVIEW_API_KEY" run --doc
-assert_ok "[ $RC -eq 0 ]" "--doc on a provisioned repo succeeds"
-assert_contains "$GH_OUT" "SET LITELLM_DOC_API_KEY" "--doc: the new key IS written"
-assert_absent "$GH_OUT" "SET LITELLM_BASE_URL" "--doc: the working base URL is NOT touched"
-assert_absent "$GH_OUT" "SET LITELLM_REVIEW_API_KEY" "--doc: the working review key is NOT touched"
-assert_contains "$OUT" "1 created, 0 overwritten, 2 kept" "the summary counts the kept secrets"
+LITELLM_REVIEW_API_KEY" run
+assert_ok "[ $RC -eq 0 ]" "a fully-provisioned repo succeeds"
+assert_absent "$GH_OUT" "SET LITELLM_BASE_URL" "the working base URL is NOT touched"
+assert_absent "$GH_OUT" "SET LITELLM_REVIEW_API_KEY" "the working review key is NOT touched"
+assert_contains "$OUT" "0 created, 0 overwritten, 2 kept" "the summary counts the kept secrets"
 assert_contains "$OUT" "--overwrite" "the report names the flag that would replace them"
 
-# ...and it must not demand the review key be re-exported. Requiring it is what
-# sends an operator back to the stale shell value that caused #350.
-NO_REVIEW_KEY=1 STUB_EXISTING="LITELLM_BASE_URL
-LITELLM_REVIEW_API_KEY" run --doc
-assert_ok "[ $RC -eq 0 ]" "--doc works with ONLY the doc key exported"
-assert_contains "$GH_OUT" "SET LITELLM_DOC_API_KEY" "--doc without a review key still writes the doc key"
-assert_absent "$CURL_OUT" "$REVIEW_KEY" "--doc without a review key probes no review key"
+# A partially-provisioned repo creates only what is missing — the half of the
+# rule that a keep-everything run cannot prove.
+STUB_EXISTING="LITELLM_BASE_URL" run
+assert_ok "[ $RC -eq 0 ]" "a partially-provisioned repo succeeds"
+assert_contains "$GH_OUT" "SET LITELLM_REVIEW_API_KEY" "the MISSING key IS created"
+assert_absent "$GH_OUT" "SET LITELLM_BASE_URL" "the PRESENT base URL is NOT touched"
+assert_contains "$OUT" "1 created, 0 overwritten, 1 kept" "the summary counts one of each"
 
-# But a repo that genuinely needs the review key CREATED must not get a blank one.
-NO_REVIEW_KEY=1 STUB_EXISTING="" run --doc
+# A repo that genuinely needs the review key CREATED must not get a blank one.
+NO_REVIEW_KEY=1 STUB_EXISTING="" run
 assert_ok "[ $RC -ne 0 ]" "a missing review key that must be CREATED fails the run"
 assert_absent "$GH_OUT" "SET LITELLM_REVIEW_API_KEY = " "no blank secret is ever written"
 assert_contains "$OUT" "LITELLM_REVIEW_API_KEY" "the error names the variable to export"
 
-echo "== the doc key is probed too, not just the review key =="
-STUB_EXISTING="" run --doc
-assert_contains "$HDR_OUT" "$DOC_KEY" "--doc probes the doc key"
-NO_REVIEW_KEY=1 STUB_EXISTING="LITELLM_BASE_URL
-LITELLM_REVIEW_API_KEY" STUB_HTTP_CODE=401 run --doc
-assert_ok "[ $RC -ne 0 ]" "--doc: a rejected doc key aborts before any write"
-assert_absent "$GH_OUT" "SET " "--doc 401: nothing is written"
+echo "== a rejected key aborts before any write =="
+STUB_EXISTING="" STUB_HTTP_CODE=401 run
+assert_ok "[ $RC -ne 0 ]" "a rejected review key aborts before any write"
+assert_absent "$GH_OUT" "SET " "401: nothing is written"
 
 echo "== --overwrite is the explicit opt-in =="
 STUB_EXISTING="LITELLM_BASE_URL
-LITELLM_REVIEW_API_KEY" run --doc --overwrite
+LITELLM_REVIEW_API_KEY" run --overwrite
 assert_contains "$GH_OUT" "SET LITELLM_BASE_URL" "--overwrite replaces the base URL"
 assert_contains "$GH_OUT" "SET LITELLM_REVIEW_API_KEY" "--overwrite replaces the review key"
-assert_contains "$OUT" "1 created, 2 overwritten, 0 kept" "the summary counts the overwrites"
+assert_contains "$OUT" "0 created, 2 overwritten, 0 kept" "the summary counts the overwrites"
 
 echo "== a fresh repo still provisions in one run, no flag needed =="
-STUB_EXISTING="" run --doc
+STUB_EXISTING="" run
 assert_contains "$GH_OUT" "SET LITELLM_BASE_URL" "fresh: base URL created"
 assert_contains "$GH_OUT" "SET LITELLM_REVIEW_API_KEY" "fresh: review key created"
-assert_contains "$GH_OUT" "SET LITELLM_DOC_API_KEY" "fresh: doc key created"
-assert_contains "$OUT" "3 created, 0 overwritten, 0 kept" "fresh: summary"
+assert_contains "$OUT" "2 created, 0 overwritten, 0 kept" "fresh: summary"
 
 echo "== the written VALUES go to the right SECRET and the right REPO =="
-STUB_EXISTING="" run --doc
+STUB_EXISTING="" run
 assert_contains "$GH_OUT" "SET LITELLM_REVIEW_API_KEY -> owner/repo = $REVIEW_KEY" "review key: name, repo and value"
-assert_contains "$GH_OUT" "SET LITELLM_DOC_API_KEY -> owner/repo = $DOC_KEY" "doc key: name, repo and value"
 assert_contains "$GH_OUT" "SET LITELLM_BASE_URL -> owner/repo = $BRIDGE" "base URL: name, repo and value"
 
 echo "== fail closed when the existing set cannot be read =="
@@ -286,13 +283,13 @@ assert_ok "[ $RC -ne 0 ]" "no-access repo: the run exits non-zero"
 assert_contains "$OUT" "1 repo(s) skipped" "the summary counts the skip"
 
 echo "== --dry-run writes nothing, sends nothing, and shows the plan =="
-STUB_EXISTING="LITELLM_BASE_URL" run --doc --dry-run
+STUB_EXISTING="LITELLM_BASE_URL" run --dry-run
 assert_ok "[ $RC -eq 0 ]" "dry-run exits 0"
 assert_absent "$GH_OUT" "SET " "dry-run writes nothing"
 # The probe transmits a live bearer token; --dry-run must not do that at all.
 assert_absent "$CURL_OUT" "models" "dry-run makes NO network request"
 assert_absent "$HDR_OUT" "$REVIEW_KEY" "dry-run never writes the key to a header file"
-assert_contains "$OUT" "[dry-run] LITELLM_DOC_API_KEY" "dry-run names the secret it would create"
+assert_contains "$OUT" "[dry-run] LITELLM_REVIEW_API_KEY" "dry-run names the secret it would create"
 assert_contains "$OUT" "would be created" "dry-run states the action"
 assert_contains "$OUT" "(exists, kept" "dry-run marks the existing secret kept"
 assert_contains "$OUT" "(dry-run — nothing written)" "the summary cannot be misread as a real run"
@@ -396,15 +393,22 @@ OUT="$(PATH="$BIN:$PATH" TMPDIR="$SECRET_SCAN" \
    GH_LOG="$TMP/gh.log" GH_ARGV_LOG="$TMP/gh-argv.log" \
    CURL_LOG="$TMP/curl.log" CURL_HDR_LOG="$TMP/hdr.log" \
    LITELLM_BASE_URL="$BRIDGE" LITELLM_REVIEW_API_KEY="$REVIEW_KEY" \
-   LITELLM_DOC_API_KEY="$DOC_KEY" STUB_EXISTING="" STUB_HTTP_CODE=200 \
-   bash "$SCRIPT" --repos owner/repo --doc 2>&1)"
+   STUB_EXISTING="" STUB_HTTP_CODE=200 \
+   bash "$SCRIPT" --repos owner/repo 2>&1)"
 leftover="$(find "$SECRET_SCAN" -type f 2>/dev/null | wc -l)"
 assert_eq "0" "$leftover" "no file is left behind anywhere under TMPDIR"
 grepped="$(grep -rl "$REVIEW_KEY" "$SECRET_SCAN" 2>/dev/null | wc -l)"
 assert_eq "0" "$grepped" "no surviving file contains the bearer key"
-# --doc probes twice. Each probe must clean up its own header file, so a token
-# file never coexists with the next one; without that, the second probe sees 2.
-# Compare the PARSED maximum, not a substring — "TMPFILES 2" also matches 25.
+# Each probe must clean up its own header file. Compare the PARSED maximum, not
+# a substring — "TMPFILES 2" also matches 25.
+#
+# COVERAGE REDUCED, DECLARED (CI-0040): this case used to run `--doc`, which
+# probed TWICE, so the assertion proved the header file was removed BETWEEN
+# probes. With LITELLM_DOC_API_KEY retired there is exactly one key and one
+# probe on every path, so the two-probe interleaving is no longer exercised
+# anywhere. The assertion below still catches a probe that leaks its own file;
+# it no longer catches one that leaks only when a second probe follows. Restore
+# the stronger form if a second probed secret is ever added.
 assert_eq "1" "$(awk '/^TMPFILES /{print $2}' "$TMP/curl.log" | sort -n | tail -1)" \
   "a probe holds exactly one header file, and never two at once"
 

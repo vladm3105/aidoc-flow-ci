@@ -90,20 +90,19 @@ def auth_hint(code: int) -> str:
     """Name the likely cause of a rejected token instead of a bare status line.
 
     LITELLM_API_KEY is populated from a repository secret — LITELLM_REVIEW_API_KEY
-    for ai-review, LITELLM_DOC_API_KEY for doc-maintainer — so a 401 here is a
-    secret-provisioning problem, not a code one. The bare status named neither
-    the secret nor a cause, which is what made #350 expensive: a
-    set-litellm-secrets.sh run to add the OPTIONAL doc key silently overwrote a
+    for ai-review's review step, LITELLM_FIX_API_KEY for its autofix step — so a
+    401 here is a secret-provisioning problem, not a code one. The bare status
+    named neither the secret nor a cause, which is what made #350 expensive: a
+    set-litellm-secrets.sh run adding one optional key silently overwrote a
     working review key, and this message was all CI had to say about it.
     """
     if code == 401:
         return (
             " — the proxy rejected the bearer token. LITELLM_API_KEY comes from a"
-            " repository secret: LITELLM_REVIEW_API_KEY (ai-review's review step),"
-            " LITELLM_FIX_API_KEY (its autofix step), or LITELLM_DOC_API_KEY"
-            " (doc-maintainer). For the review and doc keys, a recent"
-            " install/set-litellm-secrets.sh run may have overwritten the value;"
-            " that script does not manage the fix key. Re-provision the affected"
+            " repository secret: LITELLM_REVIEW_API_KEY (ai-review's review step)"
+            " or LITELLM_FIX_API_KEY (its autofix step). For the review key, a"
+            " recent install/set-litellm-secrets.sh run may have overwritten the"
+            " value; that script does not manage the fix key. Re-provision the affected"
             " secret — GitHub secrets are write-only, so the value cannot be read"
             " back or recovered from CI. (#350.)"
         )
