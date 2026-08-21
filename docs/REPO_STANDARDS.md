@@ -735,6 +735,105 @@ one is reported INCONCLUSIVE by the canary in §4.3a, because it would suppress
 real findings too). **When a workflow's scope changes, the header comment, the
 migration guide, and the changelog are all part of the change.**
 
+#### 4.3e The GATE decides scanner coverage — never a PR-committed file (D23)
+
+Every scanner canon ships honours **configuration committed to the repository
+being scanned**, independently of the flags the action passes. A PR can
+therefore choose its own coverage. Measured against the pinned tool versions:
+
+| File the PR commits | Scanner | Discovered | Measured effect |
+|---|---|---|---|
+| `.semgrepignore` containing `*` | `sast-scan` | working dir | coverage → zero (verified gate bypass) |
+| `.trivyignore` listing the AVD IDs | `trivy-scan` | working dir **only** | misconfigurations 3 → 0 |
+| `trivy.yaml` narrowing `severity` | `trivy-scan` | working dir **only** | misconfigurations 3 → 0 |
+| `osv-scanner.toml` with `[[IgnoredVulns]]` | `dep-scan` | **per directory** | results 24 → 0 |
+| `.gitignore` naming a manifest | `dep-scan` | per directory | results 70 → 24 (targeted) or rc 128 (total) |
+
+**Discovery differs per tool and the difference is load-bearing.** trivy reads
+its config and ignore file from the **working directory only** — the same file in
+a subdirectory was measured to have no effect — so a _recursive_ strip of
+`trivy.yaml` would delete files trivy is meant to **scan** (`deploy/trivy.yaml`
+is a plausible Kubernetes manifest). osv-scanner is the inverse: its config is
+found **beside each manifest**, and a root-only strip misses every one.
+
+**The harm outlives the PR.** A zeroed scan still writes a _legitimate_ empty
+SARIF, so a purge that catches a PR **supplying** a report cannot see a PR
+**causing** an empty one. `hashFiles` is non-empty, the upload runs, and because
+Code Scanning keys an analysis by `category`, the `push: main` run **replaces**
+that category's analysis and every open alert it held is erased.
+
+**Rules.** Every scanner surface — composite action **and** `workflow_call`
+reusable — MUST, before scanning:
+
+1. **Strip** each config/ignore file its tool honours, matching `-type f` **and
+   `-type l`** — git stores symlinks natively (mode 120000) and the scanner
+   follows the link, so a `-type f` strip is bypassable by symlink (REPRODUCED
+   against `sast-scan`, 2026-08-08).
+2. **Scope the strip to the tool's real discovery** — recursive where config is
+   per-directory, depth-limited where it is working-directory-only. A defense
+   broader than the discovery removes coverage in the name of coverage.
+3. Enforce a **post-condition**: if any such file still resolves, `exit 1` with
+   an `::error::` naming the survivor. The strip's `|| true` makes the
+   post-condition — not the strip — the actual gate.
+4. Derive the post-condition from the **same expression** the strip used. Two
+   statements of one fact drift; that is how `sast-scan` came to verify
+   `scan-path` while its strip also cleared the root (#423). Note the corollary:
+   because both read one expression, a _symmetric_ scoping regression is
+   self-consistent and silent — so the tests MUST assert that the planted files
+   are **gone**, not merely that the step exited 0.
+5. Decide on **captured output**, never a pipeline's exit status
+   (§27.1 / CI-0033): `find … -print -quit | grep -q .` is a REPRODUCED
+   fail-open, because `-quit` returns non-zero when a traversal error is
+   recorded before it quits _while still printing the match_, and `pipefail`
+   takes that status over `grep`'s.
+6. **Neutralise gate-side what cannot be stripped.** `.gitignore` is honoured by
+   osv-scanner and every repo has a legitimate one, so it cannot be deleted —
+   `--no-ignore` disables the discovery instead. Expect the coverage change that
+   implies: vendored trees are no longer skipped.
+7. **Validate `scan-path` before it reaches `find`.** It is an action input, and
+   on `pull_request` the caller's workflow file comes from the PR head. `find`
+   reads a leading `-` as an **option**: `scan-path: -delete` yields
+   `find -delete . …` with no path operand — measured to empty the workspace,
+   after which the post-condition certifies the empty tree clean. Reject a
+   leading `-` and require an existing directory.
+8. **Fold every PR-controlled path before echoing it.** Newlines are legal in
+   git paths and the runner parses every output line for `::command::`, so an
+   unfolded path lets a PR forge `::stop-commands::` and suppress the very
+   `::error::` the refusal depends on.
+9. **Say what was removed.** A repo that committed one of these on purpose has
+   it deleted from the workspace; emit a `::warning::` naming the file and the
+   gate-side alternative, or the maintainer concludes the scanner is broken.
+
+A repo needing a genuine exclusion expresses it **gate-side** — in the ruleset,
+or via a new action input — never in a PR-mutable file.
+
+**Scope notes — what D23 does NOT cover.**
+
+- **In-line suppressions** inside scanned sources (for example
+  `#trivy:ignore:<AVD-ID>` in a Dockerfile) cannot be stripped without altering
+  the code under scan. Inherent to scanning PR-controlled content.
+- **A directory at a config path** is excluded from the strip (`-type f -o
+  -type l`), because a directory cannot be read as config. For trivy it is still
+  a weapon — a `trivy.yaml/` directory makes trivy exit FATAL, which the tool
+  error arm reports as "Re-run", a permanent red whose remedy can never work —
+  so `trivy-scan` names that collision explicitly instead.
+- **`.trivyignore.yaml` / `.trivyignore.yml`** are stripped defensively; measured
+  at trivy 0.72.0 they are **not** auto-discovered.
+
+**Known non-conformance at the time of writing (2026-08-20).** The rule binds
+every scanner surface; two do not yet satisfy it, and both are tracked rather
+than silently excepted:
+
+- `actions/sast-scan/action.yml` — post-condition covers `scan-path` only while
+  the strip also clears the root (#423).
+- `.github/workflows/sast-scan.yml` — carries the pre-#425 strip: `-type f` only,
+  no root strip, and **no post-condition at all**, so its `|| true` is the whole
+  gate. Whether semgrep also honours `.gitignore` (rule 6) is unmeasured.
+
+**Origin:** `sast-scan` shipped D23 at `ci/v3.0.0`; #425 extended it to
+`trivy-scan` and `dep-scan` across both the actions and the reusables, and added
+rules 2 and 6–9 from what that work measured.
+
 ### 4.4 `markdown-lint` config template (`install/templates/.markdownlint.json`)
 
 The canon `.markdownlint.json` is the recommended ruleset consumers **copy**

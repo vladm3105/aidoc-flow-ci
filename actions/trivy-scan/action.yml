@@ -15,6 +15,12 @@
 #        the runner clone an attacker-chosen URL (SSRF/egress). Verified:
 #        `--tf-exclude-downloaded-modules` does NOT prevent the fetch. Never add
 #        those scanners here without network isolation.
+#   D23  **THE GATE, NOT THE SCANNED PR, DECIDES COVERAGE.** PR-committed
+#        `.trivyignore` / `trivy.yaml` are honoured independently of the flags
+#        above and take misconfigurations 3 -> 0 (MEASURED, #425). Stripped —
+#        symlinks included, repo root included — with a post-condition that
+#        refuses to scan if one survives. Erasing coverage here also erases
+#        Code Scanning alerts on `push: main`, so it outlives the PR.
 #   D14  `fail-on-findings` is a real toggle honoured with `exit 1`.
 #   D15  `set -euo pipefail`.
 #
@@ -75,6 +81,120 @@ runs:
         tar -xzf /tmp/trivy.tgz -C "$BIN_DIR" trivy; chmod 0755 "$BIN_DIR/trivy"
 
         summary() { echo "trivy-scan: $1" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"; }
+
+        # ── D23 (extended from sast-scan by #425) ────────────────────────────
+        # THE GATE, NOT THE SCANNED PR, DECIDES COVERAGE. trivy honours files
+        # COMMITTED TO THE REPO BEING SCANNED, independently of every flag below.
+        # MEASURED at the pinned version: a `.trivyignore` listing the AVD IDs took misconfigurations
+        # 3 -> 0, and a root `trivy.yaml` narrowing `severity` did the same.
+        #
+        # The second harm OUTLIVES THE PR. A zeroed scan still writes a LEGITIMATE
+        # empty SARIF, so the caller's report purge cannot see it (that purge catches a
+        # PR SUPPLYING a report, not a PR CAUSING an empty one), `hashFiles` is
+        # non-empty, the upload proceeds — and on `push: main` Code Scanning keys an
+        # analysis by CATEGORY, so the empty analysis REPLACES the previous one and
+        # every open alert it held is erased.
+        #
+        # A repo needing a real exclusion expresses it GATE-SIDE, never in a PR-mutable
+        # file. §4.3e is the rule.
+        #
+        # `-type f` MISSES A SYMLINK — git stores symlinks natively (mode 120000) and
+        # the scanner follows the link. REPRODUCED against sast-scan 2026-08-08.
+        #
+        # scan-path is an INPUT, and on `pull_request` the caller's workflow file comes
+        # from the PR HEAD — the same access level D23 already assumes. `find` reads its
+        # first operand as an OPTION when it begins with `-`: `scan-path: -delete` makes
+        # this `find -delete . …`, which has NO path operand, so `-delete` evaluates
+        # against the whole tree. MEASURED: it EMPTIES THE WORKSPACE, after which the
+        # post-condition finds nothing and certifies the empty tree clean — the strip
+        # becomes the bypass. Validate before the value reaches find.
+        sp_safe="$(printf '%s' "$SCAN_PATH" | tr '\n\r' '??' | cut -c1-200)"
+        case "$SCAN_PATH" in
+          -*) echo "::error::trivy-scan: scan-path may not begin with '-' (got '${sp_safe}') — refusing rather than handing it to find as an option (D23)."; exit 1 ;;
+        esac
+        if [ ! -d "$SCAN_PATH" ]; then
+          echo "::error::trivy-scan: scan-path '${sp_safe}' is not an existing directory — refusing rather than reporting a clean scan of nothing (D23)."
+          exit 1
+        fi
+        strip_roots=("$SCAN_PATH")
+        if [ "$SCAN_PATH" != "." ]; then strip_roots+=("."); fi
+        d23_scan() {
+          # $@ = the trailing find action, applied IDENTICALLY to every class, so the
+          # strip and the post-condition can never cover different sets (#423's shape).
+          d23_rc=0
+          # Ignore file: MEASURED CWD-only at trivy 0.72.0 (in a subdirectory it changed
+          # nothing; at the root it took findings 3 -> 0). Swept recursively anyway — no
+          # repo legitimately SCANS a file by these names, so recursion costs nothing and
+          # covers a future per-directory change. `.trivyignore.yaml` / `.trivyignore.yml`
+          # are NOT auto-discovered at this pin (measured: no effect); they are stripped
+          # defensively, not because they are live vectors today.
+          find "${strip_roots[@]}" \( -type f -o -type l \) \
+               \( -name '.trivyignore' -o -name '.trivyignore.yaml' -o -name '.trivyignore.yml' \) "$@" || d23_rc=$?
+          # Config file: DEPTH 1 ONLY, deliberately. `trivy.yaml` is the default value of
+          # `--config`, resolved from the working directory — MEASURED: in a subdirectory
+          # it has NO effect; at the root it took findings 3 -> 0. A recursive strip would
+          # delete files trivy is meant to SCAN (`deploy/trivy.yaml` is a plausible
+          # Kubernetes manifest, and kubernetes is in --misconfig-scanners), i.e. the
+          # coverage defense would itself remove coverage.
+          find "${strip_roots[@]}" -maxdepth 1 \( -type f -o -type l \) \
+               \( -name 'trivy.yaml' -o -name 'trivy.yml' \) "$@" || { d23_rc2=$?; if [ "$d23_rc" -eq 0 ]; then d23_rc=$d23_rc2; fi; }
+          return "$d23_rc"
+        }
+
+        # `mktemp` under `set -e` as a BARE assignment aborts the step before any
+        # ::error:: — the very shape `|| fst=$?` exists to prevent, twenty lines down.
+        # Plausible on a single-use runner (disk/inode pressure, TMPDIR misconfig).
+        ferr="$(mktemp)" || { echo "::error::trivy-scan: D23 could not allocate a temp file — refusing to scan rather than skip the check."; exit 1; }
+
+        # D23 IS A GATE, NOT A BEST EFFORT: `|| true` keeps a partial failure from
+        # aborting the step, so the POST-CONDITION below is what enforces it. The
+        # strip's stderr is APPENDED to $ferr rather than discarded — with `2>/dev/null`
+        # the delete-failure reason ("Permission denied") was destroyed and the refusal
+        # below then reported an EMPTY find_stderr exactly when it mattered.
+        #
+        # The strip's `-print` carries PR-CONTROLLED PATHS: newlines are legal in git
+        # paths and the runner parses EVERY output line for `::command::`, so an
+        # unfolded path could forge `::stop-commands::` and suppress the ::error::
+        # below. Capture, fold, then report.
+        stripped="$(d23_scan -print -delete 2>>"$ferr" || true)"
+        if [ -n "$stripped" ]; then
+          stripped_safe="$(printf '%s' "$stripped" | tr '\n\r' '??' | cut -c1-500)"
+          # A repo that committed one of these ON PURPOSE gets it deleted from the
+          # workspace. Say so, and say where the exclusion belongs instead — silence
+          # here is how a maintainer concludes the scanner is broken.
+          echo "::warning::trivy-scan: D23 removed PR-supplied scanner config before scanning — it was NOT honoured. Express a real exclusion gate-side (ruleset or action input), never in a repo file (REPO_STANDARDS §4.3e). Removed: ${stripped_safe}"
+          summary "⚠️ D23 removed PR-supplied scanner config — NOT honoured: ${stripped_safe}"
+        fi
+
+        # CI-0033 / §27.1: decide on captured OUTPUT, never a pipeline's exit status —
+        # `find … -print -quit | grep -q .` is a REPRODUCED fail-open, because `-quit`
+        # returns non-zero when a traversal error is recorded before it quits WHILE
+        # STILL PRINTING THE MATCH, and `pipefail` takes that over grep's 0.
+        # `|| fst=$?` is load-bearing: a bare assignment takes the substitution's status
+        # and `set -e` would abort HERE, before the ::error:: — a red step with no cause.
+        fst=0
+        survivor="$(d23_scan -print -quit 2>>"$ferr")" || fst=$?
+        if [ -n "$survivor" ] || [ "$fst" -ne 0 ]; then
+          survivor_safe="$(printf '%s' "$survivor" | tr '\n\r' '??')"
+          find_err="$(tr '\n\r' '  ' < "$ferr" | cut -c1-300)"
+          rm -f "$ferr"
+          echo "::error::trivy-scan: could not certify the tree clean of PR-supplied trivy ignore/config files — refusing to scan rather than accept attacker-controlled coverage (D23). survivor='${survivor_safe}' find_rc=${fst} find_stderr='${find_err}'"
+          exit 1
+        fi
+        rm -f "$ferr"
+        # A DIRECTORY at the config path is a separate weapon, and `-type f -o -type l`
+        # deliberately excludes it from the strip (a directory cannot be READ as config).
+        # MEASURED: `trivy.yaml/` makes trivy exit FATAL — `config file "trivy.yaml"
+        # loading error: read trivy.yaml: is a directory` — which the tool-error arm
+        # below reports as "infrastructure/tool error … Re-run.", a permanent red whose
+        # stated remedy can never work. Name the real cause instead.
+        dircfg="$(find "${strip_roots[@]}" -maxdepth 1 -type d \( -name 'trivy.yaml' -o -name 'trivy.yml' \) -print -quit 2>/dev/null || true)"
+        if [ -n "$dircfg" ]; then
+          dircfg_safe="$(printf '%s' "$dircfg" | tr '\n\r' '??')"
+          echo "::error::trivy-scan: a DIRECTORY occupies trivy's config path ('${dircfg_safe}'), which makes trivy exit FATAL before scanning. This is NOT an infrastructure error and re-running will not clear it — remove the directory (D23)."
+          exit 1
+        fi
+
 
         # STATIC scanners ONLY (LOAD-BEARING): terraform/helm/ansible fetch remote
         # sources from PR-controlled fields → SSRF/egress from the self-hosted runner.
