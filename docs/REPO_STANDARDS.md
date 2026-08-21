@@ -205,8 +205,8 @@ deterministic Python and makes no model call, so it has no planner to constrain.
 All canonical AI execution (`ai-review`) goes through one
 OpenAI-compatible LiteLLM proxy — the default, API-based LLM gateway (it
 replaces per-runner vendor CLIs and fronts many providers behind one endpoint).
-Consumers provide **repository-level** secrets `LITELLM_BASE_URL` and
-`LITELLM_REVIEW_API_KEY` (set them **per repo** —
+Consumers provide **repository-level** secrets `LLM_URL` and
+`LLM_API_KEY` (set them **per repo** —
 organization-level secrets require an org account and are unavailable on a
 personal-account owner). They do not install or log in to vendor CLIs on runners.
 AI review resolves its model alias from caller input
@@ -220,12 +220,12 @@ malformed responses fail closed and never become an approving verdict.
 The proxy URL MUST use HTTPS. Plain HTTP requires the explicit caller opt-in
 `litellm_allow_insecure_http: true` and is limited to a controlled private
 network. **The opt-in is required by the URL SCHEME, not by repo visibility**:
-any consumer whose `LITELLM_BASE_URL` begins `http://` must set it, public or
+any consumer whose `LLM_URL` begins `http://` must set it, public or
 private. On the shared self-hosted pool the proxy is reached over the Docker
 bridge gateway (`http://172.17.0.1:4001/v1`) — plain HTTP on a private network —
 so every consumer there needs the flag, and since PLAN-013 routes the whole AI
 flow to that pool, public repos are the common case rather than the exception.
-`LITELLM_BASE_URL` MUST NOT be loopback: jobs run inside a container, so
+`LLM_URL` MUST NOT be loopback: jobs run inside a container, so
 `127.0.0.1`/`localhost` resolve to the container, not the proxy host. (CI-0017.)
 
 Use separate virtual keys per purpose — review and autofix — restricted to
@@ -239,7 +239,7 @@ response; missing or duplicated placeholders fail closed.
 `docs-sync` sends nothing to the proxy — it makes no model call — so it is out
 of scope for this subsection entirely.
 
-Before a major AI-contract release is tagged, `.github/workflows/litellm-smoke.yml`
+Before a major AI-contract release is tagged, `.github/workflows/llm-smoke.yml`
 MUST pass against the actual proxy for both canonical aliases. Mocked unit tests
 do not replace this provider/proxy compatibility gate.
 

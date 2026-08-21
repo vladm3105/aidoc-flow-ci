@@ -273,17 +273,17 @@ internal mode uses `--offline` and skips all http(s) URLs.
 the caller is still pinned to **ci/v1.x**, whose ai-review resolved an on-runner
 vendor CLI. **Fix:** cut over to **ci/v2.0.0** per
 [`MIGRATION_v2.0.0.md`](MIGRATION_v2.0.0.md) — v2 replaces the runner CLI with the
-dependency-free `litellm_client.py` (an HTTP call to the LiteLLM proxy), so there
+dependency-free `llm_client.py` (an HTTP call to the LiteLLM proxy), so there
 is no per-runner vendor CLI to install. Until you cut over, `skip-ai-review` (or
 `--admin`) unblocks individual PRs.
 
 **Symptom B — ai-review fails with a LiteLLM URL/key error or cannot connect:**
 
-**Cause:** `LITELLM_BASE_URL` or the workflow's scoped LiteLLM key is missing, the selected
+**Cause:** `LLM_URL` or the workflow's scoped LiteLLM key is missing, the selected
 model alias is absent, or the runner cannot route to the proxy.
 
 **Fix:** Set both LiteLLM secrets, ensure `litellm.model` names a configured
-proxy alias, and verify the runner can reach `${LITELLM_BASE_URL}/models`.
+proxy alias, and verify the runner can reach `${LLM_URL}/models`.
 
 **Symptom C — ai-review fails on a *large* PR with `litellm: proxy request
 failed after 3 attempts: ResponseShapeError` (small PRs pass):**
@@ -304,7 +304,7 @@ finishes on diffs up to the 400 KB input ceiling. **Re-pin the consumer to
 the budget): the gate now surfaces it *honestly* as the `ai:review-infra-error`
 label + a "re-run" comment (not a fake `CHANGES_REQUESTED`). Options:
 `skip-ai-review` (or `--admin`) to unblock the individual PR; raise the budget
-per-repo without a canon edit via the `LITELLM_MAX_TOKENS` env (client validator
+per-repo without a canon edit via the `LLM_MAX_TOKENS` env (client validator
 caps it at 32768); or split the PR. See `plans/PLAN-011_ai-review-large-diff-hardening.md`.
 
 ## 11. Markdownlint MD024/no-duplicate-heading

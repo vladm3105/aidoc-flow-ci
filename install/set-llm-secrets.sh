@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# set-litellm-secrets.sh — provision LiteLLM CI secrets on the aidoc-flow fleet.
+# set-llm-secrets.sh — provision LiteLLM CI secrets on the aidoc-flow fleet.
 # PLAN-009 Phase 0 (founder-executed). Sets REPOSITORY-level GitHub Actions secrets:
-#   LITELLM_BASE_URL, LITELLM_REVIEW_API_KEY
+#   LLM_URL, LLM_API_KEY
 #
 # SECURITY:
 #   * Never hardcodes secret VALUES — reads them from env vars.
@@ -19,7 +19,7 @@
 #     (The incident's vehicle was the `--doc` key, retired with `doc-maintainer`
 #     per CI-0040. The rule is general and outlives it — do NOT delete it on the
 #     grounds that its original trigger is gone.)
-#   * A loopback LITELLM_BASE_URL is refused (--allow-loopback forces it): it
+#   * A loopback LLM_URL is refused (--allow-loopback forces it): it
 #     resolves to the job CONTAINER, not the host running the proxy, so it works
 #     in every check an operator can run locally and fails only in CI (CI-0017).
 #     The check is BEST-EFFORT: it normalizes case and trailing dots, knows the
@@ -48,28 +48,28 @@
 #
 # TWO MODES:
 #   shared : one review key applied to every repo.
-#            export LITELLM_BASE_URL LITELLM_REVIEW_API_KEY
+#            export LLM_URL LLM_API_KEY
 #   mint   : mint a fresh, per-repo, review-scoped virtual key from the master key
 #            (revocable per repo; tagged with the repo name). --mint
-#            export LITELLM_BASE_URL LITELLM_MASTER_KEY
+#            export LLM_URL LLM_MASTER_KEY
 #
 # USAGE:
-#   export LITELLM_BASE_URL="https://proxy.example/v1"
-#   export LITELLM_REVIEW_API_KEY="<key>"         # shared mode
-#   bash set-litellm-secrets.sh --pilot            # engramory only (pilot first)
-#   bash set-litellm-secrets.sh                     # all 7 consumers
-#   bash set-litellm-secrets.sh --repos "vladm3105/aidoc-flow-framework vladm3105/iplan-runner"
-#   bash set-litellm-secrets.sh --dry-run          # print the per-secret plan; no writes, no network
-#   bash set-litellm-secrets.sh --overwrite        # REPLACE secrets that already exist
-#   bash set-litellm-secrets.sh --allow-loopback   # permit a loopback base URL (rarely correct)
-#   bash set-litellm-secrets.sh --skip-validate    # skip the pre-write proxy probe
+#   export LLM_URL="https://proxy.example/v1"
+#   export LLM_API_KEY="<key>"         # shared mode
+#   bash set-llm-secrets.sh --pilot            # engramory only (pilot first)
+#   bash set-llm-secrets.sh                     # all 7 consumers
+#   bash set-llm-secrets.sh --repos "vladm3105/aidoc-flow-framework vladm3105/iplan-runner"
+#   bash set-llm-secrets.sh --dry-run          # print the per-secret plan; no writes, no network
+#   bash set-llm-secrets.sh --overwrite        # REPLACE secrets that already exist
+#   bash set-llm-secrets.sh --allow-loopback   # permit a loopback base URL (rarely correct)
+#   bash set-llm-secrets.sh --skip-validate    # skip the pre-write proxy probe
 #
 #   # per-repo revocable keys (recommended once you have the master key locally):
-#   export LITELLM_MASTER_KEY="<key>"
-#   bash set-litellm-secrets.sh --mint --budget 50
+#   export LLM_MASTER_KEY="<key>"
+#   bash set-llm-secrets.sh --mint --budget 50
 #
 # TIP: run in a subshell so the exported keys leave no trace in your shell history:
-#   ( export LITELLM_BASE_URL=... LITELLM_REVIEW_API_KEY=...; bash set-litellm-secrets.sh )
+#   ( export LLM_URL=... LLM_API_KEY=...; bash set-llm-secrets.sh )
 
 set -euo pipefail
 
@@ -117,11 +117,11 @@ if [ "${#REPOS[@]}" -eq 0 ]; then for r in "${CONSUMERS[@]}"; do REPOS+=("$OWNER
 # ---- preflight ----
 command -v gh >/dev/null || { echo "ERROR: gh CLI required" >&2; exit 1; }
 gh auth status >/dev/null 2>&1 || { echo "ERROR: run 'gh auth login' first" >&2; exit 1; }
-: "${LITELLM_BASE_URL:?export LITELLM_BASE_URL first}"
-case "$LITELLM_BASE_URL" in
+: "${LLM_URL:?export LLM_URL first}"
+case "$LLM_URL" in
   https://*) ;;
   http://*)  echo "WARN: HTTP base URL — the bearer key travels in cleartext. Prefer HTTPS / a private mesh." >&2 ;;
-  *) echo "ERROR: LITELLM_BASE_URL must be an http(s) URL" >&2; exit 1 ;;
+  *) echo "ERROR: LLM_URL must be an http(s) URL" >&2; exit 1 ;;
 esac
 
 # Host of a URL, minus scheme, userinfo, port and any [v6] brackets.
@@ -184,11 +184,11 @@ is_loopback() {
   return 1
 }
 
-BASE_HOST="$(url_host "$LITELLM_BASE_URL")"
+BASE_HOST="$(url_host "$LLM_URL")"
 if is_loopback "$BASE_HOST"; then
   if [ "$ALLOW_LOOPBACK" -eq 0 ]; then
     cat >&2 <<EOF
-ERROR: LITELLM_BASE_URL points at loopback ($BASE_HOST) — refusing to write it.
+ERROR: LLM_URL points at loopback ($BASE_HOST) — refusing to write it.
 
   CI jobs run INSIDE an ephemeral container, so loopback resolves to the
   container itself, not the host running the proxy. This value passes every
@@ -206,15 +206,15 @@ fi
 # LiteLLM MANAGEMENT endpoints (/key/generate) live at the ROOT, NOT under /v1
 # (the /v1 path is the OpenAI-compat surface). Derive the root from the base URL
 # so a canonical `…/v1` base URL still mints against `…/key/generate`.
-MGMT_URL="${LITELLM_BASE_URL%/}"; MGMT_URL="${MGMT_URL%/v1}"
-MODELS_URL="${LITELLM_BASE_URL%/}/models"
+MGMT_URL="${LLM_URL%/}"; MGMT_URL="${MGMT_URL%/v1}"
+MODELS_URL="${LLM_URL%/}/models"
 
 if [ "$MINT" -eq 1 ]; then
   command -v jq   >/dev/null || { echo "ERROR: jq required for --mint" >&2; exit 1; }
   command -v curl >/dev/null || { echo "ERROR: curl required for --mint" >&2; exit 1; }
-  : "${LITELLM_MASTER_KEY:?export LITELLM_MASTER_KEY for --mint}"
+  : "${LLM_MASTER_KEY:?export LLM_MASTER_KEY for --mint}"
 else
-  : "${LITELLM_REVIEW_API_KEY:?export LITELLM_REVIEW_API_KEY (or use --mint)}"
+  : "${LLM_API_KEY:?export LLM_API_KEY (or use --mint)}"
 fi
 
 # One directory for every file that ever holds a bearer token, removed on ANY
@@ -266,7 +266,7 @@ EOF
       exit 1 ;;
     000)
       echo "ERROR: $MODELS_URL is unreachable — refusing to provision against a proxy that does not answer." >&2
-      echo "       Check LITELLM_BASE_URL, or pass --skip-validate to write anyway." >&2
+      echo "       Check LLM_URL, or pass --skip-validate to write anyway." >&2
       exit 1 ;;
     *)
       # Fail CLOSED on anything else. 404 is the likeliest operator error the
@@ -274,7 +274,7 @@ EOF
       # missing or doubling /v1 lands here — and warning-then-writing would let
       # the guard pass the exact failure it was built for.
       echo "ERROR: probe of $MODELS_URL returned HTTP $code, which is neither success nor a" >&2
-      echo "       recognized auth answer. A 404 usually means LITELLM_BASE_URL is missing or" >&2
+      echo "       recognized auth answer. A 404 usually means LLM_URL is missing or" >&2
       echo "       doubling its /v1 suffix. Fix it, or pass --skip-validate to write anyway." >&2
       exit 1 ;;
   esac
@@ -285,12 +285,12 @@ if [ "$VALIDATE" -eq 1 ] && [ "$DRY_RUN" -eq 1 ]; then
 elif [ "$VALIDATE" -eq 1 ]; then
   command -v curl >/dev/null || { echo "ERROR: curl required for the pre-write probe (or pass --skip-validate)" >&2; exit 1; }
   if [ "$MINT" -eq 1 ]; then
-    validate_or_die LITELLM_MASTER_KEY "the master key"
+    validate_or_die LLM_MASTER_KEY "the master key"
   else
     # Probe only the keys this run can actually write. A key that is unset
     # would be KEPT, so probing it would abort the run over a secret nobody is
     # touching.
-    if [ -n "$LITELLM_REVIEW_API_KEY" ]; then validate_or_die LITELLM_REVIEW_API_KEY LITELLM_REVIEW_API_KEY; fi
+    if [ -n "$LLM_API_KEY" ]; then validate_or_die LLM_API_KEY LLM_API_KEY; fi
   fi
 fi
 
@@ -303,7 +303,7 @@ mint() {  # mint REPO PURPOSE MODEL_ALIAS  -> prints the scoped key
   # removes — a per-function RETURN trap does not survive Ctrl-C, and this file
   # holds the MASTER key.
   local hdr rc=0; hdr="$(mktemp -p "$SECRET_TMP")"
-  printf 'Authorization: Bearer %s\n' "$LITELLM_MASTER_KEY" > "$hdr"
+  printf 'Authorization: Bearer %s\n' "$LLM_MASTER_KEY" > "$hdr"
   curl -fsS -X POST "$MGMT_URL/key/generate" --max-time 30 --globoff --proto '=http,https' \
     -H @"$hdr" -H "Content-Type: application/json" \
     -d "{\"models\":[\"$3\"],\"max_budget\":$BUDGET,\"metadata\":{\"purpose\":\"$2\",\"repo\":\"$1\"}}" \
@@ -377,7 +377,7 @@ for repo in "${REPOS[@]}"; do
     SKIPPED=$((SKIPPED+1)); continue
   fi
 
-  provision LITELLM_BASE_URL "$repo" LITELLM_BASE_URL
+  provision LLM_URL "$repo" LLM_URL
   if [ "$MINT" -eq 1 ]; then
     # `provision` reads MINTED_* through ${!var} indirect expansion, which static
     # analysis cannot follow, so the directive below silences a false "unused".
@@ -386,25 +386,25 @@ for repo in "${REPOS[@]}"; do
     # shellcheck disable=SC2034
     # Decide BEFORE minting: a key minted for a secret we then keep is a live
     # credential nobody ever uses.
-    if [ "$(action_for LITELLM_REVIEW_API_KEY)" = keep ]; then
-      report_keep LITELLM_REVIEW_API_KEY
+    if [ "$(action_for LLM_API_KEY)" = keep ]; then
+      report_keep LLM_API_KEY
     else
       MINTED_REVIEW="(dry-run — not minted)"
       if [ "$DRY_RUN" -eq 0 ]; then
         MINTED_REVIEW="$(mint "$repo" ci-review ai-reviewer)" || MINTED_REVIEW=""
       fi
       if [ -n "$MINTED_REVIEW" ]; then
-        provision LITELLM_REVIEW_API_KEY "$repo" MINTED_REVIEW
+        provision LLM_API_KEY "$repo" MINTED_REVIEW
       else
         # Covers a hard mint failure AND a proxy answering {"key":""} — `jq -er`
         # exits 0 on an empty string, so a successful mint is not proof of a key.
-        printf '    ✗ %-23s (mint produced no key)\n' LITELLM_REVIEW_API_KEY >&2
+        printf '    ✗ %-23s (mint produced no key)\n' LLM_API_KEY >&2
         FAILED=$((FAILED+1))
       fi
       unset MINTED_REVIEW
     fi
   else
-    provision LITELLM_REVIEW_API_KEY "$repo" LITELLM_REVIEW_API_KEY
+    provision LLM_API_KEY "$repo" LLM_API_KEY
   fi
 done
 
@@ -415,7 +415,7 @@ if [ "$KEPT" -gt 0 ]; then
   echo "  $KEPT secret(s) already existed and were left alone. Re-run with --overwrite to replace them."
 fi
 echo "Verify (names only, values are write-only):"
-echo "  for r in ${REPOS[*]}; do echo \"== \$r\"; gh secret list -R \"\$r\" | grep -i litellm; done"
+echo "  for r in ${REPOS[*]}; do echo \"== \$r\"; gh secret list -R \"\$r\" | grep -E 'LLM_(URL|API_KEY)'; done"
 
 # A run that reached no repo, or skipped one, must not exit 0 — "printed ✓ and
 # exited 0" is the shape of #350 itself, and a wrapper reading $? cannot tell a

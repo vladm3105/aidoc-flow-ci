@@ -201,12 +201,12 @@ session must not re-derive or get wrong:
   (sized to peak PR job-count, ~6–8) to parallelize — else PR feedback serializes.
   Do NOT "fix" slow feedback by moving jobs to `ubuntu-latest` on a private repo.
 - **LiteLLM route:** the container uses the default docker bridge, so it reaches
-  the host proxy at **`http://172.17.0.1:4001`** (the `LITELLM_BASE_URL` secret).
+  the host proxy at **`http://172.17.0.1:4001`** (the `LLM_URL` secret).
   Loopback (`127.0.0.1`/`localhost`) resolves to the *container*, not the host —
   it works when tested from the host and fails only in CI.
   It is HTTP on the private bridge → callers set
   `litellm_allow_insecure_http: true`. **This is scoped by the URL SCHEME, not by
-  repo visibility:** any caller whose `LITELLM_BASE_URL` is `http://` needs the
+  repo visibility:** any caller whose `LLM_URL` is `http://` needs the
   flag, and since PLAN-013 puts the whole AI flow on the shared pool, that
   includes every PUBLIC repo too — not just the private trio. (CI-0017.)
 
@@ -325,7 +325,7 @@ has settled — measured, reproduced, and not expected to change.
   TTY guard**, so `grep -oE '[0-9]+ passed, [0-9]+ failed'` matches **nothing**
   when the output is piped or redirected — the naive command returns 0, not a
   wrong number. And two of the fifteen suites carry characters outside
-  `[a-z-]` in their names (`test_install`, `test_litellm_secrets.sh`), so a
+  `[a-z-]` in their names (`test_install`, `test_llm_secrets.sh`), so a
   `^[a-z-]+:` prefix regex silently drops **235** assertions and reads as a
   shrinking suite. Strip SGR first:
   `bash tests/run.sh | sed 's/\x1b\[[0-9;]*m//g' | grep -oE '[0-9]+ passed, [0-9]+ failed' | awk '{p+=$1;f+=$3} END{print NR" suites, "p" passed, "f" failed"}'`

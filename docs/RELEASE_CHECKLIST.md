@@ -38,7 +38,7 @@ the 🔴 dry-run for you.
 - [ ] **OPS-0065 review complete:** at least 2 review passes, at least 1
   independent (fresh-context subagent), ≤3 cycles per OPS-0066. Final pass
   must state zero load-bearing findings.
-- [ ] **LiteLLM smoke passes (MAJOR bumps only):** run `litellm-smoke.yml`
+- [ ] **LiteLLM smoke passes (MAJOR bumps only):** run `llm-smoke.yml`
   manually. The canonical alias (`ai-reviewer`) must return a valid response
   from the real proxy. (Until CI-0040 this required **two** aliases; the second,
   `ai-doc-maintainer`, retired with `doc-maintainer` — as did the smoke's second

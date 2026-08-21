@@ -7,15 +7,16 @@
 #
 # Secrets required (consumer adds to repo secrets):
 #   APP_REVIEWER_1_ID + APP_REVIEWER_1_KEY  reviewer App credentials
-#   LITELLM_BASE_URL                         proxy base URL (normally .../v1)
-#   LITELLM_REVIEW_API_KEY                   review-scoped LiteLLM virtual key
+#   LLM_URL                                  proxy base URL (normally .../v1)
+#   LLM_API_KEY                              the LLM virtual key (one key, all
+#                                            steps — review AND autofix)
 #
 # Autofix (PLAN-012) — OPT-IN, DEFAULT-OFF. The `autofix` job in the reusable is
 # INERT unless BOTH the trusted config sets `autofix.enabled: true` AND these are set:
 #   APP_AUTOFIX_ID + APP_AUTOFIX_KEY         DEDICATED autofix App (contents:write) —
 #                                            a SEPARATE App from the reviewer App
-#   LITELLM_FIX_API_KEY                      fix-scoped LiteLLM virtual key
-#   (repo var) LITELLM_FIXER_MODEL           fixer model alias (default `ai-fixer`)
+#   (repo var) LLM_FIXER_MODEL               fixer model alias (default `ai-fixer`)
+#   (autofix reuses LLM_API_KEY — there is no separate fix key)
 # Without the App creds the job self-skips; a PR branch cannot enable autofix
 # (autofix.enabled is resolved from the trusted config repo, never the PR).
 #
@@ -61,10 +62,10 @@ jobs:
       runner_labels_routine: '["self-hosted", "ci-runner", "single-use"]'
       runner_labels_review: '["self-hosted", "ci-runner", "single-use"]'
       # HTTP proxies require explicit opt-in. Required by the URL SCHEME, NOT by
-      # repo visibility — if LITELLM_BASE_URL starts `http://`, uncomment this,
+      # repo visibility — if LLM_URL starts `http://`, uncomment this,
       # public repo or not. On the shared self-hosted pool the proxy is the
       # Docker bridge gateway (http://172.17.0.1:4001/v1 — plain HTTP), so this
-      # applies there too. NB: LITELLM_BASE_URL must NOT be 127.0.0.1/localhost;
+      # applies there too. NB: LLM_URL must NOT be 127.0.0.1/localhost;
       # jobs run inside a container, so loopback is the container itself.
       # (CI-0017.)
       # litellm_allow_insecure_http: true
@@ -84,6 +85,13 @@ jobs:
       APP_AUTOFIX_ID: ${{ secrets.APP_AUTOFIX_ID }}
       APP_AUTOFIX_KEY: ${{ secrets.APP_AUTOFIX_KEY }}
       AI_REVIEW_TOKEN: ${{ secrets.AI_REVIEW_TOKEN }}
+      # UNIFIED NAMES — provision these two on the repo.
+      LLM_URL: ${{ secrets.LLM_URL }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      # DEPRECATED, forwarded so this caller works BEFORE the repo is
+      # re-provisioned. An unset secret forwards as empty, and the reusable
+      # resolves `LLM_URL || LITELLM_BASE_URL`, so whichever pair exists wins.
+      # DELETE these three once LLM_URL + LLM_API_KEY are set on the repo.
       LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
       LITELLM_REVIEW_API_KEY: ${{ secrets.LITELLM_REVIEW_API_KEY }}
       LITELLM_FIX_API_KEY: ${{ secrets.LITELLM_FIX_API_KEY }}

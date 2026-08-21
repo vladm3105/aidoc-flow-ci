@@ -37,12 +37,12 @@ jobs:
 
       - name: Smoke review alias
         env:
-          LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
-          LITELLM_API_KEY: ${{ secrets.LITELLM_REVIEW_API_KEY }}
-          LITELLM_ALLOW_INSECURE_HTTP: ${{ inputs.allow_insecure_http }}
-          LITELLM_MODEL: ${{ inputs.review_model }}
+          LLM_URL: ${{ secrets.LLM_URL || secrets.LITELLM_BASE_URL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY || secrets.LITELLM_REVIEW_API_KEY }}
+          LLM_ALLOW_INSECURE_HTTP: ${{ inputs.allow_insecure_http }}
+          LLM_MODEL: ${{ inputs.review_model }}
         run: |
           set -euo pipefail
           printf 'Return JSON only: {"ok":true,"agent":"review"}' \
-            | python3 scripts/litellm_client.py --json --timeout 120 --output /tmp/review-smoke.json
+            | python3 scripts/llm_client.py --json --timeout 120 --output /tmp/review-smoke.json
           jq -e '.ok == true and .agent == "review"' /tmp/review-smoke.json >/dev/null

@@ -57,7 +57,7 @@ assert_eq "$missing_manifest" "0" "all manifest surfaces are in the inventory"
 # ---------------------------------------------------------------------------
 # 2. Every reusable workflow canon ships (workflow_call) has an inventory row.
 #    Self-caller/local workflows (self-*.yml, tests.yml, standards-drift-self,
-#    litellm-smoke, audit-trail.yml) are NOT library surfaces — they are the
+#    llm-smoke, audit-trail.yml) are NOT library surfaces — they are the
 #    exercisers — so they are excluded, not required to have a row.
 # ---------------------------------------------------------------------------
 echo ""
