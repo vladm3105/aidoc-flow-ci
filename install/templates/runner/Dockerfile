@@ -8,7 +8,7 @@
 # `gh: not found` and — because their retry loops do `gh api ... 2>/dev/null` —
 # the failure surfaces as a misleading "(api.github.com) — retrying" warning.
 #
-# `gh` is required by composition, ai-review, doc-maintainer, and drift checks.
+# `gh` is required by composition, ai-review, and drift checks.
 # `libatomic1` is required by node-backed tools the lint workflows install at
 # job time (markdownlint-cli2's node crashes with "libatomic.so.1: cannot open
 # shared object file" without it — shipped defect class, business #63

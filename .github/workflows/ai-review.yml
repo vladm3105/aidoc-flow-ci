@@ -593,8 +593,8 @@ jobs:
           # be applied to aidoc-flow-ci (doing so was FT-15: assets silently came
           # from canon `main`, and the owner was caller-derived so external
           # adopters 404'd). This job has no `actions/checkout` by design
-          # (IPLAN-0024 — see the comment above), so unlike docs-sync /
-          # doc-maintainer we READ the caller's workflow file over the API rather
+          # (IPLAN-0024 — see the comment above), so unlike docs-sync we
+          # READ the caller's workflow file over the API rather
           # than from disk. Full rule: docs/REPO_STANDARDS.md §4.2a.
           CALLER_SLUG_PATH="${GITHUB_WORKFLOW_REF%%@*}"
           CALLER_REPO="$(printf '%s' "$CALLER_SLUG_PATH" | cut -d/ -f1,2)"

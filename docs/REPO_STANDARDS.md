@@ -177,36 +177,42 @@ are allowed.
 | Send write tokens to workflows from fork PRs | ❌ Disabled | Fork PRs never get write tokens |
 | Send secrets and variables to workflows from fork PRs | ❌ Disabled | Fork PRs never see secrets |
 | Default workflow permissions | ⚠️ `read` (not `write`) | Least-privilege default; workflows that need write set it explicitly at job-level |
-| Allow GitHub Actions to create and approve pull requests | ✅ (needed for `docs-sync.yml` + `doc-maintainer.yml`) | Required by IPLAN-0018/0025 workflows |
+| Allow GitHub Actions to create and approve pull requests | ✅ (needed for `docs-sync.yml`) | Required by IPLAN-0018 |
 
 **Enforcement gap risk:** GitHub's default is `read-write` on new repos.
 `apply-standards.sh` (PR-B) tightens to `read` and adds the fork-PR
 constraints.
 
-### 4.0a AI documentation-maintainer safety contract
+### 4.0a Doc-automation safety contract
 
-Repositories adopting `doc-maintainer.yml` MUST provide
-`.github/doc-maintainer.json` and `.github/doc-maintainer-conventions.md`, begin
-in dry-run mode, and keep autonomous edits restricted to explicit low-risk
-documentation globs. The planner treats PR text and patches as untrusted data,
-validates every AI-selected path against `allowed_paths`, caps edits per PR,
-and classifies any path not explicitly low-risk as high-risk. Low-risk edits
-open a normal bot PR subject to the repository's review gates; high-risk edits
-open an issue and are never applied automatically. Live mode additionally
-requires the scoped `aidoc-flow-bot` App and enforces `max_prs_per_day`.
+**Scope narrowed by CI-0040.** This section governed `doc-maintainer`, retired
+with that decision. What survives applies to `docs-sync`, now the sole doc
+automation:
+
+Repositories adopting `docs-sync.yml` MUST provide `.github/docs-sync.json` and
+**begin in dry-run mode**. Autonomous edits stay restricted to explicit
+low-risk documentation globs; anything else reaches a human. Live mode
+additionally requires the scoped `aidoc-flow-bot` App.
+
+**Dry-run-first is the adoption contract, and it is asserted at the config
+fallback, not just in this prose** — see `docs/WORKFLOWS.md` §3.8. The retired
+flow's planner/apply model (untrusted-input validation, `allowed_paths`,
+per-PR caps, low/high-risk tiering) is **not** carried forward: `docs-sync` runs
+deterministic Python and makes no model call, so it has no planner to constrain.
 
 ### 4.0b Unified LiteLLM agent gateway
 
-All canonical AI execution (`ai-review` and `doc-maintainer`) goes through one
+All canonical AI execution (`ai-review`) goes through one
 OpenAI-compatible LiteLLM proxy — the default, API-based LLM gateway (it
 replaces per-runner vendor CLIs and fronts many providers behind one endpoint).
-Consumers provide **repository-level** secrets `LITELLM_BASE_URL`,
-`LITELLM_REVIEW_API_KEY`, and `LITELLM_DOC_API_KEY` (set them **per repo** —
+Consumers provide **repository-level** secrets `LITELLM_BASE_URL` and
+`LITELLM_REVIEW_API_KEY` (set them **per repo** —
 organization-level secrets require an org account and are unavailable on a
 personal-account owner). They do not install or log in to vendor CLIs on runners.
 AI review resolves its model alias from caller input
-`model`, then trusted config `litellm.model`. Doc-maintainer uses its caller
-`model` input (default `ai-doc-maintainer`). The proxy owns provider selection,
+`model`, then trusted config `litellm.model`. `ai-reviewer` is the only
+canonical alias since CI-0040 retired `ai-doc-maintainer`. The proxy owns
+provider selection,
 fallbacks, budgets, and provider credentials; CI receives only a scoped LiteLLM
 key. Runners must be able to reach the configured proxy. Proxy failures and
 malformed responses fail closed and never become an approving verdict.
@@ -222,15 +228,16 @@ flow to that pool, public repos are the common case rather than the exception.
 `LITELLM_BASE_URL` MUST NOT be loopback: jobs run inside a container, so
 `127.0.0.1`/`localhost` resolve to the container, not the proxy host. (CI-0017.)
 
-Use separate virtual keys for review and documentation maintenance,
-restricted to their model aliases with spend/rate limits and rotation; never
-use the LiteLLM master key. Disable sensitive prompt/response logging and apply
-an appropriate retention policy: AI review sends a bounded, secret-pattern-
-redacted PR diff to the proxy, which can still contain private source code.
-Doc-maintainer sends redacted PR metadata, patches, repository conventions,
-and redacted current documentation. Secret-shaped source values use opaque
-placeholders during inference and are restored only after the response; missing
-or duplicated placeholders fail closed.
+Use separate virtual keys per purpose — review and autofix — restricted to
+their model aliases with spend/rate limits and rotation; never use the LiteLLM
+master key. Disable sensitive prompt/response logging and apply an appropriate
+retention policy: AI review sends a bounded, secret-pattern-redacted PR diff to
+the proxy, which can still contain private source code. Secret-shaped source
+values use opaque placeholders during inference and are restored only after the
+response; missing or duplicated placeholders fail closed.
+
+`docs-sync` sends nothing to the proxy — it makes no model call — so it is out
+of scope for this subsection entirely.
 
 Before a major AI-contract release is tagged, `.github/workflows/litellm-smoke.yml`
 MUST pass against the actual proxy for both canonical aliases. Mocked unit tests
@@ -242,7 +249,7 @@ Runner routing follows the flow **class**, not only visibility (PLAN-013):
 
 | Flow class | Public | Private | Caller shape |
 | --- | --- | --- | --- |
-| **AI-flows** (`ai-review`, `doc-maintainer`, `docs-sync` (+ `autofix`, a gated job within `ai-review` — PLAN-012)) | self-hosted `["self-hosted","ci-runner","single-use"]` | self-hosted (same) | **ONE protected template** — no `-public`/`-private` split; visibility flip = no-op |
+| **AI-flows** (`ai-review`, `docs-sync` (+ `autofix`, a gated job within `ai-review` — PLAN-012)) | self-hosted `["self-hosted","ci-runner","single-use"]` | self-hosted (same) | **ONE protected template** — no `-public`/`-private` split; visibility flip = no-op |
 | **Generic checks** (`markdown-lint`, `links`, `pre-commit`, `composition`, `audit-trail`, `secret-scan`, `labeler`, `auto-merge-ai-prs`) | GitHub-hosted `ubuntu-latest` | self-hosted | `-public.yml` / `-private.yml` variants |
 
 The AI-flows run **uniform self-hosted on both visibilities** because forks never
@@ -1251,7 +1258,7 @@ coordinated-merge-window pattern from
 
 ## 13. Cross-references
 
-- [`WORKFLOWS.md`](WORKFLOWS.md) — workflow registry (16 reusables +
+- [`WORKFLOWS.md`](WORKFLOWS.md) — workflow registry (15 reusables +
   per-repo applicability matrix)
 - [`architecture.md`](architecture.md) — reusable-workflow model + trust
   flow
@@ -2320,17 +2327,13 @@ further — see its own Scope note**:
    no-op for a given consumer's configuration, do not let a release note claim
    the gain for that consumer.
 
-   **Scope.** Rule 8 was derived from a third prompt this repo ships — the one
-   `scripts/doc-maintainer/planner.py` assembles — and governs it as well as the
-   two named in the lead-in. **Rules 1, 4, 6 and 7 are not claimed for that
-   prompt:** it has no "your inputs" section (1); it truncates its conventions,
-   PR body, inventory and patch blocks — four in all — with no `UNAVAILABLE`-style
-   marker (4); it has no inputs section for the assembly to be one contract with,
-   and `tests/test_contract.sh` asserts nothing about its blocks (6); and it
-   discloses no degraded input to a human (7). That is a known gap, filed as
-   [#413](https://github.com/vladm3105/aidoc-flow-ci/issues/413), not a
-   compliance. **Rule 5 it does satisfy** — the narrowed block's label states its
-   scope — which is the whole of §24.4.
+   **Scope.** Rule 8 was derived from a third prompt this repo shipped — the one
+   `scripts/doc-maintainer/planner.py` assembled — which is **deleted** with that
+   flow (CI-0040). The rule now governs the two prompts named in the lead-in, and
+   is stated in general terms because it is not about the prompt that produced
+   it. Its `#413` non-compliance record (rules 1, 4, 6 and 7 unmet on the deleted
+   prompt) closed _not planned_ with the flow; do not read that closure as canon
+   having achieved compliance.
 
 ### 20.3 Applied to `ai-review` (ci/v2.x)
 
@@ -2713,6 +2716,20 @@ canon template recommends must be executable by the code that consumes it_) with
 PR-C, and §24.4 (_what canon shows a model must agree with what canon will
 accept from it_) with PR-D. §24.4's rule belongs to prompt assembly and is
 therefore carried by §20.2 rule 8, which §24.4 extends.
+
+**All four rules are KEPT, and their evidence is now HISTORY (CI-0040).** Every
+measurement in §24 was taken against `doc-maintainer`, which is retired and
+deleted. The rules are general — implicit `bash -e` in any `run:` step, error
+de-conflation, template-default executability, prompt/enforcement agreement —
+and doc-maintainer was only the surface that happened to prove them. Read the
+worked examples in the past tense; do not treat a deleted flow as a reason to
+drop a rule.
+
+**And note what no longer watches them.** §24.2's and §24.3's assertions lived
+in `tests/test_scripts.sh` and `tests/test_contract.sh` and read the deleted
+scripts and templates, so both rules now have **zero automated readers** and are
+enforced by review alone. That is declared in the suites themselves; it is
+recorded here so a reader of the rulebook is not misled by a green suite.
 **§24 is claimed in full by PLAN-021 — a later plan wanting a new section takes
 §26**, PLAN-023 included. (§25 went to issue #387, which landed first; PLAN-023
 already declares that it yields and renumbers on landing.)
@@ -2866,8 +2883,10 @@ not.
 failures over its first 47 runs under `ci/v2.16.0`. Recorded as CI-0027
 (PLAN-021 PR-B). The
 blast-radius half of the same defect on a different guard — the 30 %-deletion
-trip, which reds the run rather than dropping the entry — is deliberately not
-fixed here; it is [#372](https://github.com/vladm3105/aidoc-flow-ci/issues/372).
+trip, which redded the run rather than dropping the entry — was tracked as
+[#372](https://github.com/vladm3105/aidoc-flow-ci/issues/372) and **closed _not
+planned_ with the flow** (CI-0040). It was never fixed; the guard it describes
+no longer exists. The RULE above stands on its own and is not affected.
 
 ### 24.3 A default a canon template recommends must be executable by the code that consumes it
 
@@ -2990,40 +3009,16 @@ mode is a separate change.
 
 ### 24.4 What canon shows a model must agree with what canon will accept from it
 
-**Extends §20.2.** The general rule is **§20.2 rule 8**; this subsection records
-the case that produced it and what it required in practice.
+**COLLAPSED by CI-0040.** This subsection recorded the case that produced
+**§20.2 rule 8** — `scripts/doc-maintainer/planner.py` handing the model an
+unfiltered `rglob("*.md")` inventory while `allowed_paths`, the set the same
+script rejected on, sat beside it as an unlabelled datum with no instruction
+attached. That script is deleted with `doc-maintainer`, so the worked example
+no longer exists in the tree and is not reproduced here.
 
-`scripts/doc-maintainer/planner.py` built its documentation inventory from an
-unfiltered `rglob("*.md")` and handed the model up to `MAX_DOC_INVENTORY`
-entries, while `allowed_paths` — the set the same script rejects on, loudly and
-run-killing — was passed beside it as a labelled datum with no instruction
-attached. IPLAN-0025 §2.1 step 4 specifies the opposite: glob the consumer's
-`allowed_paths` set.
-
-Two changes, and the second is the load-bearing one:
-
-- **The inventory is narrowed ahead of the `MAX_DOC_INVENTORY` slice**, and the
-  block is relabelled `Documentation inventory (allowed_paths only):` in the same
-  change.
-- **The prompt binds the model to the allowlist.** The narrowing alone does not
-  reach the observed rejections: every one of them was a file the triggering PRs
-  had just changed, and the merge diff — which IPLAN-0025 §2.1 mandates as an
-  input — reaches the model both as the bounded patches and as an unfiltered
-  `Complete changed-file list:`.
-  The prompt's only prohibition was by file _type_ ("source code, workflow,
-  configuration, generated, or non-documentation files"), which markdown prose
-  files do not trip. The consumer had written the rule into its own conventions,
-  and canon's preamble declares conventions untrusted DATA — so canon was
-  instructing the model to disregard the consumer's countermeasure.
-
-The narrowing is an **exact no-op** on a consumer whose `allowed_paths` ends in a
-`"*.md"` catch-all: `matches()` is `fnmatchcase`, whose `*` crosses `/`, and every
-inventory entry ends `.md`. That is `aidoc-flow-operations`; it is the narrower
-allowlists that gain.
-
-**Origin:** issue
-[#360](https://github.com/vladm3105/aidoc-flow-ci/issues/360), measured on
-`aidoc-flow-framework` under `ci/v2.16.0`. Recorded as CI-0027 (PLAN-021 PR-D).
+**§20.2 rule 8 is the rule and is unchanged.** It was always the general
+statement; this section was only its evidence. A future flow that assembles a
+prompt from a set the consuming code rejects on is governed by rule 8 directly.
 
 ## 25. A coordination surface with N writers needs a carrier that refuses a concurrent write
 

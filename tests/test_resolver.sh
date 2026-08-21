@@ -6,7 +6,7 @@
 # to fetch from by grepping the consumer's own adopted `uses:` pin. That logic is
 # security- and determinism-load-bearing (FT-15: the pin did not control the
 # fetched assets for months, across every consumer, undetected). Canon cannot
-# execute those reusables in its own CI for `ai-review`/`doc-maintainer` — see
+# execute those reusables in its own CI for `ai-review` — see
 # FT-23 — so without this file a resolver regression ships to the fleet unseen.
 #
 # HOW IT STAYS HONEST: every pattern is EXTRACTED FROM THE WORKFLOW ITSELF, never
@@ -20,7 +20,7 @@ ROOT="$(cd "$HERE/.." && pwd)"
 WF="$ROOT/.github/workflows"
 
 # reusable -> the workflow filename its pin pattern is keyed to
-REUSABLES="ai-review doc-maintainer docs-sync standards-drift"
+REUSABLES="ai-review docs-sync standards-drift"
 
 # Pull the live pin pattern out of a workflow (first occurrence; all sites in a
 # file are identical by construction and §4.2a requires that).
@@ -60,14 +60,14 @@ for r in $REUSABLES; do
 done
 
 echo "== §4.2a properties present in every resolver (structural) =="
-# NOTE the deliberate asymmetry: doc-maintainer / docs-sync / standards-drift
+# NOTE the deliberate asymmetry: docs-sync / standards-drift
 # GREP A DIRECTORY (the caller's checked-out .github/workflows/), so they need
 # `--include` to keep a *.yml.bak or *.disabled leftover from winning the version
 # sort. ai-review has NO checkout by design (IPLAN-0024), so it fetches the
 # caller's single entry workflow over the API and greps THAT ONE FILE — there is
 # no directory to scope and no leftover to exclude. Asserting `--include` on it
 # would be cargo-culting a property it cannot have.
-DIR_SCANNERS="doc-maintainer docs-sync standards-drift"
+DIR_SCANNERS="docs-sync standards-drift"
 for r in $DIR_SCANNERS; do
   has "$WF/$r.yml" "--include='*.yml'" "$r: directory scan scoped to executable workflow files"
 done

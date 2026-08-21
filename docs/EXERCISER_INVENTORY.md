@@ -60,7 +60,6 @@ the rest are covered offline or descoped. (The table also lists the
 | `.github/actionlint.yaml` | `test_actions.sh` (declares `ci-runner` + `single-use`), and every `actionlint` invocation in `test_lint.sh` + `scripts/pre_push_check.sh` resolves through it | self-caller — canon's own private-variant template fails the runner-label rule without it |
 | `.github/workflows/ai-review.yml` | `test_resolver.sh` (resolver — the FT-15 surface), `test_checknames.sh`, `test_contract.sh` | descoped (library repo, founder 2026-07-22; live self-run needs LiteLLM + reviewer App + self-hosted pool this library does not warrant) + offline-test |
 | `.github/workflows/composition.yml` | `test_checknames.sh`, `test_contract.sh` | descoped (library; live self-run needs the reviewer App identity) + offline-test |
-| `.github/workflows/doc-maintainer.yml` | `test_resolver.sh` (resolver); `test_scripts.sh` drives Step 9's dry-run patch loop for real, extracted at the `CI0027-DRYRUN-PATCH` markers under the step's true `bash -euo pipefail` flags (#352) | descoped (library; needs LiteLLM + App) + offline-test |
 | `.github/workflows/auto-merge-ai-prs.yml` | `test_contract.sh` (I/O contract) | descoped — self-running it would auto-merge canon's own PRs; the behaviour cannot be safely dogfooded + offline-test |
 | `.github/workflows/codeql.yml` | `test_contract.sh` | descoped — consumer-customized (`languages` input); not adopted on canon |
 | `.github/workflows/dep-scan.yml` | `test_contract.sh` | descoped — PLAN-014 optional report-only scanner; not adopted on canon |
@@ -70,8 +69,7 @@ the rest are covered offline or descoped. (The table also lists the
 | `.github/workflows/links.yml` | `test_contract.sh` | descoped — link checker; self-run candidate, not currently adopted |
 
 > **The descoped AI-flows are a founder decision, not an oversight.**
-> `aidoc-flow-ci` is a **library**; running `ai-review`/`doc-maintainer`/
-> `composition` on itself would require registering a `ci-runner,single-use`
+> `aidoc-flow-ci` is a **library**; running `ai-review`/`composition` on itself would require registering a `ci-runner,single-use`
 > self-hosted pool plus the reviewer App and LiteLLM secrets purely to dogfood —
 > cost that a library repo does not warrant (founder, 2026-07-22). The
 > regression risk that mattered — the pin **resolver** (FT-15 broke it silently
@@ -87,8 +85,6 @@ installer/update path plus the offline tests that drive it.
 | Surface | Exerciser | Kind |
 | --- | --- | --- |
 | `.github/ai-review/config.json` | `install.sh` bootstrap (`test_install.sh`); `test_contract.sh` schema | offline-test |
-| `.github/doc-maintainer.json` | `--update` walk (`test_scripts.sh`) | offline-test |
-| `.github/doc-maintainer-conventions.md` | `--update` walk | offline-test |
 | `.github/docs-sync.json` | `--update` walk; `self-docs-sync.yml` consumes canon's own copy | self-caller + offline-test |
 | `.github/dependabot.yml` | `apply-standards.sh` subset-check (`test_scripts.sh`) | offline-test |
 | `.github/CODEOWNERS` | `install.sh` substitution (`test_install.sh`); `apply-standards.sh` | offline-test |
