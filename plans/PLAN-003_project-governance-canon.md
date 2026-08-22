@@ -1,5 +1,12 @@
 # PLAN-003 — Project governance file canon + unified CLAUDE.md template
 
+> **PRE-`ci/v3` — OPEN WORK REMAINS.** This plan is pre-v3 work, so it is
+> **not part of the `ci@v3` line** — but it is **not closed**: per-repo
+> Waves 1-5 are pending; Wave 5 is in flight on the umbrella. **Retarget to
+> the v3 line before executing**, and check `ROADMAP.md` for its current
+> state. Scope decision of record: `DECISIONS.md` **CI-0041**. Active
+> `ci@v3` work is PLAN-023, PLAN-024, PLAN-025 and PLAN-026.
+
 **Status:** SHIPPED — 2026-07-08 (canon + parser + ratification landed via PR-V1/V2/V3/V4; per-repo Waves 1-5 pending)
 **Depends on:** PLAN-002 (workspace standards rollout) — canon already ships
 `REPO_STANDARDS.md` §§1–14 + `apply-standards.sh --check` machinery this

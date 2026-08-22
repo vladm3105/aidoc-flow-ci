@@ -1,5 +1,10 @@
 # PLAN-005 — AI-review pipeline hardening (pre-prod review gap closure)
 
+> **CLOSED — pre-`ci/v3`.** Targets `ci/v1.7.1`, which the v3 line
+> supersedes. No open work; kept for history. Scope decision of record:
+> `DECISIONS.md` **CI-0041**. Active `ci@v3` work is PLAN-023, PLAN-024,
+> PLAN-025 and PLAN-026.
+
 | Field | Value |
 |---|---|
 | **Status** | SHIPPED — 2026-07-10 (ci/v1.7.1 → v1.8.1). 7/7 PRs complete; exit condition met. |

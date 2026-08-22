@@ -1,5 +1,10 @@
 # PLAN-010 — Adoption model: make "installed" mean "compliant"
 
+> **CLOSED — pre-`ci/v3`.** Pre-v3 work, last revised 2026-07-17;
+> `ci/v3.0.0` was cut 2026-08-12. No open work; kept for history. Scope
+> decision of record: `DECISIONS.md` **CI-0041**. Active `ci@v3` work is
+> PLAN-023, PLAN-024, PLAN-025 and PLAN-026.
+
 **Owner:** `aidoc-flow-ci` maintainer
 **Origin:** the root finding of the `llm-router` flowci-feedback filing
 (2026-07-14), triaged 2026-07-16. Its symptoms were fixed in PR #173

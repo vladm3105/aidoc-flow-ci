@@ -1,5 +1,12 @@
 # ROLLOUT — PLAN-017 (FT-15) tag cut + live verification
 
+> **PRE-`ci/v3` — OPEN WORK REMAINS.** This plan targets `ci/v2.10.0`, so it
+> is **not part of the `ci@v3` line** — but it is **not closed**: PREPARED,
+> NOT EXECUTED — and it is the re-pin that lifts the #501 freeze. **Retarget
+> to the v3 line before executing**, and check `ROADMAP.md` for its current
+> state. Scope decision of record: `DECISIONS.md` **CI-0041**. Active
+> `ci@v3` work is PLAN-023, PLAN-024, PLAN-025 and PLAN-026.
+>
 > **Status: PREPARED, NOT EXECUTED.** PLAN-017's canon-side work is merged
 > (PRs #236 / #237 / #238). What remains is a release tag plus a consumer re-pin
 > — the re-pin **writes to another repo**, 🔴 per the operations autonomy tiers,

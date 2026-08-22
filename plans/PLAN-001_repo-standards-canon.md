@@ -1,5 +1,10 @@
 # PLAN-001 — Repo standards canon (unified rules for all workspace repos)
 
+> **CLOSED — pre-`ci/v3`.** Pre-v3 work, last revised 2026-07-23;
+> `ci/v3.0.0` was cut 2026-08-12. No open work; kept for history. Scope
+> decision of record: `DECISIONS.md` **CI-0041**. Active `ci@v3` work is
+> PLAN-023, PLAN-024, PLAN-025 and PLAN-026.
+
 **Owner:** `aidoc-flow-ci` maintainer (currently vladm3105 + AI Crew)
 **Origin:** founder direction 2026-07-07 — "check also repo settings (including
 protection rules, security settings) registry for public and private repos;

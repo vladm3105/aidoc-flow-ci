@@ -1,5 +1,11 @@
 # PLAN-021 — doc-maintainer: make the dry-run path executable
 
+> **SUPERSEDED — the flow this plan hardens no longer exists.** `doc-
+> maintainer` was retired by `DECISIONS.md` **CI-0040** and its workflow,
+> template and config were deleted in #499, so no phase here is executable.
+> Its `Status:` line below is stale and predates the retirement. Active
+> `ci@v3` work is PLAN-023, PLAN-024, PLAN-025 and PLAN-026.
+
 **Status:** **In Progress — PR-0 (2026-08-03), PR-A (#382), PR-B (#392, both
 2026-08-05) and PR-C (2026-08-06) landed.** Both §9 items closed (353b approved
 2026-07-30; PR-C's consumer cost accepted 2026-07-31, **re-confirmed against the

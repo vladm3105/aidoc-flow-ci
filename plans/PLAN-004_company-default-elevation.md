@@ -1,5 +1,10 @@
 # PLAN-004 — Company-default elevation (pre-prod gap closure)
 
+> **CLOSED — pre-`ci/v3`.** Targets `ci/v1.7.0`, which the v3 line
+> supersedes. No open work; kept for history. Scope decision of record:
+> `DECISIONS.md` **CI-0041**. Active `ci@v3` work is PLAN-023, PLAN-024,
+> PLAN-025 and PLAN-026.
+
 **Owner:** `aidoc-flow-ci` maintainer (vladm3105 + AI Crew)
 **Origin:** founder direction 2026-07-09 — pre-production multi-agent review of
 `aidoc-flow-ci` for elevation to the company-wide default CI standard for all

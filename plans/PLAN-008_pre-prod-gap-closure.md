@@ -1,5 +1,10 @@
 # PLAN-008 — Pre-production review gap closure (ci/v2.0.0)
 
+> **CLOSED — pre-`ci/v3`.** Targets `ci/v2.0.0`, which the v3 line
+> supersedes. No open work; kept for history. Scope decision of record:
+> `DECISIONS.md` **CI-0041**. Active `ci@v3` work is PLAN-023, PLAN-024,
+> PLAN-025 and PLAN-026.
+
 **Owner:** `aidoc-flow-ci` maintainer
 **Origin:** 2026-07-13 five-lens pre-prod review (security / correctness / docs /
 portability / governance) of `aidoc-flow-ci` ahead of the `ci/v2.0.0` tag cut.

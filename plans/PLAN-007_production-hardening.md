@@ -1,5 +1,12 @@
 # PLAN-007 — aidoc-flow-ci production hardening
 
+> **PRE-`ci/v3` — OPEN WORK REMAINS.** This plan is pre-v3 work, so it is
+> **not part of the `ci@v3` line** — but it is **not closed**: W3/W4 are 🔴
+> founder-gated and ROADMAP still tracks them. **Retarget to the v3 line
+> before executing**, and check `ROADMAP.md` for its current state. Scope
+> decision of record: `DECISIONS.md` **CI-0041**. Active `ci@v3` work is
+> PLAN-023, PLAN-024, PLAN-025 and PLAN-026.
+
 **Goal:** move aidoc-flow-ci from "working workspace CI backbone" to
 "hardened" — the state where a fresh reviewer would answer *"yes, production
 ready"* without caveats. Sequences the five gaps identified in the 2026-07-12

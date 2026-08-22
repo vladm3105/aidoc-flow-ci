@@ -1,5 +1,12 @@
 # PLAN-015 — Pre-prod review fix closure (rollout readiness)
 
+> **PRE-`ci/v3` — OPEN WORK REMAINS.** This plan targets `ci/v2.8.0`, so it
+> is **not part of the `ci@v3` line** — but it is **not closed**: its arming
+> runbook is 🔴 founder-gated and prepared. **Retarget to the v3 line before
+> executing**, and check `ROADMAP.md` for its current state. Scope decision
+> of record: `DECISIONS.md` **CI-0041**. Active `ci@v3` work is PLAN-023,
+> PLAN-024, PLAN-025 and PLAN-026.
+>
 > Status: DRAFT — not ready until the Review log has ≥2 passes (≥1 independent)
 > with a clean final pass and `check_plan.py` is green.
 > Owning repo: `aidoc-flow-ci`. Target release: **`ci/v2.8.0`** (additive) for the

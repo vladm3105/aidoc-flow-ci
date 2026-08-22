@@ -1,5 +1,10 @@
 # PLAN-017 — FT-15 fix: make the adopted pin actually control the fetched assets
 
+> **CLOSED — pre-`ci/v3`.** Targets `ci/v2.10.0`, which the v3 line
+> supersedes. No open work; kept for history. Scope decision of record:
+> `DECISIONS.md` **CI-0041**. Active `ci@v3` work is PLAN-023, PLAN-024,
+> PLAN-025 and PLAN-026.
+>
 > Status: **IMPLEMENTED (code) 2026-07-21** — PR-A `docs-sync` (#236), PR-B
 > `doc-maintainer` (#237), PR-C `ai-review` (this PR). **Not yet verified live**:
 > per §5 the gate is the `ci/v2.10.0` cut + a pilot consumer re-pin (🔴 cross-repo). Owning repo: `aidoc-flow-ci`.

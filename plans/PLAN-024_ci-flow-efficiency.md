@@ -206,6 +206,13 @@ shape that means **one implemented operation of three, disabled everywhere** —
 all ten configs are `dry_run: true` (Claim 37). This phase makes the flow honest
 about its own scope. **The improvement is mostly subtraction.**
 
+> **B1 and B2 ARE UNSAFE AS WRITTEN — do not execute (#501).** Both delete a
+> module from `scripts/docs-sync/`, which pre-FT-15 consumers fetch from canon's
+> `main` at runtime. Seven of eight consumers pin below `ci/v2.10.0`, the fetch
+> loop names all three modules by name, and it hard-exits on a 404 — so a
+> deletion reds their `push: main` job on merge, with no re-pin involved. The
+> freeze lifts only when every consumer pins ≥ `ci/v2.10.0`.
+
 B1. **Delete `version_sync` — it duplicates a better-placed tool.**
 `scripts/sync-version-refs.sh` already makes `VERSION` the sole source and
 rewrites the mechanical install references across 14 targets (Claim 38), and it

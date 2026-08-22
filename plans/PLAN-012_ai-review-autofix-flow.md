@@ -1,5 +1,12 @@
 # PLAN-012 — ai-review autofix flow (build the dormant feature, public+private, default-off)
 
+> **PRE-`ci/v3` — OPEN WORK REMAINS.** This plan targets `ci/v2.3.0`, so it
+> is **not part of the `ci@v3` line** — but it is **not closed**: the 🔴
+> autofix-App enablement is still owed. **Retarget to the v3 line before
+> executing**, and check `ROADMAP.md` for its current state. Scope decision
+> of record: `DECISIONS.md` **CI-0041**. Active `ci@v3` work is PLAN-023,
+> PLAN-024, PLAN-025 and PLAN-026.
+
 **Owner:** `aidoc-flow-ci` maintainer
 **Origin:** template-gap audit (2026-07-17). The AI-review config surface ships
 autofix *scaffolding* — the trust gate emits an `auto_fix_ok` output, the config
