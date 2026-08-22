@@ -120,6 +120,37 @@ created by `install.sh` at bootstrap, so they are outside the canonical 21.
 |---|---|---|
 | `ai:enforcer-failed` | `auto-merge-ai-prs.yml` | The stuck-green auto-merge enforcer could not re-arm native auto-merge; the PR stays open for operator attention (the workflow self-provisions the label, warning if creation fails). |
 
+### Repo-local labels (NOT in the canonical 21)
+
+Created by hand on **one** repo for that repo's own triage, never added to
+`labels.json` and therefore never provisioned anywhere else. They are outside
+the canonical 21 by design, so `tests/test_contract.sh`'s `length == 21`
+assertion — a static check against `labels.json` with no path to any repo's
+live label set — is unaffected, and no consumer inherits them.
+
+| Label | Scope | Meaning |
+|---|---|---|
+| `status:deferred-post-v3` | `aidoc-flow-ci` only | The fix lands in canon but reaches no consumer until a re-pin. Parks the issue out of the default `gh issue list` view without closing it, so the reproduction stays searchable as OPEN. |
+
+Remove it with `gh issue edit <N> --remove-label status:deferred-post-v3` once
+a re-pin is scheduled. Re-derive the adoption state the label encodes — never
+trust a count written here — with:
+
+```sh
+gh api "repos/vladm3105/<repo>/contents/.github/workflows/<any>.yml" --jq .content \
+  | base64 -d | grep -oE 'aidoc-flow-ci/[^@]+@[^ ]+'
+```
+
+Prefer this over closing when the reason to drop an issue is *sequencing*
+rather than *the defect being wrong*. Canon has paid for the alternative
+once: `DECISIONS.md` CI-0040 records #404 closed *not planned — flow
+deprecated* while its defect was reproduced and still live on `docs-sync`,
+forcing the re-file as #495.
+
+It takes the `status:<value>` form the rule below requires of every new issue
+label. The gate is the value, so a second gate becomes a second value rather
+than a third prefix.
+
 ### Naming conventions across the label set
 
 Four forms, each marking a different label purpose at a glance:
@@ -191,6 +222,11 @@ A consumer may carry labels not in `labels.json` (e.g., operations has
 remove drifted labels — only adds missing canonical ones. To reconcile:
 add useful extras to `labels.json` + PATCH-tag, or delete stale ones via
 `gh label delete <name> -R <repo>`.
+
+**This repo is not exempt from its own rule.** `aidoc-flow-ci` carries
+repo-local labels too — see *Repo-local labels* above. A label that exists here
+but not in `labels.json` is drift only if it was unintentional; the ones listed
+there are deliberate and stay out of the canonical set.
 
 ## 2. Runner labels — composable scheduling convention
 
