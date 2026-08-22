@@ -23,7 +23,7 @@ surfaces for **this** repo:
 
 | Surface | Path (in this repo) |
 | --- | --- |
-| Live HANDOFF | <path or "Not adopted — <rationale>"> |
+| Live HANDOFF | <path, "Tracker — <descriptor>", or "Not adopted — <rationale>"> |
 | TODO / backlog | <path or "Not adopted — <rationale>"> |
 | Decisions log | <path or "Not adopted — <rationale>"> |
 | Plans | <path or "Not adopted — <rationale>"> |
@@ -40,6 +40,14 @@ per-team HANDOFF). Every row in the table must carry real Surface/Path
 data — do NOT insert an italic separator row inside the table (parses
 as an informational row per §4.5 `INFO_SEPARATOR_RE` but reduces
 machine-readability for downstream tooling).
+
+**"Tracker — <descriptor>"** cells are accepted when a surface IS
+adopted but lives in the issue tracker rather than on disk — for example a
+Live HANDOFF row whose cell reads `Tracker — label:handoff`. The descriptor
+names how to find the surface and must be non-trivial; a tracker cell with
+no descriptor after the dash is rejected. Use this form ONLY for a surface
+the repo genuinely uses: declaring "Not adopted" for an adopted surface is a
+false declaration, and so is the reverse.
 
 **"Not adopted — <rationale>"** cells are accepted when a repo has
 DELIBERATELY declined the surface (e.g. business declines separate

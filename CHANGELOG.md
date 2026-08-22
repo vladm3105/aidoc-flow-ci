@@ -5,6 +5,24 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — `Tracker — <descriptor>` governance-table cell form (#412, 2026-08-22)
+
+`install/parse-governance-table.py` accepted exactly two §16.1 cell forms: a
+path that exists on disk, or `Not adopted — <rationale>`. There was **no form
+meaning "adopted, and it lives in the tracker"** — so a repo whose handoff is a
+GitHub issue could only declare a falsehood, and every other cell was treated
+as a path. `Tracker — <descriptor>` is now accepted, detected before path
+extraction exactly as `Not adopted —` is, and a bare `Tracker —` with no
+descriptor is rejected on the same non-trivial-rationale rule.
+
+Because both non-path forms verify with no path, the parser now reports a
+`form` field (`path` / `tracker` / `not-adopted`) per row — without it a
+tracker-hosted surface is indistinguishable from an unadopted one, which is
+the gap #412 names. `docs/REPO_STANDARDS.md` §16.1 documents all three.
+
+The parser had **no test coverage at all**; `tests/test_contract.sh` now
+covers all three forms and the bare-`Tracker —` rejection (359 -> 364).
+
 ### Changed — pre-v3 plans are marked in place, two tiers (CI-0041, 2026-08-22)
 
 `plans/` carried 33 documents with no way to tell which belonged to the `ci@v3`

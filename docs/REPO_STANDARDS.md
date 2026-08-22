@@ -1738,6 +1738,19 @@ durable — not "TODO adopt later" — and must justify why the surface
 isn't needed for this repo (e.g., business `Changelog | Not adopted —
 DECISIONS.md + git commit log serve as changelog per policy`).
 
+A surface may instead live **in the issue tracker rather than on disk**
+by declaring `Tracker — <descriptor>` (e.g. `` Live HANDOFF | Tracker —
+`label:handoff` ``). The descriptor names how to find it and must be
+non-trivial; a bare `Tracker —` is rejected. Use this form ONLY when the
+surface is genuinely adopted — declaring `Not adopted —` for a surface
+the repo does use is a false declaration, and declaring `Tracker —` for
+one it does not is equally false.
+
+The three forms are mutually exclusive and the parser reports which one a
+cell used in its `form` field (`path` / `tracker` / `not-adopted`), so a
+consumer can tell a tracker-hosted surface from an unadopted one — both
+verify with no path on disk.
+
 ### 16.2 Additional rows (repo-specific)
 
 A repo with multiple surfaces of the same conceptual kind (e.g.

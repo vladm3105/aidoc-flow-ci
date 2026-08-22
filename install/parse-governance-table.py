@@ -66,6 +66,16 @@ CANONICAL_TOKENS = {
 # atomically (single-char class `[—-]` would let "Not adopted -" pass).
 NOT_ADOPTED_RE = re.compile(r"^\s*not\s+adopted\s+(—|--)\s*", re.IGNORECASE)
 
+# "Tracker [—-]" prefix per §16.1 — the surface IS adopted, but it lives in
+# the issue tracker rather than on disk (#412). Detected BEFORE path
+# extraction, exactly as NOT_ADOPTED_RE is: the cell names a query
+# (`label:handoff`), not a file, so path extraction would treat the
+# backticked query as a path and fail with `path-not-found`.
+#
+# Multi-char alternation (`—|--`) matches NOT_ADOPTED_RE's rationale: a
+# single-char class `[—-]` would let ASCII "Tracker -" pass.
+TRACKER_RE = re.compile(r"^\s*tracker\s+(—|--)\s*", re.IGNORECASE)
+
 # Informational separator row (introducing additional-rows region) —
 # matched only when the PATH cell is empty/em-dash. This prevents an
 # italicized real row like `| _Live regional HANDOFF_ | regions/eu/HANDOFF.md |`
@@ -226,6 +236,28 @@ def extract_section(text: str) -> tuple[str | None, int]:
     return None, -1
 
 
+def cell_form(cell: str) -> str:
+    """Which of the three §16.1 cell forms this cell uses.
+
+    Returns "tracker", "not-adopted", or "path". Callers need this
+    because `check_cell` verifies all three to (True, "", None) for the
+    two non-path forms — without a discriminator a tracker-hosted
+    surface is indistinguishable from an unadopted one, which is the
+    gap #412 names ("no form meaning adopted, and it lives in the
+    tracker").
+
+    "path" is the FALLBACK, meaning "neither of the other two prefixes"
+    — not "this looks like a path". An empty cell reports form="path"
+    alongside `check_cell`'s `missing-cell: empty`; do not read the
+    label as a claim that the cell parsed as a path.
+    """
+    if TRACKER_RE.match(cell):
+        return "tracker"
+    if NOT_ADOPTED_RE.match(cell):
+        return "not-adopted"
+    return "path"
+
+
 def check_cell(cell: str, repo_root: Path) -> tuple[bool, str, str | None]:
     """Verify a path cell — return (verified, extracted_path, error).
 
@@ -248,6 +280,15 @@ def check_cell(cell: str, repo_root: Path) -> tuple[bool, str, str | None]:
         rest = NOT_ADOPTED_RE.sub("", cell).strip()
         if not re.search(r"\w", rest):
             return False, "", "not-adopted-missing-rationale: cell after 'Not adopted —' has no alphanumeric rationale"
+        return True, "", None
+
+    if TRACKER_RE.match(cell):
+        # Same non-trivial-descriptor rule as "Not adopted —": a bare
+        # "Tracker —" declares nothing a reader could act on. The
+        # descriptor should name the query (e.g. `label:handoff`).
+        rest = TRACKER_RE.sub("", cell).strip()
+        if not re.search(r"\w", rest):
+            return False, "", "tracker-missing-descriptor: cell after 'Tracker —' has no alphanumeric descriptor"
         return True, "", None
 
     # Multi-value cell rejection per §4.5 F#6 (test-engineer F#3 fold).
@@ -353,6 +394,7 @@ def main(argv: list[str]) -> int:
             "cell": path_cell,
             "extracted_path": extracted,
             "verified": verified,
+            "form": cell_form(path_cell),
         }
         if err:
             row_info["error"] = err
