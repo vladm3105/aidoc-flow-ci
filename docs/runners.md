@@ -4,10 +4,11 @@ How to register self-hosted runner pools with the right labels so
 `aidoc-flow-ci`'s reusable workflows can find them, plus per-origin
 tradeoffs and operational notes.
 
-For label conventions, see [`../LABELS.md`](../LABELS.md) §2. For
-the routing rule (PRIVATE → self-hosted `["self-hosted","ci-runner","single-use"]`;
-PUBLIC → `ubuntu-latest`), see [`../LABELS.md`](../LABELS.md) §2 "Routing rule
-(per repo visibility)". For the bigger architectural picture, see
+For what the individual labels mean, see [`../LABELS.md`](../LABELS.md) §2.
+**The routing rule lives HERE**, in the "Workspace policy" table below — it keys
+off the flow class, not visibility alone, so `LABELS.md` deliberately does not
+restate it. (It used to, as a flat PRIVATE/PUBLIC table; that table was wrong
+for the AI-flows and was removed.) For the bigger architectural picture, see
 [`architecture.md`](architecture.md) §5 ("Inputs that vary per
 consumer").
 
