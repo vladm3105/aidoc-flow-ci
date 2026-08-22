@@ -1,5 +1,12 @@
 # ops/inbox runbook — report-only security-scanner pilot on `operations`
 
+> **PRE-`ci/v3` — OPEN WORK REMAINS.** This plan targets `ci/v2.7.0`, so it
+> is **not part of the `ci@v3` line** — but it is **not closed**: prepared,
+> not executed. **Retarget to the v3 line before executing**, and check
+> `ROADMAP.md` for its current state. Scope decision of record:
+> `DECISIONS.md` **CI-0041**. Active `ci@v3` work is PLAN-023, PLAN-024,
+> PLAN-025 and PLAN-026.
+
 **Owner:** founder (this is a 🔴 cross-repo write — AI prepared it, does not execute it).
 **Goal:** adopt the three PLAN-014 own-security scanners (`dep-scan`, `trivy-scan`,
 `sast-scan`) on `aidoc-flow-operations` in **report-only** mode, as the pilot before

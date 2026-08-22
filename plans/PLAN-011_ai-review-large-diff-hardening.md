@@ -1,5 +1,12 @@
 # PLAN-011 — ai-review large-diff hardening (Tier 1 + honest infra signal)
 
+> **PRE-`ci/v3` — OPEN WORK REMAINS.** This plan targets `ci/v2.1.1`, so it
+> is **not part of the `ci@v3` line** — but it is **not closed**: ROADMAP
+> still tracks a residual. **Retarget to the v3 line before executing**, and
+> check `ROADMAP.md` for its current state. Scope decision of record:
+> `DECISIONS.md` **CI-0041**. Active `ci@v3` work is PLAN-023, PLAN-024,
+> PLAN-025 and PLAN-026.
+
 **Owner:** `aidoc-flow-ci` maintainer
 **Origin:** consumer bug report (llm-router PR #7, 2026-07-17): the required
 `ai-review` gate fails on large PRs with `litellm: proxy request failed after 3

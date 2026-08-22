@@ -5,6 +5,22 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — pre-v3 plans are marked in place, two tiers (CI-0041, 2026-08-22)
+
+`plans/` carried 33 documents with no way to tell which belonged to the `ci@v3`
+line. Each of the 28 pre-v3 documents now opens with a banner: **CLOSED** (8,
+including `PLAN-021` as SUPERSEDED under CI-0040) or **PRE-`ci/v3` — OPEN WORK
+REMAINS** (20). The second tier exists because several pre-v3 plans still own
+work the live v3 plans depend on, so they say *retarget before executing* rather
+than *do not execute*. `PLAN-023/024/025/026` and `FRAMEWORK-TODO.md` are
+untouched.
+
+`PLAN-024` Phase B gains a warning that **B1/B2 must not execute** — both delete
+a module from `scripts/docs-sync/`, which pre-FT-15 consumers fetch from `main`
+at runtime (#501).
+
+No `**Status:**` line changed, so the claim-ledger gated set is unchanged at 15.
+
 ### Changed — unified LLM credentials: `LLM_URL` + `LLM_API_KEY` (founder, 2026-08-21)
 
 Every `LITELLM_*` name is now `LLM_*`, and the two remaining API keys collapse

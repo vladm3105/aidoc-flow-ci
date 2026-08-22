@@ -2673,6 +2673,48 @@ as a required question of any canon fix.
   on a padding width; pin `--color=never`; `env -u SKIP`). If upstream ever ships
   a structured report, it supersedes the parsing.
 
+## CI-0041: pre-v3 plans are marked in place, in two tiers — closed vs open-work (2026-08-22)
+
+**Context**
+
+Active work is scoped to `aidoc-flow-ci` and the `ci@v3` line (founder,
+2026-08-22). `plans/` held 33 documents; four are v3-line. A fresh session
+reading the directory could not tell which of the other 29 were still live.
+
+**Decision**
+
+Each pre-v3 plan carries a banner at the top of its own file. **Two tiers, and
+the distinction is load-bearing:**
+
+- **CLOSED — pre-`ci/v3`.** Verifiably complete, nothing points at open work in
+  it. Seven plans plus the assessment.
+- **PRE-`ci/v3` — OPEN WORK REMAINS.** Not part of the v3 line, but **not
+  closed**: work remains, or a live v3 plan or `ROADMAP.md` still assigns it
+  work. Twenty documents. These say *retarget to the v3 line before executing*
+  rather than *do not execute*.
+
+`PLAN-021` is **SUPERSEDED** — `doc-maintainer` was retired by CI-0040.
+`plans/FRAMEWORK-TODO.md` is untouched: the governance table declares it a live
+backlog surface, not a version-targeted plan.
+
+**Why two tiers rather than one**
+
+A blanket freeze was drafted first and failed independent review with six
+blockers. *"Targets a pre-v3 tag"* is not *"deprecated"*: `PLAN-014` Phase 5 is
+an owed founder step the live `PLAN-024` and `PLAN-025` both name; `PLAN-020` is
+a founder deferral whose Phase 1 the live `PLAN-023` assigns the ruleset read
+side; `PLAN-003`'s Wave 5 was in flight on the umbrella at the time of writing.
+Marking those *do not execute* would have contradicted `ROADMAP.md`, the
+normative `docs/REPO_STANDARDS.md` §14.2/§16.6 rule chain, and `CLAUDE.md`'s own
+rollout-waves rule.
+
+**What this does NOT do**
+
+It does not change any plan's `**Status:**` line, so the ledger gate's selector
+(`scripts/pre_push_check_ci.sh:160`) is untouched and the gated set is unchanged
+at 15. `FROZEN` was considered as a status value and rejected for that reason.
+It retires no work and closes no issue.
+
 ## CI-0040: `doc-maintainer` is deprecated — the decision of record, and what it does NOT yet discharge (2026-08-21)
 
 **Context**

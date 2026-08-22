@@ -1,5 +1,12 @@
 # ROLLOUT — PLAN-019 §6: cold-start dry-run + onboarding for `aidoc-flow-feedback-desk`
 
+> **PRE-`ci/v3` — OPEN WORK REMAINS.** This plan targets `ci/v2.12.0`, so it
+> is **not part of the `ci@v3` line** — but it is **not closed**: prepared,
+> not executed. **Retarget to the v3 line before executing**, and check
+> `ROADMAP.md` for its current state. Scope decision of record:
+> `DECISIONS.md` **CI-0041**. Active `ci@v3` work is PLAN-023, PLAN-024,
+> PLAN-025 and PLAN-026.
+>
 > 🔴 **Founder-executed.** Every step here writes to another repo (clones it,
 > creates 18 labels, opens a PR) or changes server-side settings/secrets — 🔴 per
 > the operations autonomy tiers. The AI prepared + verified this read-only; it

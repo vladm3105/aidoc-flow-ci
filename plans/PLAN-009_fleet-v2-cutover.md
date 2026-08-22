@@ -1,5 +1,12 @@
 # PLAN-009 — Sync the aidoc-flow fleet to CI canon (target: `Latest`)
 
+> **PRE-`ci/v3` — OPEN WORK REMAINS.** This plan targets `ci/v2.0.1`, so it
+> is **not part of the `ci@v3` line** — but it is **not closed**: the fleet
+> re-pin it describes is what unfreezes `scripts/docs-sync/` (#501).
+> **Retarget to the v3 line before executing**, and check `ROADMAP.md` for
+> its current state. Scope decision of record: `DECISIONS.md` **CI-0041**.
+> Active `ci@v3` work is PLAN-023, PLAN-024, PLAN-025 and PLAN-026.
+>
 > **⚠️ FLEET TARGET IS `Latest` AT EXECUTION TIME (re-stated 2026-07-25,
 > CI-0019).** Do **not** re-pin to a tag named in this document. Every previously
 > named target here (`ci/v2.0.1`, then `ci/v2.8.0`) went stale while the plan sat

@@ -1,5 +1,12 @@
 # ROLLOUT — PLAN-019 FT-52: canon self-governance (branch protection + immutable `ci/v*` tag ruleset)
 
+> **PRE-`ci/v3` — OPEN WORK REMAINS.** This plan targets `ci/v2.12.0`, so it
+> is **not part of the `ci@v3` line** — but it is **not closed**: prepared,
+> not executed. **Retarget to the v3 line before executing**, and check
+> `ROADMAP.md` for its current state. Scope decision of record:
+> `DECISIONS.md` **CI-0041**. Active `ci@v3` work is PLAN-023, PLAN-024,
+> PLAN-025 and PLAN-026.
+>
 > ## ✅ EXECUTED 2026-07-24 — both parts are LIVE (do not re-run)
 >
 > Run at the founder's explicit in-session direction ("let's do this part: FT-52

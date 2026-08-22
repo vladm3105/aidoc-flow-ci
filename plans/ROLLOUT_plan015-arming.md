@@ -1,5 +1,12 @@
 # ROLLOUT — PLAN-015 fleet arming + B2 deployment (🔴 founder-executed)
 
+> **PRE-`ci/v3` — OPEN WORK REMAINS.** This plan targets `ci/v2.8.0`, so it
+> is **not part of the `ci@v3` line** — but it is **not closed**: PREPARED,
+> NOT EXECUTED — 🔴 founder-gated. **Retarget to the v3 line before
+> executing**, and check `ROADMAP.md` for its current state. Scope decision
+> of record: `DECISIONS.md` **CI-0041**. Active `ci@v3` work is PLAN-023,
+> PLAN-024, PLAN-025 and PLAN-026.
+>
 > **Status: PREPARED, NOT EXECUTED.** Authored in `aidoc-flow-ci/plans/` per
 > PLAN-015 Task 8. Every step here writes to consumer repos or changes
 > branch protection — 🔴 per the operations autonomy tiers — so the FOUNDER runs

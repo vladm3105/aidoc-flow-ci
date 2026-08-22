@@ -1,5 +1,10 @@
 # ASSESSMENT — flow-ci real value + company-standard readiness (2026-07-19)
 
+> **CLOSED — pre-`ci/v3`.** Pre-v3 work, last revised 2026-07-28;
+> `ci/v3.0.0` was cut 2026-08-12. No open work; kept for history. Scope
+> decision of record: `DECISIONS.md` **CI-0041**. Active `ci@v3` work is
+> PLAN-023, PLAN-024, PLAN-025 and PLAN-026.
+>
 > Pre-deployment evaluation of the `aidoc-flow-ci` pack: (1) its real intrinsic
 > value, and (2) whether it is worth mandating as an internal company standard.
 > Evidence-based, not aspirational. Decision-input for a founder / operations

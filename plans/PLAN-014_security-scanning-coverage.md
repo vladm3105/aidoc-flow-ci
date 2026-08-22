@@ -1,5 +1,13 @@
 # PLAN-014 — security-scanning coverage: own scanners + GitHub-native
 
+> **PRE-`ci/v3` — OPEN WORK REMAINS.** This plan targets `ci/v2.7.0`, so it
+> is **not part of the `ci@v3` line** — but it is **not closed**: **Phase 5
+> is an owed founder step**, named as open by the live PLAN-024 and
+> PLAN-025. **Retarget to the v3 line before executing**, and check
+> `ROADMAP.md` for its current state. Scope decision of record:
+> `DECISIONS.md` **CI-0041**. Active `ci@v3` work is PLAN-023, PLAN-024,
+> PLAN-025 and PLAN-026.
+
 **Owner:** `aidoc-flow-ci` maintainer
 **Origin:** founder directive (2026-07-18): "we should have own security scanners
 AND GitHub native" → refined: **our own scanners are MUST-HAVE; GitHub-native is a
