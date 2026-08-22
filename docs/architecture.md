@@ -162,10 +162,15 @@ the override patterns.
 
 Common inputs across workflows:
 
-- `runner_labels` (or `runner_labels_routine` / `runner_labels_review`
-  for `ai-review`): default `"ubuntu-latest"`; PRIVATE consumers
-  override to the self-hosted `["self-hosted","ci-runner","single-use"]` array per
-  [`../LABELS.md`](../LABELS.md) §2 routing rule
+- `runner_labels`: default `"ubuntu-latest"`; PRIVATE consumers override to
+  `["self-hosted","ci-runner","single-use"]`. This applies to the **generic
+  checks**, which ship `-public.yml` / `-private.yml` variants.
+- `runner_labels_routine` / `runner_labels_review` (`ai-review`): **no
+  `ubuntu-latest` default and nothing to override** — `ai-review` and
+  `docs-sync` are AI-flows, shipping ONE protected template that is self-hosted
+  on public and private alike (PLAN-013; `manifest.json` gives them no
+  `visibility_variants`, so a visibility flip is a no-op). Routing rule:
+  [`runners.md`](runners.md) § "Workspace policy".
 - `model` (`ai-review` only): LiteLLM model alias (trusted config or caller override)
 - `config-file` / `config-path`: pointer to the per-repo policy file
 

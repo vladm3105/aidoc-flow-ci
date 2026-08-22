@@ -131,8 +131,22 @@ live label set — is unaffected, and no consumer inherits them.
 | Label | Scope | Meaning |
 |---|---|---|
 | `status:deferred-post-v3` | `aidoc-flow-ci` only | The fix lands in canon but reaches no consumer until a re-pin. Parks the issue out of the default `gh issue list` view without closing it, so the reproduction stays searchable as OPEN. |
+| `priority:high` | `aidoc-flow-ci` only | Fix before other queued work. Deliberately NOT canonical: it exists on no other repo, canon writes no priority policy, and provisioning it fleet-wide would push a scheme nobody uses. Re-derive with `gh label list -R vladm3105/<repo> --limit 200 \| grep priority`. |
 
-Remove it with `gh issue edit <N> --remove-label status:deferred-post-v3` once
+**GitHub's stock defaults are not enumerated here.** Every repo is created with
+`bug`, `documentation`, `duplicate`, `enhancement`, `good first issue`,
+`help wanted`, `invalid`, `question` and `wontfix`. Canon neither provisions nor
+removes them, so they are outside the canonical 21 by omission rather than by
+decision. Counting them, this repo's live set reconciles exactly — **21
+canonical + 2 repo-local + 9 stock = 32**. The workflow-provisioned label is
+NOT in that sum: it is created on demand by the workflow that applies it, so it
+does not exist until first used. Re-derive:
+
+```sh
+gh label list -R vladm3105/<repo> --limit 200 --json name --jq 'length'
+```
+
+Remove `status:deferred-post-v3` with `gh issue edit <N> --remove-label status:deferred-post-v3` once
 a re-pin is scheduled. Re-derive the adoption state the label encodes — never
 trust a count written here — with:
 
@@ -153,7 +167,7 @@ than a third prefix.
 
 ### Naming conventions across the label set
 
-Four forms, each marking a different label purpose at a glance:
+Five forms, each marking a different label purpose at a glance:
 
 | Form | Used by | Why this form |
 |---|---|---|
@@ -247,6 +261,16 @@ Runner labels describe independent scheduling dimensions:
 
 - **Purpose:** `ci-runner` says what workload the pool accepts.
 - **Lifecycle:** `single-use` guarantees one job per runner registration.
+  **`ci-runner` does NOT imply it.** Every selector and every registered runner
+  in the fleet currently carries both, which makes `single-use` look redundant —
+  but that is a property of today's registrations, not a constraint. A runner
+  registered `ci-runner` without `single-use` would match a selector that omits
+  it, and the job would land on a reused workspace. It is **defence in depth**,
+  not the primary safety mechanism: `docs/security.md` §3 rests public-repo
+  AI-flow safety on the trust gate and names exactly two invariants that must
+  hold, neither of them this one. Dropping the lifecycle term still trades an
+  enforced guarantee for a convention, which is why it stays in the selector. Renaming or collapsing the selector is `DECISIONS.md` CI-0007,
+  deferred to a future breaking release and gated on fleet v2 adoption.
 - **Optional isolation:** `project-<name>` is appended only when a project
   must not share the general pool. It is not part of the default selector.
 - **Provider/origin is intentionally omitted** from the canonical selector.
@@ -277,39 +301,37 @@ explicit requirement and the matching runner registration already exists.
 > than lifecycle, so it cannot replace `single-use`.
 
 Custom labels are case-insensitive. Register them in lowercase so workflow
-YAML, operational tooling, and UI output remain consistent. GitHub deletes
-unused custom labels automatically after 24 hours, so runner registration—not
-a separately pre-created label record—is the source of truth.
+YAML, operational tooling, and UI output remain consistent. **Runner
+registration — not a separately pre-created label record — is the source of
+truth**: a label exists because a runner claims it. (An earlier revision here
+also asserted GitHub deletes unused custom labels after exactly 24 hours. That
+figure was never sourced, unlike every other load-bearing claim in this file,
+so it has been dropped rather than carried forward as if verified.)
 
-### Routing rule (per repo visibility)
+### Routing — owned by `docs/runners.md`, not restated here
 
-Per-visibility defaults in `install/templates/workflows/`:
+**Which flow class runs where is policy, and `docs/runners.md` owns it.** This
+file defines what the labels *mean*; it does not decide which workflow gets
+which selector. Read the routing table at
+[`docs/runners.md`](docs/runners.md) § "Workspace policy".
 
-| Visibility | Default `runner_labels_*` value |
-|---|---|
-| PRIVATE | `'["self-hosted", "ci-runner", "single-use"]'` |
-| PUBLIC | `'"ubuntu-latest"'` |
+The one-line summary, and the reason a per-visibility table cannot express it:
+routing keys off the **flow class**, not visibility alone (PLAN-013). The
+**AI-flows** (`ai-review`, `docs-sync`) ship ONE protected template and run
+self-hosted on public and private alike — a visibility flip is a no-op — while
+the **generic checks** ship `-public.yml` / `-private.yml` variants and do split
+on visibility. A two-row visibility table has no column for that distinction,
+which is how this section previously stated the opposite of what
+`install/templates/workflows/ai-review.yml` actually ships.
 
-> Pre-`ci/v1.9.0` the PRIVATE templates shipped a `'"runner-self"'` placeholder
-> (a non-registered label → jobs queued forever, FT-9). v1.9.0+ ship the real
-> retired `ci-ephemeral` array directly. `ci/v2.0.0` replaces that combined
-> label with the separate purpose/lifecycle labels `ci-runner` + `single-use`.
+> **FT-9 trap, kept because it still bites.** Pre-`ci/v1.9.0` the PRIVATE
+> templates shipped a `'"runner-self"'` placeholder — a label no repo registers,
+> so jobs queued forever rather than failing. `ci/v1.9.0`+ ship a real array;
+> `ci/v2.0.0` replaced the combined `ci-ephemeral` label with the separate
+> `ci-runner` + `single-use` pair. Any template still carrying `runner-self`
+> is broken, not merely stale.
 
-Rationale:
-
-- Per `aidoc-flow-operations` `ops/DECISIONS.md` `OPS-0049`,
-  private repos have no GitHub-hosted Actions minutes available;
-  self-hosted is the only practical path.
-- Per
-  [GitHub Docs](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners#self-hosted-runner-security),
-  self-hosted runners are NOT recommended for public repos
-  (untrusted fork PRs could execute arbitrary code on the runner).
-  Public consumers default to `ubuntu-latest` accordingly.
-
-Consumers can override the relevant `runner_labels` input in their caller
-workflow. `ai-review` exposes separate `runner_labels_routine` and
-`runner_labels_review` inputs, but private templates intentionally set both to
-the same unified selector.
+Consumers override the relevant `runner_labels*` input in their own caller.
 
 ### Adding a specialized pool
 
@@ -324,24 +346,17 @@ the same unified selector.
    (additive — no consumer template changes needed unless the
    default routing rule changes).
 
-## 3. Branch + commit naming (informal)
+## 3. Branch + commit naming — see `docs/BRANCHING.md`
 
-Conventional Commits — `<type>(<scope>):` or `<type>:`:
-
-| Type | Use |
-|---|---|
-| `feat` | New feature (consumer-visible) |
-| `fix` | Bug fix |
-| `docs` | Documentation only |
-| `chore` | Maintenance, build, dependencies |
-| `refactor` | Internal restructuring; no behavior change |
-| `test` | Test-only changes |
-
-Branch naming follows from commit type: `feat/...`, `fix/...`,
-`docs/...`, etc.
+[`docs/BRANCHING.md`](docs/BRANCHING.md) is the standard: Conventional Commit types,
+branch prefixes, the `agent/` automation namespace, bot namespaces, and the
+squash-only merge policy. It is not restated here — a second copy of one
+convention is the drift this file warns against elsewhere, and the copy that
+used to live here had already fallen behind on four of those.
 
 ## 4. References
 
+- [`docs/BRANCHING.md`](docs/BRANCHING.md) — branch + commit naming standard
 - `install/templates/labels.json` — canonical 21-label taxonomy
   (name/color/description).
 - `docs/REPO_STANDARDS.md` §5.2 — diff-class label path→label map

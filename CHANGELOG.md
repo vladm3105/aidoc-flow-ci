@@ -5,6 +5,42 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — `LABELS.md` stated runner routing that contradicts what ships (2026-08-22)
+
+§2's "Routing rule" gave a flat PRIVATE → self-hosted / PUBLIC → `ubuntu-latest`
+table. That is true only for the **generic checks**. The **AI-flows**
+(`ai-review`, `docs-sync`) ship ONE protected template and run self-hosted on
+both visibilities since PLAN-013 — `install/templates/workflows/ai-review.yml`
+hard-sets both `runner_labels_routine` and `runner_labels_review` to the
+self-hosted array and has no `-public`/`-private` variant. The file told a
+reader the opposite of what ships, on a fork-exposure axis.
+
+The policy table is **removed**, not corrected: routing keys off flow class, a
+per-visibility table has no column for that, and `docs/runners.md` already owns
+it. `LABELS.md` keeps the label vocabulary and points there. The FT-9
+`runner-self` trap is kept.
+
+The same false claim had propagated to the two docs that pointed at it, and
+review caught both — fixing `LABELS.md` alone would have relocated the error,
+not removed it. `docs/runners.md:7-10` restated the flat rule and cited the
+heading this change deletes, forming a citation loop with the wrong claim
+inside it; `docs/architecture.md:165-168` was worse, asserting `ai-review`
+defaults to `ubuntu-latest` with PRIVATE overriding — it does neither.
+
+Also: §3's branch/commit conventions duplicated `docs/BRANCHING.md` while
+missing four of its rules, and cited it zero times — now a pointer. "Four forms"
+read above a five-row table. `priority:high` was live on this repo but in
+neither `labels.json` nor this file — documented as repo-local, deliberately not
+promoted, since it exists on no other repo and canon writes no priority policy.
+The live set now reconciles exactly: 21 canonical + 2 repo-local + 9 GitHub
+stock = 32. An unsourced "GitHub deletes unused custom labels after 24 hours"
+claim is dropped rather than carried as if verified.
+
+`single-use` is documented as NOT implied by `ci-runner`: every selector and
+runner in the fleet carries both today, which makes it look redundant, but that
+is a property of current registrations, not a constraint — and public-repo
+AI-flow safety rests on the lifecycle guarantee.
+
 ### Removed — `HANDOFF.md` and `ROADMAP.md` retired (CI-0042, #412, 2026-08-22)
 
 The Live HANDOFF surface is now a GitHub issue carrying the `handoff` label,
