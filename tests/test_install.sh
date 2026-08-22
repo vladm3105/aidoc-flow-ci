@@ -855,7 +855,7 @@ _wd_priv="$(_add_run true --add-surface .github/workflows/quick-gates.yml)"
 _privline="$(grep -E '^\s*runs-on:' "$_wd_priv/consumer/.github/workflows/quick-gates.yml" || true)"
 assert_contains "$_privline" "self-hosted" \
   "--add-surface on a PRIVATE repo installs the self-hosted variant (D1/OPS-0049)"
-assert_contains "$_privline" "ci-runner" "...naming the real pool label"
+assert_contains "$_privline" '"ci"' "...naming the real pool label"
 assert_absent   "$_privline" "ubuntu-latest" "...and never GitHub-hosted on a private repo"
 _publine="$(grep -E '^\s*runs-on:' "$_wd_pub/consumer/.github/workflows/quick-gates.yml" || true)"
 assert_contains "$_publine" "ubuntu-latest" "...while the public variant's runner line stays ubuntu-latest"

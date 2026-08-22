@@ -1,6 +1,6 @@
-# Single-use sandboxed CI runner — reference implementation
+# Ephemeral sandboxed CI runner — reference implementation
 
-The templates that satisfy the canonical `[self-hosted, ci-runner, single-use]`
+The templates that satisfy the canonical `[self-hosted, ci, ephemeral]`
 label contract ([`../../../LABELS.md`](../../../LABELS.md) §2,
 [`../../../docs/runners.md`](../../../docs/runners.md)): each CI job runs in a
 **fresh, throwaway container**, then the container is destroyed. Cuts GitHub
@@ -80,7 +80,7 @@ re-provision with the final labels after the migration PR merges:
 
 ```bash
 TARGET_REPO=owner/repo \
-  RUNNER_LABELS=self-hosted,old-label,ci-runner,single-use \
+  RUNNER_LABELS=self-hosted,old-label,ci,ephemeral \
   bash provision-runner.sh
 ```
 
@@ -104,7 +104,7 @@ no benefit.)
 | Var | Default | Meaning |
 |---|---|---|
 | `TARGET_REPO` | — (required) | `owner/repo` to serve |
-| `RUNNER_LABELS` | `self-hosted,ci-runner,single-use` | runner labels |
+| `RUNNER_LABELS` | `self-hosted,ci,ephemeral` | runner labels |
 | `RUNNER_IMAGE` | `aidoc-flow-runner:latest` | runner container image |
 | `RUNNER_GROUP_ID` | `1` | Default runner group |
 | `RUNNER_CPUS` / `RUNNER_MEM` | `2` / `4g` | per-job container caps |
@@ -114,7 +114,7 @@ no benefit.)
 | `GH_TOKEN_STRIP` | `1` | strip a (possibly stale) `GH_TOKEN` env before every `gh` call. **Headless hosts authenticating via a `GH_TOKEN` service PAT must set `0`** or JIT minting silently 401s |
 | `RUNNER_DNS` | `1.1.1.1 8.8.8.8` | container resolvers (`""` = host resolver) |
 
-Before enabling AI workflows, verify a single-use container can reach the
+Before enabling AI workflows, verify a ephemeral container can reach the
 configured `LLM_URL` without exposing other host services. HTTP
 endpoints require the callers' explicit `litellm_allow_insecure_http: true`;
 prefer TLS whenever the proxy can provide it.

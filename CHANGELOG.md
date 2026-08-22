@@ -5,6 +5,42 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed! — runner labels are now `[self-hosted, ci, ephemeral]` (CI-0043, 2026-08-22)
+
+`ci-runner` -> **`ci`** and `single-use` -> **`ephemeral`**. Breaking: a job
+whose labels match no registered runner **queues forever** rather than failing.
+See the cutover order below before adopting.
+
+`single-use` was not wrong, it was non-standard. GitHub named this runner mode
+itself — *"ephemeral (i.e. single job) self-hosted runners"* — and
+`generate-jitconfig` is what the supervisor actually calls, so canon was using a
+private synonym for a documented concept. `-runner` in `ci-runner` was redundant
+(every label sits on a runner), which is the tautology `DECISIONS.md` CI-0007
+recorded and left for a future release.
+
+GitHub publishes no runner-label naming convention beyond "labels are
+case-insensitive", so this follows its **vocabulary**, not a standard.
+
+**`ci-runner` survives as a systemd unit name (`ci-runner@.service`), a config
+directory (`~/.config/ci-runner/`) and a script path — only the LABEL changed.**
+Renaming those would break provisioning.
+
+**Cutover — order matters (FT-9).** Register the coexistence set first so old-
+and new-label jobs both find a runner, then narrow after the change lands:
+
+```sh
+TARGET_REPO=owner/repo \
+  RUNNER_LABELS=self-hosted,ci-runner,single-use,ci,ephemeral \
+  bash provision-runner.sh
+# ...after this change is adopted and a real job is seen to land:
+TARGET_REPO=owner/repo RUNNER_LABELS=self-hosted,ci,ephemeral bash provision-runner.sh
+```
+
+Supersedes CI-0007's deferral. Dropping the lifecycle label entirely was
+considered and rejected: JIT + `--rm` deliver ephemerality regardless, so the
+term is a claim rather than the mechanism, but it remains the only guard against
+a future persistent runner registered with `ci` silently reusing workspaces.
+
 ### Fixed — `LABELS.md` stated runner routing that contradicts what ships (2026-08-22)
 
 §2's "Routing rule" gave a flat PRIVATE → self-hosted / PUBLIC → `ubuntu-latest`

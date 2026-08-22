@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the custom single-use CI runner image from the digest-pinned Dockerfile.
+# Build the custom ephemeral CI runner image from the digest-pinned Dockerfile.
 # Local-only — no registry push. Re-run this script on each runner host (and after
 # deliberately updating the upstream actions-runner digest) to refresh the tag.
 #

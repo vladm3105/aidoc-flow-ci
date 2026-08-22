@@ -1534,15 +1534,19 @@ if command -v "${GH:-gh}" >/dev/null 2>&1; then
   # invert, `grep -F` semantics from the quoted expansion. The decision this
   # makes is whether to tell the operator their AI-flow jobs will sit Queued
   # forever, so a false negative here is a silently mis-provisioned repo.
-  if [[ "$_runners" == *ci-runner* && "$_runners" == *single-use* ]]; then
-    echo "         ✅ online ci-runner/single-use pool: $_runners"
+  # `gh --jq` prints a STRING result RAW — no quotes in the haystack — so match
+  # on comma/pipe token boundaries. A quoted needle never matches; a bare `ci`
+  # would also match `ci-runner`.
+  _rl=",${_runners//[ |]/,},"
+  if [[ "$_rl" == *,ci,* && "$_rl" == *,ephemeral,* ]]; then
+    echo "         ✅ online ci/ephemeral pool: $_runners"
   else
-    echo "         🔴 NO online ci-runner/single-use pool — every AI-flow job will sit Queued forever"
+    echo "         🔴 NO online ci/ephemeral pool — every AI-flow job will sit Queued forever"
     echo "            (timeout-minutes never fires on a job that never starts). Register the pool per"
     echo "            docs/runners.md §2/§3 (templates: install/templates/runner/). Do NOT use ubuntu-latest."
   fi
 else
-  echo "         ⚠️  could not probe (gh unavailable) — confirm an online ci-runner/single-use pool exists;"
+  echo "         ⚠️  could not probe (gh unavailable) — confirm an online ci/ephemeral pool exists;"
   echo "            without it every AI-flow job sits Queued forever. docs/runners.md §2/§3."
 fi
 echo "    3. Add secrets to the consumer NOW (the ai-review gate hard-fails without them):"

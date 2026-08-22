@@ -1,5 +1,5 @@
 # Caller template for aidoc-flow-ci's reusable links workflow.
-# PRIVATE variant → self-hosted ci-runner/single-use pool (OPS-0049; never
+# PRIVATE variant → self-hosted ci/ephemeral pool (OPS-0049; never
 # ubuntu-latest). PUBLIC consumers use links.yml. Generated to match the wizard's
 # runner_labels injection so install.sh --update resolves a labeled file for
 # private repos instead of the label-less generic (which would revert to
@@ -36,7 +36,7 @@ jobs:
     if: github.event_name != 'schedule'
     uses: vladm3105/aidoc-flow-ci/.github/workflows/links.yml@ci/v3.0.0
     with:
-      runner_labels: '["self-hosted", "ci-runner", "single-use"]'
+      runner_labels: '["self-hosted", "ci", "ephemeral"]'
       mode: internal
       fail-on-error: true
 
@@ -45,6 +45,6 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     uses: vladm3105/aidoc-flow-ci/.github/workflows/links.yml@ci/v3.0.0
     with:
-      runner_labels: '["self-hosted", "ci-runner", "single-use"]'
+      runner_labels: '["self-hosted", "ci", "ephemeral"]'
       mode: external
       fail-on-error: false

@@ -1,5 +1,5 @@
 # PROTECTED caller — SAST (static code analysis) gate via semgrep (PLAN-014 Phase 3).
-# Uniform on PUBLIC and PRIVATE repos: runs on the ephemeral self-hosted single-use
+# Uniform on PUBLIC and PRIVATE repos: runs on the ephemeral self-hosted
 # pool regardless of visibility (no `-public`/`-private` split; a flip is a no-op).
 # Safe on public because the scan job is FORK-GUARDED (a fork PR skips → human review).
 #
@@ -33,5 +33,5 @@ jobs:
       # patch in the job summary — PREVIEW ONLY, nothing is pushed (no App needed).
       # Costs a second semgrep pass; off by default for the report-only rollout.
       autofix-preview: false
-      runner_labels: '["self-hosted", "ci-runner", "single-use"]'
+      runner_labels: '["self-hosted", "ci", "ephemeral"]'
     # No `secrets: inherit` — sast-scan uses only GITHUB_TOKEN (least privilege).

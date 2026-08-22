@@ -26,7 +26,7 @@
 #
 # WHY THIS IS A LOCAL HOOK AND NOT A CI JOB
 #   `check_plan.py` ships with the verified-planning Claude skill in
-#   ~/.claude/skills/, NOT in this repo. The ephemeral single-use CI
+#   ~/.claude/skills/, NOT in this repo. The ephemeral CI
 #   runners are fresh containers with no ~/.claude, so a `plans-gate` job
 #   cannot invoke it without vendoring the script first. Vendoring is a
 #   separate decision with its own drift surface; until it is taken, the

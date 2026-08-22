@@ -88,7 +88,7 @@ runs:
         # semgrep is Python — VERSION-pinned pip into an isolated venv (full transitive
         # hash-pinning is impractical for a large dep tree; version-pin is the accepted
         # supply-chain baseline for a pip tool — PLAN-014 §3). pip runs PyPI build code
-        # at install time, but the runner is ephemeral single-use (--rm, non-root, one
+        # at install time, but the runner is ephemeral (--rm, non-root, one
         # job then destroyed), so install-time blast radius is one job.
         VENV="$RUNNER_TEMP/sgvenv"
         python3 -m venv "$VENV"

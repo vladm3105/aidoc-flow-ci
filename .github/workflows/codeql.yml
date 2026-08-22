@@ -70,7 +70,7 @@ on:
         type: string
         default: ''
       runner_labels:
-        description: 'JSON array (or single-string) of runner labels. Default "ubuntu-latest" — CodeQL is widely tested on it; some compiled-language autobuilds may need macos/windows. PRIVATE consumers per OPS-0049 may override to the self-hosted "ci-runner/single-use" pool.'
+        description: 'JSON array (or single-string) of runner labels. Default "ubuntu-latest" — CodeQL is widely tested on it; some compiled-language autobuilds may need macos/windows. PRIVATE consumers per OPS-0049 may override to the self-hosted "ci/ephemeral" pool.'
         type: string
         default: '"ubuntu-latest"'
 

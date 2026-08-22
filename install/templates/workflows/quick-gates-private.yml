@@ -32,7 +32,7 @@
 # This job runs `pre-commit` over the PR's own files, i.e. it executes PR code.
 # On a PUBLIC repo that means it must stay `ubuntu-latest` (D7) — see the
 # `quick-gates.yml` sibling. On a PRIVATE repo there is no fork-PR surface, so
-# the ephemeral single-use pool is both safe and REQUIRED: GitHub-hosted minutes
+# the ephemeral pool is both safe and REQUIRED: GitHub-hosted minutes
 # on a private repo are OPS-0049 billing exposure and against workspace policy.
 #
 # D1 — WHY THIS FILE EXISTS AS A SEPARATE TEMPLATE. `install.sh --update`
@@ -77,7 +77,7 @@ concurrency:
 jobs:
   quick-gates:
     name: quick-gates
-    runs-on: ["self-hosted", "ci-runner", "single-use"]
+    runs-on: ["self-hosted", "ci", "ephemeral"]
     # PLAN-025 §3.2b: a consolidated job's timeout is the SUM of the budgets it
     # absorbs (pre-commit 15 + markdownlint 10 + links 20), never the max and
     # never a round number picked by eye. An earlier draft shipped 15 — BELOW

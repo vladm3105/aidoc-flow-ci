@@ -80,7 +80,7 @@ Alongside the workflows the repo ships **workflow caller templates**
 (both `-public` / `-private` variants where runner class differs) in
 `install/templates/workflows/`, the **self-hosted runner reference
 implementation** in `install/templates/runner/` (digest-pinned image spec,
-single-use supervisor, provisioning script — see
+ephemeral supervisor, provisioning script — see
 [`docs/runners.md`](docs/runners.md) §2), plus starter configs (CODEOWNERS,
 branch protection, dependabot, labels, governance-file skeletons), the canonical
 scripts (`install/install.sh`, `install/apply-standards.sh`,
@@ -107,7 +107,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v
 | **Actions allowlist** must admit canon — `vladm3105/*` (canonical) or the older `vladm3105/aidoc-flow-ci/*` | If consumer is in `selected actions` mode, the reusable workflow is blocked → `startup_failure` | [`docs/troubleshooting.md` §13](docs/troubleshooting.md) |
 | **Caller `permissions:` block** if repo-default `workflow_permissions: read` | Reusable can't elevate above caller's grant → `startup_failure` | [`docs/troubleshooting.md` §14](docs/troubleshooting.md) |
 | **Reviewer App + LiteLLM secrets** `APP_REVIEWER_1_ID/KEY`, `LLM_URL`, `LLM_API_KEY` | AI jobs need scoped keys and a reachable LiteLLM proxy | See [`docs/REVIEWER_APP_ONBOARDING.md`](docs/REVIEWER_APP_ONBOARDING.md) |
-| **Private runner pool** `[self-hosted, ci-runner, single-use]` | Private callers intentionally never fall back to GitHub-hosted runners | See [`docs/runners.md`](docs/runners.md) |
+| **Private runner pool** `[self-hosted, ci, ephemeral]` | Private callers intentionally never fall back to GitHub-hosted runners | See [`docs/runners.md`](docs/runners.md) |
 | **Repo variable** `APP_REVIEWER_1_BOT_ID` (set immediately — it is App-global, `294948438`; do NOT wait for a first review, or `composition` runs INERT and enforces nothing until it is set) | composition matches App identity by numeric bot id | `gh variable set APP_REVIEWER_1_BOT_ID --repo <consumer> --body "294948438"` |
 | **Branch-protection required checks** | Install runs CI but nothing is enforced until the checks are required | See [`docs/BRANCH_PROTECTION.md`](docs/BRANCH_PROTECTION.md) |
 

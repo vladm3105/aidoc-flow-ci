@@ -249,7 +249,7 @@ Runner routing follows the flow **class**, not only visibility (PLAN-013):
 
 | Flow class | Public | Private | Caller shape |
 | --- | --- | --- | --- |
-| **AI-flows** (`ai-review`, `docs-sync` (+ `autofix`, a gated job within `ai-review` — PLAN-012)) | self-hosted `["self-hosted","ci-runner","single-use"]` | self-hosted (same) | **ONE protected template** — no `-public`/`-private` split; visibility flip = no-op |
+| **AI-flows** (`ai-review`, `docs-sync` (+ `autofix`, a gated job within `ai-review` — PLAN-012)) | self-hosted `["self-hosted","ci","ephemeral"]` | self-hosted (same) | **ONE protected template** — no `-public`/`-private` split; visibility flip = no-op |
 | **Generic checks** (`markdown-lint`, `links`, `pre-commit`, `composition`, `audit-trail`, `secret-scan`, `labeler`, `auto-merge-ai-prs`) | GitHub-hosted `ubuntu-latest` | self-hosted | `-public.yml` / `-private.yml` variants |
 
 The AI-flows run **uniform self-hosted on both visibilities** because forks never
@@ -263,12 +263,12 @@ repos** (OPS-0049), so private = self-hosted everywhere.
 `install.sh --update` installs the AI-flows' single protected template regardless
 of visibility (their manifest entries carry no `visibility_variants`); for the
 generic checks it auto-detects visibility (`gh repo view isPrivate`) and installs
-the matching variant. **A consumer MUST register the self-hosted `ci-runner` /
-`single-use` pool before adopting** (now also for the AI-flows on public repos).
+the matching variant. **A consumer MUST register the self-hosted `ci` /
+`ephemeral` pool before adopting** (now also for the AI-flows on public repos).
 Full detail: `docs/runners.md` "Workspace policy".
 
 As of `ci/v1.9.0` the `-private.yml` templates ship the **real**
-`["self-hosted", "ci-runner", "single-use"]` label directly (earlier releases
+`["self-hosted", "ci", "ephemeral"]` label directly (earlier releases
 shipped a `runner-self` placeholder that resolved to `runs-on: runner-self`,
 matched no runner, and queued every required check — FT-9).
 
@@ -2031,7 +2031,7 @@ consumers ship a thin caller from one of the canonical templates:
 
 - **Public consumer** (ubuntu-latest runners):
   `install/templates/workflows/auto-merge-ai-prs-public.yml`
-- **Private consumer** (self-hosted `ci-runner` / `single-use` runners):
+- **Private consumer** (self-hosted `ci` / `ephemeral` runners):
   `install/templates/workflows/auto-merge-ai-prs-private.yml`
 
 Both templates pin at the current `@ci/vX.Y.Z` release tag (see `../VERSION`;

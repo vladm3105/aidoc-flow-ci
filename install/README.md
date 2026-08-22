@@ -19,7 +19,7 @@ and prints a 🟢/🔴 report — run it first.
 |---|---|---|
 | A reachable **LiteLLM proxy** (OpenAI-compatible) | `ai-review` connects to it via `LLM_URL`; without it the review job `exit 1`s. It is **yours to operate** — canon does not provide one. | `../docs/AI_CI_DEPLOYMENT.md` §1 |
 | The **reviewer GitHub App** (id + private key) | mints the token that submits the App approval `composition` enforces | `../docs/REVIEWER_APP_ONBOARDING.md` |
-| A **runner pool** for private repos | private consumers run on `["self-hosted","ci-runner","single-use"]`; this account has no GitHub-hosted minutes for private repos (OPS-0049), so an unregistered pool queues every job forever | `../docs/runners.md` |
+| A **runner pool** for private repos | private consumers run on `["self-hosted","ci","ephemeral"]`; this account has no GitHub-hosted minutes for private repos (OPS-0049), so an unregistered pool queues every job forever | `../docs/runners.md` |
 | **Per-repo secrets + the bot-id var** | `APP_REVIEWER_1_ID/_KEY`, `LLM_URL`, `LLM_API_KEY`, and `vars.APP_REVIEWER_1_BOT_ID` | set BEFORE the first PR; the wizard preflight lists which are missing |
 
 **Public-repo caveat:** the LiteLLM proxy is private-network-only, so a public
@@ -185,7 +185,7 @@ The additional caller templates that ship in `install/templates/workflows/`
 chooses which to adopt per
 [`../docs/WORKFLOWS.md`](../docs/WORKFLOWS.md) §4 adoption sequencing.
 Use the matching `*-private.yml` / `*-public.yml` variant where both exist.
-Private templates select `[self-hosted, ci-runner, single-use]`; public
+Private templates select `[self-hosted, ci, ephemeral]`; public
 templates select `ubuntu-latest`.
 
 ## What it does NOT do

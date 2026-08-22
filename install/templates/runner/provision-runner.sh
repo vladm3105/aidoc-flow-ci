@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Provision a single-use CI runner pool for one repository.
+# Provision a ephemeral CI runner pool for one repository.
 #
 # The ONLY documented install path for the ci-runner@ systemd unit — it
 # substitutes the unit template's @RUNNER_HOME@ ExecStart placeholder with
@@ -15,7 +15,7 @@
 # coexistence window so old-label and new-label jobs both find a runner,
 # then re-run with the final labels once the migration PR merges:
 #   TARGET_REPO=owner/repo \
-#     RUNNER_LABELS=self-hosted,old-label,ci-runner,single-use \
+#     RUNNER_LABELS=self-hosted,old-label,ci,ephemeral \
 #     bash provision-runner.sh
 #
 # Pass --dry-run to inspect without changing state.
@@ -23,7 +23,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 TARGET_REPO="${TARGET_REPO:-}"
-RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,ci-runner,single-use}"
+RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,ci,ephemeral}"
 INSTANCE="${INSTANCE:-}"
 ENV_DIR="${ENV_DIR:-$HOME/.config/ci-runner}"
 SERVICE_DIR="${SERVICE_DIR:-$HOME/.config/systemd/user}"
