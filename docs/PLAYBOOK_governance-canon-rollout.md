@@ -72,8 +72,9 @@ Before closing a wave:
    script is fetched from `aidoc-flow-ci`, not present in the consumer).
    Zero drift required.
 2. `gh pr view <n>` confirms each wave PR merged.
-3. Update the plan-owning `HANDOFF.md` (`aidoc-flow-ci/HANDOFF.md`)
-   `## Current state` + `## Open threads` to reflect wave close.
+3. Update the plan-owning handoff — for `aidoc-flow-ci` that is the
+   `handoff`-labelled issue (`gh issue list --state open --label handoff`),
+   per CI-0042 — to reflect wave close.
 
 ## Canonical surfaces to consult
 

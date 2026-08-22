@@ -69,13 +69,13 @@ surfaces for **this** repo:
 
 | Surface | Path (in this repo) |
 | --- | --- |
-| Live HANDOFF | `HANDOFF.md` |
+| Live HANDOFF | Tracker — `label:handoff` |
 | TODO / backlog | `plans/` (per-initiative plans + GitHub issues — this repo's open issues **are** its backlog, whoever filed them; a finding below the promotion bar stays in the worked `plans/` entry, not in the tracker. Read the tracker with `gh issue list --state all --limit 200` — the `--limit 30` default truncates silently.) |
 | Legacy FT queue (being retired) | `plans/FRAMEWORK-TODO.md` (still holds open entries; until its retirement lands, both surfaces are live) |
 | Decisions log | `DECISIONS.md` |
 | Plans | `plans/` |
 | Changelog | `CHANGELOG.md` |
-| Roadmap | `ROADMAP.md` |
+| Roadmap | Not adopted — release sequencing lives in `CHANGELOG.md`; forward work lives in `plans/` |
 
 Never in `tmp/` (transient). Never in the umbrella `aidoc-flow/`
 (holds no dev). Cross-repo coordination captured here references
@@ -93,7 +93,7 @@ MCP/API.
 
 A defect this repo surfaces but does NOT own — in a sibling submodule,
 an upstream spec, `operations` — gets a **GitHub issue on that repo**,
-not just a line in `HANDOFF.md`/`DECISIONS.md`. The test is **ownership,
+not just a line in the handoff or `DECISIONS.md`. The test is **ownership,
 not severity**; a local workaround does not discharge it. Link the issue
 number back here. Full rule + the CI-0014 incident that motivated it:
 `docs/REPO_STANDARDS.md` §18.
@@ -248,7 +248,7 @@ next `ci/vX.Y.Z` tag. Discipline:
 ## Durable traps — do not re-derive these
 
 Facts about this repo and its toolchain, each of which cost a session at least
-once. They live here, not in `HANDOFF.md`: under CI-0028 the handoff is
+once. They live here, not in the handoff: under CI-0028 the handoff is
 regenerated wholesale at every wrap, so anything durable parked there is
 re-summarised or silently dropped on each pass. A trap graduates here once it
 has settled — measured, reproduced, and not expected to change.
@@ -465,13 +465,23 @@ the previous cycle's finding.
 ## Session handoff
 
 Sessions run in ephemeral containers — **only committed + pushed work
-survives**. Start each session by reading `HANDOFF.md`; refresh it at
-milestones and before any context compaction. Commit messages must
-not contain model identifiers.
+survives**. Commit messages must not contain model identifiers.
 
-**`HANDOFF.md` is regenerated, not appended (CI-0028).** It is a briefing for a
-fresh session with zero context, answering two questions in order: what the last
-session did, and what to do next. Every volatile claim carries the command that
+**The handoff is a GitHub issue, not a file (CI-0042).** Read it at session
+start and refresh it at milestones and before any context compaction:
+
+```sh
+gh issue list --state open --label handoff        # exactly one, per canon §5.4
+```
+
+`HANDOFF.md` is retired; git is its archive. §16 declares the surface as
+`` Tracker — `label:handoff` `` — the cell form added in #506. A path cell
+would be a false declaration now that no such file exists.
+
+**The handoff is regenerated, not appended (CI-0028).** Edit the issue body in
+place; never open a second handoff issue. It is a briefing for a fresh session
+with zero context, answering two questions in order: what the last session did,
+and what to do next. Every volatile claim carries the command that
 re-derives it — a carried-forward claim otherwise reads as freshly verified,
 which is how the headline sat at "0 open issues" for three days against eight.
 Target well under ~200 lines; size is a defect, and the cause is almost always

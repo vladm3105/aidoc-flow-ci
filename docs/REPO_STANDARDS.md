@@ -1035,10 +1035,10 @@ there; canon here supplies the exact key and says which one to use. Per §18 tha
 is the owning repo's issue to file, not a local workaround to apply.
 
 **Provisioning `handoff` does not migrate any repo's handoff to an issue.** The
-surface each repo declares in its §16 governance table governs; `aidoc-flow-ci`
-declares the file form (`HANDOFF.md`, regenerated wholesale per `DECISIONS.md`
-CI-0028) and keeps it. Canon ships the label so that repos on the issue form
-have an exact key, not to move anyone onto that form.
+surface each repo declares in its §16 governance table governs. Canon ships the
+label so that repos on the issue form have an exact key, not to move anyone onto
+that form — a repo on the file form keeps it by declaring a path, and `handoff`
+simply stays unused there.
 
 **`todo` is what lets the backlog be read without the handoff in it.** Where the
 task list is the open-issue list, a pinned handoff issue otherwise sits
@@ -3079,11 +3079,11 @@ of silently taking the last.
 
 **This does not decide any repo's handoff surface — §16 does.** The surface each
 repo declares in its §16 governance table governs, exactly as §5.4 states.
-`aidoc-flow-ci` declares the file form (`HANDOFF.md`, regenerated wholesale per
-`DECISIONS.md` CI-0028) and keeps it; a file form has no compare-and-swap to
-lose, which is a property of the choice, not the reason canon made it. Where a
-repo's handoff **is** an issue, it carries the `handoff` label (§5.4), which is
-what makes the lookup exact rather than a title search.
+A file form has no compare-and-swap to lose, which is a property of that choice,
+not the reason canon made it. Where a repo's handoff **is** an issue, it carries
+the `handoff` label (§5.4), which is what makes the lookup exact rather than a
+title search — `aidoc-flow-ci` itself moved to that form under `DECISIONS.md`
+CI-0042, declared as `` Tracker — `label:handoff` ``.
 
 ### 25.3 Claim before starting
 

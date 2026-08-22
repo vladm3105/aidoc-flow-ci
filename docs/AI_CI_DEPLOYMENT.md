@@ -218,7 +218,7 @@ patterns block several workflows from firing on the adoption PR itself:
 | 3 | **Create canonical labels** | `apply-standards.sh --apply` on the target repo creates the 21 canon labels that the labeler, ai-review and the issue-lifecycle conventions expect. |
 | 4 | **Open the CI adoption PR** | Add caller workflows, `.github/labeler.yml`, `.pre-commit-config.yaml`, config files. This PR CANNOT trigger ai-review/composition/labeler (they read from `main`, which doesn't have them yet). |
 | 5 | **Merge via admin** | Admin-merge the adoption PR. The workflows are now on `main`. |
-| 6 | **Open a probe PR** | A trivial content PR (e.g. whitespace in HANDOFF.md). ai-review, composition, and labeler MUST now fire from `main`. Verify all return green. |
+| 6 | **Open a probe PR** | A trivial content PR (e.g. whitespace in `README.md`). ai-review, composition, and labeler MUST now fire from `main`. Verify all return green. |
 | 7 | **Arm branch protection** | Only after the probe PR shows all checks green (§7). Do not arm a check whose workflow has never run on this repo. |
 
 Do not skip the probe PR — it's the only way to confirm the full chain works
@@ -406,7 +406,7 @@ Every one of these cost real debugging time. They are load-bearing.
 After ai-review + composition are on `main`:
 
 1. Open a **throwaway test PR** with a one-line doc edit (e.g. a comment in
-   `HANDOFF.md`). ai-review (`pull_request_target`, from main) now fires.
+   `README.md`). ai-review (`pull_request_target`, from main) now fires.
 2. Watch for ALL of:
    - `call / ai-review` → **SUCCESS** (you'll often see a stale `CANCELLED` +
      a `SUCCESS` — the SUCCESS is the real one).

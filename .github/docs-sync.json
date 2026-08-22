@@ -35,8 +35,6 @@
   "allowed_paths": [
     "CHANGELOG.md",
     "README.md",
-    "ROADMAP.md",
-    "HANDOFF.md",
     "docs/**",
     "*.md"
   ]

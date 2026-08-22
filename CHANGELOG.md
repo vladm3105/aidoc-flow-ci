@@ -5,6 +5,24 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Removed — `HANDOFF.md` and `ROADMAP.md` retired (CI-0042, #412, 2026-08-22)
+
+The Live HANDOFF surface is now a GitHub issue carrying the `handoff` label,
+declared in §16 as `` Tracker — `label:handoff` `` — the cell form added
+in #506, without which this migration could only be declared falsely. Read with
+`gh issue list --state open --label handoff`; exactly one is open per repo.
+
+The Roadmap surface is `Not adopted — release sequencing lives in CHANGELOG.md;
+forward work lives in plans/`. Both replacements already carried the content;
+the third view had drifted (PLAN-015 found milestone rows naming `ci/v2.1.2`
+while the repo was on v2.7.0).
+
+Both files are deleted; git is the archive. 20 pre-v3 plan banners now point at
+`CHANGELOG.md` for current state.
+
+**Consumer templates are unchanged** — `install/templates/HANDOFF.md.template`
+and `ROADMAP.md.template` still ship. This is a canon-only retirement.
+
 ### Added — `Tracker — <descriptor>` governance-table cell form (#412, 2026-08-22)
 
 `install/parse-governance-table.py` accepted exactly two §16.1 cell forms: a
