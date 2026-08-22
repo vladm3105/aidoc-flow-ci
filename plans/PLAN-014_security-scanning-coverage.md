@@ -4,7 +4,7 @@
 > is **not part of the `ci@v3` line** — but it is **not closed**: **Phase 5
 > is an owed founder step**, named as open by the live PLAN-024 and
 > PLAN-025. **Retarget to the v3 line before executing**, and check
-> `ROADMAP.md` for its current state. Scope decision of record:
+> `CHANGELOG.md` for its current state. Scope decision of record:
 > `DECISIONS.md` **CI-0041**. Active `ci@v3` work is PLAN-023, PLAN-024,
 > PLAN-025 and PLAN-026.
 

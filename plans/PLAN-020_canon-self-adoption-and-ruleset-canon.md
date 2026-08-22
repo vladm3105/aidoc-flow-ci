@@ -3,7 +3,7 @@
 > **PRE-`ci/v3` — OPEN WORK REMAINS.** This plan is pre-v3 work, so it is
 > **not part of the `ci@v3` line** — but it is **not closed**: it is a
 > founder DEFERRAL, and the live PLAN-023 assigns it the ruleset read side.
-> **Retarget to the v3 line before executing**, and check `ROADMAP.md` for
+> **Retarget to the v3 line before executing**, and check `CHANGELOG.md` for
 > its current state. Scope decision of record: `DECISIONS.md` **CI-0041**.
 > Active `ci@v3` work is PLAN-023, PLAN-024, PLAN-025 and PLAN-026.
 

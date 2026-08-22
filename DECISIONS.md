@@ -2673,6 +2673,83 @@ as a required question of any canon fix.
   on a padding width; pin `--color=never`; `env -u SKIP`). If upstream ever ships
   a structured report, it supersedes the parsing.
 
+## CI-0042: the handoff is a GitHub issue; ROADMAP.md is retired (2026-08-22)
+
+**Supersedes** the `aidoc-flow-ci`-specific half of **CI-0032**, which recorded
+that this repo declares the file form and keeps it. That is now false; CI-0032's
+general point — that the file form's lack of a compare-and-swap is a property of
+the choice, not the reason for it — still stands.
+
+**Context**
+
+`HANDOFF.md` (178 lines) and `ROADMAP.md` (237 lines) were both live, current,
+and declared in the §16 governance table. Two problems, one per file.
+
+The handoff: the founder decided on 2026-08-06 that the workspace uses the
+GitHub-issue handoff (#412). That migration could not be executed, because
+`install/parse-governance-table.py` accepted exactly two cell forms — a path
+that exists, or `Not adopted — <rationale>`. **There was no form meaning
+"adopted, and it lives in the tracker."** Declaring `Not adopted —` for a
+surface the repo does use is a false declaration; declaring a path that does
+not exist fails the parser. #506 added the third form, `Tracker — <descriptor>`.
+
+The roadmap: its content is release sequencing, which `CHANGELOG.md` already
+owns, plus forward work, which `plans/` already owns. Maintaining a third view
+meant three surfaces stating the same facts, and it drifted — PLAN-015 recorded
+ROADMAP milestone rows naming `ci/v2.1.2` while the repo was on v2.7.0.
+
+**Decision**
+
+**The Live HANDOFF surface is a GitHub issue** carrying the `handoff` label,
+declared as `` Live HANDOFF | Tracker — `label:handoff` ``. Exactly one is open
+per repo (canon §5.4). It is regenerated in place per CI-0028 — edit the issue
+body; never open a second. `HANDOFF.md` is deleted; git is the archive.
+
+**The Roadmap surface is not adopted**, declared as `Not adopted — release
+sequencing lives in CHANGELOG.md; forward work lives in plans/`. `ROADMAP.md`
+is deleted.
+
+That declaration was **not** true as written when this entry was drafted.
+Review found five forward-looking items in the file with no carrier anywhere —
+canon label sync, a reusable branch-protection auditor, and three parked items
+(multi-tier AI-review, cross-repo dependency tracking, CI runtime metrics).
+Re-derive the check:
+
+```sh
+gh issue list --state open --limit 200 --json number,title \
+  --jq '.[] | select(.title|test("taxonom|auditor|dependency track|runtime metric|multi-tier";"i"))'
+```
+
+They are captured in **#508** before the deletion, which is what makes the
+declaration honest. Items that already had a plan or runbook (PLAN-014 scanner
+rollout, W4 branch-protection arming, W3 docs-sync go-live) kept theirs.
+
+**Scope: this repo only.** `install/templates/HANDOFF.md.template` and
+`ROADMAP.md.template` continue to ship unchanged: altering what a consumer
+bootstraps is a fleet change, and the file form remains a legitimate choice §16
+supports, so nothing about this repo's preference obliges an adopter. Canon
+retiring its own copy while still shipping the template is a coherence gap —
+the #410 pattern — tracked as **#509** and explicitly NOT discharged here.
+
+**Consequences**
+
+- A fresh session reads `gh issue list --state open --label handoff`, not a file.
+  `CLAUDE.md` § "Session handoff" states this.
+- The handoff is no longer in the diff of a PR, so it cannot be reviewed with the
+  change that motivates it. That is the cost; the benefit is that it also cannot
+  be committed-but-unpushed, which is #411's failure mode.
+- 20 pre-v3 plan banners pointed at `ROADMAP.md` for current state and now point
+  at `CHANGELOG.md`. The phrase wraps across `>` blockquote markers in 8 of
+  them, so a naive `\s+` pattern finds only 12. Re-derive:
+
+  ```sh
+  grep -rlzoP 'check[\s>]+`CHANGELOG\.md`[\s>]+for[\s>]+its[\s>]+current[\s>]+state' plans/ | tr '\0' '\n' | wc -l
+  ```
+
+- #412 is closed by this. #411 (nothing detects an unwrapped handoff) is NOT —
+  its mechanism changes from "unpushed file" to "unedited issue" and it stays
+  open, deferred behind v3 adoption.
+
 ## CI-0041: pre-v3 plans are marked in place, in two tiers — closed vs open-work (2026-08-22)
 
 **Context**
