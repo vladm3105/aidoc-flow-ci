@@ -320,7 +320,9 @@ subset_check() {
 governance_check() {
   # PLAN-003 PR-V2: parse CLAUDE.md § Per-repo governance table via
   # parse-governance-table.py (co-located parser); verify each declared
-  # path exists on disk (or is a valid "Not adopted — <rationale>" cell).
+  # path exists on disk (or the cell is one of the two non-path §16.1
+  # forms: "Tracker — <descriptor>" for a tracker-hosted surface, or
+  # "Not adopted — <rationale>" for a declined one).
   # Records status under the pseudo-path "CLAUDE.md#per-repo-governance"
   # in the DRIFT_* arrays so emit_human + emit_json surface it alongside
   # the exact/subset check results.

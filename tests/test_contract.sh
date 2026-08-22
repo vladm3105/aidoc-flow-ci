@@ -1026,4 +1026,70 @@ _sarif_shas="$(grep -rhoE 'codeql-action/upload-sarif@[a-f0-9]{40}' \
   .github/workflows install/templates/workflows 2>/dev/null | sed 's/.*@//' | sort -u | wc -l)"
 assert_eq "$_sarif_shas" "1" "codeql-action/upload-sarif has ONE sha across canon and the shipped templates"
 
+# == governance-table cell forms (§16.1) ==
+# The parser is the machine reader behind the §16 governance table, and it had
+# NO test coverage before #412's third form was added — so this covers all
+# three forms, not just the new one.
+#
+# `jq -e` does NOT reproduce the CI-0033 pipe hazard documented in lib.sh:
+# `grep -q` exits on first match and SIGPIPEs the writer, which pipefail turns
+# into a false miss; `jq -e` must parse the whole document before evaluating,
+# so it never closes stdin early. Keep it that way — a `--stream`/`first(...)`
+# filter would reintroduce the short-circuit.
+_gt="$(mktemp -d)" || exit 1
+mkdir -p "$_gt/plans" && : >"$_gt/DECISIONS.md" && : >"$_gt/CHANGELOG.md"
+cat >"$_gt/CLAUDE.md" <<'GTEOF'
+## Per-repo governance
+
+| Surface | Path |
+| --- | --- |
+| Live HANDOFF | Tracker — `label:handoff` |
+| TODO / backlog | `plans/` |
+| Decisions log | `DECISIONS.md` |
+| Plans | `plans/` |
+| Changelog | `CHANGELOG.md` |
+| Roadmap | Not adopted — forward work lives in plans/ |
+| Lowercase keyword | tracker — `label:lower` |
+| Ascii double dash | Tracker -- `label:ascii` |
+GTEOF
+_gt_out="$(python3 install/parse-governance-table.py "$_gt/CLAUDE.md" --repo-root "$_gt" 2>&1)"
+_gt_add() { printf '%s' "$_gt_out" | jq -e "[.additional_rows[] | select(.surface_label | test(\"$1\")) | .form] == [\"$2\"]" >/dev/null; }
+
+assert_ok "printf '%s' \"\$_gt_out\" | jq -e '.errors | length == 0' >/dev/null" \
+  "all three §16.1 cell forms (path / Tracker — / Not adopted —) parse clean"
+assert_ok "printf '%s' \"\$_gt_out\" | jq -e '.required_rows.HANDOFF.form == \"tracker\" and .required_rows.HANDOFF.verified' >/dev/null" \
+  "a tracker-hosted surface verifies and reports form=tracker (#412)"
+assert_ok "printf '%s' \"\$_gt_out\" | jq -e '.required_rows.Roadmap.form == \"not-adopted\"' >/dev/null" \
+  "Not adopted — stays distinguishable from Tracker — (both verify with no path)"
+assert_ok "printf '%s' \"\$_gt_out\" | jq -e '.required_rows.Decisions.form == \"path\"' >/dev/null" \
+  "an on-disk surface still reports form=path"
+assert_ok "_gt_add 'Lowercase keyword' tracker" \
+  "the tracker keyword is case-insensitive (re.IGNORECASE is load-bearing)"
+assert_ok "_gt_add 'Ascii double dash' tracker" \
+  "ASCII 'Tracker --' is accepted alongside the em-dash form"
+
+# NEGATIVE fixture — these MUST fail, so they cannot live in the clean one.
+# The single-ASCII-hyphen case is the regression TRACKER_RE's `(—|--)`
+# alternation exists to prevent (a `[—-]` class would let it through); without
+# this assertion that narrowing ships green.
+cat >"$_gt/CLAUDE.md" <<'GTEOF'
+## Per-repo governance
+
+| Surface | Path |
+| --- | --- |
+| Live HANDOFF | Tracker — |
+| TODO / backlog | `plans/` |
+| Decisions log | `DECISIONS.md` |
+| Plans | `plans/` |
+| Changelog | `CHANGELOG.md` |
+| Roadmap | Not adopted — forward work lives in plans/ |
+| Single hyphen | Tracker - `label:x` |
+GTEOF
+_gt_neg="$(python3 install/parse-governance-table.py "$_gt/CLAUDE.md" --repo-root "$_gt" 2>&1)"
+assert_fail "python3 install/parse-governance-table.py \"$_gt/CLAUDE.md\" --repo-root \"$_gt\" >/dev/null 2>&1" \
+  "a bare 'Tracker —' with no descriptor is rejected"
+assert_ok "printf '%s' \"\$_gt_neg\" | jq -e '[.additional_rows[] | select(.surface_label | test(\"Single hyphen\")) | .form] == [\"path\"]' >/dev/null" \
+  "'Tracker - x' (ONE ascii hyphen) does NOT match the tracker form"
+rm -rf "$_gt"
+
 suite_summary "contract"
