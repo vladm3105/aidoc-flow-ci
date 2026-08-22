@@ -150,10 +150,10 @@ what it says + (b) the canonical file path to READ for the full rule.
 MUST run CI on self-hosted runners — never `ubuntu-latest`.** GitHub-hosted
 minutes on a private repo are OPS-0049 billing exposure and against workspace
 policy (founder, 2026-07-11). The canonical private label is the verbose array
-`["self-hosted", "ci-runner", "single-use"]` for both AI and non-AI jobs.
+`["self-hosted", "ci", "ephemeral"]` for both AI and non-AI jobs.
 
 - As of `ci/v1.9.0` the `install/templates/workflows/*-private.yml` templates
-  ship the real `["self-hosted","ci-runner","single-use"]` label. **Earlier**
+  ship the real `["self-hosted","ci","ephemeral"]` label. **Earlier**
   releases shipped a `"runner-self"` placeholder — NOT a registered label, so a
   caller left on `runner-self` (or on the reusable's `ubuntu-latest` default)
   queues forever. If you see `runner-self` in an installed caller, replace it
@@ -165,15 +165,15 @@ policy (founder, 2026-07-11). The canonical private label is the verbose array
 - **Never "fix" a bricked private-repo gate by falling back to `ubuntu-latest`.**
   If a private repo has no pool yet, the fix is to **register the pool**
   (`../operations/scripts/ci-runner/run-ephemeral.sh`, labels
-  `self-hosted,ci-runner,single-use`), not to switch to GitHub-hosted.
+  `self-hosted,ci,ephemeral`), not to switch to GitHub-hosted.
 - Public repos (engramory, framework, iplan-standard, iplan-runner) run on
   `ubuntu-latest` — **except** the ai-review *review* job, which may run on the
   ephemeral self-hosted pool (see below). Full routing table + registration
   steps: `docs/runners.md`.
 
-## Ephemeral single-use runners — what a fresh AI session must know
+## Ephemeral runners — what a fresh AI session must know
 
-The self-hosted pool is **ephemeral single-use** (`operations/scripts/ci-runner/run-ephemeral.sh`):
+The self-hosted pool is **ephemeral** (`operations/scripts/ci-runner/run-ephemeral.sh`):
 a fresh `--rm` container per job — no host mounts, no docker socket, non-root,
 CPU/mem/PID caps — runs **one** job, then is destroyed. Consequences a fresh
 session must not re-derive or get wrong:

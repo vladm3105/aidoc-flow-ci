@@ -9,7 +9,7 @@
 #   • a non-root in-container user  • CPU/memory caps      • the default bridge net
 # The only credential in play is the short-lived JIT token (one job, then dead).
 #
-# This is the general `ci-runner` / `single-use` pool. Every container accepts
+# This is the general `ci` / `ephemeral` pool. Every container accepts
 # one job and is then destroyed; AI jobs use scoped LiteLLM keys and need no
 # durable CLI authentication.
 #
@@ -20,7 +20,7 @@
 set -euo pipefail
 
 TARGET_REPO="${TARGET_REPO:?set TARGET_REPO=owner/repo}"
-RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,ci-runner,single-use}"
+RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,ci,ephemeral}"
 # Default: the local custom image baked by `build-image.sh` (same directory —
 # adds `gh` atop the bare actions-runner image — without it, workflows that
 # assume `gh` is available silently fail with `gh: not found` masked as a

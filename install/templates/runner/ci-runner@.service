@@ -1,4 +1,4 @@
-# User-level systemd template for the single-use CI runner supervisor.
+# User-level systemd template for the ephemeral CI runner supervisor.
 # TEMPLATE — do NOT `cp` this file directly into ~/.config/systemd/user/:
 # the ExecStart below carries an @RUNNER_HOME@ placeholder that systemd will
 # not expand. Install via `provision-runner.sh` in this directory, which
@@ -11,7 +11,7 @@
 # (one env file per repo, holding TARGET_REPO etc. — written by
 # provision-runner.sh).
 [Unit]
-Description=Single-use sandboxed CI runner (%i)
+Description=Ephemeral sandboxed CI runner (%i)
 After=network-online.target
 Wants=network-online.target
 

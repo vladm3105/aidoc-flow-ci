@@ -12,9 +12,12 @@ for the AI-flows and was removed.) For the bigger architectural picture, see
 [`architecture.md`](architecture.md) §5 ("Inputs that vary per
 consumer").
 
-> **Migration:** `runner-self` was an unroutable placeholder and
-> `ci-ephemeral` was the v1 combined label. `ci/v2.0.0` replaces both with the
-> purpose/lifecycle pair `ci-runner` + `single-use`.
+> **Migration history — these are the names each release actually shipped.**
+> `runner-self` was an unroutable placeholder and `ci-ephemeral` was the v1
+> combined label. `ci/v2.0.0` replaced both with the purpose/lifecycle pair
+> `ci-runner` + `single-use`; **CI-0043 then renamed that pair to the current
+> `ci` + `ephemeral`**. A consumer still on a pre-CI-0043 pin registers the
+> older names.
 
 ## Workspace policy — private repos are self-hosted ONLY (mandatory, canon)
 
@@ -25,7 +28,7 @@ not only visibility (PLAN-013):
 
 | Flow class | Public repo | Private repo | Caller shape |
 | --- | --- | --- | --- |
-| **AI-flows** — `ai-review`, `docs-sync` (+ `autofix`, a gated job within `ai-review` — PLAN-012) | **self-hosted** `["self-hosted","ci-runner","single-use"]` | **self-hosted** (same) | **ONE protected template** — no `-public`/`-private` split; a visibility flip is a no-op |
+| **AI-flows** — `ai-review`, `docs-sync` (+ `autofix`, a gated job within `ai-review` — PLAN-012) | **self-hosted** `["self-hosted","ci","ephemeral"]` | **self-hosted** (same) | **ONE protected template** — no `-public`/`-private` split; a visibility flip is a no-op |
 | **Generic checks** — `markdown-lint`, `links`, `pre-commit`, `composition`, `audit-trail`, `secret-scan`, `labeler`, `auto-merge-ai-prs` | GitHub-hosted `ubuntu-latest` | **self-hosted** | the `-public.yml` / `-private.yml` variants |
 
 The AI-flows run uniform self-hosted because **forks never reach a job that
@@ -46,7 +49,7 @@ for the **AI-flows** the manifest carries no `visibility_variants`, so the singl
 protected (self-hosted) template installs regardless of visibility.
 
 > ⚠️ **Prerequisite for a private consumer:** register the
-> `["self-hosted", "ci-runner", "single-use"]` runner pool
+> `["self-hosted", "ci", "ephemeral"]` runner pool
 > **before** adopting — otherwise the correctly-installed self-hosted callers
 > queue forever with no matching runner. See §2 for the reference image.
 
@@ -62,7 +65,7 @@ runners have two distinct CLASSES and many possible LABELS:
 | Concept | Definition | Examples |
 |---|---|---|
 | **Runner CLASS** | Who provisions + manages the runner machine | "GitHub-hosted runners" (managed by GitHub) · "self-hosted runners" (operator-provisioned) |
-| **Runner LABEL** | String matched by `runs-on:` to identify a specific runner image / pool within a class | `ubuntu-latest` (GitHub-hosted image) · `[self-hosted, ci-runner, single-use]` (custom self-hosted pool) |
+| **Runner LABEL** | String matched by `runs-on:` to identify a specific runner image / pool within a class | `ubuntu-latest` (GitHub-hosted image) · `[self-hosted, ci, ephemeral]` (custom self-hosted pool) |
 
 **Common terminology mistakes to AVOID** (these conflate class and label):
 
@@ -77,8 +80,8 @@ The distinction matters because:
 
 - **Class** determines billing model (GitHub-hosted = metered for PRIVATE / free for PUBLIC; self-hosted = your infra cost)
 - **Class** determines lifecycle (GitHub-hosted = fresh VM per job; self-hosted = persistent state unless ephemeral-by-design)
-- **Label** determines which runner pool gets the job (`ci-runner` = purpose;
-  `single-use` = one job then destroy). Add `project-<name>` only for intentional
+- **Label** determines which runner pool gets the job (`ci` = purpose;
+  `ephemeral` = one job then destroy). Add `project-<name>` only for intentional
   project-specific isolation.
 
 Workflow YAML uses labels (e.g. `runs-on: ubuntu-latest`); prose
@@ -86,15 +89,15 @@ should use class names when talking about the runner category, and
 label names when talking about a specific image / pool. Example:
 
 > "Private consumers use self-hosted runners labeled
-> `[self-hosted, ci-runner, single-use]`; public consumers use GitHub-hosted
+> `[self-hosted, ci, ephemeral]`; public consumers use GitHub-hosted
 > runners (`ubuntu-latest`)."
 
 ## 1. The runner-label convention recap
 
 | Label | Origin | What's installed |
 |---|---|---|
-| `ci-runner` | General CI workload purpose | Python, gh, jq, curl, git; network route to LiteLLM |
-| `single-use` | One-job lifecycle | Fresh container is destroyed after its job |
+| `ci` | General CI workload purpose | Python, gh, jq, curl, git; network route to LiteLLM |
+| `ephemeral` | One-job lifecycle | Fresh container is destroyed after its job |
 | `ubuntu-latest` | GitHub-hosted | Standard tools; network route to LiteLLM required |
 | *(future)* `runner-azure`, `runner-aws`, `runner-fargate` | Other origins (reserved namespace) | Per-provider |
 
@@ -106,7 +109,7 @@ custom names.
 ## 2. Reference image — `aidoc-flow-runner:latest`
 
 > **External adopters — the reference implementation is in this repo.**
-> The runner templates (image spec, single-use supervisor, provisioning
+> The runner templates (image spec, ephemeral supervisor, provisioning
 > script) live at [`../install/templates/runner/`](../install/templates/runner/),
 > versioned with the `ci/vX.Y.Z` tags. Two paths:
 >
@@ -121,7 +124,7 @@ custom names.
 >    [`../install/templates/runner/`](../install/templates/runner/) to your
 >    runner host, run `TARGET_REPO=owner/repo bash provision-runner.sh`, and
 >    point caller `runner_labels_*` inputs at the resulting
->    `ci-runner` + `single-use` pool.
+>    `ci` + `ephemeral` pool.
 
 ### ⚠️ Version floor — Actions Runner >= 2.327.1
 
@@ -188,25 +191,25 @@ runner registration is not available** — every repo is registered individually
 
 1. Settings → Actions → Runners → New self-hosted runner (on the consumer repo)
 2. Follow GitHub's install instructions on the runner host
-3. **Add both `ci-runner` and `single-use`** during JIT registration.
+3. **Add both `ci` and `ephemeral`** during JIT registration.
 4. The GitHub-provided `self-hosted` label remains; the complete selector is
-   `[self-hosted, ci-runner, single-use]`.
+   `[self-hosted, ci, ephemeral]`.
 
 Each private consumer repo needs its own runner instance — the supervisor spins a
-fresh single-use container per job, so multiple repo instances coexist on one host.
+fresh ephemeral container per job, so multiple repo instances coexist on one host.
 
 ### 3.2 Org-level registration (only under a GitHub org — not the current setup)
 
 If the workspace is ever moved under a GitHub **organization**, register runners at
 the org level so all repos share them — the cleanest path for a true multi-repo org.
-The steps mirror §3.1 (New runner at org level; same `[self-hosted, ci-runner,
-single-use]` labels). **Not available on the current personal-account setup**, so
+The steps mirror §3.1 (New runner at org level; same `[self-hosted, ci,
+ephemeral]` labels). **Not available on the current personal-account setup**, so
 §3.1 is the path today.
 
 ### 3.3 Verifying the label
 
 After registration, a workflow using
-`runs-on: [self-hosted, ci-runner, single-use]` should pick up the runner:
+`runs-on: [self-hosted, ci, ephemeral]` should pick up the runner:
 
 ```bash
 # From the consumer repo, after opening a test PR:
@@ -221,13 +224,13 @@ registered correctly. Check the runner's labels via
 
 | Origin | Cost | Latency | CLI availability | Fork-PR safety |
 |---|---|---|---|---|
-| `ci-runner` + `single-use` | Fixed (your infrastructure) | Low (ephemeral spawn ~5-10s) | Standard tools + LiteLLM reachability | **Trust gate required** for PUBLIC repos (untrusted PR code on self-hosted is GitHub's documented anti-pattern) |
+| `ci` + `ephemeral` | Fixed (your infrastructure) | Low (ephemeral spawn ~5-10s) | Standard tools + LiteLLM reachability | **Trust gate required** for PUBLIC repos (untrusted PR code on self-hosted is GitHub's documented anti-pattern) |
 | `ubuntu-latest` (GitHub-hosted) | Free for PUBLIC; metered for PRIVATE (per OPS-0049 this account has zero GitHub-hosted minutes for PRIVATE) | High (~30-60s VM cold-start) | Standard tools + public LiteLLM reachability | Safe by default (GitHub-isolated VMs; fork PRs sandboxed) |
 | `runner-azure`/`runner-aws`/etc. | Per-provider | Per-provider | Per-image | Same trust-gate concern as any self-hosted pool if shared with PUBLIC repos |
 
 **For PRIVATE consumers:** a self-hosted pool is the practical choice
 (no GitHub-hosted minutes; low latency). Inside aidoc-flow
-that pool uses the generic `ci-runner` + `single-use` selector; external
+that pool uses the generic `ci` + `ephemeral` selector; external
 adopters may reproduce it on their own infrastructure.
 
 **For PUBLIC consumers:** `ubuntu-latest` is GitHub's documented
@@ -273,13 +276,13 @@ anti-pattern, because **a fork never reaches a job that executes PR code**:
 2. **`docs-sync`** is **post-merge** (`push: main`) — a fork PR cannot trigger
    it.
 
-Combined with single-use isolation (`--rm`, no mounts, no socket, non-root), the
+Combined with ephemeral isolation (`--rm`, no mounts, no socket, non-root), the
 worst case a fork can cause is a throwaway container running the no-PR-code trust
 decision. Wiring is simply the single protected template's default:
 
 ```yaml
-runner_labels_routine: '["self-hosted","ci-runner","single-use"]' # trust job — no PR code
-runner_labels_review:  '["self-hosted","ci-runner","single-use"]' # review job — diff-only
+runner_labels_routine: '["self-hosted","ci","ephemeral"]' # trust job — no PR code
+runner_labels_review:  '["self-hosted","ci","ephemeral"]' # review job — diff-only
 ```
 
 **The fork-code-running lint flows MUST stay GitHub-hosted on public repos.**

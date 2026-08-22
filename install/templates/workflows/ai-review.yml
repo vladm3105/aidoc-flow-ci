@@ -1,5 +1,5 @@
 # PROTECTED caller — uniform on PUBLIC and PRIVATE repos (PLAN-013).
-# Runs on the ephemeral self-hosted single-use pool regardless of visibility:
+# Runs on the ephemeral self-hosted pool regardless of visibility:
 # there is no `-public`/`-private` split, so a repo visibility flip is a no-op.
 # Safe on public repos because forks are never trusted (see `.github/ai-review/
 # config.json` trust gate) → a fork PR reaches only the no-PR-code trust job on
@@ -59,8 +59,8 @@ jobs:
       # Model selection is CONFIG-DRIVEN: the reusable reads `litellm.model`
       # from the trusted .github/ai-review/config.json. Uncomment to override:
       # model: ai-reviewer
-      runner_labels_routine: '["self-hosted", "ci-runner", "single-use"]'
-      runner_labels_review: '["self-hosted", "ci-runner", "single-use"]'
+      runner_labels_routine: '["self-hosted", "ci", "ephemeral"]'
+      runner_labels_review: '["self-hosted", "ci", "ephemeral"]'
       # HTTP proxies require explicit opt-in. Required by the URL SCHEME, NOT by
       # repo visibility — if LLM_URL starts `http://`, uncomment this,
       # public repo or not. On the shared self-hosted pool the proxy is the

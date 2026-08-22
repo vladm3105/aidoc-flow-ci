@@ -138,7 +138,7 @@ runs:
 
         # `mktemp` under `set -e` as a BARE assignment aborts the step before any
         # ::error:: — the very shape `|| fst=$?` exists to prevent, twenty lines down.
-        # Plausible on a single-use runner (disk/inode pressure, TMPDIR misconfig).
+        # Plausible on a ephemeral runner (disk/inode pressure, TMPDIR misconfig).
         ferr="$(mktemp)" || { echo "::error::dep-scan: D23 could not allocate a temp file — refusing to scan rather than skip the check."; exit 1; }
 
         # D23 IS A GATE, NOT A BEST EFFORT: `|| true` keeps a partial failure from

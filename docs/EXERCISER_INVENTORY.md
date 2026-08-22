@@ -57,7 +57,7 @@ the rest are covered offline or descoped. (The table also lists the
 | `.github/workflows/quick-gates.yml` | `test_actions.sh` (D1/D3/D4/D7/D9 + drift guard + forward-pin markers), `test_lint.sh` (actionlint), `test_checknames.sh`, `test_required_contexts.sh` | offline-test — **not self-run**: canon would need the `ci/v3.0.0` tag to exist before it can call its own composite actions (FT-21 chicken-and-egg). Self-adoption lands at the tag cut (P6, Wave 0) |
 | `.github/workflows/scanners.yml` | `test_actions.sh` (D27 job-level fork guard, D3, D4, verdict step, uniform-protected labels), `test_lint.sh` (actionlint + composite-body shellcheck), `test_checknames.sh`, `test_required_contexts.sh` | offline-test — **not self-run**: same FT-21 constraint as `quick-gates.yml`, plus semgrep cannot install on the current runner image (#349) |
 | `.github/workflows/links-external.yml` | `test_actions.sh` (schedule + `mode: external` + report-only) | offline-test — same FT-21 constraint as `quick-gates.yml` |
-| `.github/actionlint.yaml` | `test_actions.sh` (declares `ci-runner` + `single-use`), and every `actionlint` invocation in `test_lint.sh` + `scripts/pre_push_check.sh` resolves through it | self-caller — canon's own private-variant template fails the runner-label rule without it |
+| `.github/actionlint.yaml` | `test_actions.sh` (declares `ci` + `ephemeral`), and every `actionlint` invocation in `test_lint.sh` + `scripts/pre_push_check.sh` resolves through it | self-caller — canon's own private-variant template fails the runner-label rule without it |
 | `.github/workflows/ai-review.yml` | `test_resolver.sh` (resolver — the FT-15 surface), `test_checknames.sh`, `test_contract.sh` | descoped (library repo, founder 2026-07-22; live self-run needs LiteLLM + reviewer App + self-hosted pool this library does not warrant) + offline-test |
 | `.github/workflows/composition.yml` | `test_checknames.sh`, `test_contract.sh` | descoped (library; live self-run needs the reviewer App identity) + offline-test |
 | `.github/workflows/auto-merge-ai-prs.yml` | `test_contract.sh` (I/O contract) | descoped — self-running it would auto-merge canon's own PRs; the behaviour cannot be safely dogfooded + offline-test |
@@ -69,7 +69,7 @@ the rest are covered offline or descoped. (The table also lists the
 | `.github/workflows/links.yml` | `test_contract.sh` | descoped — link checker; self-run candidate, not currently adopted |
 
 > **The descoped AI-flows are a founder decision, not an oversight.**
-> `aidoc-flow-ci` is a **library**; running `ai-review`/`composition` on itself would require registering a `ci-runner,single-use`
+> `aidoc-flow-ci` is a **library**; running `ai-review`/`composition` on itself would require registering a `ci,ephemeral`
 > self-hosted pool plus the reviewer App and LiteLLM secrets purely to dogfood —
 > cost that a library repo does not warrant (founder, 2026-07-22). The
 > regression risk that mattered — the pin **resolver** (FT-15 broke it silently

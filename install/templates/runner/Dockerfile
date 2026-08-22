@@ -1,4 +1,4 @@
-# Custom single-use CI runner image — pinned official actions-runner plus `gh`.
+# Custom ephemeral CI runner image — pinned official actions-runner plus `gh`.
 #
 # Why this exists: the official `ghcr.io/actions/actions-runner:latest` is a
 # bare runner agent (Ubuntu noble + the runner binaries). GitHub-HOSTED runners

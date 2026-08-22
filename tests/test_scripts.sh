@@ -747,7 +747,7 @@ assert_contains "$(_fs_run "$_d" true)" "queue forever" \
   "a private target handed ubuntu-latest callers fails (D1/OPS-0049)"
 rm -rf "$_d"
 
-_d="$(_fs_mk pubsh "$_fs_expected" '["self-hosted", "ci-runner", "single-use"]')"
+_d="$(_fs_mk pubsh "$_fs_expected" '["self-hosted", "ci", "ephemeral"]')"
 assert_contains "$(_fs_run "$_d" false)" "SELF-HOSTED but" \
   "a PUBLIC target handed self-hosted callers fails (D7 — fork code on the shared pool)"
 rm -rf "$_d"

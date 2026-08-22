@@ -163,7 +163,7 @@ the override patterns.
 Common inputs across workflows:
 
 - `runner_labels`: default `"ubuntu-latest"`; PRIVATE consumers override to
-  `["self-hosted","ci-runner","single-use"]`. This applies to the **generic
+  `["self-hosted","ci","ephemeral"]`. This applies to the **generic
   checks**, which ship `-public.yml` / `-private.yml` variants.
 - `runner_labels_routine` / `runner_labels_review` (`ai-review`): **no
   `ubuntu-latest` default and nothing to override** — `ai-review` and

@@ -69,7 +69,7 @@ def in_container() -> bool:
 def loopback_hint(base_url: str) -> str:
     """Name the bridge-vs-loopback mistake instead of surfacing a bare URLError.
 
-    Jobs run inside an ephemeral single-use container, so loopback resolves to
+    Jobs run inside an ephemeral container, so loopback resolves to
     the container itself, not the host running the proxy. This URL works when
     tested from the host and fails only in CI, which is what makes it expensive
     to diagnose. (CI-0017.)

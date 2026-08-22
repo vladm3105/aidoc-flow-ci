@@ -250,8 +250,8 @@ caller templates set the `runner_labels_*` inputs to one of these):
 | Label | Dimension | Contract | Where it resolves |
 |---|---|---|---|
 | `self-hosted` | Runner class | GitHub-managed default label for self-hosted runners | Any registered self-hosted runner unless configured without default labels |
-| `ci-runner` | Purpose | General CI workload with standard tools and a LiteLLM network route | Any conforming CI pool |
-| `single-use` | Lifecycle | Accept exactly one job, then de-register and destroy the runner | JIT/single-use supervisor |
+| `ci` | Purpose | General CI workload with standard tools and a LiteLLM network route | Any conforming CI pool |
+| `ephemeral` | Lifecycle | Accept exactly one job, then de-register and destroy the runner | JIT/ephemeral supervisor |
 | `project-<name>` | Optional isolation | Restrict a job to a deliberately project-specific pool | Only runners registered for that project |
 | `ubuntu-latest` | GitHub-hosted selector | GitHub-managed Ubuntu image; public LiteLLM reachability is still required for AI jobs | GitHub-hosted runner pool |
 
@@ -259,12 +259,12 @@ caller templates set the `runner_labels_*` inputs to one of these):
 
 Runner labels describe independent scheduling dimensions:
 
-- **Purpose:** `ci-runner` says what workload the pool accepts.
-- **Lifecycle:** `single-use` guarantees one job per runner registration.
-  **`ci-runner` does NOT imply it.** Every selector and every registered runner
-  in the fleet currently carries both, which makes `single-use` look redundant —
+- **Purpose:** `ci` says what workload the pool accepts.
+- **Lifecycle:** `ephemeral` guarantees one job per runner registration.
+  **`ci` does NOT imply it.** Every selector and every registered runner
+  in the fleet currently carries both, which makes `ephemeral` look redundant —
   but that is a property of today's registrations, not a constraint. A runner
-  registered `ci-runner` without `single-use` would match a selector that omits
+  registered `ci` without `ephemeral` would match a selector that omits
   it, and the job would land on a reused workspace. It is **defence in depth**,
   not the primary safety mechanism: `docs/security.md` §3 rests public-repo
   AI-flow safety on the trust gate and names exactly two invariants that must
@@ -282,23 +282,23 @@ Runner labels describe independent scheduling dimensions:
 The canonical selector for the self-hosted tier is therefore:
 
 ```json
-["self-hosted", "ci-runner", "single-use"]
+["self-hosted", "ci", "ephemeral"]
 ```
 
 Do not add `aidoc`, a repository name, host name, cloud provider, or model name
 to the default selector. Add `project-<name>` only when isolation is an
 explicit requirement and the matching runner registration already exists.
 
-> **…and do not rename it either without reading
-> [`DECISIONS.md`](DECISIONS.md) CI-0007 (2026-07-16) first.** A rename was
-> considered and deferred: the selector stays `[self-hosted, ci-runner,
-> single-use]` until a future breaking release, and then only once the whole
-> fleet is on v2. Any candidate must respect the dimensions above.
-> `private-*` is **ruled out permanently** — public repos *may* use this pool
-> for the ai-review *review* job (PLAN-009 Edit F, not yet executed), so the
-> label would become false. `isolated-*` collides with the `project-<name>`
-> isolation dimension. `sandbox-*` is accurate but names confinement rather
-> than lifecycle, so it cannot replace `single-use`.
+> **…and do not rename it again without reading
+> [`DECISIONS.md`](DECISIONS.md) CI-0043 first.** CI-0043 (2026-08-22) renamed
+> `ci-runner` + `single-use` to today's pair and **supersedes CI-0007**, which
+> had deferred any rename. Two of CI-0007's exclusions still bind and were not
+> revisited: `private-*` is **ruled out permanently** — public repos *may* use
+> this pool for the ai-review *review* job (PLAN-009 Edit F), so the label
+> would become false — and `isolated-*` collides with the `project-<name>`
+> isolation dimension. `sandbox-*` was the strongest rejected candidate: it
+> names confinement rather than lifecycle, and a security-suggestive label
+> overclaims, since nothing stops a non-conforming runner registering under it.
 
 Custom labels are case-insensitive. Register them in lowercase so workflow
 YAML, operational tooling, and UI output remain consistent. **Runner
@@ -328,8 +328,9 @@ which is how this section previously stated the opposite of what
 > templates shipped a `'"runner-self"'` placeholder — a label no repo registers,
 > so jobs queued forever rather than failing. `ci/v1.9.0`+ ship a real array;
 > `ci/v2.0.0` replaced the combined `ci-ephemeral` label with the separate
-> `ci-runner` + `single-use` pair. Any template still carrying `runner-self`
-> is broken, not merely stale.
+> `ci-runner` + `single-use` pair — the names that release actually shipped —
+> and CI-0043 renamed that pair to today's `ci` + `ephemeral`. Any template
+> still carrying `runner-self` is broken, not merely stale.
 
 Consumers override the relevant `runner_labels*` input in their own caller.
 
@@ -340,7 +341,7 @@ Consumers override the relevant `runner_labels*` input in their own caller.
    isolation or a capability such as `gpu`.
 3. Register the runner with the base labels plus the specialized label.
 4. Override only the callers that require that pool; general callers retain
-   `["self-hosted", "ci-runner", "single-use"]`.
+   `["self-hosted", "ci", "ephemeral"]`.
 5. Add the label contract to this table if it becomes workspace-wide.
 6. **PATCH-tag** `aidoc-flow-ci` per `CHANGELOG.md` semver rules
    (additive — no consumer template changes needed unless the

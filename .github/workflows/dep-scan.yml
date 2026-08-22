@@ -37,9 +37,9 @@ on:
         type: boolean
         default: true
       runner_labels:
-        description: 'JSON array (or single-string) of runner labels. Default the self-hosted single-use pool (PLAN-013 uniform protected — the SAME on public + private, so a visibility flip is a no-op).'
+        description: 'JSON array (or single-string) of runner labels. Default the self-hosted ephemeral pool (PLAN-013 uniform protected — the SAME on public + private, so a visibility flip is a no-op).'
         type: string
-        default: '["self-hosted", "ci-runner", "single-use"]'
+        default: '["self-hosted", "ci", "ephemeral"]'
 
 permissions:
   contents: read
@@ -135,7 +135,7 @@ jobs:
 
           # `mktemp` under `set -e` as a BARE assignment aborts the step before any
           # ::error:: — the very shape `|| fst=$?` exists to prevent, twenty lines down.
-          # Plausible on a single-use runner (disk/inode pressure, TMPDIR misconfig).
+          # Plausible on a ephemeral runner (disk/inode pressure, TMPDIR misconfig).
           ferr="$(mktemp)" || { echo "::error::dep-scan: D23 could not allocate a temp file — refusing to scan rather than skip the check."; exit 1; }
 
           # D23 IS A GATE, NOT A BEST EFFORT: `|| true` keeps a partial failure from

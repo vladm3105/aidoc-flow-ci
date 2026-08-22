@@ -868,7 +868,7 @@ assert_eq "$(invoked_actions "$SC")" "dep-scan sast-scan trivy-scan" \
 # future edit re-creates the ubuntu-latest regression this replaced.
 scrl="$(grep -E '^\s*runs-on:' "$SC" || true)"
 assert_contains "$scrl" "self-hosted" "scanners: self-hosted on public too (PLAN-014 §1a uniform-protected)"
-assert_contains "$scrl" "ci-runner"   "scanners: names the real pool label"
+assert_contains "$scrl" '"ci"'   "scanners: names the real pool label"
 if [ -f install/templates/workflows/scanners-private.yml ]; then
   _r "scanners-private.yml exists — a uniform-protected flow must NOT have a visibility split (D1 does not apply)"
 else
@@ -915,7 +915,7 @@ for pv in install/templates/workflows/*-private.yml; do
   [ -n "$rl" ] || continue
   b="$(basename "$pv")"
   assert_contains "$rl" "self-hosted"   "$b: runs-on line is the self-hosted pool"
-  assert_contains "$rl" "ci-runner"     "$b: names the real pool label"
+  assert_contains "$rl" '"ci"'     "$b: names the real pool label"
   assert_absent   "$rl" "runner-self"   "$b: not the dead pre-v1.9.0 placeholder"
   assert_absent   "$rl" "ubuntu-latest" "$b: never GitHub-hosted on a private repo"
 done
@@ -1088,7 +1088,7 @@ if [ -f "$QGP" ]; then
   # grep-the-key's-own-documentation failure this suite already fixed for D21.
   runsline="$(grep -E '^\s*runs-on:' "$QGP" || true)"
   assert_contains "$runsline" "self-hosted" "quick-gates-private: runs-on line uses the self-hosted pool (D1/OPS-0049)"
-  assert_contains "$runsline" "ci-runner" "quick-gates-private: runs-on names the real pool label"
+  assert_contains "$runsline" '"ci"' "quick-gates-private: runs-on names the real pool label"
   # 'runner-self' was a placeholder shipped before ci/v1.9.0 and is NOT a
   # registered label — a caller left on it queues forever.
   assert_absent "$runsline" "runner-self" "quick-gates-private: not the dead 'runner-self' placeholder"
@@ -1132,8 +1132,10 @@ echo "== actionlint knows the self-hosted labels (PLAN-025 §3.2e) =="
 AL=.github/actionlint.yaml
 if [ -f "$AL" ]; then
   al="$(cat "$AL")"
-  assert_contains "$al" "ci-runner" "actionlint.yaml declares ci-runner"
-  assert_contains "$al" "single-use" "actionlint.yaml declares single-use"
+  # Exact line: bare "- ci" is a SUBSTRING of "- ci-runner", so the loose form
+  # would still pass against the pre-CI-0043 allowlist.
+  assert_ok "grep -qxE '[[:space:]]*- ci' \"$AL\"" "actionlint.yaml declares the ci label (exact line)"
+  assert_contains "$al" "- ephemeral" "actionlint.yaml declares the ephemeral label"
 else
   _r "no .github/actionlint.yaml — every private v3 caller fails the runner-label rule"
 fi

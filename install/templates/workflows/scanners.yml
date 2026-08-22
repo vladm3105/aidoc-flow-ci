@@ -73,7 +73,7 @@ jobs:
     # would NOT fix it: GitHub coerces both null and false to 0, so
     # `null == false` is true.
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-    runs-on: ["self-hosted", "ci-runner", "single-use"]
+    runs-on: ["self-hosted", "ci", "ephemeral"]
     # §3.2b: the SUM of the absorbed budgets (dep-scan 15 + sast 20 + trivy 15)
     # PLUS headroom. The sum alone is exactly what the `timeout N` wrappers
     # inside the three actions already total (900+1200+900s = 50m), so a job

@@ -68,7 +68,7 @@ gh repo view <owner/repo> --json visibility -q .visibility   # PUBLIC | PRIVATE
 - **PRIVATE** → callers run on the self-hosted pool; use the `*-private.yml`
   templates. **Private repos are self-hosted ONLY — never `ubuntu-latest`**
   (OPS-0049 billing + policy). The canonical private label is the JSON array
-  `["self-hosted", "ci-runner", "single-use"]`. AI jobs use the same
+  `["self-hosted", "ci", "ephemeral"]`. AI jobs use the same
   disposable pool and authenticate to LiteLLM with scoped repository secrets.
 
 Do NOT trust a stale doc's visibility column — always re-check with `gh`.
@@ -85,7 +85,7 @@ Do NOT trust a stale doc's visibility column — always re-check with `gh`.
 gh api repos/<owner/repo>/actions/runners --jq '.runners[]|{name,status,labels:[.labels[].name]}'
 ```
 
-Expect an online runner with labels `self-hosted,ci-runner,single-use`. If none:
+Expect an online runner with labels `self-hosted,ci,ephemeral`. If none:
 **do not fall back to `ubuntu-latest`** — a private caller left on
 `ubuntu-latest` or the placeholder `runner-self` queues forever.
 
@@ -103,7 +103,7 @@ INSTANCE=<short-nick> \
 bash provision-runner.sh
 ```
 
-(`RUNNER_LABELS` defaults to the final `self-hosted,ci-runner,single-use`;
+(`RUNNER_LABELS` defaults to the final `self-hosted,ci,ephemeral`;
 override it only for a label-migration coexistence window — see the
 directory's README.)
 
@@ -116,7 +116,7 @@ immediately. The `INSTANCE` nickname is used for the systemd instance name
 
 Each private repo needs its own runner instance because GitHub Actions
 self-hosted runners are repo-scoped by default. The supervisor creates a fresh
-single-use container per job — multiple repo instances can run concurrently on
+ephemeral container per job — multiple repo instances can run concurrently on
 the same host.
 
 Pass `--dry-run` to the script to inspect what it would do without changing state.
@@ -213,7 +213,7 @@ patterns block several workflows from firing on the adoption PR itself:
 
 | Order | Action | Why this order |
 |---|---|---|
-| 1 | **Provision the runner** | Private repos need a `[ci-runner, single-use]` pool before any job can be picked up (§1.2). |
+| 1 | **Provision the runner** | Private repos need a `[ci, ephemeral]` pool before any job can be picked up (§1.2). |
 | 2 | **Set App secrets + bot-id variable** | `APP_REVIEWER_1_ID`/`_KEY`, `LLM_URL`, `LLM_API_KEY`, `APP_REVIEWER_1_BOT_ID` — all required for trust + ai-review + composition. |
 | 3 | **Create canonical labels** | `apply-standards.sh --apply` on the target repo creates the 21 canon labels that the labeler, ai-review and the issue-lifecycle conventions expect. |
 | 4 | **Open the CI adoption PR** | Add caller workflows, `.github/labeler.yml`, `.pre-commit-config.yaml`, config files. This PR CANNOT trigger ai-review/composition/labeler (they read from `main`, which doesn't have them yet). |
@@ -239,7 +239,7 @@ For each workflow, per PR:
    Only the PLAN-013-unified AI-flows (`ai-review`, `docs-sync`) are genuinely
    single-template.
 3. **Pin the tag** to the current `ci/vX.Y.Z`; for a PRIVATE repo add
-   `runner_labels: '["self-hosted", "ci-runner", "single-use"]'` under `with:`.
+   `runner_labels: '["self-hosted", "ci", "ephemeral"]'` under `with:`.
 4. Add the repo-specific config file(s) (§4).
 5. **Add a CHANGELOG entry** in the same PR if the repo has a `## [Unreleased]`
    section + a doc-currency rule (operations-style repos enforce it — a missing
@@ -293,9 +293,9 @@ Every one of these cost real debugging time. They are load-bearing.
 1. **Private repos = self-hosted ONLY.** Never `ubuntu-latest` on a private
    repo. `runner-self` is a placeholder, not a registered label — a caller left
    on it queues forever.
-2. **`runner_labels` must be valid JSON.** `'["self-hosted", "ci-runner", "single-use"]'`
+2. **`runner_labels` must be valid JSON.** `'["self-hosted", "ci", "ephemeral"]'`
    — with the double-quotes. A shell heredoc silently strips inner quotes
-   (`'[self-hosted, ci-runner, ...]'` → invalid JSON → `fromJSON()` breaks the
+   (`'[self-hosted, ci, ...]'` → invalid JSON → `fromJSON()` breaks the
    workflow). Write caller files with a real editor / quoted heredoc and
    validate: `python3 -c "import yaml,json; print(json.loads(yaml.safe_load(open(F))['jobs']['call']['with']['runner_labels']))"`.
 3. **`ai-review` caller MUST point at the canon reusable**, not at another

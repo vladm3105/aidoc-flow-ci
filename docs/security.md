@@ -101,7 +101,7 @@ code** — and that differs between the two classes of flow.
 
 **The AI-flows are safe on self-hosted, public OR private (PLAN-013).** The
 uniform protected model runs `ai-review` and `docs-sync`
-(and `autofix`, a gated job within `ai-review` — PLAN-012, §3b) on the ephemeral self-hosted single-use
+(and `autofix`, a gated job within `ai-review` — PLAN-012, §3b) on the ephemeral self-hosted
 pool on every repo, with **no `-public`/`-private` split** (so a visibility flip
 is a no-op). This is safe because **a fork never reaches a job that executes PR
 code**:

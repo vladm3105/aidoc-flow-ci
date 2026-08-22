@@ -3,14 +3,14 @@
 # WHY THIS FILE IS NEW IN v3, AND WHY IT IS LOAD-BEARING (PLAN-025 §3.2e).
 #
 # Under ci/v2.x a private caller never named a runner label directly: it passed
-# a JSON STRING input (`runner_labels: '["self-hosted","ci-runner","single-use"]'`)
+# a JSON STRING input (`runner_labels: '["self-hosted","ci","ephemeral"]'`)
 # and the reusable did the `fromJSON`. actionlint therefore only ever saw
 # `runs-on: ${{ fromJSON(inputs.runner_labels) }}` — an expression, not a label —
 # and had nothing to validate.
 #
 # v3 replaces the reusables with composite actions, which run in the CALLER's
-# job. The caller now carries a literal `runs-on: ["self-hosted","ci-runner",
-# "single-use"]`, and actionlint's `runner-label` rule rejects any label it does
+# job. The caller now carries a literal `runs-on: ["self-hosted","ci",
+# "ephemeral"]`, and actionlint's `runner-label` rule rejects any label it does
 # not know. Without this file EVERY private v3 caller fails:
 #   - canon's own `tests/test_lint.sh` (actionlints install/templates/workflows/*)
 #   - `scripts/pre_push_check.sh` check 3, on every consumer
@@ -26,5 +26,5 @@
 # (PLAN-025 D16). Keep this list in step with what is actually registered.
 self-hosted-runner:
   labels:
-    - ci-runner
-    - single-use
+    - ci
+    - ephemeral

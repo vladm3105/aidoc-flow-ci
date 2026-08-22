@@ -96,7 +96,7 @@ canon runs for them. Replacing the body discards all of it:
 
 - **`runner_labels_*`** — the big one. Live example: `framework`'s ai-review
   caller pins `runner_labels_routine: '"ubuntu-latest"'`, while the canon
-  template ships `'["self-hosted", "ci-runner", "single-use"]'`. A
+  template ships `'["self-hosted", "ci", "ephemeral"]'`. A
   non-interactive `--update` flips it to the self-hosted array; if that repo
   has no pool registered, **every job queues forever and the gate is bricked**
   — with green-looking config. The reverse also bites: a private repo silently
@@ -136,7 +136,7 @@ Do it before committing:
    fleet-wide truth.
 4. **Verify before commit**, per `docs/runners.md`:
    - no `runner-self` anywhere (never a registered label — it queues forever);
-   - private repos: every job on `["self-hosted", "ci-runner", "single-use"]`,
+   - private repos: every job on `["self-hosted", "ci", "ephemeral"]`,
      never `ubuntu-latest`;
    - public repos: the **fork-code-executing** lint callers
      (`markdown-lint`, `links`, `pre-commit`) stay on `ubuntu-latest`; only

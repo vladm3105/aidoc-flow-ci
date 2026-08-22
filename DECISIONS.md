@@ -2673,6 +2673,72 @@ as a required question of any canon fix.
   on a padding width; pin `--color=never`; `env -u SKIP`). If upstream ever ships
   a structured report, it supersedes the parsing.
 
+## CI-0043: runner labels become `[self-hosted, ci, ephemeral]` (2026-08-22)
+
+**Supersedes CI-0007**, which deferred any rename to a future breaking release
+"and only once the whole fleet is unified on v2". Both halves of that gate are
+revisited below; the founder lifted it on new evidence CI-0007 could not have
+had.
+
+**Context**
+
+CI-0007 was written 2026-07-16 — **three days** after `ci/v2.0.0` introduced
+`ci-runner` + `single-use`. It reasoned from first principles about labels
+nobody had operated yet, and its own conclusion invited this entry: it recorded
+`ci-runner` as "a weak, near-tautological purpose label" and said a future
+rename should encode the pool's distinguishing trait.
+
+The new evidence is operational: running v2 showed `single-use` is confusing
+because **it is not the word anyone else uses**. GitHub named this runner mode
+itself — *"ephemeral (i.e. single job) self-hosted runners"* — so an operator
+reading GitHub's docs and then canon's sees two terms for one concept. GitHub
+publishes no naming convention beyond "labels are case-insensitive", so there is
+no external standard to follow; there is only its vocabulary, and canon was not
+matching it.
+
+**Decision**
+
+The canonical selector is **`["self-hosted", "ci", "ephemeral"]`**.
+
+| Was | Is | Why |
+| --- | --- | --- |
+| `ci-runner` | `ci` | `-runner` is redundant — every label sits on a runner. This is the tautology CI-0007 named. |
+| `single-use` | `ephemeral` | GitHub's own term for one-job-then-deregister, and what `generate-jitconfig` actually produces. |
+
+CI-0007's binding constraints are all still satisfied: no visibility/origin
+encoding (`private-*` stays permanently ruled out), no collision with
+`project-<name>`'s isolation dimension (`isolated-*`), and no security-suggestive
+name a non-conforming runner could register under (`sandbox-*`).
+
+`llm-routed` and `litellm` were considered for the purpose label and rejected:
+the first is a coinage nobody arrives knowing, the second ties a scheduling
+selector to a product name and would become false on a gateway change — the
+same failure that disqualified `private-*`.
+
+**Consequences**
+
+- **`ci-runner` remains the systemd unit name (`ci-runner@.service`), the config
+  directory (`~/.config/ci-runner/`) and the script path
+  (`operations/scripts/ci-runner/`).** Only the *label* is renamed. These are
+  not the same string used for the same purpose, and renaming the paths would
+  break provisioning.
+- **Dropping `ephemeral` entirely was considered and rejected.** JIT + `--rm` +
+  respawn deliver one-job-then-destroy regardless of labels, so the term is a
+  *claim*, not the mechanism — and with `ci` present it adds no selection power
+  today. It is kept as the guard: if a persistent runner is ever registered with
+  `ci`, only this term stops jobs silently reusing a workspace.
+- **The lifecycle term is defence in depth, not the primary safety mechanism.**
+  `docs/security.md` §3 rests public-repo AI-flow safety on the trust gate and
+  names two invariants that must hold, neither of them this one.
+- **Re-registration is founder-executed and ORDER-SENSITIVE.** A job whose
+  labels match no registered runner **queues forever** rather than failing —
+  FT-9, which presents as a hang. Register the coexistence set first
+  (`self-hosted,ci-runner,single-use,ci,ephemeral`), then merge, then narrow.
+- `ci/v3.0.0` is re-cut in place rather than superseded by v4 (founder,
+  2026-08-22): the tag has **zero consumer adopters**, so the break reaches
+  nobody. This deliberately mutates a published Latest release, which canon
+  otherwise treats as immutable; it is a one-off justified by zero adoption.
+
 ## CI-0042: the handoff is a GitHub issue; ROADMAP.md is retired (2026-08-22)
 
 **Supersedes** the `aidoc-flow-ci`-specific half of **CI-0032**, which recorded

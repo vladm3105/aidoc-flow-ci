@@ -40,4 +40,4 @@ jobs:
     with:
       tier: product
       strict: ${{ github.event.inputs.strict == 'true' }}
-      runner_labels: '["self-hosted","ci-runner","single-use"]'
+      runner_labels: '["self-hosted","ci","ephemeral"]'

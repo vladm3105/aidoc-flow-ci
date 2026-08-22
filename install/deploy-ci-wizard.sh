@@ -63,15 +63,21 @@ preflight() {
   [ -z "$vis" ] && { c_no "cannot read repo (auth? name?). gh repo view $repo failed."; return 1; }
   echo "  visibility: $vis"
 
+  # Exact-token match over a comma/pipe separated label string.
+  _pool_has() { case ",${1//[ |]/,}," in *",$2,"*) return 0 ;; *) return 1 ;; esac; }
   hdr "1. Runner pool"
   if [ "$vis" = PRIVATE ]; then
     local runners; runners="$($GH api "repos/$repo/actions/runners" --jq '[.runners[]|select(.status=="online")|[.labels[].name]|join(",")]|join(" | ")' 2>/dev/null || echo '')"
-    if echo "$runners" | grep -q 'ci-runner' && echo "$runners" | grep -q 'single-use'; then c_ok "self-hosted ci-runner/single-use pool online: $runners"
-    else c_no "PRIVATE repo has NO online ci-runner/single-use pool → 🔴 founder registers the pool (docs/runners.md §2/§3; templates: install/templates/runner/). Do NOT use ubuntu-latest."; fi
+    # `gh --jq` prints a STRING result RAW (no surrounding quotes), so the
+    # haystack is `self-hosted,ci,ephemeral | …`. Match on comma/pipe token
+    # boundaries — a quoted needle can never match, and a bare `ci` would also
+    # match `ci-runner`.
+    if _pool_has "$runners" ci && _pool_has "$runners" ephemeral; then c_ok "self-hosted ci/ephemeral pool online: $runners"
+    else c_no "PRIVATE repo has NO online ci/ephemeral pool → 🔴 founder registers the pool (docs/runners.md §2/§3; templates: install/templates/runner/). Do NOT use ubuntu-latest."; fi
   else
     local prunners; prunners="$($GH api "repos/$repo/actions/runners" --jq '[.runners[]|select(.status=="online")|[.labels[].name]|join(",")]|join(" | ")' 2>/dev/null || echo '')"
-    if echo "$prunners" | grep -q 'ci-runner' && echo "$prunners" | grep -q 'single-use'; then c_ok "PUBLIC → generic lint flows use ubuntu-latest; ci-runner/single-use pool ALSO online (needed by the uniform-protected AI-flows + PLAN-014 scanners): $prunners"
-    else c_wn "PUBLIC → generic lint flows use ubuntu-latest, but the uniform-protected AI-flows (ai-review review job) + PLAN-014 scanners run self-hosted here too and need a ci-runner/single-use pool — none online. Register one before adopting those surfaces (docs/runners.md §5a)."; fi
+    if _pool_has "$prunners" ci && _pool_has "$prunners" ephemeral; then c_ok "PUBLIC → generic lint flows use ubuntu-latest; ci/ephemeral pool ALSO online (needed by the uniform-protected AI-flows + PLAN-014 scanners): $prunners"
+    else c_wn "PUBLIC → generic lint flows use ubuntu-latest, but the uniform-protected AI-flows (ai-review review job) + PLAN-014 scanners run self-hosted here too and need a ci/ephemeral pool — none online. Register one before adopting those surfaces (docs/runners.md §5a)."; fi
   fi
 
   hdr "2. Reviewer App secrets + bot-id (for ai-review + composition)"
@@ -250,7 +256,7 @@ plan() {
                             call, so no LiteLLM secret; live mode needs the App)
    8. codeql               (skip docs-only repos; PRIVATE repos need GHAS —
                             without Advanced Security codeql-action/init errors)
-  Variant: $([ "$vis" = PRIVATE ] && echo 'PRIVATE → runner_labels ["self-hosted","ci-runner","single-use"]' || echo 'PUBLIC → ubuntu-latest')
+  Variant: $([ "$vis" = PRIVATE ] && echo 'PRIVATE → runner_labels ["self-hosted","ci","ephemeral"]' || echo 'PUBLIC → ubuntu-latest')
   Each PR: branch-first · pin @$CI_TAG · CHANGELOG entry · OPS-0069 audit phrase · verify green.
   Gotchas: docs/AI_CI_DEPLOYMENT.md §5.  Verify: §6.  Arm: §7.
 EOF
@@ -305,7 +311,7 @@ scaffold() {
       python3 - "$dst" "$wf" "$vis" <<'PY'
 import sys, re
 d, wf, vis = sys.argv[1], sys.argv[2], sys.argv[3]
-LBL = "      runner_labels: '[\"self-hosted\", \"ci-runner\", \"single-use\"]'"
+LBL = "      runner_labels: '[\"self-hosted\", \"ci\", \"ephemeral\"]'"
 FOF = "      fail-on-findings: false"
 lines = open(d).read().split('\n')
 out, i, in_jobs = [], 0, False
@@ -340,7 +346,7 @@ PY
     fi
     if python3 -c 'import sys,yaml;yaml.safe_load(open(sys.argv[1]))' "$dst" 2>/dev/null; then c_ok "$wf.yml"; else c_no "$wf.yml — INVALID YAML (or PyYAML not installed), inspect it"; fi
     if [ "$vis" = PRIVATE ] && [ ! -f "$TPL/workflows/$wf-$suffix.yml" ] && ! grep -qE '^\s*runner_labels(_routine|_review)?:' "$dst"; then
-      c_wn "$wf.yml: PRIVATE repo but no runner_labels injected (job has no with: block) — add ci-runner + single-use labels manually per §5 item 1"
+      c_wn "$wf.yml: PRIVATE repo but no runner_labels injected (job has no with: block) — add ci + ephemeral labels manually per §5 item 1"
     fi
     if [ "$wf" = ai-review ] || [ "$wf" = composition ]; then
       grep -q '^permissions:' "$dst" || c_no "$wf.yml MISSING permissions block (would startup_failure) — check template"

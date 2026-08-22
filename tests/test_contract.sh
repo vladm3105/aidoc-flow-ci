@@ -79,8 +79,8 @@ PYEOF
         if printf '%s' "$inner" | jq -e 'type=="array"' >/dev/null 2>&1; then
           _g "$name: runner_labels is a valid JSON array"
         else _r "$name: runner_labels INVALID ($rl)"; fi
-        assert_contains "$inner" 'ci-runner' "$name: runner_labels targets ci-runner"
-        assert_contains "$inner" 'single-use' "$name: runner_labels targets single-use"
+        assert_contains "$inner" '"ci"' "$name: runner_labels targets the ci pool"
+        assert_contains "$inner" 'ephemeral' "$name: runner_labels targets ephemeral"
       fi ;;
   esac
 done
@@ -94,7 +94,7 @@ for flow in ai-review docs-sync; do
   assert_ok "test -f '$tpl'" "AI-flow $flow: single protected template exists"
   assert_absent "$(ls install/templates/workflows/ 2>/dev/null)" "${flow}-private.yml" "AI-flow $flow: no -private variant (uniform)"
   assert_absent "$(ls install/templates/workflows/ 2>/dev/null)" "${flow}-public.yml" "AI-flow $flow: no -public variant (uniform)"
-  assert_ok "grep -q 'self-hosted' '$tpl' && grep -q 'single-use' '$tpl'" "AI-flow $flow: single template carries the self-hosted pool label"
+  assert_ok "grep -q 'self-hosted' '$tpl' && grep -q 'ephemeral' '$tpl'" "AI-flow $flow: single template carries the self-hosted pool label"
   # manifest entry must NOT branch on visibility (flip = no-op)
   novar="$(python3 - "$flow" <<'PYEOF'
 import json, sys
@@ -243,7 +243,7 @@ DSC=install/templates/workflows/dep-scan.yml
 assert_ok "test -f '$DSC'" "dep-scan caller template exists"
 assert_absent "$(ls install/templates/workflows/ 2>/dev/null)" "dep-scan-private.yml" "dep-scan has no -private variant (uniform)"
 assert_absent "$(ls install/templates/workflows/ 2>/dev/null)" "dep-scan-public.yml" "dep-scan has no -public variant (uniform)"
-assert_ok "grep -q 'self-hosted' '$DSC' && grep -q 'single-use' '$DSC'" "dep-scan caller runs on the self-hosted pool (uniform public+private)"
+assert_ok "grep -q 'self-hosted' '$DSC' && grep -q 'ephemeral' '$DSC'" "dep-scan caller runs on the self-hosted pool (uniform public+private)"
 assert_ok "grep -q 'fail-on-findings: false' '$DSC'" "dep-scan ships report-only (fail-on-findings: false) per PLAN-014 rollout"
 novar="$(python3 - <<'PYEOF'
 import json
@@ -1091,5 +1091,60 @@ assert_fail "python3 install/parse-governance-table.py \"$_gt/CLAUDE.md\" --repo
 assert_ok "printf '%s' \"\$_gt_neg\" | jq -e '[.additional_rows[] | select(.surface_label | test(\"Single hyphen\")) | .form] == [\"path\"]' >/dev/null" \
   "'Tracker - x' (ONE ascii hyphen) does NOT match the tracker form"
 rm -rf "$_gt"
+
+# == runner-label three-way consistency (CI-0043) ==
+# The FT-9 failure mode is a label mismatch: a job whose labels match no
+# registered runner QUEUES FOREVER rather than failing. Three surfaces must
+# agree, and nothing tied them together before — a mutation test proved a
+# wrong `provision-runner.sh` default was invisible to all 20 suites.
+_al_labels="$(sed -n '/^self-hosted-runner:/,$p' .github/actionlint.yaml \
+  | grep -E '^[[:space:]]+- ' | sed 's/[^-]*- //' | sort | tr '\n' ',' | sed 's/,$//')"
+assert_eq "$_al_labels" "ci,ephemeral" "actionlint allowlist declares exactly the canonical labels"
+
+_prov="$(grep -E '^RUNNER_LABELS="\$\{RUNNER_LABELS:-' install/templates/runner/provision-runner.sh \
+  | sed -E 's/.*:-([^}]*)\}.*/\1/')"
+assert_eq "$_prov" "self-hosted,ci,ephemeral" "provision-runner.sh default matches the canonical selector"
+
+# Every shipped template that pins a literal self-hosted pool must request the
+# same set the allowlist declares — actionlint REJECTS labels it does not know.
+_tpl_bad=0
+for _t in install/templates/workflows/*.yml; do
+  _ro="$(grep -hE '^[[:space:]]*runs-on:.*self-hosted' "$_t" || true)"
+  [ -n "$_ro" ] || continue
+  case "$_ro" in
+    *'"ci"'*) ;;
+    *) _tpl_bad=$((_tpl_bad+1)); echo "    (template not requesting the ci label: $_t)" ;;
+  esac
+  case "$_ro" in
+    *'"ephemeral"'*) ;;
+    *) _tpl_bad=$((_tpl_bad+1)); echo "    (template not requesting the ephemeral label: $_t)" ;;
+  esac
+done
+assert_eq "$_tpl_bad" "0" "every self-hosted template requests exactly the allowlisted labels"
+
+# The pool-online probe reads RAW `gh --jq` output — a comma-joined string with
+# NO quote characters. A quoted needle is unsatisfiable there; a bare `ci`
+# needle would also match `ci-runner`. Both scripts must use token boundaries.
+# Scope this to the PROBE idiom only — writing a quoted `"ci"` into a generated
+# template is legitimate and must not trip the guard.
+for _sc in install/install.sh install/deploy-ci-wizard.sh; do
+  _probe="$(grep -nE 'runners.*(grep -q|== \*)' "$_sc" || true)"
+  case "$_probe" in
+    *'"ci"'*) _r "$(basename "$_sc"): pool probe uses a quoted needle against raw gh output" ;;
+    *)        _g "$(basename "$_sc"): pool probe does not use a quoted needle against raw gh output" ;;
+  esac
+done
+
+# Behavioural: lift the matcher out of the wizard and exercise it directly.
+eval "$(sed -n 's/^  \(_pool_has() .*\)$/\1/p' install/deploy-ci-wizard.sh)"
+if command -v _pool_has >/dev/null 2>&1; then
+  assert_ok   "_pool_has 'self-hosted,ci,ephemeral' ci"                "_pool_has: matches the canonical pool"
+  assert_ok   "_pool_has 'self-hosted,ci,ephemeral' ephemeral"         "_pool_has: matches the lifecycle label"
+  assert_fail "_pool_has 'self-hosted,ci-runner,single-use' ci"        "_pool_has: does NOT match the pre-CI-0043 pool"
+  assert_ok   "_pool_has 'self-hosted,ci,ephemeral | self-hosted,ci-runner,single-use' ci" \
+    "_pool_has: matches a coexistence-window pool (both label sets registered)"
+else
+  _r "_pool_has could not be extracted from deploy-ci-wizard.sh"
+fi
 
 suite_summary "contract"
