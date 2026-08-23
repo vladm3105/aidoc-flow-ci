@@ -5,6 +5,40 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — promotion is an ADMIN action; the branching standard said otherwise
+
+`docs/BRANCHING.md` §5a claimed a fast-forward promotion "requires an authorized
+bypass, and the mechanism is NOT yet settled", implying a general per-actor
+mechanism existed to be found. **It does not.** Measured on a scratch branch of
+canon (`DECISIONS.md` CI-0048), fully reversed afterwards, `main` untouched:
+
+| Mechanism | Result |
+|---|---|
+| PR required + `enforce_admins: true` | push **rejected** — `Changes must be made through a pull request` |
+| `bypass_pull_request_allowances` | **HTTP 422** — `Only organization repositories can have users and team restrictions` |
+| `restrictions` | org-only, same class |
+| `enforce_admins: false` | push **succeeds**, for an admin |
+
+Every workspace repo is owned by a personal User account (CI-0030), so no
+per-actor bypass can be granted. §5a now says **admin**, and states the cost
+plainly: on a repo whose sole collaborator is the owner, `enforce_admins: false`
+makes that branch's PR requirement **advisory rather than enforced**. It buys
+process discipline, not a control GitHub applies; enforcing it needs an
+organization.
+
+Also settled in the same pass: canon carries exactly one ruleset (`immutable
+ci/v* release tags`, target `tag`) and `rules/branches/main` returns **0** — so
+no branch ruleset shadows classic protection there.
+
+**Why this took a measurement.** Three drafts of `PLAN-028` proposed three
+different bypass mechanisms and each was retracted by the next review, because
+the answer is a live API behaviour no amount of reading source can settle. It
+was made a `PROBE` claim — the state added to `verified-planning` the same day —
+and one experiment ended the argument. The probe also exposed two defects in the
+runbook that specified it: `git push --ff-only` is not a valid flag (push is
+fast-forward-only by default), and the "throwaway repo" design would have left
+an orphan, because the token has no `delete_repo` scope.
+
 ### Added — the `dev` → `staging` → `main` branching model, documented and NOT adopted
 
 `docs/BRANCHING.md` gains the three-branch model (founder, 2026-08-23): `dev` is

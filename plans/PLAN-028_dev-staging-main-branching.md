@@ -1,7 +1,9 @@
 # PLAN-028 — `dev` → `staging` → `main` branching, and the surfaces that assume one branch
 
-**Status:** In Progress — **Phase A EXECUTED** (#517); Phase B is the remaining
-work; Phases C/D **deferred to a follow-on plan**. **RE-SCOPED 2026-08-23** under
+**Status:** In Progress — **Phase A EXECUTED** (#517); **B1 CLOSED by measurement**
+(CI-0048); Phase B is the remaining work; Phases C/D **deferred to a follow-on
+plan** and no longer gated on an unknown — they are gated on the founder
+accepting an admin-only promotion gate. **RE-SCOPED 2026-08-23** under
 `verified-planning` §3.1: three folds grew this plan 325 → 522 lines while
 retiring findings, which is the defect signal, and the prescribed response is to
 cut scope rather than fold a fourth time.
@@ -152,67 +154,18 @@ passes corrected in it before it shipped.
   **revert M4-sec**, a deliberate security fix that removed exactly that
   hardcoding (Claim 41), with consumers on `master`/`develop` a real handled
   case. The correct default is both today's behaviour and forward-compatible.
-- **B1. 🔴 The bypass mechanism — PROBE FIRST (Claims 90, 91).** The cut deleted
-  the section this used to point at, taking the deliverable with it; it lives
-  here now. Three candidates, and **canon's own precedent is to trial on a
-  throwaway private repo, never on canon** (`DECISIONS.md` records a probe
-  created on `aidoc-flow-business`, read back, deleted):
+- **B1. CLOSED 2026-08-23 — the probe was run** (`DECISIONS.md` CI-0048).
+  `bypass_pull_request_allowances` is **impossible** on a user-owned account
+  (HTTP 422, org-only); `enforce_admins: false` is the only mechanism that
+  permits the push, and it exempts **admins only**. So promotion is an admin
+  action, and on a single-collaborator repo the PR requirement on that branch
+  becomes advisory rather than enforced.
 
-  | Candidate | Status |
-  |---|---|
-  | `required_pull_request_reviews.bypass_pull_request_allowances` | semantically correct (exempts rather than narrows); acceptance on a **user-owned** repo is the unknown |
-  | `enforce_admins: false` | the incumbent — canon already runs it (Claim 9) and B2 edits the field. Cost: exempts admins from *everything* on that branch |
-  | ruleset `bypass_actors` | **refuted alongside classic protection** (Claim 70) — but *replacing* classic protection with a ruleset is unexamined |
+  **What now needs a founder decision is no longer technical.** The model is
+  buildable; the question is whether an admin-only, advisory promotion gate is
+  acceptable, or whether enforcing it is worth an **organization**. B2's payload
+  is `enforce_admins: false` on `staging` and `main` unless that answer changes.
 
-  **Acceptance criterion:** a non-admin actor completes
-  `git push --ff-only origin <src>:<dst>` against a branch carrying the
-  candidate payload. Applying the payload is not the measurement — the push is.
-  Record the payload that worked; it becomes B2's input.
-
-  **🔴 RUNBOOK — founder-executed, on a THROWAWAY private repo.** Not canon: this
-  mutates a protection surface, and canon's `main` is the release branch. The
-  precedent is `DECISIONS.md`'s own probe, created on a private repo, read back,
-  deleted.
-
-  ```sh
-  R=vladm3105/branch-probe-$(date +%s)          # throwaway
-  gh repo create "$R" --private --add-readme
-  git clone "git@github.com:$R.git" /tmp/bp && cd /tmp/bp
-  git branch staging && git push -q origin staging
-
-  # Candidate A — bypass_pull_request_allowances (the semantically correct one).
-  # The open question is whether a USER-OWNED repo accepts this field at all.
-  cat > /tmp/a.json <<'JSON'
-  {"required_status_checks":null,"enforce_admins":true,
-   "required_pull_request_reviews":{"required_approving_review_count":0,
-     "bypass_pull_request_allowances":{"users":["vladm3105"],"teams":[],"apps":[]}},
-   "restrictions":null}
-  JSON
-  gh api -X PUT "repos/$R/branches/staging/protection" --input /tmp/a.json
-  # THE MEASUREMENT — the push, not the PUT:
-  git commit -q --allow-empty -m x && git push --ff-only origin HEAD:staging; echo "A rc=$?"
-
-  # Candidate B — enforce_admins:false (the incumbent; canon already runs it).
-  # Note this exempts admins from EVERYTHING on that branch, which is its cost.
-  gh api -X PUT "repos/$R/branches/staging/protection" --input - <<'JSON'
-  {"required_status_checks":null,"enforce_admins":false,
-   "required_pull_request_reviews":{"required_approving_review_count":0},
-   "restrictions":null}
-  JSON
-  git commit -q --allow-empty -m y && git push --ff-only origin HEAD:staging; echo "B rc=$?"
-
-  gh repo delete "$R" --yes                      # tear down
-  ```
-
-  **Read the result honestly.** A `rc=0` from an *admin* under candidate B
-  proves only that admins can promote — the standard's claim is about
-  "every non-bypass actor". If the answer is "only an admin can promote", say so
-  in B1 and let §5a say it too, rather than implying a general mechanism.
-
-  **Claim 91 rides along:** before trusting candidate B on canon, confirm no
-  branch ruleset shadows it —
-  `gh api repos/vladm3105/aidoc-flow-ci/rulesets --jq '.[].target'`. Expected
-  `tag` only; a `branch` ruleset would make `enforce_admins: false` inert.
 - **B2. Protection targeting** — every declared branch, not `default_branch`.
   Covers §3 Class A rows 1-2 **only**.
 - **B2c. The drift checker's blind spot (§6).** Conditional on B1's outcome: if
@@ -327,7 +280,7 @@ into a plan is the same failure this repo records as "assert the teeth".
 | 13 | `docs-sync` is a post-merge flow gated on `push: main` | `POST-MERGE flow` | install/templates/workflows/docs-sync.yml:5 |
 | 14 | Squash is the canonical merge method in the standard's prose | `Squash merge is the canonical merge method` | docs/BRANCHING.md:185 |
 | 15 | The branch-protection templates are branch-agnostic payloads, so one profile can be applied to several | `required_status_checks` | install/templates/branch-protection-product.json:3 |
-| 16 | The shipped enforcement map states the PR requirement binds non-bypass actors | `PR required for a protected branch` | docs/BRANCHING.md:243 |
+| 16 | The shipped enforcement map states the PR requirement binds non-bypass actors | `PR required for a protected branch` | docs/BRANCHING.md:257 |
 | 17 | Every non-umbrella shipped profile sets `enforce_admins: true`, so consumers have no admin bypass | `"enforce_admins": true` | install/templates/branch-protection-product.json:14 |
 | 18 | Branch protection and rulesets aggregate and the stricter wins; ruleset `bypass_actors` is scoped by threat model | `bypass_actors` | DECISIONS.md:1877 |
 | 19 | `vladm3105` is a personal User account with no orgs, so org-only fields are unavailable | `personal **User** account` | DECISIONS.md:1973 |
@@ -343,7 +296,7 @@ into a plan is the same failure this repo records as "assert the teeth".
 | 29 | `docs-sync.yml` resolves the caller's entry ref as the consumer's default branch | `consumer's default branch` | .github/workflows/docs-sync.yml:130 |
 | 30 | The shipped lifecycle requires cleanup on BOTH sides after a merge | `Clean up, remote` | docs/BRANCHING.md:120 |
 | 31 | Shipped repo settings already automate remote branch deletion on merge | `"delete_branch_on_merge": true` | install/templates/repo-settings.json:9 |
-| 32 | The enforcement map already has a row for rules that are review conventions rather than enforced settings | `Naming and single-purpose branch` | docs/BRANCHING.md:248 |
+| 32 | The enforcement map already has a row for rules that are review conventions rather than enforced settings | `Naming and single-purpose branch` | docs/BRANCHING.md:262 |
 | 34 | `pre_push_check.sh` treats an EMPTY push range as a hard failure, not a pass | `EMPTY — NOTHING was verified` | scripts/pre_push_check.sh:282 |
 | 35 | `codeql.yml` filters the `pull_request` trigger to `branches: [main]`, so a PR based elsewhere never triggers it | `pull_request:` | install/templates/workflows/codeql.yml:17 |
 | 36 | `CLAUDE.md` forbids running `apply-standards.sh --apply --tier product` on canon | `Never run` | CLAUDE.md:444 |
@@ -355,7 +308,7 @@ into a plan is the same failure this repo records as "assert the teeth".
 | 36b | The shipped docs-sync config sets `dry_run: true`, so live mode is not armed | `"dry_run": true` | install/templates/docs-sync.json:6 |
 | 37 | This repo's own gated ledger already records that a `dry_run: false` flip alone does nothing | `alpha.1 stub` | plans/PLAN-007_production-hardening.md:50 |
 | 38 | `BRANCH_PROTECTION.md` instructs using the repo's ACTUAL default branch and keeping `enforce_admins: true` | `actual default branch` | docs/BRANCH_PROTECTION.md:103 |
-| 39 | The enforcement map already counts a LOCAL pre-push hook as enforcement, not convention | `local pre-push hook` | docs/BRANCHING.md:247 |
+| 39 | The enforcement map already counts a LOCAL pre-push hook as enforcement, not convention | `local pre-push hook` | docs/BRANCHING.md:261 |
 | 40 | Three repos share the `product` tier, so tier cannot express per-repo opt-in | `Product code` | docs/REPO_STANDARDS.md:112 |
 | 41 | The hardcoded-`main` protection target was deliberately REMOVED as defect M4-sec | `M4-sec: use the target's actual default branch` | install/apply-standards.sh:706 |
 | 42 | `codeql` is in no tier's required status checks, so its absence is a missing gate rather than a hung PR | `required_status_checks` | install/templates/branch-protection-product.json:3 |
@@ -363,8 +316,8 @@ into a plan is the same failure this repo records as "assert the teeth".
 
 | 61 | `branches: [main]` appears 19 times across 17 shipped caller templates — 2 `pull_request` filters, 17 `push` arms | `branches: [main]` | install/templates/workflows/codeql.yml:16 |
 
-| 90 | Which bypass permits a fast-forward push on a USER-OWNED repo whose branch has `required_pull_request_reviews` — **blocks B1, and through it Phases C and D** | `n/a` | PROBE: on a THROWAWAY private repo — apply candidate payload, then `git push --ff-only origin a:b` as a NON-admin and observe. Applying is not the measurement; the push is |
-| 91 | Whether a branch RULESET on canon's `main` aggregates with classic protection and defeats `enforce_admins: false` — **blocks B1**, whose incumbent candidate is exactly that field. (Recorded prior, not a substitute for measuring: canon's rulesets were `[]` pre-FT-52 and FT-52 added one **tag** ruleset, so the expected answer is 'no branch ruleset' — confirm, do not assume) | `n/a` | PROBE: gh api repos/vladm3105/aidoc-flow-ci/rulesets --jq '.[].target' |
+| 90 | MEASURED 2026-08-23: `bypass_pull_request_allowances` returns HTTP 422 on a user-owned repo; `enforce_admins: false` is the only mechanism that permits the push, and it exempts admins only | `CI-0048` | DECISIONS.md:3227 |
+| 91 | MEASURED 2026-08-23: canon carries one ruleset (`immutable ci/v* release tags`, target tag) and `rules/branches/main` returns 0 — no branch ruleset shadows classic protection | `CI-0048` | DECISIONS.md:3227 |
 
 | 92 | The shipped consumer copy of the pre-push gate carries the identical empty-range refusal | `EMPTY — NOTHING was verified` | install/templates/pre_push_check.sh:282 |
 

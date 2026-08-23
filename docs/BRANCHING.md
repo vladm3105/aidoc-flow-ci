@@ -212,12 +212,26 @@ Promoting by PR would defeat the model: with merge commits and rebase disabled,
 GitHub would **squash** the promotion, giving identical content a new SHA and
 permanently diverging the branches.
 
-> **A fast-forward push requires an authorized bypass, and the mechanism is NOT
-> yet settled.** "Require a pull request before merging" blocks direct pushes
-> for every non-bypass actor, and it is set on every shipped profile. PLAN-028
-> **B1** carries the open candidates and the probe that must decide between them.
-> **Until that resolves, a consumer adopting this model cannot promote at all** —
-> which is why §0 says do not adopt yet.
+> **A fast-forward push requires an admin, and on a user-owned account that is
+> the only mechanism there is.** Measured 2026-08-23 (PLAN-028 B1), not inferred:
+>
+> | Mechanism | Result |
+> |---|---|
+> | baseline — PR required, `enforce_admins: true` | push **rejected**: *"Changes must be made through a pull request"* |
+> | `bypass_pull_request_allowances` | **HTTP 422** — *"Only organization repositories can have users and team restrictions"* |
+> | `restrictions` | org-only, same class |
+> | `enforce_admins: false` | **push succeeds** — for an admin |
+>
+> **So promotion is an ADMIN action.** Every aidoc-flow repo is owned by a
+> personal User account, so no per-actor bypass can be granted; the only lever
+> is exempting admins from the branch's rules wholesale.
+>
+> **And be clear about what that costs.** On a repo whose sole collaborator is
+> the owner, `enforce_admins: false` makes the PR requirement on that branch
+> **advisory rather than enforced** — the only actor who exists is exempt.
+> Protecting `staging` and `main` this way buys process discipline, not a
+> control GitHub applies. Enforcing it would require an **organization**, which
+> is a larger decision than a branching model.
 
 ## 6. Hotfixes and releases
 
