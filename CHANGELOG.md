@@ -68,7 +68,10 @@ silently, so containment is checked first.
 **Recorded as a convention, not a gate.** `delete_branch_on_merge` is a server
 setting; nothing can prune your clone. §7's enforcement map says so rather than
 implying a check exists — a local pre-push warning is *available* at the same
-strength as the audit phrase, and PLAN-028 A4-residual decides whether to take it.
+strength as the audit phrase — **and it was taken**: `pre_push_check.sh` §6 now
+warns when a local branch whose PR is MERGED has not been deleted. It reports
+and never blocks, needs no network beyond an optional `gh`, and detects
+merged-ness from PR state because ancestry cannot see a squash merge.
 
 ### Security — the SAST gate was bypassable, on the surface D23 was reproduced against
 

@@ -12,8 +12,7 @@ receive the release-prep merge (B4); which branch each runtime resolver should
 anchor to (B2/B2b); what the non-adopting default must be (B0); **where the Code
 Scanning baseline should live** (B5 — it decides which of the 19 trigger sites
 move); and **the remedy shape for a pre-push gate that refuses every promotion**
-(B3, upstream `#432`). Everything
-else in this plan is evidence for those four.
+(B3, upstream `#432`). Everything else in this plan is evidence for those six.
 **Owner:** canon (aidoc-flow-ci)
 **Scope:** the branching standard, the enforcement surfaces that would silently
 contradict it, post-merge branch hygiene, and canon's own Wave-0 self-adoption.
@@ -169,6 +168,51 @@ passes corrected in it before it shipped.
   `git push --ff-only origin <src>:<dst>` against a branch carrying the
   candidate payload. Applying the payload is not the measurement — the push is.
   Record the payload that worked; it becomes B2's input.
+
+  **🔴 RUNBOOK — founder-executed, on a THROWAWAY private repo.** Not canon: this
+  mutates a protection surface, and canon's `main` is the release branch. The
+  precedent is `DECISIONS.md`'s own probe, created on a private repo, read back,
+  deleted.
+
+  ```sh
+  R=vladm3105/branch-probe-$(date +%s)          # throwaway
+  gh repo create "$R" --private --add-readme
+  git clone "git@github.com:$R.git" /tmp/bp && cd /tmp/bp
+  git branch staging && git push -q origin staging
+
+  # Candidate A — bypass_pull_request_allowances (the semantically correct one).
+  # The open question is whether a USER-OWNED repo accepts this field at all.
+  cat > /tmp/a.json <<'JSON'
+  {"required_status_checks":null,"enforce_admins":true,
+   "required_pull_request_reviews":{"required_approving_review_count":0,
+     "bypass_pull_request_allowances":{"users":["vladm3105"],"teams":[],"apps":[]}},
+   "restrictions":null}
+  JSON
+  gh api -X PUT "repos/$R/branches/staging/protection" --input /tmp/a.json
+  # THE MEASUREMENT — the push, not the PUT:
+  git commit -q --allow-empty -m x && git push --ff-only origin HEAD:staging; echo "A rc=$?"
+
+  # Candidate B — enforce_admins:false (the incumbent; canon already runs it).
+  # Note this exempts admins from EVERYTHING on that branch, which is its cost.
+  gh api -X PUT "repos/$R/branches/staging/protection" --input - <<'JSON'
+  {"required_status_checks":null,"enforce_admins":false,
+   "required_pull_request_reviews":{"required_approving_review_count":0},
+   "restrictions":null}
+  JSON
+  git commit -q --allow-empty -m y && git push --ff-only origin HEAD:staging; echo "B rc=$?"
+
+  gh repo delete "$R" --yes                      # tear down
+  ```
+
+  **Read the result honestly.** A `rc=0` from an *admin* under candidate B
+  proves only that admins can promote — the standard's claim is about
+  "every non-bypass actor". If the answer is "only an admin can promote", say so
+  in B1 and let §5a say it too, rather than implying a general mechanism.
+
+  **Claim 91 rides along:** before trusting candidate B on canon, confirm no
+  branch ruleset shadows it —
+  `gh api repos/vladm3105/aidoc-flow-ci/rulesets --jq '.[].target'`. Expected
+  `tag` only; a `branch` ruleset would make `enforce_admins: false` inert.
 - **B2. Protection targeting** — every declared branch, not `default_branch`.
   Covers §3 Class A rows 1-2 **only**.
 - **B2c. The drift checker's blind spot (§6).** Conditional on B1's outcome: if
@@ -202,7 +246,12 @@ passes corrected in it before it shipped.
   - Where the Code Scanning baseline should live is a **real decision** (§3).
   - Still true: do not blanket-add `dev`/`staging`.
 
-- **A4-residual. Decide the post-merge-hygiene pre-push warning.** Phase A
+- **A4-residual. DECIDED 2026-08-23 — the warning is TAKEN.** Implemented as
+  `pre_push_check.sh` §6 (both copies, kept byte-identical by the existing drift
+  guard): it warns when a local branch whose PR is MERGED has not been deleted,
+  reports rather than blocks, and detects merged-ness from PR state because
+  ancestry cannot see a squash merge. Both delegating references in canon are
+  updated in the same change. Original framing: Phase A
   shipped, but it left one decision open and **merged canon delegates to it by
   name**: `docs/BRANCHING.md` §7 says "a local pre-push warning is *available* at
   the same strength as the audit phrase above; **PLAN-028 A4 decides whether to
@@ -276,9 +325,9 @@ into a plan is the same failure this repo records as "assert the teeth".
 | 11 | `release.sh tag` refuses unless the current branch is `main` (the BRANCH guard; the separate VERSION assertion is at :424) | `must be on main to tag` | scripts/release.sh:418 |
 | 12 | Code Scanning alerts anchor to the DEFAULT BRANCH, which is why the scanners need a post-merge run there | `anchored to the DEFAULT BRANCH` | install/templates/workflows/scanners.yml:38 |
 | 13 | `docs-sync` is a post-merge flow gated on `push: main` | `POST-MERGE flow` | install/templates/workflows/docs-sync.yml:5 |
-| 14 | Squash is the canonical merge method in the standard's prose | `Squash merge is the canonical merge method` | docs/BRANCHING.md:178 |
+| 14 | Squash is the canonical merge method in the standard's prose | `Squash merge is the canonical merge method` | docs/BRANCHING.md:185 |
 | 15 | The branch-protection templates are branch-agnostic payloads, so one profile can be applied to several | `required_status_checks` | install/templates/branch-protection-product.json:3 |
-| 16 | The shipped enforcement map states the PR requirement binds non-bypass actors | `PR required for a protected branch` | docs/BRANCHING.md:235 |
+| 16 | The shipped enforcement map states the PR requirement binds non-bypass actors | `PR required for a protected branch` | docs/BRANCHING.md:243 |
 | 17 | Every non-umbrella shipped profile sets `enforce_admins: true`, so consumers have no admin bypass | `"enforce_admins": true` | install/templates/branch-protection-product.json:14 |
 | 18 | Branch protection and rulesets aggregate and the stricter wins; ruleset `bypass_actors` is scoped by threat model | `bypass_actors` | DECISIONS.md:1877 |
 | 19 | `vladm3105` is a personal User account with no orgs, so org-only fields are unavailable | `personal **User** account` | DECISIONS.md:1973 |
@@ -292,21 +341,21 @@ into a plan is the same failure this repo records as "assert the teeth".
 | 27 | `check-pin-currency.sh` reads each consumer's pins from its default branch | `default_branch="$($GH api` | sync/check-pin-currency.sh:65 |
 | 28 | `deploy-ci-wizard.sh` enumerates deployed workflows from the default branch | `defbr="$($GH api` | install/deploy-ci-wizard.sh:160 |
 | 29 | `docs-sync.yml` resolves the caller's entry ref as the consumer's default branch | `consumer's default branch` | .github/workflows/docs-sync.yml:130 |
-| 30 | The shipped lifecycle requires cleanup on BOTH sides after a merge | `Clean up, remote` | docs/BRANCHING.md:113 |
+| 30 | The shipped lifecycle requires cleanup on BOTH sides after a merge | `Clean up, remote` | docs/BRANCHING.md:120 |
 | 31 | Shipped repo settings already automate remote branch deletion on merge | `"delete_branch_on_merge": true` | install/templates/repo-settings.json:9 |
-| 32 | The enforcement map already has a row for rules that are review conventions rather than enforced settings | `Naming and single-purpose branch` | docs/BRANCHING.md:241 |
+| 32 | The enforcement map already has a row for rules that are review conventions rather than enforced settings | `Naming and single-purpose branch` | docs/BRANCHING.md:248 |
 | 34 | `pre_push_check.sh` treats an EMPTY push range as a hard failure, not a pass | `EMPTY — NOTHING was verified` | scripts/pre_push_check.sh:282 |
 | 35 | `codeql.yml` filters the `pull_request` trigger to `branches: [main]`, so a PR based elsewhere never triggers it | `pull_request:` | install/templates/workflows/codeql.yml:17 |
 | 36 | `CLAUDE.md` forbids running `apply-standards.sh --apply --tier product` on canon | `Never run` | CLAUDE.md:444 |
 | 70 | On an `enforce_admins: true` repo a ruleset bypass is INERT — protection and rulesets aggregate and the stricter wins | `the ruleset bypass is **inert**` | DECISIONS.md:1941 |
-| 33 | The shipped standard states the invariant the whole model rests on: `main` takes only fast-forwards | `receives ONLY fast-forwards` | docs/BRANCHING.md:62 |
+| 33 | The shipped standard states the invariant the whole model rests on: `main` takes only fast-forwards | `receives ONLY fast-forwards` | docs/BRANCHING.md:69 |
 | 71 | `release.sh` prints "open the prep PR" as a HUMAN step — the script does not create it, so `gh pr create`'s `--base` default applies | `open the prep PR` | scripts/release.sh:362 |
 | 34b | `pre_push_check.sh` treats an EMPTY push range as a hard failure | `EMPTY — NOTHING was verified` | scripts/pre_push_check.sh:282 |
 | 72 | docs-sync's live-mode Apply is an alpha.1 STUB that echoes a notice and commits nothing | `alpha.1 stub` | .github/workflows/docs-sync.yml:317 |
 | 36b | The shipped docs-sync config sets `dry_run: true`, so live mode is not armed | `"dry_run": true` | install/templates/docs-sync.json:6 |
 | 37 | This repo's own gated ledger already records that a `dry_run: false` flip alone does nothing | `alpha.1 stub` | plans/PLAN-007_production-hardening.md:50 |
 | 38 | `BRANCH_PROTECTION.md` instructs using the repo's ACTUAL default branch and keeping `enforce_admins: true` | `actual default branch` | docs/BRANCH_PROTECTION.md:103 |
-| 39 | The enforcement map already counts a LOCAL pre-push hook as enforcement, not convention | `local pre-push hook` | docs/BRANCHING.md:240 |
+| 39 | The enforcement map already counts a LOCAL pre-push hook as enforcement, not convention | `local pre-push hook` | docs/BRANCHING.md:247 |
 | 40 | Three repos share the `product` tier, so tier cannot express per-repo opt-in | `Product code` | docs/REPO_STANDARDS.md:112 |
 | 41 | The hardcoded-`main` protection target was deliberately REMOVED as defect M4-sec | `M4-sec: use the target's actual default branch` | install/apply-standards.sh:706 |
 | 42 | `codeql` is in no tier's required status checks, so its absence is a missing gate rather than a hung PR | `required_status_checks` | install/templates/branch-protection-product.json:3 |

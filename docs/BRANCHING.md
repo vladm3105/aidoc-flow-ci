@@ -55,9 +55,16 @@ them and how:
 
 | Branch | Role | Receives work by |
 | --- | --- | --- |
-| `dev` | development; the `default_branch` | **squash-merged PR** from a working branch |
-| `staging` | dev deployment | **fast-forward push** from `dev` |
+| `dev` | development — where code and changes land; the `default_branch` | **squash-merged PR** from a working branch |
+| `staging` | the **stable** dev deployment — what is deployed for the team to use | **fast-forward push** from `dev` |
 | `main` | production release; `ci/vX.Y.Z` tags cut here | **fast-forward push** from `staging` |
+
+**What each branch MEANS, because it decides what may promote** (founder,
+2026-08-23): `dev` holds development code and changes; `staging` is the
+**stable** dev deployment — the build the team actually runs; `main` is the
+production release. "Stable" is the load-bearing word: a fast-forward from `dev`
+to `staging` is an assertion that what is on `dev` is fit to be deployed, which
+is why promotion is a deliberate act and not automatic on merge.
 
 **`main` receives ONLY fast-forwards.** No human merge, no bot commit, no
 release-prep merge. This is the rule the whole model rests on: the moment any
@@ -240,7 +247,7 @@ is the point.
 | Audit phrase | local pre-push hook + `audit-trail-check.yml` |
 | Naming and single-purpose branch | **Review convention** documented here |
 | **Promotion is fast-forward only** | **Convention** — nothing verifies that a push to `staging`/`main` was a fast-forward |
-| **Post-merge local cleanup (§3a)** | **Convention — not server-enforceable.** `delete_branch_on_merge` handles the remote; nothing can prune your clone. A local pre-push warning is *available* at the same strength as the audit phrase above; PLAN-028 **A4-residual** decides whether to take it |
+| **Post-merge local cleanup (§3a)** | **Local pre-push WARNING** (`pre_push_check.sh` §6) + `delete_branch_on_merge` for the remote. Not server-enforceable — nothing can prune your clone — so the hook reports and never blocks. It detects merged-ness from **PR state**, not ancestry: squash merge rewrites the SHA, so `git branch --merged` finds nothing (measured: it listed only `main` while 14 of 16 local branches had merged PRs) |
 | Exceptional bypass authority | `aidoc-flow-operations` OPS decisions |
 
 Apply enforceable settings with `install/apply-standards.sh --apply`. Verify
