@@ -1,7 +1,16 @@
 # PLAN-028 — `dev` → `staging` → `main` branching, and the surfaces that assume one branch
 
-**Status:** Draft — no phase executed. **Phase B1 is 🔴 BLOCKED on a live probe**
-(§3), and until it resolves, Phase D is undeliverable for consumers.
+**Status:** In Progress — **Phase A EXECUTED** (#517); Phase B is the remaining
+work; Phases C/D **deferred to a follow-on plan**. **RE-SCOPED 2026-08-23** under
+`verified-planning` §3.1: three folds grew this plan 325 → 522 lines while
+retiring findings, which is the defect signal, and the prescribed response is to
+cut scope rather than fold a fourth time.
+
+**The decision set** (§3.2 — the claims that change what gets built): which
+bypass mechanism makes promotion possible (Claim 62, PROBE); whether `main` can
+receive the release-prep merge (B4); which branch each runtime resolver should
+anchor to (B2/B2b); and what the non-adopting default must be (B0). Everything
+else in this plan is evidence for those four.
 **Owner:** canon (aidoc-flow-ci)
 **Scope:** the branching standard, the enforcement surfaces that would silently
 contradict it, post-merge branch hygiene, and canon's own Wave-0 self-adoption.
@@ -40,105 +49,32 @@ plan works out, and §3 shows two of them are more expensive than they look.
    delete the local branch, prune stale remote-tracking refs, switch to the
    default branch and fast-forward it. **Sync only — nothing is pushed.**
 
-## 2. FF-only promotion is blocked by the profile canon ships
+## 2. The two things that block this model — both now PROBE-gated
 
-`install/templates/branch-protection-product.json` sets
-`required_pull_request_reviews` to a non-null object (Claim 8). On the GitHub API
-that object *is* "Require a pull request before merging", so a direct
-`git push origin dev:staging` is refused for every non-bypass actor —
-`docs/BRANCHING.md` states the same in its own enforcement map (Claim 16).
+**(a) Fast-forward promotion is blocked by the profile canon ships.**
+`required_pull_request_reviews` is non-null (Claim 8), which on the GitHub API
+*is* "require a PR before merging" — so `git push origin dev:staging` is refused
+for every non-bypass actor. No PR merge method fast-forwards
+(`allow_merge_commit` and `allow_rebase_merge` are both false, Claim 7), so a
+promotion PR would be **squashed**: a new SHA for identical content, the exact
+divergence FF-only exists to prevent.
 
-No PR merge method fast-forwards: `allow_merge_commit` and `allow_rebase_merge`
-are both `false` (Claim 7), so a promotion PR would be **squashed** — a new SHA
-for identical content, permanently diverging the branches, which is the outcome
-decision (2) exists to prevent. The two SHA-preserving API alternatives
-(`POST /repos/{o}/{r}/merges`, `PATCH /git/refs/heads/{b}`) do not escape: both
-are ref updates subject to the same protection, and `/merges` creates a merge
-commit regardless.
+**Which bypass works on a user-owned repo cannot be settled from source.** Three
+drafts produced three different answers — `restrictions` (narrows rather than
+exempts, and org-only per Claim 19), a ruleset `bypass_actors` (inert alongside
+classic protection, Claim 32), `enforce_admins: false` (the incumbent, Claim 9,
+but it exempts admins from *everything* on that branch). **This is Claim 62, a
+PROBE.** It is the reason the earlier drafts churned: the process demanded prose
+where only a measurement would do.
 
-**Consumers have no promotion path at all — not even a narrow one.** All four
-non-umbrella profiles set `enforce_admins: true` (Claim 17); only the umbrella
-is `false`. Canon's live `main` is `false`, but that is an **FT-52 exception to
-canon's own template** (Claim 9), not the fleet default. So an adopting consumer
-gets a `main` with the PR requirement and no admin bypass: zero paths.
+**(b) The release flow puts a commit on `main` that `dev` will not have.**
+`release.sh prep` branches from `main` (Claim 21) and the checklist squash-merges
+that PR back into `main` (Claim 22), after which `git push --ff-only origin
+dev:main` fails — recoverable only via a back-merge needing the same bypass.
+B4 owns it.
 
-Measured on canon 2026-08-23 — a server-side fact, so it carries its
-re-derivation command rather than a ledger citation:
-
-```sh
-gh api repos/vladm3105/aidoc-flow-ci/branches/main/protection \
-  --jq '{pr_required: (.required_pull_request_reviews != null),
-         restrictions: (.restrictions != null),
-         enforce_admins: .enforce_admins.enabled}'
-# -> {"pr_required":true,"restrictions":false,"enforce_admins":false}
-```
-
-## 3. 🔴 B1 — the bypass mechanism is UNRESOLVED, and two drafts have now guessed it wrong
-
-**Draft 1 proposed a `restrictions` push allowlist.** Wrong twice: `restrictions`
-*narrows* who may push rather than exempting anyone from the PR requirement, and
-it is org-only while CI-0030 records — measured — that every workspace repo is
-user-owned (Claims 18, 19).
-
-**Draft 2 then over-corrected**, and pass 2 caught both halves:
-
-| Candidate | Status |
-|---|---|
-| `required_pull_request_reviews.bypass_pull_request_allowances` | **The semantically correct field** — it exempts rather than narrows. Whether it accepts a **user-owned** repo is genuinely unresolved from source; this is what the probe is for |
-| A repository **ruleset** with `bypass_actors` | **REFUTED, by this repo's own decision.** CI-0029 states that on an `enforce_admins: true` repo the ruleset bypass is **inert** — protection and rulesets aggregate and the stricter wins (Claim 32). It cannot exempt anyone from a PR requirement imposed by *classic* protection. Draft 2 listed its interaction as "unknown" when the cited decision answers it |
-| `enforce_admins: false` | **The incumbent, and draft 2 omitted it entirely.** It is what canon already runs on its own `main` (Claim 9), it is not org-gated, and it is a field in the tier templates **B2 is already editing** (Claim 17). Cost: it exempts admins from *everything* on that branch, and `docs/BRANCHING.md` §1 separately forbids pushing directly "including when an administrator bypass is technically available" (Claim 33) |
-| The `aidoc-flow-bot` App bypass | **Downgraded from "strongest lead" to "unverified".** Draft 2 claimed a working bypass already exists. Claim 20 cites a **`SAFETY` header comment** — a design *requirement* for a feature whose commit path is the stub in §4. A repo-wide grep finds no `bypass_actors`/`bypass_pull_request_allowances` configuration anywhere. Whether it was ever provisioned is itself part of the probe |
-
-**⚠️ This inference is UNMEASURED on the aggregating surface.** `enforce_admins: false` governs *classic* protection only. Rulesets are a separate surface that aggregates, and `enforce_admins: false` has **no effect on a ruleset** (CI-0029). §8 confirms nothing here reads rulesets. Canon carries at least one live ruleset (tag-scoped), so the conclusion is *probably* right — but §2 carries a re-derivation command precisely because it is a server-side fact, and this overturns §2 carrying none. **Before relying on it, run:**
-
-```sh
-gh api repos/vladm3105/aidoc-flow-ci/rulesets --jq '.[] | {id, name, target}'
-gh api repos/vladm3105/aidoc-flow-ci/rules/branches/main
-```
-
-**Consequence for §2's conclusion.** "Consumers have zero paths" was overstated:
-`enforce_admins: false` is a path. Canon can promote **after B3** — not today: the mandatory local pre-push gate refuses a promotion push outright (B3, Claim 34b), so "today" was itself an overclaim added by the pass-2 fold. What is true
-is that every shipped consumer profile sets `enforce_admins: true` (Claim 17), so
-an adopting consumer has no path **until this plan changes a template** — which
-is B2's job, not an immovable property of the world. Phase C is therefore **not**
-blocked on B1; Phase D is.
-
-## 4. FF-only collides with the release flow — and NOT with docs-sync
-
-**(a) Every release. This half verifies.** `release.sh prep` branches from `main`
-(Claim 21), writes VERSION, retires forward-pin markers and promotes the
-CHANGELOG; the checklist merges that PR back into `main` with
-`gh pr merge --squash --admin` (Claim 22). The squash commit exists on `main` and
-not on `dev`, so `git push --ff-only origin dev:main` fails from then on.
-
-"Permanently" is defensible **only with its condition stated**: squash-only plus
-the PR requirement means a back-merge of `main` into `dev` cannot restore
-ancestry without the same bypass B1 is blocked on. Say that rather than asserting
-bare impossibility.
-
-Two precision points draft 2 got wrong: the PR is opened by a **human step**
-`release.sh` prints (Claim 34), not by the checklist — which is exactly what
-makes `gh pr create`'s `--base` default bite once `dev` is default. And the
-VERSION assertion is at `release.sh:424` (Claim 11); `:418` is the branch guard.
-
-**(b) docs-sync does NOT write to `main`, and draft 2's claim that it does was
-false.** The "Apply changes (live mode only)" step is an **alpha.1 stub** that
-echoes a notice and commits nothing (Claim 35). Draft 2 cited
-`docs-sync.yml:337` — which is the **body text of the dry-run PR comment**
-("in live mode, the bot *would* commit…"), a conditional description of
-unimplemented behaviour quoted as behaviour. Live mode is not armed anywhere:
-both the canon and shipped configs set `"dry_run": true` (Claim 36), and this
-repo's own gated ledger already records that a `dry_run: false` flip alone does
-nothing (Claim 37).
-
-**This is the plan's own §4.3i defect class**, committed inside the section that
-invokes it: an unimplemented, unarmed, founder-gated hazard promoted to an active
-one, driving a phase that prescribed changing code that does not exist.
-
-docs-sync's **real** exposure after the flip is its **trigger**, not a write —
-`push: branches: [main]` (Claim 13) stops firing when merges land on `dev`. That
-belongs in §5/B5 with the other seventeen. The alpha.2 commit logic, when
-written, must target the branch model — a constraint on future work.
+*(An earlier draft also claimed docs-sync writes to `main`. It does not — the
+live-mode step is a stub, Claim 35. Retracted; the history is in the Review log.)*
 
 ## 5. What the flip breaks — TWO opposite classes, needing opposite fixes
 
@@ -186,70 +122,14 @@ nothing there. Removed.
 
 ## 6. Phases
 
-### Phase A — the standard
+### Phase A — the standard — **EXECUTED** (#517, 2026-08-23)
 
-- **A1. `docs/BRANCHING.md`, re-derived against the file** (draft 2 claimed to
-  have done this and missed two sections):
-  - **§1 is the section that most directly contradicts the model** and was
-    untouched: "one protected default branch, normally `main`" (Claim 33), "Do
-    not push directly, **including when an administrator bypass is technically
-    available**", and the umbrella `--admin` flow "never authorizes a direct push
-    and is **not a precedent for consumers**". A3 makes promotion exactly that
-    shape; §1 pre-emptively denies the precedent.
-  - **§7's enforcement map** — its row 1 ("PR required for default branch")
-    silently becomes a statement about `dev`, and the map gains no row for
-    promotion or the other protected branches.
-  - §2 (Claim 1) and §6 (Claim 2) forbid the model outright — rewrite, not append.
-  - §4 is default-branch-framed throughout.
-  - §3 items 1 and 5 stay **true** — the default branch is now `dev`.
-- **A2.** `docs/REPO_STANDARDS.md` §2 (Claim 3) → per-branch table.
-- **A2b. `docs/BRANCH_PROTECTION.md`** — omitted from draft 2 entirely, and it is
-  linked from `BRANCHING.md`. It instructs "use the repo's **actual default
-  branch** (not hardcoded `main`) … keep `enforce_admins: true` unless you have a
-  documented reason to diverge" (Claim 38). Post-adoption that runbook
-  contradicts A2's per-branch table and B1's bypass in the same breath.
-- **A3.** Promotion is a fast-forward **push**, not a merge — squash-only is
-  untouched for feature PRs. State the bypass requirement (§3) and the
-  `main`-receives-only-fast-forwards rule (§4) together.
-- **A4. Post-merge hygiene** (decision 5), as a new §3 lifecycle step. Remote
-  deletion is already covered (Claim 30) and automated (Claim 31); this adds the
-  local half.
+`docs/BRANCHING.md` rewritten for the model, `REPO_STANDARDS.md` §2, the
+post-merge hygiene rule, and the CHANGELOG entries all shipped. The standard
+states its own **unadopted** status, so nothing reads it as live.
 
-  **Probing it surfaced the rule's real content: `git branch --merged` is the
-  WRONG detector.** Measured on canon 2026-08-23 — `git branch --merged main`
-  listed no branch other than `main` itself while **14 of 16** local branches
-  had merged PRs. (`--merged main` always lists `main`; the substantive point is
-  that it found none of the 14.) Squash-merge rewrites the SHA, so ancestry-based detection finds nothing
-  and a naive "delete merged branches" rule silently does nothing while
-  reporting success. The same squash-defeats-ancestry trap this workspace
-  already records elsewhere. So the rule must name its detector:
-
-  ```sh
-  git checkout <default> && git pull --ff-only
-  # Merged-ness comes from PR STATE, not ancestry. Use any(), NOT .[0]:
-  #   a reused or reopened branch has SEVERAL PRs, and .[0] is an arbitrary
-  #   element of an unordered set — it can read CLOSED while a merged PR exists.
-  #   A branch never PR'd yields null and must be treated as NOT merged.
-  gh pr list --head "<branch>" --state all --json state \
-    --jq 'any(.[]; .state == "MERGED")'
-  # -d REFUSES (squash means it is not an ancestor), so -D is required — which
-  # removes the safety net -d exists for. Guard on CONTAINMENT first: any commit
-  # on the branch after the merge would be lost silently.
-  test "$(git rev-parse "<branch>")" = "$(gh pr view <N> --json headRefOid --jq .headRefOid)" \
-    && git branch -D "<branch>"
-  git fetch --prune
-  ```
-
-  **Not server-enforceable — but do not stop there** (draft 2 wrote it off as
-  simply "unenforceable"). Canon ships a client-side gate into every adopting
-  clone, and this standard already counts that as *enforcement*, not convention:
-  §7 lists the audit phrase as "local pre-push hook + `audit-trail-check.yml`"
-  (Claim 39). A pre-push warning for merged-but-undeleted local branches is
-  available at exactly the strength of the OPS-0069 phrase check, with the same
-  `--no-verify` escape. **Decide it explicitly: take the local hook, or decline
-  it and say why.** Do not record "unenforceable" as if no option existed.
-- **A5.** `DECISIONS.md` **CI-0048** — decision of record. (CI-0047 was taken by
-  the agent-config decision that landed first.)
+Not carried forward as planned work; see the Review log for what the three
+passes corrected in it before it shipped.
 
 ### Phase B — enforcement surfaces
 
@@ -290,23 +170,23 @@ nothing there. Removed.
   - Where the Code Scanning baseline should live is a **real decision** (§5).
   - Still true: do not blanket-add `dev`/`staging`.
 
-### Phase C — canon self-adoption (Wave 0)
+### Phases C and D — DEFERRED to a follow-on plan
 
-**Not blocked on B1** — canon's `main` already carries `enforce_admins: false`
-(§3). It IS blocked on **B3**: the pre-push gate refuses the promotion push.
-Sequence C after B3, not after B1. Drive one real change through
-`feat/… → dev → staging → main` before offering the model to anyone.
+Canon self-adoption and the consumer opt-in path are both gated on Claim 62's
+PROBE and on B3, and neither can be planned meaningfully until the bypass is
+known. Planning them here is what grew this plan 60% across three folds while
+retiring findings.
 
-**Protection by per-section `gh api` PUTs, NOT `apply-standards.sh`** —
-`CLAUDE.md` forbids that command on canon (Claim 36): it PUTs a profile requiring
-`ai-review` and `composition`, which canon does not self-run, hanging every canon
-PR, and it clobbers the FT-52 profile the release path depends on.
+They move to their own plan, **reviewed on their own budget** — the pattern this
+repo already used when PLAN-025's cap was spent and PLAN-026 took the remaining
+phases. Two constraints carry forward so they are not rediscovered:
 
-### Phase D — consumer opt-in path
-
-Documented, not executed. **Blocked on B1**: every shipped consumer profile sets
-`enforce_admins: true` (Claim 17), so an adopting consumer has no promotion path
-until a template changes.
+- Canon's protection must be applied by per-section `gh api` PUTs, **never**
+  `apply-standards.sh --apply --tier product`, which `CLAUDE.md` forbids on canon
+  (Claim 36) — it requires checks canon does not self-run and would hang every
+  canon PR.
+- Every shipped consumer profile sets `enforce_admins: true` (Claim 17), so a
+  consumer has no promotion path until a template changes.
 
 ## 7. What this plan does NOT do
 
@@ -338,8 +218,6 @@ into a plan is the same failure this repo records as "assert the teeth".
 
 | # | Claim | Symbol | Citation |
 | --- | --- | --- | --- |
-| 60 | The standard currently FORBIDS long-lived development/release/environment branches absent an owning decision | `Do not create long-lived` | docs/BRANCHING.md:53 |
-| 61 | The standard states it does not use long-lived release branches | `long-lived release branches` | docs/BRANCHING.md:116 |
 | 62 | The standard protects exactly one branch, `main`, per tier | `All non-paused repos protect` | docs/REPO_STANDARDS.md:124 |
 | 63 | `pre_push_check.sh` falls back to `merge-base HEAD origin/main` when there is no upstream | `git merge-base HEAD origin/main` | scripts/pre_push_check.sh:80 |
 | 64 | `apply-standards.sh` PUTs branch protection to the API-reported default branch | `branches/${default_branch}/protection` | install/apply-standards.sh:710 |
@@ -351,9 +229,9 @@ into a plan is the same failure this repo records as "assert the teeth".
 | 11 | `release.sh tag` refuses unless the current branch is `main` (the BRANCH guard; the separate VERSION assertion is at :424) | `must be on main to tag` | scripts/release.sh:418 |
 | 12 | Code Scanning alerts anchor to the DEFAULT BRANCH, which is why the scanners need a post-merge run there | `anchored to the DEFAULT BRANCH` | install/templates/workflows/scanners.yml:38 |
 | 13 | `docs-sync` is a post-merge flow gated on `push: main` | `POST-MERGE flow` | install/templates/workflows/docs-sync.yml:5 |
-| 14 | Squash is the canonical merge method in the standard's prose | `Squash merge is the canonical merge method` | docs/BRANCHING.md:96 |
+| 14 | Squash is the canonical merge method in the standard's prose | `Squash merge is the canonical merge method` | docs/BRANCHING.md:178 |
 | 15 | The branch-protection templates are branch-agnostic payloads, so one profile can be applied to several | `required_status_checks` | install/templates/branch-protection-product.json:3 |
-| 16 | The standard's own enforcement map states the PR requirement binds non-bypass actors | `PR required for default branch` | docs/BRANCHING.md:122 |
+| 16 | The shipped enforcement map states the PR requirement binds non-bypass actors | `PR required for a protected branch` | docs/BRANCHING.md:235 |
 | 17 | Every non-umbrella shipped profile sets `enforce_admins: true`, so consumers have no admin bypass | `"enforce_admins": true` | install/templates/branch-protection-product.json:14 |
 | 18 | Branch protection and rulesets aggregate and the stricter wins; ruleset `bypass_actors` is scoped by threat model | `bypass_actors` | DECISIONS.md:1877 |
 | 19 | `vladm3105` is a personal User account with no orgs, so org-only fields are unavailable | `personal **User** account` | DECISIONS.md:1973 |
@@ -367,27 +245,30 @@ into a plan is the same failure this repo records as "assert the teeth".
 | 27 | `check-pin-currency.sh` reads each consumer's pins from its default branch | `default_branch="$($GH api` | sync/check-pin-currency.sh:65 |
 | 28 | `deploy-ci-wizard.sh` enumerates deployed workflows from the default branch | `defbr="$($GH api` | install/deploy-ci-wizard.sh:160 |
 | 29 | `docs-sync.yml` resolves the caller's entry ref as the consumer's default branch | `consumer's default branch` | .github/workflows/docs-sync.yml:130 |
-| 30 | The standard already requires deleting the head branch after merge | `Delete the head branch after merge` | docs/BRANCHING.md:69 |
+| 30 | The shipped lifecycle requires cleanup on BOTH sides after a merge | `Clean up, remote` | docs/BRANCHING.md:113 |
 | 31 | Shipped repo settings already automate remote branch deletion on merge | `"delete_branch_on_merge": true` | install/templates/repo-settings.json:9 |
-| 32 | The enforcement map already has a row for rules that are review conventions rather than enforced settings | `Naming and single-purpose branch` | docs/BRANCHING.md:127 |
+| 32 | The enforcement map already has a row for rules that are review conventions rather than enforced settings | `Naming and single-purpose branch` | docs/BRANCHING.md:241 |
 | 34 | `pre_push_check.sh` treats an EMPTY push range as a hard failure, not a pass | `EMPTY — NOTHING was verified` | scripts/pre_push_check.sh:282 |
 | 35 | `codeql.yml` filters the `pull_request` trigger to `branches: [main]`, so a PR based elsewhere never triggers it | `pull_request:` | install/templates/workflows/codeql.yml:17 |
 | 36 | `CLAUDE.md` forbids running `apply-standards.sh --apply --tier product` on canon | `Never run` | CLAUDE.md:444 |
 | 70 | On an `enforce_admins: true` repo a ruleset bypass is INERT — protection and rulesets aggregate and the stricter wins | `the ruleset bypass is **inert**` | DECISIONS.md:1941 |
-| 33 | §1 requires ONE protected default branch and forbids direct pushes even where an admin bypass exists | `Every active repository has one protected default branch` | docs/BRANCHING.md:13 |
+| 33 | The shipped standard states the invariant the whole model rests on: `main` takes only fast-forwards | `receives ONLY fast-forwards` | docs/BRANCHING.md:62 |
 | 71 | `release.sh` prints "open the prep PR" as a HUMAN step — the script does not create it, so `gh pr create`'s `--base` default applies | `open the prep PR` | scripts/release.sh:362 |
 | 34b | `pre_push_check.sh` treats an EMPTY push range as a hard failure | `EMPTY — NOTHING was verified` | scripts/pre_push_check.sh:282 |
 | 72 | docs-sync's live-mode Apply is an alpha.1 STUB that echoes a notice and commits nothing | `alpha.1 stub` | .github/workflows/docs-sync.yml:317 |
 | 36b | The shipped docs-sync config sets `dry_run: true`, so live mode is not armed | `"dry_run": true` | install/templates/docs-sync.json:6 |
 | 37 | This repo's own gated ledger already records that a `dry_run: false` flip alone does nothing | `alpha.1 stub` | plans/PLAN-007_production-hardening.md:50 |
 | 38 | `BRANCH_PROTECTION.md` instructs using the repo's ACTUAL default branch and keeping `enforce_admins: true` | `actual default branch` | docs/BRANCH_PROTECTION.md:103 |
-| 39 | The enforcement map already counts a LOCAL pre-push hook as enforcement, not convention | `local pre-push hook` | docs/BRANCHING.md:126 |
+| 39 | The enforcement map already counts a LOCAL pre-push hook as enforcement, not convention | `local pre-push hook` | docs/BRANCHING.md:240 |
 | 40 | Three repos share the `product` tier, so tier cannot express per-repo opt-in | `Product code` | docs/REPO_STANDARDS.md:112 |
 | 41 | The hardcoded-`main` protection target was deliberately REMOVED as defect M4-sec | `M4-sec: use the target's actual default branch` | install/apply-standards.sh:706 |
 | 42 | `codeql` is in no tier's required status checks, so its absence is a missing gate rather than a hung PR | `required_status_checks` | install/templates/branch-protection-product.json:3 |
 | 43 | The drift checker DOES compare `required_pull_request_reviews`, as a four-field subset — so the gap is the allowlist projecting away the bypass field | `review_filter=` | sync/check-standards-drift.sh:260 |
 
 | 61 | `branches: [main]` appears 19 times across 17 shipped caller templates — 2 `pull_request` filters, 17 `push` arms | `branches: [main]` | install/templates/workflows/codeql.yml:16 |
+
+| 62 | Which bypass permits a fast-forward push on a USER-OWNED repo whose branch has `required_pull_request_reviews` — **blocks B1, and through it Phases C and D** | `n/a` | PROBE: gh api -X PUT repos/vladm3105/aidoc-flow-ci/branches/dev/protection --input p.json  # trial each candidate on a throwaway branch |
+| 63 | Whether a branch RULESET exists on canon's `main` that would aggregate with classic protection and defeat `enforce_admins: false` — **blocks the Phase C sequencing decision** | `n/a` | PROBE: gh api repos/vladm3105/aidoc-flow-ci/rulesets --jq '.[].target' |
 
 ## Review log
 
@@ -520,3 +401,43 @@ claims), which bounds but does not eliminate the risk.
 3. **Semver** — state B0's reusable-invariant, or name the breaking surface.
 4. **Whether FF-only is still wanted** now the cost is one writer (the release
    flow), not two.
+
+### Re-scope - 2026-08-23 - `verified-planning` §3.1 applied
+
+**Not a fourth fold.** The OPS-0066 cap was spent, and the skill's §3.1 — added
+because *this plan* was the evidence — prescribes cutting scope rather than
+folding again once growth is the signal. It was:
+
+```text
+lines:  325 -> 422 -> 522   (folds of passes 1, 2, 3)  ->  403  (cut)
+```
+
+Three folds grew the plan 60% while retiring findings. That is the defect the
+new rule names.
+
+**What the cut removed** (subtractive per §3.1 rule 1):
+
+- **§2–§4 collapsed into one §2.** Three sections narrated the same two blockers
+  and their retraction history; the Review log already holds the history.
+- **Phases C and D deferred** to a follow-on plan, on the PLAN-025 → PLAN-026
+  precedent this repo already set. Both are gated on the bypass probe, so
+  planning them here was manufacturing surface that could not be decided. Two
+  constraints carried forward so they are not rediscovered.
+- **Phase A removed as planned work** — it EXECUTED in #517.
+- **Two spent claims deleted**: they justified rewriting `BRANCHING.md` §2/§6,
+  that rewrite shipped, and their cited text no longer exists by design. The
+  gate caught them, which is the ledger doing its job.
+
+**What the cut added, and why it is the point:**
+
+Claims **62** and **63** are `PROBE` rows — the state added in the same skill
+change. The bypass mechanism and the ruleset surface are **live facts**; source
+cannot settle either. Under the old rules they had nowhere legitimate to sit, so
+three consecutive drafts *guessed* and each fold retracted the last. They now
+block the phases that depend on them and leave the rest of the plan free.
+
+**Decision set named** (§3.2): the four claims that change what gets built.
+Everything else is evidence for them.
+
+**Result:** re-scoped; the reduced artifact is UNREVIEWED and one pass is owed
+on it.
