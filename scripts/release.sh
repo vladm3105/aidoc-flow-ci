@@ -56,6 +56,38 @@ require_version_arg() {
 
 current_version() { tr -d '[:space:]' < VERSION; }
 
+# PLAN-028 B4 — where a release is prepared.
+#
+# Reads this repo's own `.github/aidoc-ci.json` declaration. The file is absent
+# here (canon has not adopted the promotion model — PLAN-028 Phases C/D), so
+# this returns `main` and `prep` behaves exactly as it did before B4. It becomes
+# load-bearing the moment canon adopts, and getting it wrong then would put a
+# squash commit on `main` that `dev` does not have, permanently breaking the
+# fast-forward-only invariant.
+release_integration_branch() {
+  local decl="$ROOT/.github/aidoc-ci.json" b=""
+  if [ -f "$decl" ] && command -v jq >/dev/null 2>&1; then
+    b="$(jq -r '.branching.integration_branch // empty' "$decl" 2>/dev/null || true)"
+  fi
+  # `|| true` is LOAD-BEARING, not defensive noise. This script is `set -euo
+  # pipefail`; `symbolic-ref --quiet` exits 1 when the ref is absent, and
+  # `pipefail` hands that status to the assignment — so without it `set -e`
+  # killed the script HERE, silently, on exactly the path the fallback below
+  # was written to serve. `refs/remotes/origin/HEAD` is absent in every
+  # `actions/checkout` workspace and in `git init` + fetch clones.
+  if [ -z "$b" ]; then
+    b="$(git -C "$ROOT" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || true)"
+  fi
+  # NEVER a literal `dev`. The model's NAME is `dev-staging-main`, but the
+  # integration branch is whatever the repo declares or whatever its default
+  # branch actually is — a consumer on `develop` that adopts the model with the
+  # minimal declaration must not have `dev` invented for it. One resolution
+  # rule, shared with apply-standards.sh, check-standards-drift.sh, install.sh
+  # and check-drift.sh: declaration, then default branch, then `main`.
+  [ -n "$b" ] || b="main"
+  printf '%s\n' "$b"
+}
+
 # Only exact ci/vX.Y.Z releases. `sort -V` ranks `ci/v2.13.0-rc.1` ABOVE
 # `ci/v2.13.0`, so an unfiltered glob would let a pre-release (or a stray tag like
 # ci/v0.0.1-ruletest) become `prev` and mis-scope the diff.
@@ -213,7 +245,12 @@ classify_suite() {
     printf '%s\n' "$clean" | grep -E '^[[:space:]]+FAIL ' | grep -v 'latest published tag' | sed 's/^/    /' >&2
   fi
   [ "$headers" -eq "$summaries" ] || echo "    · a test group crashed without a summary ($headers started, $summaries finished — a set-e abort or missing tool)" >&2
-  echo "  Recover: git checkout main && git branch -D $branch && git checkout -- ." >&2
+  # Resolved into a variable first: inside `echo "... $(f) ..."` a failing
+  # substitution still lets `echo` succeed, so the operator was handed
+  # `git checkout ""`. The resolver no longer aborts, but a recovery hint is
+  # exactly the wrong place to print an empty branch name.
+  local _recover_branch; _recover_branch="$(release_integration_branch)"
+  echo "  Recover: git checkout ${_recover_branch:-main} && git branch -D $branch && git checkout -- ." >&2
   return 1
 }
 
@@ -244,15 +281,30 @@ prep() {
   [ -z "$(git status --porcelain)" ] || die "working tree not clean — commit or stash first"
   local branch="release/${version//\//-}-prep"
   git rev-parse --verify -q "$branch" >/dev/null && die "branch $branch already exists"
-  # FT-48: prep must start from an up-to-date main — the SAME guard `tag` carries.
-  # A prep from a stale or off-main tree promotes an INCOMPLETE `## Unreleased`
+  # FT-48: prep must start from an up-to-date integration branch — the SAME
+  # guard `tag` carries. A prep from a stale or off-branch tree promotes an INCOMPLETE `## Unreleased`
   # CHANGELOG into the release, and `tag`'s VERSION-match guard cannot catch that
   # (VERSION would still match). Placed AFTER the tag/VERSION checks so a prep of
   # the current version is still rejected with its specific reason.
+  # PLAN-028 B4. `prep` used to hardcode `main`, and under the dev→staging→main
+  # model that is the one thing it must not do. The checklist squash-merges the
+  # prep PR into its base, creating a commit on that base; if the base is `main`,
+  # `main` then holds a commit `dev` does not, and `git push origin
+  # dev:main` fails forever after — the exact invariant (docs/BRANCHING.md §3,
+  # "main receives ONLY fast-forwards") the model is built on.
+  #
+  # So prep starts from, and its PR targets, the INTEGRATION branch; the release
+  # commit then reaches `main` by promotion like everything else. `tag` keeps its
+  # `main` guard — tags are still cut there (founder decision 1), and after the
+  # promotion `main` carries this same commit.
+  #
+  # This repo does not declare the model, so the resolver returns `main` and
+  # every guard below is byte-for-byte the behaviour that shipped before.
+  local integration; integration="$(release_integration_branch)"
   local cur_branch; cur_branch="$(git rev-parse --abbrev-ref HEAD)"
-  [ "$cur_branch" = "main" ] || die "must be on main to prep (on '$cur_branch') — prep starts from an up-to-date main"
-  git fetch -q origin main
-  [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || die "local main is not up to date with origin/main — pull first"
+  [ "$cur_branch" = "$integration" ] || die "must be on $integration to prep (on '$cur_branch') — prep starts from an up-to-date $integration"
+  git fetch -q origin "$integration"
+  [ "$(git rev-parse HEAD)" = "$(git rev-parse "origin/$integration")" ] || die "local $integration is not up to date with origin/$integration — pull first"
 
   note "==> prep $version"
   git checkout -q -b "$branch"
@@ -358,8 +410,11 @@ PY
   cat <<EOF
 
 $(note "Next (yours):")
-  1. Review the diff:            git -C $ROOT diff main
-  2. Commit (OPS-0069 phrase), push, open the prep PR. Its \`suite\` + self-caller
+  1. Review the diff:            git -C $ROOT diff $integration
+  2. Commit (OPS-0069 phrase), push, open the prep PR AGAINST $integration
+     (\`gh pr create --base $integration\` — the default base of \`gh pr create\` is
+     the repo default branch, which is only the same thing while $integration is it).
+     Its \`suite\` + self-caller
      checks will be RED — the FT-21 chicken-and-egg (self-pins reference $version,
      which does not exist yet). Since FT-52 protected main, 4 of the 5 REQUIRED
      contexts come from those self-pinned callers, so they startup_failure and are
@@ -415,6 +470,10 @@ tag() {
   fi
 
   local branch; branch="$(git rev-parse --abbrev-ref HEAD)"
+  # PLAN-028 B4: this guard stays literally `main` ON PURPOSE. Tags are cut on
+  # the release branch (founder decision 1), not on the integration branch, and
+  # under the promotion model `main` reaches this commit by fast-forward — so by
+  # the time `tag` runs, being on `main` is exactly the right assertion.
   [ "$branch" = "main" ] || die "must be on main to tag (on '$branch') — the prep PR must be MERGED first"
   git fetch -q origin main
   [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || die "local main is not up to date with origin/main — pull first"

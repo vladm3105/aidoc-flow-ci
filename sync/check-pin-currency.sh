@@ -76,9 +76,14 @@ audit_repo() {  # $1 = "local" | owner/repo ; $2 = canon
         printf '    %-20s @%s  ⚠️ STALE\n' "${wf%.yml}" "$pin"
       fi
     done
-    if [ "$any" = 0 ]; then echo "    (no aidoc-flow-ci pins)";
-    elif [ "$stale" = 0 ]; then echo "    ✅ all $total pins current (@$canon)";
-    else echo "    → $stale/$total stale; oldest @$worst.  Re-pin: install/install.sh $repo --repin  (CI_TAG=$canon)"; fi
+    # PLAN-028 B2b row 6: NAME THE REF THIS AUDIT READ. It reads the default
+    # branch, which under the promotion model is the integration branch — so a
+    # repo whose `main` still runs an older pin reports current here and is not
+    # wrong, just partial. Silent was the defect; a multi-branch fleet audit is
+    # consumer-adoption work and is deferred with Phases C/D.
+    if [ "$any" = 0 ]; then echo "    (no aidoc-flow-ci pins on $default_branch)";
+    elif [ "$stale" = 0 ]; then echo "    ✅ all $total pins current (@$canon) on $default_branch";
+    else echo "    → $stale/$total stale on $default_branch; oldest @$worst.  Re-pin: install/install.sh $repo --repin  (CI_TAG=$canon)"; fi
   fi
   return "$stale"
 }

@@ -121,15 +121,62 @@ declared before any settings apply (see §11 Rollout).
 
 ## 2. Branch protection
 
-All non-paused repos protect their **default branch**; tier drives the profile.
+All non-paused repos protect the branches they **declare**; tier drives the
+profile. A repo that declares nothing protects its **default branch**, which is
+what every repo does today.
+
+**The declaration is `.github/aidoc-ci.json`** (PLAN-028 B0, contract in
+`BRANCHING.md` §8). `--tier` cannot carry it: three repos share the `product`
+tier, so the branch set is not derivable from the tier. The file is **optional**
+and an absent file is a valid declaration — it means the single-branch model
+against the repo's API-reported `default_branch`, byte-for-byte the behaviour
+that shipped before the file existed.
+
+```jsonc
+{ "version": 1, "branching": { "model": "dev-staging-main" } }
+```
+
+`install/apply-standards.sh --apply` protects every branch in the resolved set;
+`sync/check-standards-drift.sh` verifies every one of them. Both read the
+**pushed** copy over the API, not the operator's working tree — `--apply`
+requires `--repo` and may be run from any checkout, so a CWD-relative read would
+apply the branch set of whatever repo you happened to be standing in.
+`integration_branch: null` resolves to the repo's GitHub `default_branch`, never
+to a literal `dev`; an explicit `[]` is an opt-out, distinct from `null`. Three
+rules bind:
+
+- **The integration branch MUST be the repo's GitHub `default_branch`.** Four
+  canon surfaces — `composition.yml`'s trusted allowlist, `ai-review.yml`'s
+  canon-pin resolution, `check-pin-currency.sh` and `deploy-ci-wizard.sh` —
+  resolve `default_branch` at run time and cannot read this declaration; two of
+  them are trust boundaries. `apply-standards.sh` warns on divergence and
+  `check-standards-drift.sh` counts it as drift. `BRANCHING.md` §8a.
+- **The integration branch must NOT also be a promotion branch.**
+  `apply-standards.sh` refuses this outright; `check-standards-drift.sh` counts
+  it as drift. Declaring the model _before_ flipping the GitHub default produces
+  exactly that overlap, and the `enforce_admins: false` overlay would then land
+  on the repo's default branch — the trust anchor itself.
+- **Every branch in `promotion_branches` is protected with the tier profile
+  overlaid with `enforce_admins: false`**, because that is the only mechanism on
+  a user-owned account that permits a fast-forward promotion push (measured,
+  `DECISIONS.md` CI-0048). On such a branch the PR requirement is **advisory for
+  admins, not enforced** — an accepted trade recorded as CI-0049, not an
+  oversight. The integration branch is never a promotion branch and keeps
+  `enforce_admins: true`, which is what preserves it as a trust anchor.
 
 **Under the opt-in three-branch model** (`dev` → `staging` → `main`,
 `BRANCHING.md` §0) a repo protects **all three**, `dev` is the `default_branch`,
-and `main` receives only fast-forwards. **No repo has adopted it yet, canon
-included** — the prerequisites are open in `plans/PLAN-028`, and flipping a
-default branch before they land silently disables CodeQL on every feature PR
-and stops all 17 post-merge arms. The table below describes the profile applied
-to a protected branch; it is the same profile whichever branch it is applied to.
+and `main` receives only fast-forwards. The enforcement surfaces are in place as
+of PLAN-028 Phase B, but **no repo has adopted the model yet, canon included** —
+the cutover path is PLAN-028 Phases C and D. Note that the trigger-arm change
+arrives via `install.sh --update` only; `--repin` rewrites `uses:` tag strings
+and cannot deliver a caller-body edit. **`codeql.yml` is
+`safe_to_replace: false`**, so even `--update` preserves the consumer's copy and
+its two `branches:` filters must be edited by hand — `sync/check-drift.sh`
+reports the file as drifted until they are.
+
+The table below describes the profile applied to a protected branch; it is the
+same profile whichever branch it is applied to.
 
 | Setting | Governance | Product code | Ops-private | Umbrella | Bootstrap |
 | --- | --- | --- | --- | --- | --- |

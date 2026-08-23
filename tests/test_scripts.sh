@@ -640,6 +640,130 @@ early_out="$(bash "$ROOT/sync/check-standards-drift.sh" --tier bogus --repo owne
 assert_contains "$early_out" "coverage — verified 0/4" "drift: an early bail-out still reports 0/4 coverage"
 assert_contains "$early_out" "NOT verified"            "drift: an early bail-out names every family as unverified"
 
+echo "== PLAN-028 B2/B2c: the drift checker verifies EVERY declared branch =="
+# The single-branch default must be byte-identical to the pre-B2 behaviour, and
+# a declared three-branch repo must have all three actually FETCHED — not
+# assumed clean. The `enforce_admins:false` overlay on a promotion branch is the
+# subtle half: canon ships `true`, apply-standards writes `false` there, and
+# without the matching overlay here every adopter would see permanent,
+# unfixable drift on that one field forever.
+mkdir -p "$TMP/drift-b2/fixtures" "$TMP/drift-b2/bin"
+cp "$TMP/drift-pa/fixtures/"*.json "$TMP/drift-b2/fixtures/"
+cp "$TMP/drift-pa/bin/curl" "$TMP/drift-b2/bin/"
+jq '. + {default_branch:"dev", visibility:"public"}' "$TMP/drift-pa/fixtures/repo.json" \
+  > "$TMP/drift-b2/fixtures/repo-actual.json"
+# The repo's ACTUAL protection: dev matches canon; staging/main carry the
+# promotion overlay (enforce_admins:false) that canon's template does not.
+jq '.' "$TMP/drift-pa/fixtures/bp.json" > "$TMP/drift-b2/fixtures/bp-dev.json"
+jq '.enforce_admins = false' "$TMP/drift-pa/fixtures/bp.json" > "$TMP/drift-b2/fixtures/bp-promo.json"
+printf '%s' '{"version":1,"branching":{"model":"dev-staging-main"}}' | base64 -w0 \
+  > "$TMP/drift-b2/fixtures/decl.b64"
+cat > "$TMP/drift-b2/bin/gh" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  "auth status") exit 0 ;;
+  *"contents/.github/aidoc-ci.json"*) cat "$DRIFT_FIXTURES/decl.b64" ;;
+  *"branches/dev/protection"*) echo "FETCHED:dev" >> "$DRIFT_FETCHLOG"; cat "$DRIFT_FIXTURES/bp-dev.json" ;;
+  *"branches/staging/protection"*) echo "FETCHED:staging" >> "$DRIFT_FETCHLOG"; cat "$DRIFT_FIXTURES/bp-promo.json" ;;
+  *"branches/main/protection"*) echo "FETCHED:main" >> "$DRIFT_FETCHLOG"; cat "$DRIFT_FIXTURES/bp-promo.json" ;;
+  *"actions/permissions/selected-actions"*) echo "{\"github_owned_allowed\":true,\"verified_allowed\":false,\"patterns_allowed\":${PA_LOCAL}}" ;;
+  *"actions/permissions/workflow"*) echo '{"default_workflow_permissions":"read"}' ;;
+  *"actions/permissions/access"*) echo '{"access_level":"none"}' ;;
+  *"actions/permissions"*) echo '{"allowed_actions":"selected"}' ;;
+  *"labels?per_page=100"*) cat "$DRIFT_FIXTURES/labels.json" ;;
+  *"repos/owner/repo --jq .default_branch"*) echo dev ;;
+  *"repos/owner/repo --jq .visibility"*) echo public ;;
+  *"repos/owner/repo"*) cat "$DRIFT_FIXTURES/repo-actual.json" ;;
+  *) echo "unexpected gh call: $*" >&2; exit 1 ;;
+esac
+SH
+chmod +x "$TMP/drift-b2/bin/gh"
+_b2_log="$TMP/drift-b2/fetched.log"; : > "$_b2_log"
+b2_out="$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-b2/fixtures" DRIFT_FETCHLOG="$_b2_log" \
+  PATH="$TMP/drift-b2/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+_b2_fetched="$(cat "$_b2_log")"
+assert_contains "$b2_out" "branches=dev staging main" "B2: the declared branch set is resolved and reported"
+assert_contains "$_b2_fetched" "FETCHED:dev"     "B2: dev's protection is actually fetched"
+assert_contains "$_b2_fetched" "FETCHED:staging" "B2: staging's protection is actually fetched"
+assert_contains "$_b2_fetched" "FETCHED:main"    "B2: main's protection is actually fetched"
+assert_absent   "$b2_out" "branch-protection.enforce_admins" \
+  "B2c: the promotion overlay is applied to the CANON side, so enforce_admins:false is NOT drift"
+assert_contains "$b2_out" "0 drift" "B2: a correctly-configured three-branch repo reports zero drift"
+
+# The teeth: a promotion branch that does NOT carry the overlay must be caught.
+# Without this the previous assertion could be satisfied by not comparing at all.
+mkdir -p "$TMP/drift-b2bad/fixtures"
+cp "$TMP/drift-b2/fixtures/"*.json "$TMP/drift-b2/fixtures/decl.b64" "$TMP/drift-b2bad/fixtures/"
+cp "$TMP/drift-pa/fixtures/bp.json" "$TMP/drift-b2bad/fixtures/bp-promo.json"
+b2bad_out="$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-b2bad/fixtures" DRIFT_FETCHLOG="$TMP/drift-b2/bad.log" PATH="$TMP/drift-b2/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_contains "$b2bad_out" "branch-protection.enforce_admins: canon=false actual=true (branch=staging)" \
+  "B2: a promotion branch MISSING the overlay is reported as drift, naming the branch"
+
+# A declaration the token CANNOT READ must not read as "no declaration". That
+# path verifies one branch on a repo that may have declared three and then
+# reports clean — the silent-green class this repo refuses. A 404 is the common,
+# legitimate case and must stay quiet; anything else must not.
+mkdir -p "$TMP/drift-b2denied/bin"
+sed 's|\*"contents/.github/aidoc-ci.json"\*) cat "$DRIFT_FIXTURES/decl.b64" ;;|*"contents/.github/aidoc-ci.json"*) echo "HTTP 403: Resource not accessible by integration" >\&2; exit 1 ;;|'   "$TMP/drift-b2/bin/gh" > "$TMP/drift-b2denied/bin/gh"
+chmod +x "$TMP/drift-b2denied/bin/gh"
+b2den_out="$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-b2/fixtures" DRIFT_FETCHLOG="$TMP/drift-b2/den.log" \
+  PATH="$TMP/drift-b2denied/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_contains "$b2den_out" "could not read .github/aidoc-ci.json" \
+  "B0: an UNREADABLE declaration is reported, not silently treated as absent"
+assert_contains "$b2den_out" "were NOT verified" "B0: the unreadable-declaration warning names what went unchecked"
+
+mkdir -p "$TMP/drift-b2404/bin"
+sed 's|\*"contents/.github/aidoc-ci.json"\*) cat "$DRIFT_FIXTURES/decl.b64" ;;|*"contents/.github/aidoc-ci.json"*) echo "gh: Not Found (HTTP 404)" >\&2; exit 1 ;;|'   "$TMP/drift-b2/bin/gh" > "$TMP/drift-b2404/bin/gh"
+chmod +x "$TMP/drift-b2404/bin/gh"
+b2404_out="$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-b2/fixtures" DRIFT_FETCHLOG="$TMP/drift-b2/404.log" \
+  PATH="$TMP/drift-b2404/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_absent "$b2404_out" "could not read .github/aidoc-ci.json" \
+  "B0: a 404 is the legitimate no-declaration case and stays quiet"
+
+# THE FINDING ALL THREE PRE-PUSH REVIEW LENSES RAISED. Declaring the model
+# BEFORE flipping the GitHub default makes the default branch BOTH the
+# integration branch and a promotion branch — so `enforce_admins:false` lands on
+# composition.yml's and ai-review.yml's trust anchor. Before the fix the drift
+# checker applied the matching overlay to the canon side and reported 0 drift,
+# i.e. it BLESSED the misconfiguration. It must report it instead, and must not
+# compare that branch with the overlay.
+mkdir -p "$TMP/drift-b2overlap/fixtures" "$TMP/drift-b2overlap/bin"
+cp "$TMP/drift-b2/fixtures/"*.json "$TMP/drift-b2/fixtures/decl.b64" "$TMP/drift-b2overlap/fixtures/"
+# The repo's default is still `main`; the declaration says dev-staging-main.
+jq '. + {default_branch:"main", visibility:"public"}' "$TMP/drift-pa/fixtures/repo.json" \
+  > "$TMP/drift-b2overlap/fixtures/repo-actual.json"
+# `main` carries the tier profile (enforce_admins TRUE) — i.e. correctly protected.
+cp "$TMP/drift-pa/fixtures/bp.json" "$TMP/drift-b2overlap/fixtures/bp-dev.json"
+cp "$TMP/drift-pa/fixtures/bp.json" "$TMP/drift-b2overlap/fixtures/bp-promo.json"
+sed 's|\*"repos/owner/repo --jq .default_branch"\*) echo dev ;;|*"repos/owner/repo --jq .default_branch"*) echo main ;;|' \
+  "$TMP/drift-b2/bin/gh" > "$TMP/drift-b2overlap/bin/gh"
+chmod +x "$TMP/drift-b2overlap/bin/gh"
+b2ov_out="$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-b2overlap/fixtures" DRIFT_FETCHLOG="$TMP/drift-b2/ov.log" \
+  PATH="$TMP/drift-b2overlap/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_contains "$b2ov_out" "BOTH the integration branch and a declared promotion branch" \
+  "B2: integration==promotion overlap is REPORTED, not blessed"
+assert_absent "$b2ov_out" "0 drift" "B2: and it counts as drift"
+# The teeth: having reported it, the checker must NOT then compare `main` with
+# the enforce_admins:false overlay — that is what produced the false green.
+assert_absent "$b2ov_out" "branch-protection.enforce_admins: canon=false actual=true (branch=main)" \
+  "B2: the OVERLAPPED branch is compared WITHOUT the promotion overlay"
+# ...while a genuine promotion branch is still compared WITH it — otherwise the
+# assertion above could be satisfied by dropping the overlay everywhere.
+assert_contains "$b2ov_out" "branch-protection.enforce_admins: canon=false actual=true (branch=staging)" \
+  "B2: a genuine promotion branch still expects the overlay"
+assert_absent "$b2ov_out" "branches=main staging main" \
+  "B2: the branch set is deduped — the overlapped branch is not fetched twice"
+
+# And the single-branch default: one branch, and the message shape unchanged.
+b2one_out="$(_pa_run "$_pa_canon")"
+assert_contains "$b2one_out" "branches=main" "B2: an undeclared repo resolves exactly its default branch"
+assert_absent   "$b2one_out" "branches=main staging" "B2: an undeclared repo does NOT get the three-branch set"
+
 echo "== #323: the sync-version-refs pre-commit hook must stay always_run =="
 # A `files:` regex on this hook is pure drift surface: it is `pass_filenames: false`,
 # so the script always checks every TARGETS entry regardless — the regex only decides

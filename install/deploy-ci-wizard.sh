@@ -154,12 +154,17 @@ preflight() {
   esac
 
   hdr "5. Already-deployed workflows"
+  # PLAN-028 B2b row 7: REVIEWED, NO CHANGE to the anchor — the default branch
+  # IS the integration branch under the invariant, and what a deployment wizard
+  # should show is the branch that receives merges. The ref is now named in the
+  # header below so a reader never has to assume which one was read.
   # Resolve the repo's DEFAULT BRANCH once — do not assume `main`. A repo on
   # `master`/`develop` would otherwise read as "no workflows" (and skip the
   # FT-31 check below) rather than reporting its real state.
   local defbr; defbr="$($GH api "repos/$repo" --jq '.default_branch' 2>/dev/null || echo main)"
   [ -n "$defbr" ] || defbr=main
   local have; have="$($GH api "repos/$repo/contents/.github/workflows?ref=$defbr" --jq '[.[].name]|join(" ")' 2>/dev/null || echo '')"
+  echo "     (read from branch: $defbr)"
   for pair in $ALL_WF; do
     local wf="${pair%%:*}"
     echo "$have" | grep -qw "$wf.yml" && c_ok "$wf.yml present" || echo "     ·  $wf.yml — not yet"

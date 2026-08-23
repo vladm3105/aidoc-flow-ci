@@ -28,7 +28,7 @@ name: markdown-lint
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: ["${INTEGRATION_BRANCH}"]
 
 permissions:
   contents: read

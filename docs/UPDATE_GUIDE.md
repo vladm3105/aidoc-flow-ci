@@ -26,9 +26,16 @@ CI_TAG=ci/vX.Y.Z bash install.sh <owner/repo> --update
 3. Walks `install/templates/manifest.json` — the canonical index of every
    `template → consumer-file` mapping. For each surface the consumer
    **already has**, it re-fetches the template at `$CI_TAG`, substitutes the
-   de-branding placeholders (`${CODEOWNER_HANDLE}`, `${CANON_*_URL}` — pass
-   `--codeowner` / `--canon-*-url` to match what the consumer installed
-   with), and `diff -u`s it against the local file.
+   placeholders, and `diff -u`s it against the local file. Two kinds:
+   the de-branding ones (`${CODEOWNER_HANDLE}`, `${CANON_*_URL}` — pass
+   `--codeowner` / `--canon-*-url` to match what the consumer installed with),
+   and `${INTEGRATION_BRANCH}` (PLAN-028 B5), which has no flag and is resolved
+   per repo from `.github/aidoc-ci.json`, else the repo's GitHub default branch.
+   It fills the `branches:` filter of every caller trigger arm, so **`--update`
+   is the only way that change reaches a consumer** — `--repin` rewrites
+   `uses:` tag strings and cannot touch a caller body. Expect a one-line diff
+   per trigger arm on the first update after adopting this tag: `branches:
+   [main]` becomes `branches: ["main"]` (or your actual default branch).
 4. Files the consumer does **not** have are skipped — `--update` never
    introduces a surface the consumer didn't opt into. Use bootstrap to add
    new surfaces.

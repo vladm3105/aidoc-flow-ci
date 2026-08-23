@@ -1,45 +1,39 @@
 # PLAN-028 — `dev` → `staging` → `main` branching, and the surfaces that assume one branch
 
-**Status:** In Progress — **Phase A EXECUTED** (#517); **B1 CLOSED by measurement**
-(CI-0048); Phase B is the remaining work; Phases C/D **deferred to a follow-on
-plan** and no longer gated on an unknown — they are gated on the founder
-accepting an admin-only promotion gate. **RE-SCOPED 2026-08-23** under
-`verified-planning` §3.1: three folds grew this plan 325 → 522 lines while
-retiring findings, which is the defect signal, and the prescribed response is to
-cut scope rather than fold a fourth time.
+**Status:** **COMPLETE for its scope** — Phase A EXECUTED (#517); B1 CLOSED by
+measurement (CI-0048); **Phase B EXECUTED 2026-08-23** (CI-0049); Phases C and D
+**deferred to a follow-on plan** and no longer blocked — the founder accepted an
+admin-only promotion gate, which was the last open decision.
 
-**The decision set** (§3.2 — the claims that change what gets built): which
-bypass mechanism makes promotion possible (Claim 90, PROBE); whether `main` can
-receive the release-prep merge (B4); which branch each runtime resolver should
-anchor to (B2/B2b); what the non-adopting default must be (B0); **where the Code
-Scanning baseline should live** (B5 — it decides which of the 19 trigger sites
-move); and **the remedy shape for a pre-push gate that refuses every promotion**
-(B3, upstream `#432`). Everything else in this plan is evidence for those six.
 **Owner:** canon (aidoc-flow-ci)
 **Scope:** the branching standard, the enforcement surfaces that would silently
 contradict it, post-merge branch hygiene, and canon's own Wave-0 self-adoption.
 Consumer cutovers are **out of scope** — adoption is per-repo opt-in.
 **Change level:** C3.
-**Semver: UNRESOLVED — and it currently reads MINOR.** Two drafts have now given
-a rationale their own phases contradict. B0 requires the non-adopting default to
-reproduce today's behaviour, so B2 changes nothing an unopted consumer observes;
-and `--repin` rewrites `uses:` tag strings only and **cannot** deliver a
-caller-body change, so B5's trigger edits reach a re-pinning consumer not at all
-— only one running `--update`. Under `CLAUDE.md`'s rule (breaking change to
-consumer surfaces = MAJOR, additive = MINOR), an opt-in change with a
-behaviour-preserving default is MINOR. **One reach path the earlier drafts missed:** a tag pin resolves the
-**reusable** body, so any change to `.github/workflows/*.yml` reaches every
-re-pinning consumer immediately — **and so does any script a reusable fetches at
-that pin**: `standards-drift.yml` curls `sync/check-standards-drift.sh` from the
-adopted tag at run time, which is the very file B2 and B2c edit — and §3 Class A rows 3 and 4 (`composition.yml`,
-`ai-review.yml`) are reusables this plan assigns remediation. MINOR therefore
-holds **only under an invariant the plan has never stated**: that every reusable
-change defaults to today's `default_branch` behaviour. Without it, moving
-composition's trust anchor is a merge-gate behaviour change delivered to
-consumers who never opted in — which is the breaking surface. **State that
-invariant in B0 alongside the protection default, then MINOR is defensible;
-otherwise name the surface and ship MAJOR.** Do not assert either a third time
-without resolving this.
+
+**Semver: MINOR — RESOLVED, and on a stated basis.** Two drafts asserted MINOR on
+a rationale their own phases contradicted, and the re-scope refused to assert it a
+third time without stating the invariant it rests on. The invariant is now stated
+and, more to the point, **tested**: *every surface Phase B touched reproduces the
+pre-PLAN-028 behaviour when no declaration exists.* Three tests hold it —
+`test_scripts.sh` ("an undeclared repo resolves exactly its default branch"),
+`test_pre_push_range.sh` ("a declared repo with no arguments runs the normal
+path"), and `release.sh`'s resolver returning `main` on this repo today. The
+composition trust anchor is not moved by any declaration (§8a's invariant does
+that work instead), so the breaking surface the re-scope warned about does not
+exist. The one exception an earlier draft named — `ai-review.yml`'s base-ref preference
+(B2b row 4) — was **withdrawn** in the pre-push review fold, so no exception
+remains. What does remain is a quoting-only change to the trigger arms delivered
+by `--update`, which `sync/check-drift.sh` deliberately does not count as drift.
+
+**The decision set** (§3.2 — the claims that changed what got built), all now
+closed: the bypass mechanism (Claim 90, PROBE → CI-0048); whether `main` can
+receive the release-prep merge (B4 → no, prep moves to the integration branch);
+which branch each runtime resolver anchors to (B2/B2b → the invariant in §8a);
+the non-adopting default (B0 → the API-reported default branch); where the Code
+Scanning baseline lives (B5 → the integration branch, via install-time
+substitution); and the remedy for a pre-push gate that refuses every promotion
+(B3 → an explicit `--promote` mode with three refusable conditions).
 
 ## 1. The founder's decisions
 
@@ -81,7 +75,7 @@ where only a measurement would do.
 
 **(b) The release flow puts a commit on `main` that `dev` will not have.**
 `release.sh prep` branches from `main` (Claim 21) and the checklist squash-merges
-that PR back into `main` (Claim 22), after which `git push --ff-only origin
+that PR back into `main` (Claim 22), after which `git push origin
 dev:main` fails — recoverable only via a back-merge needing the same bypass.
 B4 owns it.
 
@@ -145,7 +139,7 @@ passes corrected in it before it shipped.
 
 ### Phase B — enforcement surfaces
 
-- **B0. The declaration surface — FIRST.** B2 and B3 both assume "the branch set
+- **B0. EXECUTED.** The declaration surface — B2 and B3 both assume "the branch set
   the repo opted in for" and no such declaration exists: both scripts take only
   `--tier`, and tier cannot express it (three repos share `product`, Claim 40).
 
@@ -166,30 +160,50 @@ passes corrected in it before it shipped.
   acceptable, or whether enforcing it is worth an **organization**. B2's payload
   is `enforce_admins: false` on `staging` and `main` unless that answer changes.
 
-- **B2. Protection targeting** — every declared branch, not `default_branch`.
-  Covers §3 Class A rows 1-2 **only**.
-- **B2c. The drift checker's blind spot (§6).** Conditional on B1's outcome: if
+- **B2. EXECUTED.** Protection targeting — every declared branch, not
+  `default_branch`. `apply-standards.sh` applies one branch-agnostic tier
+  profile per declared branch (Claim 15) with the `enforce_admins:false` overlay
+  on promotion branches; `check-standards-drift.sh` verifies every one of them
+  and applies the SAME overlay to the canon side, without which every adopter's
+  `staging`/`main` would report permanent unfixable drift. Covers Class A rows
+  1-2; the `main`-hardcoded dry-run preview line went with them.
+- **B2c. CLOSED AS NO-OP, by B1's outcome.** Conditional on B1's outcome: if
   B1 lands a field *inside* `required_pull_request_reviews`, extend
   `check-standards-drift.sh`'s four-field `review_filter` so the bypass is
   visible to drift detection. If B1 lands `enforce_admins: false`, no change is
   needed — that field is already compared directly. §6 identified this remedy
   and no phase owned it.
-- **B2b. The other five Class A resolvers — rows 3-7, and TWO ARE TRUST
-  BOUNDARIES.** The pass-2 fold assigned all of Class A to B2, whose text
+- **B2b. EXECUTED — and it cost one guard, not five edits.** Rows 3-7, TWO OF
+  THEM TRUST BOUNDARIES. The pass-2 fold assigned all of Class A to B2, whose text
   covers protection targeting alone; rows 3 (`composition.yml`'s allowlist),
   4 (`ai-review.yml`'s FT-15 pin), 5 (the backup), 6 (`check-pin-currency.sh`)
   and 7 (the wizard) had **no work item at all**, so an implementer completing
-  B2 would believe Class A was discharged. Decide per row whether the default
-  branch is still the right anchor after the flip — for rows 3 and 4 that is a
-  security question, not a path question.
-- **B3. `pre_push_check.sh` — the promotion push shape.** The `origin/main`
+  B2 would believe Class A was discharged. Decided per row, and the security
+  question resolved the same way for all four runtime resolvers:
+
+  | Row | Outcome |
+  |---|---|
+  | 3 `composition.yml` allowlist | **no change.** The stated trust property — a protected, non-PR-mutable base — is PRESERVED under the flip: `dev` becomes the default, is the base of every feature PR, and is protected with `enforce_admins: true` because it is not a promotion branch. The invariant is now stated at the code site |
+  | 4 `ai-review.yml` FT-15 pin | **no change — a proposed change was WITHDRAWN.** Phase B first made non-`pull_request_target` events prefer the PR's base ref; two pre-push review lenses showed the premise was false. `pull_request_review` triggers only for a workflow file on the DEFAULT branch and runs that copy, so the default branch *is* the executed copy and the base ref is not. The change would have resolved the rubric/schema/client at a different tag than the executing reusable — the FT-15 class it claimed to close — and moved the pin's source to a branch the PR author selects. `github.workflow_ref` carries the executed ref directly and would settle both arms without an invariant; that belongs in its own change |
+  | 5 pre-mutation backup | **CHANGED.** Snapshots every branch the run will mutate, keyed by branch. It covered one while `--apply` now writes to three |
+  | 6 `check-pin-currency.sh` | **no change to the anchor; the ref is now NAMED** in the report. Silence was the defect — a multi-branch fleet audit is consumer-adoption work, deferred with Phases C/D |
+  | 7 `deploy-ci-wizard.sh` | **no change to the anchor; the ref is now NAMED.** The default branch IS the integration branch, and what a deployment wizard should show is the branch that receives merges |
+
+  **Why four rows needed no edit.** Rows 3, 4, 6 and 7 all resolve
+  `default_branch` at RUN time and **cannot** read the declaration — rows 3 and 4
+  are canon reusables running against arbitrary consumers, so trusting a
+  consumer-controlled file there would ADD a trust surface. The remedy is an
+  invariant instead: **the integration branch MUST be the repo's GitHub
+  `default_branch`.** `apply-standards.sh` warns on divergence,
+  `check-standards-drift.sh` counts it as drift, `BRANCHING.md` §8a states it.
+- **B3. EXECUTED.** `pre_push_check.sh` — the promotion push shape. The `origin/main`
   fallback is the lesser half. A promotion push from a current `dev` yields an
   **empty** commit range, and the script treats empty as a **hard failure**
   (Claim 34b) — canon's own mandatory gate refuses every promotion, with a
   remedy that cannot clear it. Both copies ship, and are identical in the load-bearing respects (`install/templates/pre_push_check.sh`, Claim 92).
-- **B4. Release flow — a CHANGE** (§2b). State which branch `prep` starts from
+- **B4. EXECUTED.** Release flow — a CHANGE (§2b). State which branch `prep` starts from
   and which its PR targets. `tag`'s `main` guard may stay; `prep`'s cannot.
-- **B5. Triggers — 19 sites, not 2.** Draft 2 named CodeQL and "post-merge
+- **B5. EXECUTED.** Triggers — 19 sites, not 2. Draft 2 named CodeQL and "post-merge
   scanners"; the real count is `branches: [main]` **19 times across 17 files**
   (Claim 12) — 2 `pull_request` filters, 17 `push` arms.
   - **All 17 post-merge arms go silent** at the flip.
@@ -213,7 +227,8 @@ passes corrected in it before it shipped.
   references. Decide it here — take the local hook, or decline it and say why —
   and update both surfaces in the same change.
 
-- **B6. `docs/REPO_STANDARDS.md` update — MANDATORY, not optional.** `CLAUDE.md`
+- **B6. EXECUTED.** `docs/REPO_STANDARDS.md` §2 rewritten around the
+  declaration contract, the §8a invariant and the advisory-gate cost. `CLAUDE.md`
   requires that *every* canon-body change ships with a rulebook update, and
   B0/B2/B2b/B2c/B3/B5 all change canon bodies (`install/`, `sync/`, `scripts/`,
   `install/templates/workflows/`). B0 in particular introduces a new
@@ -240,10 +255,19 @@ phases. Two constraints carry forward so they are not rediscovered:
 
 ## 5. What this plan does NOT do
 
-- Cut over any consumer.
-- Change the squash-only rule for feature PRs.
-- Blanket-add `dev`/`staging` triggers.
-- Claim the post-merge hygiene rule is enforced (A4).
+Still true after Phase B, and worth checking against the diff rather than
+trusting:
+
+- **Cut over any consumer** — no repo has adopted, canon included.
+- **Change the squash-only rule for feature PRs** — squash still governs how a
+  working branch enters the integration branch; promotion is not a merge.
+- **Blanket-add `dev`/`staging` triggers** — the 19 sites carry ONE substituted
+  branch, not an added list.
+- **Claim the post-merge hygiene rule is enforced** — A4 shipped as a local
+  pre-push WARNING that reports and never blocks.
+- **Claim the fast-forward invariant is server-enforced** — B3 gates it
+  *locally*. To GitHub a fast-forward push and a force-push are the same call,
+  and `enforce_admins: false` exempts the only actor who can make either.
 
 ## 6. Known gap in the drift checker — corrected
 
@@ -269,7 +293,7 @@ into a plan is the same failure this repo records as "assert the teeth".
 | --- | --- | --- | --- |
 | 62 | Before #517 the standard protected exactly one branch; it now protects the repo's DEFAULT branch, and all three under the opt-in model — which is why B0's non-adopting default must be 'the default branch', not 'main' | `All non-paused repos protect` | docs/REPO_STANDARDS.md:124 |
 | 63 | `pre_push_check.sh` falls back to `merge-base HEAD origin/main` when there is no upstream | `git merge-base HEAD origin/main` | scripts/pre_push_check.sh:80 |
-| 64 | `apply-standards.sh` PUTs branch protection to the API-reported default branch | `branches/${default_branch}/protection` | install/apply-standards.sh:710 |
+| 64 | **Was:** `apply-standards.sh` PUTs branch protection to the API-reported default branch — the single-branch assumption this plan set out to remove. **SUPERSEDED by B2's own implementation:** it now loops over every declared branch, and the default branch is only the non-adopting default | `branches/${branch}/protection` | install/apply-standards.sh:973 |
 | 65 | `check-standards-drift.sh` resolves the default branch from the API and verifies that branch | `DEFAULT_BRANCH=$(gh api` | sync/check-standards-drift.sh:166 |
 | 66 | Shipped repo settings disable merge commits, leaving squash the only PR merge method | `"allow_merge_commit": false` | install/templates/repo-settings.json:6 |
 | 67 | The shipped product profile sets `required_pull_request_reviews` — GitHub's "require a PR before merging" | `required_pull_request_reviews` | install/templates/branch-protection-product.json:15 |
@@ -534,3 +558,68 @@ imposed by an offline local hook.
 
 **Result:** folded; the fold is unreviewed and the reduced plan is **In
 Progress**, gated on Claims 90 and 91.
+
+### Pass 5 — 2026-08-23 — pre-push multi-agent review (OPS-0065), Phase B implementation
+
+Three independent read-only lenses on the uncommitted diff: `code-reviewer`,
+`security-auditor`, and a docs/governance lens. **One fold cycle** (OPS-0066 caps
+at three). Every finding was verified against source before folding; two were
+reproduced first, and one was rejected.
+
+**The finding all three lenses raised independently** — and the one that
+justifies the whole gate. Declaring `{"model":"dev-staging-main"}` *before*
+flipping the GitHub default resolves the integration branch to `main`, which is
+also in the default promotion set, so the `enforce_admins: false` overlay landed
+on the repo's **default branch** — the trust anchor for `composition.yml`'s
+allowlist and `ai-review.yml`'s pin resolution. Every existing guard was silent
+by construction: the §8a divergence warning cannot fire when
+`integration == default`, which is exactly the failing condition, and the
+promotion⊆protected check passes because the branch really is protected. The
+drift checker made it worse by applying the matching overlay to the canon side
+and reporting **0 drift**. Now FATAL in `apply-standards.sh`, DRIFT in the
+checker, with a test.
+
+**Rejected, after checking the premise.** B2b row 4's base-ref change (see the
+table above). Two lenses called it a regression and they were right: GitHub runs
+the *default branch's* copy for `pull_request_review`. Reverted.
+
+**Two blockers in delivery, not design** — both invisible to a green suite,
+which is what the lenses were briefed to look for:
+
+- `install.sh`'s bootstrap installed caller workflows via bare `fetch_template`
+  and never called `substitute_placeholders`, so a cold start shipped
+  `pre-commit.yml` with a literal `${INTEGRATION_BRANCH}` in its trigger filter —
+  parses, lints, and never fires. Substitution moved *into* `fetch_template`, so
+  one choke point covers every fetch path.
+- `release.sh`'s resolver died silently under `set -e` + `pipefail` on the exact
+  fallback path it was written for (`symbolic-ref --quiet` exits 1 when
+  `refs/remotes/origin/HEAD` is absent — which it is in every `actions/checkout`
+  workspace). Reproduced, then fixed with `|| true`.
+
+**The B3 gate was reachable only by hand.** `pre-commit` invokes the hook with no
+arguments, so `--promote` never fired on a real `git push` and the push stayed
+blocked — leaving `--no-verify`, which disables every pre-push hook, as the only
+route. The no-argument path now recognises the shape itself.
+
+**Two of my own new tests had no teeth.** Mutating away the promotion gate's
+declaration check and its `HEAD == origin/<integration>` check both left the
+suite green. Rewritten until each mutation reds it: the declaration check needed
+a repo that *has* a declaration but declares no promotion model, and the HEAD
+check needed an empty range on a *non*-integration branch (a new local commit
+makes the range non-empty, so it never reaches that arm).
+
+**Also folded:** the `git push --ff-only` invocation prescribed in three places
+is not valid git — CI-0048 had already measured this and the runbook text was
+never corrected; `check-drift.sh` now normalizes the placeholder line instead of
+resolving a branch name (resolving produced permanent false drift for every
+consumer whose default is not `main`); `integration_branch: null` resolved to a
+literal `dev` in three readers and to the default branch in two; an explicit
+`"promotion_branches": []` was silently overridden by the model default;
+`check-standards-drift.sh` retained unvalidated branch names when *every*
+declared name was invalid, feeding them into an API path; `apply-standards.sh`
+read the declaration from the working tree while mutating a possibly-different
+`--repo`; the multi-branch backup wrote unparseable JSON for any unprotected
+branch (CI-0018); §8c's adoption procedure could not be executed as written
+(missing `--repo`, `staging` never created, declaration never pushed); and
+`codeql.yml` is `safe_to_replace: false`, so `--update` cannot deliver its
+trigger change at all.

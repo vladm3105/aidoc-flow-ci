@@ -40,7 +40,7 @@ on:
   # appear outside PR context. It also makes the `push` arm
   # of the D3 concurrency allowlist below reachable rather than dead code.
   push:
-    branches: [main]
+    branches: ["${INTEGRATION_BRANCH}"]
 
 permissions:
   contents: read

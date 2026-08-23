@@ -37,10 +37,16 @@
 #   - Manifest surfaces ABSENT locally. Most are `auto_install: false`
 #     (optional adoption), so absence is a legitimate consumer choice,
 #     not drift.
-#   - Templates with `substitute` placeholders (per-consumer values such
-#     as CODEOWNER_HANDLE). A raw template-vs-local diff would report the
-#     substitution itself as drift. No workflow template declares any
-#     today; the guard below keeps that true if one ever does.
+#   - Templates declaring a substitution this script cannot RESOLVE (the
+#     per-consumer CODEOWNER_HANDLE and the canon URLs). A raw
+#     template-vs-local diff would report the substitution itself as drift.
+#     PLAN-028 B5: `INTEGRATION_BRANCH` is the exception — 17 workflow
+#     templates declare it, and this script NORMALIZES the one line carrying
+#     it (matching the branch name as a wildcard, quoted or bare) and compares
+#     every other line byte-exactly. Skipping those files instead would have
+#     silently stopped checking most of canon's workflow surface while still
+#     reporting green; resolving a branch NAME instead would have produced
+#     permanent false drift for every consumer whose default is not `main`.
 #   - Callers pinned below `ci/v1.7.0`. manifest.json first shipped at
 #     v1.7.0 (verified across all tags), so it cannot be fetched at an
 #     older pin. Such a caller is reported as skipped, never as clean.
@@ -127,7 +133,8 @@ fetch_manifest () {
 }
 
 # resolve_template <manifest> <consumer_path> <visibility>
-#   stdout: "<template>\t<substitute_count>" on a clean resolve.
+#   stdout: "<template>\t<substitute_names_comma_separated>" on a clean resolve
+#           (empty second field = no declared substitutions).
 #   exit 0 = resolved; 3 = no manifest entry for this path; 4 = entry exists but
 #   no template resolves for this visibility; 2 = manifest unparseable.
 # The three failure modes are given DISTINCT codes because they point at
@@ -147,7 +154,7 @@ for f in m.get("files", []):
         tmpl = f.get("visibility_variants", {}).get(vis, f.get("template"))
         if not tmpl:
             sys.exit(4)
-        print("\t".join([tmpl, str(len(f.get("substitute", []) or []))]))
+        print("\t".join([tmpl, ",".join(f.get("substitute", []) or [])]))
         sys.exit(0)
 sys.exit(3)
 PYEOF
@@ -157,6 +164,7 @@ DRIFT=0
 CHECKED=0
 SKIPPED=0
 CANON_CALLERS=0
+
 shopt -s nullglob
 for local_file in .github/workflows/*.yml; do
   # Is this a canon caller at all? Match the ref as `@<anything>` so a
@@ -206,9 +214,30 @@ for local_file in .github/workflows/*.yml; do
        continue ;;
   esac
   IFS=$'\t' read -r template subs <<< "$entry"
-  if [ "${subs:-0}" != "0" ]; then
+  # PLAN-028 B5. This guard used to skip ANY template declaring a substitution,
+  # and B5 puts `INTEGRATION_BRANCH` into 17 workflow templates — so the guard
+  # as written would have silently stopped comparing the majority of canon's
+  # workflow surface while still reporting green. Disabling a gate as a side
+  # effect of a feature is the failure this repo records as "assert the teeth".
+  #
+  # The distinction that fixes it: a placeholder this script can RESOLVE ITSELF
+  # is not an obstacle to comparison — substitute it into the fetched template
+  # and the diff is exact again. Only placeholders whose per-consumer value is
+  # unknowable here (CODEOWNER_HANDLE, the canon URLs) still force a skip.
+  unresolvable_subs=""
+  if [ -n "${subs:-}" ]; then
+    IFS=',' read -r -a _subarr <<< "$subs"
+    for _sub in "${_subarr[@]}"; do
+      [ -n "$_sub" ] || continue
+      case "$_sub" in
+        INTEGRATION_BRANCH) : ;;
+        *) unresolvable_subs="${unresolvable_subs:+$unresolvable_subs,}$_sub" ;;
+      esac
+    done
+  fi
+  if [ -n "$unresolvable_subs" ]; then
     SKIPPED=$((SKIPPED + 1))
-    echo "::warning::drift-check: $local_file uses template $template, which declares per-consumer substitutions — NOT compared (a raw diff would false-flag the substituted values)."
+    echo "::warning::drift-check: $local_file uses template $template, which declares per-consumer substitutions this check cannot resolve ($unresolvable_subs) — NOT compared (a raw diff would false-flag the substituted values)."
     continue
   fi
 
@@ -220,6 +249,52 @@ for local_file in .github/workflows/*.yml; do
     echo "::warning::drift-check: failed to fetch canonical $template_url — $local_file NOT compared (drift unknown)."
     rm -f "$canonical"
     continue
+  fi
+  # NORMALIZE the placeholder line instead of resolving a branch name.
+  #
+  # The obvious implementation — resolve this consumer's integration branch and
+  # substitute it into the canon copy — was wrong in two ways that both produce
+  # PERMANENT, UNFIXABLE false drift, and both were caught in pre-push review:
+  #   • `refs/remotes/origin/HEAD` does not exist in an `actions/checkout`
+  #     workspace, so the resolution fell through to `main` in the CI job that
+  #     actually runs this script. A `master`/`develop` consumer — exactly the
+  #     population B5 fixes — would have had all 11 workflow entries reported as
+  #     drifted forever.
+  #   • A consumer that only `--repin`s (which cannot deliver a caller-body
+  #     change, by design) keeps `branches: [main]` while canon now reads
+  #     `branches: ["${INTEGRATION_BRANCH}"]` — 11 drift reports from quoting
+  #     alone, for a repo that declared nothing and changed nothing.
+  #
+  # Neither needs solving, because the branch NAME is per-consumer by
+  # construction and is therefore not what this check is for. Match the canon
+  # line as a pattern with the placeholder as a wildcard, accepting the value
+  # quoted or bare; on a match, adopt the local line so the diff sees only what
+  # it should. EVERY other line still compares byte-exactly, so a real body
+  # divergence on a placeholder-bearing file is still caught.
+  if [ -n "${subs:-}" ]; then
+    python3 - "$canonical" "$local_file" <<'PYEOF'
+import re, sys
+canon_path, local_path = sys.argv[1], sys.argv[2]
+PH = "${INTEGRATION_BRANCH}"
+canon = open(canon_path, encoding="utf-8").read().split("\n")
+try:
+    local = open(local_path, encoding="utf-8").read().split("\n")
+except OSError:
+    sys.exit(0)
+# canon ships the placeholder already quoted: branches: ["${INTEGRATION_BRANCH}"]
+# Treat the quotes as part of the wildcard so a local `branches: [main]` (bare,
+# the pre-B5 shape a --repin-only consumer still carries) matches too.
+QUOTED = '"' + PH + '"'
+BRANCH = r'"?[A-Za-z0-9._/-]+"?'
+for n, cline in enumerate(canon):
+    if PH not in cline or n >= len(local):
+        continue
+    token = QUOTED if QUOTED in cline else PH
+    pat = BRANCH.join(re.escape(x) for x in cline.split(token))
+    if re.fullmatch(pat, local[n]):
+        canon[n] = local[n]
+open(canon_path, "w", encoding="utf-8").write("\n".join(canon))
+PYEOF
   fi
   CHECKED=$((CHECKED + 1))
   if ! diff -q "$local_file" "$canonical" >/dev/null 2>&1; then

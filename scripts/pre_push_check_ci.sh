@@ -47,17 +47,22 @@ REPO_ROOT="$(cd "$HERE/.." && pwd)"
 # which would drift canon's own config from the template it ships).
 # Run the script with no arguments to get canon + ledger in one pass by hand.
 LEDGER_ONLY=0
-# `$#` as well as `$1`: checking only `$1` accepted `--ledger-only --typo`,
-# silently ignoring the tail. The suite asserted "an unrecognised argument
-# fails loudly", so the test's claim was broader than the code's guarantee.
-if [ "$#" -gt 1 ]; then
-  echo "usage: $(basename "$0") [--ledger-only]" >&2; exit 2
-fi
-case "${1:-}" in
-  --ledger-only) LEDGER_ONLY=1 ;;
-  "")            ;;
-  *) echo "usage: $(basename "$0") [--ledger-only]" >&2; exit 2 ;;
-esac
+PROMOTE_TARGET=""
+_usage() { echo "usage: $(basename "$0") [--ledger-only | --promote <target-branch>]" >&2; exit 2; }
+# The tail is checked as well as the head: checking only `$1` accepted
+# `--ledger-only --typo`, silently ignoring the rest. The suite asserted "an
+# unrecognised argument fails loudly", so the test's claim was broader than the
+# code's guarantee. PLAN-028 B3 adds `--promote <target>`, which takes a value,
+# so this is now a loop — but it stays exhaustive: anything unrecognised, and
+# any leftover argument, still exits 2.
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --ledger-only) LEDGER_ONLY=1; shift ;;
+    --promote)     PROMOTE_TARGET="${2:-}"; [ -n "$PROMOTE_TARGET" ] || _usage; shift 2 ;;
+    *)             _usage ;;
+  esac
+done
+[ -n "$PROMOTE_TARGET" ] && [ "$LEDGER_ONLY" -eq 1 ] && _usage
 
 # An enforcement switch that silently no-ops on a plausible spelling is the
 # `check-standards-drift.sh --tier` shape: a gate that checked nothing and
@@ -78,8 +83,25 @@ esac
 # take this wrapper's own process with it and silently skip everything below.
 rc=0
 if [ "$LEDGER_ONLY" -eq 0 ]; then
-  bash "$HERE/pre_push_check.sh"
+  # PLAN-028 B3: forward the promotion target. A wrapper that swallowed it would
+  # leave every repo using one — and this is the reference design consumers copy
+  # — with no way to reach the promotion gate at all. The hook path passes
+  # nothing (`pass_filenames: false`), so the normal run is unchanged.
+  if [ -n "$PROMOTE_TARGET" ]; then
+    bash "$HERE/pre_push_check.sh" --promote "$PROMOTE_TARGET"
+  else
+    bash "$HERE/pre_push_check.sh"
+  fi
   rc=$?
+fi
+
+# A promotion introduces NO new commit, so the claim-ledger gate below has
+# nothing to inspect either — the same reason canon skips the phrase check.
+# Exit here rather than running a gate over an empty range and reporting
+# whatever an empty range happens to produce.
+if [ -n "$PROMOTE_TARGET" ]; then
+  echo "pre_push_check_ci: promotion mode — the claim-ledger gate is skipped (no new commit to inspect)."
+  exit "$rc"
 fi
 
 # ---------------------------------------------------------------------------

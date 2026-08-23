@@ -3282,3 +3282,116 @@ until it was run, which is the argument for probes over prose:
 - The `PROBE` claim state (added to `verified-planning` the same day) did what it
   was added for: it stopped the plan guessing and produced an answer in one
   measurement, after three passes of prose had produced three wrong ones.
+
+## CI-0049: an admin-only promotion gate is ACCEPTED, and the branch set is declared per repo (2026-08-23)
+
+**Decision of record for `PLAN-028` Phase B.** CI-0048 closed the technical
+question and left a non-technical one: is an admin-only, advisory promotion gate
+acceptable, or is enforcing it worth creating an organization? Founder decision,
+2026-08-23: **accepted as advisory.**
+
+**Decision**
+
+1. **`enforce_admins: false` ships on every declared promotion branch.** It is
+   the only mechanism CI-0048 found that permits the push at all. The overlay is
+   applied by `apply-standards.sh` to the tier profile — one branch-agnostic
+   profile, per-branch overlay — not by forking a template per branch.
+2. **Say what it costs, at every surface that applies it.** The overlay exempts
+   admins from *every* protection on that branch, not just the PR requirement.
+   On a solo-collaborator repo the gate there is **advisory, not enforced**.
+   Recorded in `BRANCHING.md` §8b, `REPO_STANDARDS.md` §2, and in the code that
+   writes it.
+3. **The integration branch is NOT a promotion branch** and keeps
+   `enforce_admins: true`. This is what preserves it as a trust anchor (below),
+   and it is **enforced, not merely stated**: `apply-standards.sh` exits 4 if the
+   two overlap and `check-standards-drift.sh` counts the overlap as drift.
+   Pre-push review found that without such a check, declaring
+   `{"model":"dev-staging-main"}` *before* flipping the GitHub default resolves
+   the integration branch to `main` — which is also in the default promotion set
+   — so the overlay landed on the repo's default branch, with every other guard
+   silent by construction (the §8a divergence warning cannot fire when
+   `integration == default`, which is exactly the failing condition). All three
+   review lenses found it independently; it was reproduced before being fixed.
+4. **The branch set is declared in `.github/aidoc-ci.json`**, because `--tier`
+   cannot carry it — three repos share `product` (Claim 40). The file is
+   OPTIONAL and **an absent file is a valid declaration**: single-branch against
+   the API-reported `default_branch`, which is byte-for-byte the pre-PLAN-028
+   behaviour. Never `main` — hardcoding that would revert defect M4-sec.
+
+**The invariant that made B2b cheap.** Four surfaces resolve the branch at run
+time from the API's `default_branch` and cannot read the declaration:
+`composition.yml`'s trusted allowlist, `ai-review.yml`'s FT-15 pin resolution,
+`check-pin-currency.sh`, and `deploy-ci-wizard.sh`. **Two are trust boundaries.**
+Teaching a canon reusable to read a consumer-controlled file would *add* a trust
+surface, not remove one — so the declaration does not move those anchors.
+Instead: **the integration branch MUST be the repo's GitHub `default_branch`.**
+Hold it and all four are correct with no edits; `apply-standards.sh` warns on
+divergence and `check-standards-drift.sh` counts it as drift. That converted
+`PLAN-028` B2b from four edits to one guard plus one stated invariant.
+
+**Semver: MINOR, and now on a stated basis.** The plan carried this UNRESOLVED
+across two drafts because MINOR rested on an invariant nobody had written down.
+It is written down now: *every* surface Phase B touched defaults to the
+pre-PLAN-028 behaviour when no declaration exists. Verified by test, not
+asserted — `tests/test_scripts.sh` ("an undeclared repo resolves exactly its
+default branch"), `tests/test_pre_push_range.sh` ("a declared repo with no
+arguments runs the normal path" and "a declared SINGLE-BRANCH repo still
+hard-fails on an empty range"), and `release.sh`'s resolver returning `main` on
+this repo today.
+
+**One observable change for a repo that declares nothing, stated plainly.** The
+trigger arms are re-emitted as `branches: ["main"]` where they read
+`branches: [main]` — the placeholder is quoted, because a bare `${…}` inside a
+YAML flow sequence is a parse error. The branch is identical; only the quoting
+differs, and only for consumers who run `--update`. `sync/check-drift.sh`
+deliberately does **not** report that as drift: it normalizes the placeholder
+line and compares every other line byte-exactly. An earlier draft resolved a
+branch *name* there instead, which pre-push review showed produces permanent,
+unfixable false drift twice over — `refs/remotes/origin/HEAD` does not exist in
+an `actions/checkout` workspace, so every non-`main` consumer would have diffed
+against `main`.
+
+**A change this decision proposed and then WITHDREW, because the reasoning was
+wrong.** A draft of Phase B changed `ai-review.yml`'s non-`pull_request_target`
+arm to prefer the PR's base ref over the default branch (B2b row 4), justified as
+"the base is the copy GitHub ran". For `pull_request_review` — the only event
+that reaches that arm — it is not: GitHub triggers that event only for a workflow
+file on the **default** branch and runs that copy. Two independent review lenses
+caught it. Preferring the base ref would have resolved the rubric, schema and
+`llm_client.py` at a *different* tag than the reusable actually executing —
+precisely under the multi-branch model where `dev` and `main` hold different pins
+— and moved the pin's source from the protected default branch to a branch the
+PR author selects. **Reverted; `ai-review.yml` is unchanged in behaviour.** With
+it goes the last exception to the behaviour-preserving invariant below.
+
+`github.workflow_ref` carries the executed ref directly and would make both arms
+correct by construction without relying on any invariant. That is a real
+improvement to a trust anchor and belongs in its own change, with its own tests —
+not folded into this one.
+
+**A regression this decision nearly shipped, recorded because the mechanism is
+general.** `sync/check-drift.sh` skipped drift comparison for any template
+declaring a substitution. B5 puts `${INTEGRATION_BRANCH}` into 11 workflow
+manifest entries, so that guard would have **silently stopped comparing most of
+canon's workflow surface while still reporting green** — a feature disabling a
+gate as a side effect. The fix distinguishes a placeholder the checker can
+RESOLVE (substitute it and compare exactly) from one it cannot (skip, and say
+so). Adding a new unresolvable placeholder to a workflow entry has the same
+effect; the manifest's own `_comment` now warns at the point of edit.
+
+**Consequences**
+
+- `PLAN-028` Phase B closes. Phases C (canon self-adoption) and D (the consumer
+  opt-in path) remain deferred to their own plan, now unblocked.
+- No repo has adopted the model, canon included. The machinery ships; the
+  migrations do not.
+- **This decision expires at the organization migration.** CI-0030 already
+  decided to move to a GitHub Organization, sequenced before the CD subsystems.
+  CI-0048 measured that `bypass_pull_request_allowances` returns 422 *because*
+  the account is a User — so the moment CI-0030 completes, the advisory-gate
+  trade accepted here stops being forced. **Revisit then:** `promotion_branches`
+  should move to a scoped `bypass_pull_request_allowances` and drop
+  `enforce_admins: false`, making the promotion gate enforced rather than
+  advisory. Recorded here so the trade is not mistaken for a permanent one.
+- The trigger-arm change reaches consumers via `install.sh --update` **only**.
+  `--repin` rewrites `uses:` tag strings and cannot deliver a caller-body edit.

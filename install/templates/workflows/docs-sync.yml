@@ -27,7 +27,7 @@ name: docs-sync
 
 on:
   push:
-    branches: [main]
+    branches: ["${INTEGRATION_BRANCH}"]
 
 permissions:
   contents: read

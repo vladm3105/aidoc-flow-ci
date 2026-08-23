@@ -33,8 +33,20 @@
 #                    for release/adoption gates. Default remains warning-only.
 #
 # Requires: bash 4+, gh CLI authenticated, jq.
+#
+# PLAN-028 B0: this also reads `.github/aidoc-ci.json` from the TARGET repo over
+# the API to resolve the branch set. A 404 is the common, legitimate case (most
+# repos declare nothing) and is silent. Any OTHER read failure — a 403, a
+# rate-limit, a 5xx — is reported and counted as a fetch error, which `--strict`
+# folds into a non-zero exit. That is deliberate and is the file's own rule
+# applied consistently: a run that could not read what a repo declared has not
+# verified that repo's branches, and must not report a pass.
 
 set -uo pipefail
+# The branch-name validator below uses bracket RANGES, whose membership is
+# collation-dependent. Pin the collation so "is this a safe API path segment?"
+# has the same answer on every runner.
+export LC_ALL=C
 
 if (( BASH_VERSINFO[0] < 4 )); then
   echo "::warning::check-standards-drift: requires bash 4+ (current: ${BASH_VERSION:-unknown})"
@@ -172,11 +184,182 @@ case "$DEFAULT_BRANCH" in
     DEFAULT_BRANCH="main" ;;
 esac
 
-MODE="warning-only"; [ "$STRICT" -eq 1 ] && MODE="strict"
-echo "check-standards-drift: repo=$REPO tier=$TIER canon=$CI_TAG branch=$DEFAULT_BRANCH ($MODE)"
-
 DRIFT=0
 FETCH_ERRORS=0
+
+# --- PLAN-028 B0: the per-repo shape declaration --------------------------
+# `--tier` cannot express the branch set (three repos share `product`), so the
+# branch set is declared in `.github/aidoc-ci.json`. It is OPTIONAL: an ABSENT
+# file means the single-branch model against DEFAULT_BRANCH — precisely the
+# behaviour this script had before the file existed. That invariant is what
+# keeps an unopted consumer's drift report byte-identical across this change.
+#
+# Read via the API, not the local tree: `--repo` may name a repo this checkout
+# is not, and the declaration is repo POLICY, so the server's copy is the
+# authoritative one. A 404 is the common case and is NOT an error.
+BRANCHING_MODEL="single-branch"
+INTEGRATION_BRANCH="$DEFAULT_BRANCH"
+PROTECTED_BRANCHES=("$DEFAULT_BRANCH")
+PROMOTION_BRANCHES=()
+
+valid_branch_name() {
+  case "$1" in
+    ''|null|*..*|/*|*/|*[!A-Za-z0-9._/-]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+decl_raw=$(mktemp)
+decl_b64=$(mktemp)
+decl_err=$(mktemp)
+decl_read=0
+if gh api "repos/${REPO}/contents/.github/aidoc-ci.json" --jq '.content' > "$decl_b64" 2>"$decl_err"; then
+  tr -d '\n' < "$decl_b64" | base64 -d > "$decl_raw" 2>/dev/null && [ -s "$decl_raw" ] && decl_read=1
+elif ! grep -qiE '404|not found|no such file' "$decl_err"; then
+  # A 404 is the COMMON, LEGITIMATE case — most repos declare nothing. Anything
+  # else is a read this script could not perform, and treating it as "no
+  # declaration" would silently verify ONE branch on a repo that declared three
+  # and then report clean. Same rule as the FT-5 protection-endpoint guard
+  # below: cannot-check is never a pass.
+  echo "::warning::check-standards-drift: could not read .github/aidoc-ci.json on ${REPO} ($(head -2 "$decl_err" | tr '\n' ' ' | head -c 200)) — falling back to the single-branch default (${DEFAULT_BRANCH}). If this repo declares a branch set, those branches were NOT verified."
+  FETCH_ERRORS=$((FETCH_ERRORS + 1))
+fi
+rm -f "$decl_b64" "$decl_err"
+if [ "$decl_read" -eq 1 ]; then
+  if ! jq -e 'type == "object" and (.branching | type) == "object"' "$decl_raw" >/dev/null 2>&1; then
+    # Do NOT silently fall back: the repo declared something and this script
+    # could not read it, so every branch beyond the default would be reported
+    # as verified-clean without ever being fetched. Warn and keep the default.
+    echo "::warning::check-standards-drift: .github/aidoc-ci.json is present but is not a readable object with a .branching object — falling back to the single-branch default (${DEFAULT_BRANCH}); branches this repo may have declared are NOT being verified"
+    FETCH_ERRORS=$((FETCH_ERRORS + 1))
+  else
+    _m=$(jq -r '.branching.model // "single-branch"' "$decl_raw")
+    case "$_m" in
+      single-branch|dev-staging-main) BRANCHING_MODEL="$_m" ;;
+      *) echo "::warning::check-standards-drift: unknown branching.model '$_m' — treating as single-branch"; FETCH_ERRORS=$((FETCH_ERRORS + 1)) ;;
+    esac
+    _ib=$(jq -r '.branching.integration_branch // empty' "$decl_raw")
+    if [ -n "$_ib" ]; then
+      if valid_branch_name "$_ib"; then
+        INTEGRATION_BRANCH="$_ib"
+      else
+        # Was silently discarded. INTEGRATION_BRANCH then equalled
+        # DEFAULT_BRANCH, so the §8a invariant check below ALSO passed and the
+        # run reported clean — while apply-standards.sh treats the same input as
+        # FATAL. The two surfaces must not disagree, and the silent one is the
+        # VERIFIER.
+        echo "::warning::check-standards-drift: declared integration_branch is not a usable branch name — ignoring it; the branch set below may not be what this repo declared"
+        FETCH_ERRORS=$((FETCH_ERRORS + 1))
+      fi
+    fi
+    # `has()`, not `// []`: an EXPLICIT `[]` is an opt-OUT and must not be
+    # replaced by the model default — `// []` renders null, absent and [] alike.
+    _pb_set=$(jq -r '(.branching | has("protected_branches")) and (.branching.protected_branches != null)' "$decl_raw")
+    _mb_set=$(jq -r '(.branching | has("promotion_branches")) and (.branching.promotion_branches != null)' "$decl_raw")
+    _pb=$(jq -r '.branching.protected_branches // [] | .[]' "$decl_raw")
+    _mb=$(jq -r '.branching.promotion_branches // [] | .[]' "$decl_raw")
+    if [ "$_pb_set" = "true" ]; then
+      PROTECTED_BRANCHES=()
+      [ -n "$_pb" ] && mapfile -t PROTECTED_BRANCHES <<< "$_pb"
+    elif [ "$BRANCHING_MODEL" = "dev-staging-main" ]; then
+      PROTECTED_BRANCHES=("$INTEGRATION_BRANCH" "staging" "main")
+    else
+      PROTECTED_BRANCHES=("$INTEGRATION_BRANCH")
+    fi
+    if [ "$_mb_set" = "true" ]; then
+      PROMOTION_BRANCHES=()
+      [ -n "$_mb" ] && mapfile -t PROMOTION_BRANCHES <<< "$_mb"
+    elif [ "$BRANCHING_MODEL" = "dev-staging-main" ]; then
+      PROMOTION_BRANCHES=("staging" "main")
+    fi
+    # Drop anything unusable rather than interpolating it into an API path —
+    # and REPORT each drop. Two defects lived here: a dropped entry was silent,
+    # so a repo declaring three branches could have one verified and still print
+    # `verified 4/4`; and when EVERY entry was invalid the `-gt 0` guard skipped
+    # the assignment, leaving the array holding the UNVALIDATED mapfile result,
+    # which then reached `gh api repos/…/branches/${b}/protection`. Reset first,
+    # then fill: never retain.
+    _keep=()
+    for _b in "${PROTECTED_BRANCHES[@]}"; do
+      if valid_branch_name "$_b"; then _keep+=("$_b")
+      else
+        echo "::warning::check-standards-drift: dropping unusable declared branch name from protected_branches — it was NOT verified"
+        FETCH_ERRORS=$((FETCH_ERRORS + 1))
+      fi
+    done
+    if [ "${#_keep[@]}" -gt 0 ]; then
+      PROTECTED_BRANCHES=("${_keep[@]}")
+    else
+      # Never fall through holding unvalidated values.
+      PROTECTED_BRANCHES=("$DEFAULT_BRANCH")
+    fi
+    _keep=()
+    if [ "${#PROMOTION_BRANCHES[@]}" -gt 0 ]; then
+      for _b in "${PROMOTION_BRANCHES[@]}"; do
+        if valid_branch_name "$_b"; then _keep+=("$_b")
+        else
+          echo "::warning::check-standards-drift: dropping unusable declared branch name from promotion_branches"
+          FETCH_ERRORS=$((FETCH_ERRORS + 1))
+        fi
+      done
+    fi
+    PROMOTION_BRANCHES=()
+    [ "${#_keep[@]}" -gt 0 ] && PROMOTION_BRANCHES=("${_keep[@]}")
+    # Dedupe, as apply-standards.sh does. `{"model":"dev-staging-main"}` on a
+    # repo whose default is still `main` yields (main staging main), which would
+    # fetch and report the same branch twice.
+    _keep=()
+    for _b in "${PROTECTED_BRANCHES[@]}"; do
+      _dup=0
+      for _k in ${_keep[@]+"${_keep[@]}"}; do [ "$_k" = "$_b" ] && { _dup=1; break; }; done
+      [ "$_dup" -eq 0 ] && _keep+=("$_b")
+    done
+    PROTECTED_BRANCHES=("${_keep[@]}")
+  fi
+fi
+rm -f "$decl_raw"
+
+# PLAN-028 B2b — the same invariant apply-standards.sh warns on, verified here
+# because drift detection is the surface that catches a repo that silently fell
+# out of agreement later. composition.yml's trusted allowlist, ai-review.yml's
+# canon-pin resolution, check-pin-currency.sh and deploy-ci-wizard.sh all
+# resolve `default_branch` at runtime and cannot read the declaration, so an
+# integration branch that is not the default branch leaves four surfaces —
+# two of them TRUST boundaries — anchored to a branch that no longer receives
+# merges. Counted as DRIFT, not a fetch error: the settings really have diverged
+# from what the repo declared.
+is_promotion_branch() {
+  local _p
+  [ "${#PROMOTION_BRANCHES[@]}" -eq 0 ] && return 1
+  for _p in "${PROMOTION_BRANCHES[@]}"; do [ "$_p" = "$1" ] && return 0; done
+  return 1
+}
+
+# The integration branch must never also be a promotion branch. Declaring
+# `{"model":"dev-staging-main"}` before flipping the GitHub default resolves the
+# integration branch to `main`, which is also in the DEFAULT promotion set — so
+# `enforce_admins:false` lands on the trust anchor. Before this check, the
+# overlay was applied to the CANON side for that branch too, and the drift
+# checker BLESSED the configuration with `0 drift`. apply-standards.sh refuses
+# it outright; this reports it, loudly, wherever it already happened.
+if [ "${#PROMOTION_BRANCHES[@]}" -gt 0 ] && is_promotion_branch "$INTEGRATION_BRANCH"; then
+  echo "::warning::branch-protection: '${INTEGRATION_BRANCH}' is BOTH the integration branch and a declared promotion branch — enforce_admins:false on it strips admin enforcement from the branch composition.yml and ai-review.yml anchor their trust to. Create the integration branch and make it the repo default first (BRANCHING.md §8c)."
+  DRIFT=$((DRIFT + 1))
+  # Do NOT bless it: comparing with the overlay would report 0 drift for a
+  # default branch that has no admin enforcement.
+  _keep=()
+  for _b in "${PROMOTION_BRANCHES[@]}"; do [ "$_b" = "$INTEGRATION_BRANCH" ] || _keep+=("$_b"); done
+  PROMOTION_BRANCHES=()
+  [ "${#_keep[@]}" -gt 0 ] && PROMOTION_BRANCHES=("${_keep[@]}")
+fi
+
+if [ "$INTEGRATION_BRANCH" != "$DEFAULT_BRANCH" ]; then
+  echo "::warning::branch-protection: declared integration_branch='${INTEGRATION_BRANCH}' is NOT the repo default_branch='${DEFAULT_BRANCH}' — composition.yml's trusted allowlist, ai-review.yml's canon-pin resolution, check-pin-currency.sh and deploy-ci-wizard.sh all resolve the DEFAULT branch at runtime and cannot read the declaration. Set the repo default branch to '${INTEGRATION_BRANCH}'."
+  DRIFT=$((DRIFT + 1))
+fi
+
+MODE="warning-only"; [ "$STRICT" -eq 1 ] && MODE="strict"
+echo "check-standards-drift: repo=$REPO tier=$TIER canon=$CI_TAG model=$BRANCHING_MODEL branches=${PROTECTED_BRANCHES[*]} ($MODE)"
 
 # --- helper: strip _*-prefix metadata keys from canon JSON ---
 strip_meta() {
@@ -210,68 +393,106 @@ warn_uncheckable() {
 }
 
 # --- Branch protection tier profile ---
-bp_local=$(mktemp)
+# PLAN-028 B2: verify EVERY declared branch, not just the default one. For an
+# unopted repo PROTECTED_BRANCHES is exactly ("$DEFAULT_BRANCH"), so this loop
+# runs once and emits byte-identical output to the pre-B2 script — the
+# behaviour-preserving default that keeps this release MINOR.
 bp_canon_raw=$(mktemp)
-bp_canon=$(mktemp)
-bp_err=$(mktemp)
-if ! gh api "repos/${REPO}/branches/${DEFAULT_BRANCH}/protection" > "$bp_local" 2>"$bp_err"; then
-  # FT-5: the protection endpoint needs `administration: read`. A scoped
-  # GITHUB_TOKEN (contents:read) gets 403 — that is "can't verify", NOT "no
-  # protection". Distinguish so the drift check doesn't false-alarm.
-  if grep -qiE '403|forbidden|administration|not accessible|permission' "$bp_err"; then
-    warn_uncheckable "branch-protection" "needs 'administration: read' on the token (FT-5) — grant it to the drift job (or run with a PAT) to verify branch protection; skipping"
-  else
-    echo "::warning::branch-protection: no protection on ${DEFAULT_BRANCH} (canon expects one)"
-    DRIFT=$((DRIFT + 1))
-  fi
-  rm -f "$bp_err"
-elif { rm -f "$bp_err"; ! curl -fsSL "${TEMPLATE_BASE}/branch-protection-${TIER}.json" > "$bp_canon_raw" 2>/dev/null; }; then
+bp_canon_base=$(mktemp)
+if ! curl -fsSL "${TEMPLATE_BASE}/branch-protection-${TIER}.json" > "$bp_canon_raw" 2>/dev/null; then
   warn_uncheckable "branch-protection" "canon fetch failed"
-elif ! json_readable "$bp_local" object; then
-  # Same class as the repo-settings guard: a 0-exit-but-empty protection body
-  # would otherwise compare as `canon=true actual=` on every key.
-  warn_uncheckable "branch-protection" "the protection response for ${DEFAULT_BRANCH} is empty or is not a JSON object — an API/transport failure, NOT missing protection and NOT a token-scope problem. Re-run"
 else
-  strip_meta "$bp_canon_raw" > "$bp_canon"
-  for k in enforce_admins required_signatures allow_force_pushes allow_deletions; do
-    # GitHub returns these as {enabled:false}; canon stores flat booleans.
-    # Do not use `//` for normalization because jq treats false as fallback.
-    local_v=$(jq -r --arg k "$k" 'if has($k) then if (.[$k] | type) == "object" then if (.[$k] | has("enabled")) then .[$k].enabled else "null" end else .[$k] end else "null" end' "$bp_local")
-    canon_v=$(jq -r --arg k "$k" 'if has($k) then .[$k] else "null" end' "$bp_canon")
-    if [ "$local_v" != "$canon_v" ]; then
-      echo "::warning::branch-protection.${k}: canon=$canon_v actual=$local_v"
-      DRIFT=$((DRIFT + 1))
+  strip_meta "$bp_canon_raw" > "$bp_canon_base"
+  # Count uncheckable branches, do not just note that ONE succeeded. Marking the
+  # family verified because any single branch compared lets a run that read 2 of
+  # 3 branches print `verified 4/4` — "cannot-check is never a pass" applies to
+  # partial coverage too. Same delta shape the `actions` family already uses.
+  bp_err_before="$FETCH_ERRORS"
+  bp_any_verified=0
+  for bp_branch in "${PROTECTED_BRANCHES[@]}"; do
+    bp_local=$(mktemp)
+    bp_canon=$(mktemp)
+    bp_err=$(mktemp)
+    # CI-0048/CI-0049: a PROMOTION branch is deliberately protected with
+    # `enforce_admins:false` — the only mechanism on a user-owned account that
+    # permits the fast-forward promotion push at all. Overlay the SAME
+    # transform apply-standards.sh applies, or every adopter's `staging`/`main`
+    # would report permanent, unfixable drift on that one field.
+    if is_promotion_branch "$bp_branch"; then
+      jq '.enforce_admins = false' "$bp_canon_base" > "$bp_canon"
+    else
+      cp "$bp_canon_base" "$bp_canon"
     fi
+    if ! gh api "repos/${REPO}/branches/${bp_branch}/protection" > "$bp_local" 2>"$bp_err"; then
+      # FT-5: the protection endpoint needs `administration: read`. A scoped
+      # GITHUB_TOKEN (contents:read) gets 403 — that is "can't verify", NOT "no
+      # protection". Distinguish so the drift check doesn't false-alarm.
+      if grep -qiE '403|forbidden|administration|not accessible|permission' "$bp_err"; then
+        warn_uncheckable "branch-protection" "needs 'administration: read' on the token (FT-5) — grant it to the drift job (or run with a PAT) to verify branch protection; skipping (branch=$bp_branch)"
+      else
+        echo "::warning::branch-protection: no protection on ${bp_branch} (canon expects one)"
+        DRIFT=$((DRIFT + 1))
+      fi
+    elif ! json_readable "$bp_local" object; then
+      # Same class as the repo-settings guard: a 0-exit-but-empty protection body
+      # would otherwise compare as `canon=true actual=` on every key.
+      warn_uncheckable "branch-protection" "the protection response for ${bp_branch} is empty or is not a JSON object — an API/transport failure, NOT missing protection and NOT a token-scope problem. Re-run"
+    else
+      for k in enforce_admins required_signatures allow_force_pushes allow_deletions; do
+        # GitHub returns these as {enabled:false}; canon stores flat booleans.
+        # Do not use `//` for normalization because jq treats false as fallback.
+        local_v=$(jq -r --arg k "$k" 'if has($k) then if (.[$k] | type) == "object" then if (.[$k] | has("enabled")) then .[$k].enabled else "null" end else .[$k] end else "null" end' "$bp_local")
+        canon_v=$(jq -r --arg k "$k" 'if has($k) then .[$k] else "null" end' "$bp_canon")
+        if [ "$local_v" != "$canon_v" ]; then
+          echo "::warning::branch-protection.${k}: canon=$canon_v actual=$local_v (branch=$bp_branch)"
+          DRIFT=$((DRIFT + 1))
+        fi
+      done
+      local_ctx=$(jq -r '.required_status_checks.contexts // [] | sort | join(",")' "$bp_local")
+      canon_ctx=$(jq -r '.required_status_checks.contexts // [] | sort | join(",")' "$bp_canon")
+      if [ "$local_ctx" != "$canon_ctx" ]; then
+        echo "::warning::branch-protection.contexts: canon=[$canon_ctx] actual=[$local_ctx] (branch=$bp_branch)"
+        DRIFT=$((DRIFT + 1))
+      fi
+      local_strict=$(jq -r '.required_status_checks.strict // false' "$bp_local")
+      canon_strict=$(jq -r '.required_status_checks.strict // false' "$bp_canon")
+      if [ "$local_strict" != "$canon_strict" ]; then
+        echo "::warning::branch-protection.strict: canon=$canon_strict actual=$local_strict (branch=$bp_branch)"
+        DRIFT=$((DRIFT + 1))
+      fi
+      # Compare the PR-only contract as a normalized subset. GitHub's response may
+      # include URL metadata and optional fields that are not part of our canon.
+      #
+      # PLAN-028 B2c — CLOSED AS NO-OP, and the reason belongs here rather than
+      # in a plan nobody reads at this line. This filter is an ALLOWLIST of four
+      # sub-fields, so `bypass_pull_request_allowances` is projected away and is
+      # invisible to drift detection. That gap does not need closing: CI-0048
+      # MEASURED that the field returns HTTP 422 on a user-owned account, so it
+      # cannot be set here at all. The bypass canon actually ships is
+      # `enforce_admins:false`, which is compared DIRECTLY in the loop above.
+      # Extend this filter only if a bypass field inside
+      # `required_pull_request_reviews` ever becomes settable.
+      review_filter='(.required_pull_request_reviews // null) | if . == null then null else {
+        dismiss_stale_reviews: (.dismiss_stale_reviews // false),
+        require_code_owner_reviews: (.require_code_owner_reviews // false),
+        required_approving_review_count: (.required_approving_review_count // 0),
+        require_last_push_approval: (.require_last_push_approval // false)
+      } end'
+      local_reviews=$(jq -c "$review_filter" "$bp_local")
+      canon_reviews=$(jq -c "$review_filter" "$bp_canon")
+      if [ "$local_reviews" != "$canon_reviews" ]; then
+        echo "::warning::branch-protection.required_pull_request_reviews: canon=$canon_reviews actual=$local_reviews (branch=$bp_branch)"
+        DRIFT=$((DRIFT + 1))
+      fi
+      bp_any_verified=1
+    fi
+    rm -f "$bp_local" "$bp_canon" "$bp_err"
   done
-  local_ctx=$(jq -r '.required_status_checks.contexts // [] | sort | join(",")' "$bp_local")
-  canon_ctx=$(jq -r '.required_status_checks.contexts // [] | sort | join(",")' "$bp_canon")
-  if [ "$local_ctx" != "$canon_ctx" ]; then
-    echo "::warning::branch-protection.contexts: canon=[$canon_ctx] actual=[$local_ctx]"
-    DRIFT=$((DRIFT + 1))
+  if [ "$bp_any_verified" -eq 1 ] && [ "$FETCH_ERRORS" -eq "$bp_err_before" ]; then
+    mark_verified "branch-protection"
   fi
-  local_strict=$(jq -r '.required_status_checks.strict // false' "$bp_local")
-  canon_strict=$(jq -r '.required_status_checks.strict // false' "$bp_canon")
-  if [ "$local_strict" != "$canon_strict" ]; then
-    echo "::warning::branch-protection.strict: canon=$canon_strict actual=$local_strict"
-    DRIFT=$((DRIFT + 1))
-  fi
-  # Compare the PR-only contract as a normalized subset. GitHub's response may
-  # include URL metadata and optional fields that are not part of our canon.
-  review_filter='(.required_pull_request_reviews // null) | if . == null then null else {
-    dismiss_stale_reviews: (.dismiss_stale_reviews // false),
-    require_code_owner_reviews: (.require_code_owner_reviews // false),
-    required_approving_review_count: (.required_approving_review_count // 0),
-    require_last_push_approval: (.require_last_push_approval // false)
-  } end'
-  local_reviews=$(jq -c "$review_filter" "$bp_local")
-  canon_reviews=$(jq -c "$review_filter" "$bp_canon")
-  if [ "$local_reviews" != "$canon_reviews" ]; then
-    echo "::warning::branch-protection.required_pull_request_reviews: canon=$canon_reviews actual=$local_reviews"
-    DRIFT=$((DRIFT + 1))
-  fi
-  mark_verified "branch-protection"
 fi
-rm -f "$bp_local" "$bp_canon_raw" "$bp_canon"
+rm -f "$bp_canon_raw" "$bp_canon_base"
 
 # --- Repo settings ---
 rs_local=$(mktemp)

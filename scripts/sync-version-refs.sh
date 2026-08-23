@@ -75,6 +75,16 @@ TARGETS=(
   # Pins the $schema URL at a tag; safe_to_replace:false so --update never repairs
   # a consumer's stale copy either.
   "install/templates/config.json.template"
+  # PLAN-028 B0: same shape, same reason — it pins its $schema URL at a tag and
+  # is safe_to_replace:false, so a stale pin would never be repaired for a
+  # consumer. It joins TARGETS at birth rather than "matching VERSION by
+  # coincidence" until the next bump (CI-0024).
+  "install/templates/aidoc-ci.json"
+  # The schema's own `$id` pins the same tag. Left out of TARGETS it would match
+  # VERSION only by coincidence until the next bump — the exact CI-0024 shape,
+  # and the template above would then point at a `$schema` URL whose file
+  # advertises a different `$id`.
+  "schemas/aidoc-ci-v1.schema.json"
 )
 # Every shipped caller template pins aidoc-flow-ci reusables — keep them all at
 # the current release tag so a fresh consumer install gets a coherent pin set.

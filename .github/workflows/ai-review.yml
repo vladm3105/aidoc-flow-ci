@@ -625,6 +625,20 @@ jobs:
           # pull_request_target → the PR's BASE branch; pull_request_review (and
           # anything else) → the repo's DEFAULT branch. Both are event-supplied
           # and trusted; neither is PR-content-controlled.
+          #
+          # PLAN-028 B2b row 4 — REVERTED, and the reason is worth keeping.
+          # A draft of Phase B changed the `*)` arm to prefer the PR's base ref,
+          # reasoning that the base is "the copy GitHub ran". For
+          # `pull_request_review` that is FALSE: GitHub triggers that event only
+          # for a workflow file on the DEFAULT branch, and runs that copy — so
+          # the default branch is the executed copy, and base.ref is not. Two
+          # independent review lenses caught it. Preferring base.ref would have
+          # (a) resolved the rubric, schema and llm_client at a DIFFERENT tag
+          # than the reusable actually executing, precisely under the
+          # multi-branch model where `dev` and `main` hold different pins, and
+          # (b) moved the pin's source from the protected default branch to a
+          # branch the PR author selects and may be able to push to. The
+          # original form is correct; it stays.
           case "$EVENT_NAME" in
             pull_request_target)
               # Hard-fail rather than fall back: silently substituting the default
