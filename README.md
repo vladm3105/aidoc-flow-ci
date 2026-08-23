@@ -35,9 +35,22 @@ per-repo applicability matrix, and skip guidance) and
 [`docs/architecture.md`](docs/architecture.md) for the per-workflow design
 rationale.
 
-> **`ci/v3.0.0` adds a composite-action layer. Released 2026-08-12 and
-> adoptable; it is the latest tag. Adoption is per-consumer and opt-in — no
-> consumer moves until it repins.**
+> **The current release is the tag in [`VERSION`](VERSION).** Read it there
+> rather than from prose here — a hardcoded "latest" in a README goes stale at
+> the next cut, and this one did.
+>
+> **`ci/v4.0.0` is a MAJOR with three consumer-visible breaks** — the runner
+> labels are renamed (`ci-runner`→`ci`, `single-use`→`ephemeral`, and a job
+> whose labels match no registered runner **queues forever** rather than
+> failing), `doc-maintainer` is **deleted**, and the LLM credentials unify on
+> `LLM_URL`/`LLM_API_KEY` (backward compatible). Read
+> [`docs/MIGRATION_v4.0.0.md`](docs/MIGRATION_v4.0.0.md) before repinning — the
+> runner cutover is order-sensitive and the `doc-maintainer` caller must be
+> deleted *before* the repin, not after.
+>
+> **`ci/v3.0.0` (2026-08-12) is unchanged and remains a valid pin.** It was not
+> re-cut (`DECISIONS.md` CI-0044); it is the documented rollback target. It
+> added the composite-action layer described below.
 >
 > v3 repackages six of the workflows below (`pre-commit`, `markdown-lint`,
 > `links`, `dep-scan`, `trivy-scan`, `sast-scan`) as **composite actions** under

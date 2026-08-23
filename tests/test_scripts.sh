@@ -243,15 +243,64 @@ for text in must_reject:
     raise AssertionError('parser accepted what it must reject: ' + repr(text))
 PY" "strict JSON parser stays strict — rejects prose-wrapped + multi-object (PLAN-011 F1/F2 lock)"
 
-assert_ok "python3 - '$ROOT/scripts/llm_client.py' <<'PY'
-import importlib.util, sys
-spec = importlib.util.spec_from_file_location('llm_client', sys.argv[1])
-module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-secret = 'sk-' + 'A' * 24
-redacted, mapping = module.redact_secret_shaped('before ' + secret + ' after')
-assert secret not in redacted and '[REDACTED_SECRET_0]' in redacted
-assert module.restore_redactions(redacted, mapping) == 'before ' + secret + ' after'
-PY" "prompt redaction hides and safely restores secret-shaped source content"
+# REDACTION MOVED, AND THE TEST MOVED WITH IT. This drove
+# `llm_client.redact_secret_shaped` / `restore_redactions` — helpers `completion()`
+# never called. Their only real caller was `scripts/doc-maintainer/`, deleted by
+# CI-0040/#496, after which the test proved a live-looking control over dead code
+# while the ACTUAL redaction path went unasserted — and that path had a hole.
+#
+# ai-review redacts the diff before assembling the prompt and writes
+# `.ai-review/diff-for-review.txt`. The reviewer read that file; the
+# `ai-review-verdict` ARTIFACT and the `autofix` fixer prompt both read the RAW
+# `.ai-review/diff.txt`. So a PR that committed an AWS key or a PAT had it hidden
+# from the reviewer model and handed in the clear to the fixer model, plus stored
+# for 24h in an artifact readable by anyone with Actions read. Assert the property
+# that was violated: NO consumer outside the redaction step reads the raw diff.
+_air=.github/workflows/ai-review.yml
+if [ -f "$_air" ]; then
+  assert_ok "grep -q \"Path('.ai-review/diff-for-review.txt').write_bytes\" '$_air'" \
+    "ai-review: the redaction step still writes diff-for-review.txt"
+  # The raw diff may be referenced ONLY where it is produced and consumed by the
+  # redactor itself. Anywhere else is an egress path. Count the raw references
+  # and pin them to those sites by line, so a NEW reader reds here.
+  # Every non-comment line naming the raw diff. The redactor legitimately writes
+  # it (the gh api capture), sizes it, and reads it once; nothing else may.
+  # PIN THE WHOLE REFERENCE SET, not one shape. Counting only `read_text` readers
+  # stated "no consumer outside the redaction step reads the raw diff" while
+  # measuring "exactly one Python read". A new `path: .ai-review/diff.txt` on an
+  # upload step, or a `cat .ai-review/diff.txt`, adds no `read_text` and the
+  # count stays 1 — precisely the regression the comment says it prevents.
+  # The raw diff has exactly four legitimate sites, all inside the step that
+  # produces and redacts it: the `gh api` capture, the `-s` emptiness test, the
+  # `wc -c` size line, and the redactor's own read.
+  _raw_refs="$(grep -n '\.ai-review/diff\.txt' "$_air" | grep -v '^[0-9]*: *#' || true)"
+  _raw_n="$(printf '%s\n' "$_raw_refs" | grep -c . || true)"
+  assert_eq "$_raw_n" "4" \
+    "ai-review: the raw diff is referenced at exactly its 4 producer/sizing/read sites — a 5th is a new egress path"
+  _raw_readers="$(printf '%s\n' "$_raw_refs" | grep -c 'read_text' || true)"
+  assert_eq "$_raw_readers" "1" "ai-review: ...and exactly ONE of them READS it — the redactor itself"
+  assert_absent "$_raw_refs" "upload-artifact" "ai-review: ...and none of them is an artifact path"
+  assert_absent "$_raw_refs" "cat " "ai-review: ...and none of them cats it into a prompt"
+
+  # The two egress points must name the REDACTED file.
+  _art_blk="$(sed -n '/name: ai-review-verdict/,/retention-days/p' "$_air")"
+  assert_contains "$_art_blk" "diff-for-review.txt" \
+    "ai-review: the uploaded artifact ships the REDACTED diff"
+  assert_absent "$_art_blk" ".ai-review/diff.txt" \
+    "ai-review: ...and NOT the raw one (it was 24h-readable by anyone with Actions read)"
+
+  _fix_blk="$(grep 'cat verdict-in/' "$_air" || true)"
+  assert_contains "$_fix_blk" "verdict-in/diff-for-review.txt" \
+    "ai-review: the autofix fixer prompt reads the REDACTED diff"
+  assert_absent "$_fix_blk" "verdict-in/diff.txt" \
+    "ai-review: ...and never the raw one (the fixer got secrets the reviewer was shielded from)"
+fi
+
+# And the dead helpers must STAY dead: re-adding them to the client protects
+# nothing (ai-review does not call it for redaction) while restoring the false
+# impression that it does.
+assert_absent "$(cat "$ROOT/scripts/llm_client.py")" "def redact_secret_shaped" \
+  "llm_client.py carries no redaction helper (its only caller, doc-maintainer, is retired — CI-0040)"
 
 # --- RETIRED CHECKS DECLARATION (PLAN-024 A7, DECISIONS.md CI-0040) ---
 # Seven doc-maintainer blocks stood here and are REMOVED with the flow:
@@ -679,6 +728,63 @@ assert_ok "[ \"\$(_ft30_drive '$_mut' 0)\" -ge 1 ]" "a FAIL line in the installe
 assert_ok "[ \"\$(_ft30_drive '$_mut' 0)\" -ge 1 ]" "a 404 in the installer output is caught"
 assert_ok "[ \"\$(_ft30_drive '$_ft30_good' 1)\" -ge 1 ]" "a non-zero installer exit is caught"
 rm -f "$_mut" "$_ft30_good" "$FT30_CRIT"
+
+# PORTABILITY OF THE CRITERIA THEMSELVES. The battery above runs under GNU grep,
+# where `\s` works — so it can NEVER catch the BSD/macOS trap by driving. `\s` is
+# a GNU extension: BSD grep matches a LITERAL 's', so `^\s+FAIL ` cannot match an
+# indented FAIL line and the criterion prints "no FAIL lines" over a log that has
+# them. This is a 🔴 founder-executed gate, frequently run by hand on macOS, and
+# docs/RELEASE_CHECKLIST.md documents this exact trap for a different command
+# while the script itself carried it. Assert the portable class STATICALLY —
+# a static assertion is the only kind that can see this one.
+assert_absent "$(grep -vE '^[[:space:]]*#' "$FT30" || true)" '\s' \
+  "ft30-dry-run.sh uses no GNU-only \\s in its matchers (BSD grep reads it as a literal 's' → false all-clear)"
+
+# THE OWED-COMPUTATION MUST DELEGATE, NOT RE-DERIVE. This block claimed to
+# "Reuse release.sh's own definition rather than a copy of it, so this cannot
+# drift" while carrying its own `git diff` over install/ — no manifest
+# derivation, no `ci/vX.Y.Z` pin normalisation. Since every prep rewrites the
+# self-pin in all ~37 shipped templates, the copy answered "OWED" on EVERY
+# release while `release.sh tag` AUTO-WAIVED, sending the founder to run a 🔴
+# write-to-another-repo dry-run that was not owed.
+_owed_blk="$(awk '/Is the gate even owed\?/,/^if \[ -n "\$TARGET" \]/' "$FT30" | grep -vE '^[[:space:]]*#' || true)"
+assert_ok "[ -n \"\$_owed_blk\" ]" "the owed-computation block was located in ft30-dry-run.sh"
+assert_contains "$_owed_blk" "_coldstart-changed" \
+  "ft30 asks release.sh whether the gate is owed (delegation, not a second definition)"
+assert_absent "$_owed_blk" "git diff --name-only" \
+  "ft30 does NOT re-derive the cold-start surface with its own git diff (the drift that made it always say OWED)"
+# THE FAILURE ARM MUST WARN, NOT FAIL. `bad` increments FAILED, which makes
+# `--check` exit 1 and the real run refuse to write to the target — so a
+# preflight that cannot compute the surface would BLOCK the very dry-run that
+# `release.sh tag` demands in exactly that state, leaving `--dry-run-verified`
+# passed with nothing run. The fail-closed behaviour lives in `tag`; this script
+# reports.
+assert_absent "$_owed_blk" "bad \"could not compute" \
+  "ft30's cannot-compute arm does not FAIL the preflight (it must not block the dry-run the gate then demands)"
+assert_contains "$_owed_blk" "warn \"could not compute" \
+  "ft30's cannot-compute arm WARNS and tells you to run it anyway"
+# Streams separated: a stderr line must not become a 'changed file' on the
+# success path — which would also break the agreement assertion below.
+assert_absent "$_owed_blk" '_coldstart-changed "$PREV_TAG" 2>&1' \
+  "ft30 captures release.sh's stderr separately (2>&1 would fold diagnostics into the file list)"
+
+# And the two must AGREE on this tree. A delegation that returns something
+# different from what `tag` computes is the same defect wearing the fix's clothes.
+_rel_changed="$(bash "$ROOT/scripts/release.sh" _coldstart-changed 2>/dev/null | sort || true)"
+_ft30_changed="$(bash "$FT30" --check 2>/dev/null | sed -n '/gate is OWED/,/^$/p' | grep '^         ' | sed 's/^ *//' | sort || true)"
+# FLOOR. Both captures are "" whenever the cold-start surface is unchanged since
+# the previous tag — which is the STEADY STATE between releases — and `assert_eq
+# "" ""` passes having compared nothing. Non-vacuous for this release only by
+# accident (install.sh and manifest.json both changed). Floors were added to the
+# other derived comparisons in this same change; this one was missed.
+if [ -n "$_rel_changed" ] || [ -n "$_ft30_changed" ]; then
+  assert_eq "$_ft30_changed" "$_rel_changed" \
+    "ft30 --check reports the SAME surface release.sh tag would gate on"
+else
+  # Not a failure — it is the correct answer when nothing on the bootstrap path
+  # changed. Say so, rather than printing a green tick for an empty comparison.
+  echo "  ---  ft30/release agreement: both report an unchanged cold-start surface (auto-waive state) — nothing to compare"
+fi
 
 echo ""
 echo "== FT-30 verifies WHAT LANDED, not only what was printed (#358) =="

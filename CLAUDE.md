@@ -69,13 +69,25 @@ surfaces for **this** repo:
 
 | Surface | Path (in this repo) |
 | --- | --- |
-| Live HANDOFF | Tracker — `label:handoff` |
-| TODO / backlog | `plans/` (per-initiative plans + GitHub issues — this repo's open issues **are** its backlog, whoever filed them; a finding below the promotion bar stays in the worked `plans/` entry, not in the tracker. Read the tracker with `gh issue list --state all --limit 200` — the `--limit 30` default truncates silently.) |
+| Live HANDOFF | Not adopted — CI-0046; reconstruct from `plans/` + `DECISIONS.md` + git history |
+| TODO / backlog | `plans/` (per-initiative plans, PLAN-NNN). **The GitHub tracker is NOT the backlog** — see CI-0046 |
 | Legacy FT queue (being retired) | `plans/FRAMEWORK-TODO.md` (still holds open entries; until its retirement lands, both surfaces are live) |
 | Decisions log | `DECISIONS.md` |
 | Plans | `plans/` |
 | Changelog | `CHANGELOG.md` |
 | Roadmap | Not adopted — release sequencing lives in `CHANGELOG.md`; forward work lives in `plans/` |
+
+**The tracker is deliberately empty (CI-0046, 2026-08-22).** CI-0042 had
+declared it as both the backlog and the live handoff; all issues were then
+closed and the founder's direction is that it stays that way. `gh issue list
+--state open` returning zero rows is **by design, not lost state** — the
+previous declaration made an empty tracker indistinguishable from a destroyed
+one, which is how four disclosed-but-open items lost their only carrier.
+
+Deferred work lives in the owning `plans/` entry. Filing an issue is still the
+right move for a defect canon does **not** own — §18 / CI-0020 requires one on
+the owning repo — and inbound consumer reports still arrive here as issues and
+still need acting on.
 
 Never in `tmp/` (transient). Never in the umbrella `aidoc-flow/`
 (holds no dev). Cross-repo coordination captured here references
@@ -467,22 +479,26 @@ the previous cycle's finding.
 Sessions run in ephemeral containers — **only committed + pushed work
 survives**. Commit messages must not contain model identifiers.
 
-**The handoff is a GitHub issue, not a file (CI-0042).** Read it at session
-start and refresh it at milestones and before any context compaction:
+**There is no handoff surface (CI-0046).** `HANDOFF.md` was retired by CI-0042
+in favour of a `label:handoff` issue; that issue was then closed along with the
+rest of the tracker, deliberately. Neither form is live.
+
+Reconstruct state at session start from what git holds:
 
 ```sh
-gh issue list --state open --label handoff        # exactly one, per canon §5.4
+git log --oneline -15                     # what actually landed
+gh pr list --state open                   # what is in flight
+ls plans/ && head -8 plans/PLAN-*.md      # each plan's Status header
+tail -120 DECISIONS.md                    # the most recent decisions of record
 ```
 
-`HANDOFF.md` is retired; git is its archive. §16 declares the surface as
-`` Tracker — `label:handoff` `` — the cell form added in #506. A path cell
-would be a false declaration now that no such file exists.
+**A plan's `**Status:**` header is the closest thing to a handoff, and it is
+the thing to keep honest.** PLAN-024's header read "no artifact has been
+removed" for two days after #496 removed them (CI-0045) — a stale status line
+is how the other half of a phase gets lost. Update it in the same change that
+executes the phase, never after.
 
-**The handoff is regenerated, not appended (CI-0028).** Edit the issue body in
-place; never open a second handoff issue. It is a briefing for a fresh session
-with zero context, answering two questions in order: what the last session did,
-and what to do next. Every volatile claim carries the command that
-re-derives it — a carried-forward claim otherwise reads as freshly verified,
-which is how the headline sat at "0 open issues" for three days against eight.
-Target well under ~200 lines; size is a defect, and the cause is almost always
-retained history. Git is the archive.
+The CI-0028 discipline still applies to anything that briefs a fresh reader:
+every volatile claim carries the command that re-derives it, because a
+carried-forward claim reads as freshly verified. That is how the old handoff
+sat at "0 open issues" for three days against eight.

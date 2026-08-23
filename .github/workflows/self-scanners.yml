@@ -1,33 +1,48 @@
-# scanners — v3 caller consolidating the three SELF-HOSTED security scanners
-# into ONE job (PLAN-025 P3a).
+# self-scanners — canon EXERCISES its own v3 scanner composite actions.
 #
-# ── WHY `secret-scan` IS NOT HERE (P3a — this is the disqualifier) ───────────
-# `secret-scan` is `ubuntu-latest` and deliberately FORK-VISIBLE: it must see a
-# fork PR's code. These three are self-hosted and deliberately fork-GUARDED.
-# One job has one `runs-on` and one `if:`, so merging them would force a choice,
-# and either answer is wrong:
+# Companion to `self-quick-gates.yml`; the reasoning for existing at all is
+# there and is not repeated. Short version: before these two files the entire
+# v3 composite-action layer had never executed anywhere, in canon or in any
+# consumer, and was verified only by parsing its own text.
 #
-#   - Take the pool + fork guard → the job reports `skipped` on every fork PR,
-#     and **a skipped job SATISFIES a required context**. `secret-scan` would go
-#     green having never run: a green required check that scanned nothing, which
-#     is the D22 class this plan exists to prevent.
-#   - Stay on ubuntu-latest → the three lose their uniform-protected posture and
-#     private consumers pay GitHub-hosted minutes (OPS-0049).
+# ── ubuntu-latest, and what that DOES NOT prove ──────────────────────────────
+# The shipped `scanners.yml` runs on `["self-hosted","ci","ephemeral"]`. This one
+# CANNOT: canon is PUBLIC, it has no self-hosted pool of its own, and a job whose
+# labels match no registered runner queues forever rather than failing (D16) —
+# `timeout-minutes` cannot save it, because the clock starts when the job starts.
 #
-# So `secret-scan` keeps its own job and its existing `call / gitleaks` context —
-# no P7 migration for it at all.
+# So this exercises the ACTION LOGIC — the D23 config strips, the scan-path
+# guards, the checksum-verified binary fetches, the SARIF handling, the
+# collect-then-fail verdict — and NOT the runner image. The image-level failures
+# (#349: `python3` present while `python3 -m venv` is impossible; #436) stay
+# unexercised here, and `install/templates/runner/build-image.sh` remains the
+# only thing that catches them. Do not read a green run here as "the private
+# path works". It is the difference between never-run and partly-run, which is
+# the difference that matters right now.
 #
-# ── D27: THE FORK GUARD IS JOB-LEVEL, AND THAT IS LOAD-BEARING ───────────────
-# It CANNOT move into the composite actions. A step-level skip runs AFTER the
-# job has already checked the fork's code out, which turns an admission guard
-# into a no-op. All three v2 reusables carry the identical condition, so one
-# job-level `if:` serves all three exactly.
+# ── The fork guard is KEPT, and is not decoration on a public repo ───────────
+# Canon IS public, so fork PRs are the normal case, and these actions execute
+# tool code over the PR's tree with `security-events: write` available to the
+# job. The shipped D27 identity check is carried over verbatim.
 #
-# ── D4: THE JOB ID IS THE REQUIRED STATUS CONTEXT ────────────────────────────
-# Emits the BARE context `scanners` — a plain job has no `<jobkey> / ` prefix
-# (that shape comes only from a reusable call). Migrate add-new → observe green
-# on LIVE protection AND rulesets → remove old → delete old callers (D19, D40).
-name: scanners
+# ── NOT a required context — and NOT duplicate coverage ──────────────────────
+# Unlike `self-quick-gates`, where two of three checks re-run an existing
+# required context through the v3 actions, **none of these three has ever run on
+# canon's own repo.** Canon's five required contexts are `suite`, `call / verify`,
+# `call / markdownlint`, `call / Lint / format / security hooks` and
+# `call / gitleaks` (measured via `gh api …/branches/main/protection`); there is
+# no `self-dep-scan.yml`, `self-trivy-scan.yml` or `self-sast-scan.yml`, and
+# never has been. Canon authors three scanners for ten repos and has never
+# pointed one at itself.
+#
+# So a red here is not redundant with anything — it is the first and only signal
+# of its class on this tree. An earlier draft of this header said "duplicate,
+# observational coverage", which would have licensed exactly the wrong reaction.
+#
+# It stays out of branch protection because it is new and unproven, not because
+# it is redundant. Wiring it in is a separate deliberate act.
+
+name: self-scanners
 
 on:
   pull_request:
@@ -62,8 +77,8 @@ concurrency:
           && contains(fromJSON('["opened","synchronize"]'), github.event.action)) }}
 
 jobs:
-  scanners:
-    name: scanners
+  self-scanners:
+    name: self-scanners
     # D27 — see the header. STRENGTHENED past the v2 spelling, which was
     # `head.repo.fork != true` and is NULL-PERMISSIVE: a deleted fork on a
     # `reopened` event gives a null `head.repo`, so `head.repo.fork` is null,
@@ -73,7 +88,9 @@ jobs:
     # would NOT fix it: GitHub coerces both null and false to 0, so
     # `null == false` is true.
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-    runs-on: ["self-hosted", "ci", "ephemeral"]
+    # ubuntu-latest, NOT the pool — see the header. Canon has no self-hosted
+    # runner of its own, and an unmatched label queues forever (D16).
+    runs-on: ubuntu-latest
     # §3.2b: the SUM of the absorbed budgets (dep-scan 15 + sast 20 + trivy 15)
     # PLUS headroom. The sum alone is exactly what the `timeout N` wrappers
     # inside the three actions already total (900+1200+900s = 50m), so a job
@@ -155,7 +172,7 @@ jobs:
       - name: dep-scan (SCA — osv-scanner)
         id: depscan
         continue-on-error: true
-        uses: vladm3105/aidoc-flow-ci/actions/dep-scan@ci/v3.0.0
+        uses: ./actions/dep-scan
         with:
           scan-path: .
           fail-on-findings: 'false'
@@ -165,7 +182,7 @@ jobs:
       - name: trivy-scan (IaC/misconfig)
         id: trivy
         continue-on-error: true
-        uses: vladm3105/aidoc-flow-ci/actions/trivy-scan@ci/v3.0.0
+        uses: ./actions/trivy-scan
         with:
           scan-path: .
           fail-on-findings: 'false'
@@ -174,7 +191,7 @@ jobs:
       - name: sast-scan (semgrep)
         id: sast
         continue-on-error: true
-        uses: vladm3105/aidoc-flow-ci/actions/sast-scan@ci/v3.0.0
+        uses: ./actions/sast-scan
         with:
           scan-path: .
           config: p/default

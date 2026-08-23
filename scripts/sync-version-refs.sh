@@ -64,6 +64,12 @@ TARGETS=(
   # template-fetch URL and the ROLLBACK — are all marker-guarded, because in a
   # document named for a tag that tag is the SUBJECT, not a pin to keep current.
   "docs/MIGRATION_v3.0.0.md"
+  # Same rule, same reason — joins TARGETS the moment it exists. Its two
+  # version-bearing commands (the v4 repin and the v3 ROLLBACK) are both
+  # marker-guarded: the rollback target in particular must stay ci/v3.0.0
+  # forever, and an unguarded rewrite would silently point it at the release
+  # being rolled back FROM.
+  "docs/MIGRATION_v4.0.0.md"
   "docs/UPDATE_GUIDE.md"
   "docs/AI_CI_DEPLOYMENT.md"
   # Pins the $schema URL at a tag; safe_to_replace:false so --update never repairs

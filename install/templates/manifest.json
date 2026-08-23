@@ -69,9 +69,13 @@
     {
       "path": ".github/workflows/codeql.yml",
       "template": "workflows/codeql.yml",
+      "visibility_variants": {
+        "public": "workflows/codeql.yml",
+        "private": "workflows/codeql-private.yml"
+      },
       "substitute": [],
       "safe_to_replace": false,
-      "_note": "consumer-customized (the `languages` input) — never auto-replace",
+      "_note": "consumer-customized (the `languages` input) — never auto-replace. VARIANTS ADDED: codeql was the one generic surface with no -private pair. The public template carried the self-hosted override as a COMMENT, and add_surface_mode writes the resolved template verbatim with no label injection, so a private adopter running the documented `install.sh --add-surface .github/workflows/codeql.yml` landed on the reusable's ubuntu-latest default and the job QUEUED FOREVER (no hosted minutes on private; timeout-minutes cannot fire on a job that never starts).",
       "auto_install": false
     },
     {
@@ -222,7 +226,7 @@
     {
       "path": ".github/actionlint.yaml",
       "template": "actionlint.yaml",
-      "_note": "PLAN-025 §3.2e: declares the self-hosted runner labels. NEW IN v3 and load-bearing. Under v2 a private caller passed labels as a JSON STRING input and the reusable did the fromJSON, so actionlint only ever saw an expression. v3 callers carry a literal `runs-on: [\"self-hosted\",\"ci\",\"ephemeral\"]`, and actionlint's runner-label rule rejects labels it does not know — so without this file every private v3 caller fails `scripts/pre_push_check.sh` check 3 on the consumer. Declaring a label does NOT create a runner: a job whose labels match no registered runner queues forever and timeout-minutes cannot save it (D16).",
+      "_note": "PLAN-025 §3.2e: declares the self-hosted runner labels. NEW IN v3 and load-bearing. Under v2 a private caller passed labels as a JSON STRING input and the reusable did the fromJSON, so actionlint only ever saw an expression. v3 callers carry a literal `runs-on: [\"self-hosted\",\"ci\",\"ephemeral\"]`, and actionlint's runner-label rule rejects labels it does not know — so without this file every private v3 caller fails `scripts/pre_push_check.sh` check 3 on the consumer. Declaring a label does NOT create a runner: a job whose labels match no registered runner queues forever and timeout-minutes cannot save it (D16). DELIVERY: `auto_install` stays false ON PURPOSE — bootstrap must not add v3 surfaces to a repo still on the v2 callers — and `install.sh --add-surface` pulls this file as a DEPENDENCY whenever the caller it installs carries a literal self-hosted `runs-on:`. This note previously said 'manifest entry + install.sh fetch' beside `auto_install: false`, i.e. it declared a requirement nothing delivered.",
       "substitute": [],
       "safe_to_replace": true,
       "auto_install": false

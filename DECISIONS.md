@@ -2969,3 +2969,166 @@ is the new text A5 asked for.
   #496 is the removal. `CHANGELOG.md`, this file and
   `docs/MIGRATION_v2.0.0.md` are append-only history and are **not** to be
   scrubbed of the flow.
+
+---
+
+## CI-0044: the next release is `ci/v4.0.0`; `ci/v3.0.0` is NOT re-cut (2026-08-22)
+
+**Amends CI-0043's final clause.** That clause reads: *"`ci/v3.0.0` is re-cut in
+place rather than superseded by v4 (founder, 2026-08-22): the tag has **zero
+consumer adopters**, so the break reaches nobody."* The premise is false. This
+entry records the measurement, not a change of mind — CI-0043's reasoning was
+correct given what it believed.
+
+**Context**
+
+`ci/v3.0.0` was tagged 2026-08-12 at `6d68b26`. `main` is 20 commits ahead
+(+6942/−3350 across 145 files) and carries three breaking changes: the CI-0043
+label rename, the CI-0040 `doc-maintainer` removal, and the LLM-credential
+unification. Something had to be published.
+
+**The measurement that decides it**
+
+`aidoc-flow-framework` **is** an adopter, on five workflows:
+
+```console
+$ gh api repos/vladm3105/aidoc-flow-framework/contents/.github/workflows \
+    --jq '.[].name' | while read -r f; do ... done
+ai-review.yml       -> ai-review.yml@ci/v3.0.0
+audit-trail.yml     -> audit-trail-check.yml@ci/v3.0.0
+codeql.yml          -> codeql.yml@ci/v3.0.0
+links.yml           -> links.yml@ci/v3.0.0
+trivy-scan.yml      -> trivy-scan.yml@ci/v3.0.0
+```
+
+Not dormant, either — its `ai-review` at that pin ran green at
+2026-08-22T23:00Z, about an hour before this was written. Re-derive before
+trusting this entry; adoption is a live fact, not a stored one.
+
+**What a re-cut would have done**
+
+Silently swap all five bodies under a live consumer with no re-pin and no
+signal: `trivy-scan` +118 lines (the #425 scanner-coverage hardening),
+`ai-review` +35/−24, `codeql` +12/−10. `framework`'s callers also still pass
+`runner_labels: '["self-hosted","ci-runner","single-use"]'`, so the interaction
+with the pool re-registration is live rather than theoretical.
+
+`scripts/release.sh:383` refuses to tag an existing version, so the re-cut was
+never reachable through the release mechanism at all — it required deleting a
+published tag by hand and force-pushing, bypassing the FT-21 ordering guard, the
+conditional FT-30 gate and the CHANGELOG-section check together.
+
+**Decision**
+
+1. **The next release is `ci/v4.0.0`.** MAJOR per `CLAUDE.md` "Semver
+   discipline" — three changes to expected consumer surfaces. Not `v3.1.0`: a
+   MINOR tells an adopter the upgrade is additive, and the label rename hangs
+   every self-hosted job whose pool has not been re-registered.
+2. **`ci/v3.0.0` stays exactly as published.** It remains a valid pin and the
+   documented rollback target. Canon's own doctrine — *"a pinned tool must be
+   pinned to something IMMUTABLE"* (§4.3f) — is not one it gets an exception
+   from while teaching it to ten repos.
+3. **`docs/MIGRATION_v4.0.0.md` ships IN the tag**, covering all three breaking
+   changes with the order-sensitive runner cutover and the delete-before-repin
+   rule for `doc-maintainer`. The release checklist already requires a migration
+   guide for a MAJOR; nothing enforced it, and `release.sh` validates only the
+   `ci/vX.Y.Z` shape.
+
+**Consequences**
+
+- `framework` migrates deliberately, reading a guide, rather than being moved
+  under. Its `doc-maintainer.yml@ci/v2.16.0` caller makes this load-bearing: a
+  repin without §2 of that guide is a `startup_failure` with no logs.
+- The 🔴 pool re-registration (CI-0043) is unchanged and still owed. It is now
+  documented in the migration guide rather than only in a PR body and this file.
+- **Generalise the failure, not the fix.** "Zero adopters" was asserted from a
+  remembered state and used to license mutating a published artifact. A claim
+  that licenses an irreversible act is re-derived at the moment of the act, from
+  the surface that holds it — here, the consumer's own workflow files.
+
+---
+
+## CI-0045: `doc-maintainer` removal — the execution record CI-0040 pointed at (2026-08-22)
+
+**Completes CI-0040.** That entry is explicit that it removes nothing: *"this
+entry is the record, **#496** is the removal"*, and it states as fact that
+`git grep -l "doc-maintainer"` returns 33 tracked files and *"Nothing has been
+removed."* #496 then executed the removal and closed. **No decision entry
+recorded that**, so the authoritative log and the tree disagreed on a shipped
+breaking change — `CLAUDE.md` calls `DECISIONS.md` authoritative, and a reader
+following it would have concluded the flow still ships.
+
+`plans/PLAN-024_ci-flow-efficiency.md` carried the same stale blockquote
+(*"No artifact or wiring has been removed"*) and is corrected in this change.
+
+**What #496 actually removed** (verified against the tree at `8ccd168`)
+
+- `.github/workflows/doc-maintainer.yml` — the reusable.
+- `install/templates/workflows/doc-maintainer.yml` — the caller template.
+- `install/templates/doc-maintainer.json` + the conventions template.
+- `scripts/doc-maintainer/{planner,apply,reconcile}.py` — 593 lines.
+- Three `manifest.json` entries, so the flow is no longer installable through
+  any supported path.
+- `LITELLM_DOC_API_KEY` and the second `llm-smoke` arm.
+
+**Consequence found only while writing this entry**
+
+`scripts/llm_client.py` kept `redact_secret_shaped()` / `restore_redactions()`.
+A 2026-07-18 review proposed deleting them as dead; the proposal was **correctly
+overruled** because `scripts/doc-maintainer/{planner,apply}.py` used them
+(`CHANGELOG.md`, PLAN-015 L4). Deleting that flow voided the reason without
+voiding the code — and `completion()` never called them, so what remained was a
+module that read as if the LLM client redacted secrets when it never did.
+Removed in this change; redaction lives in `ai-review.yml`, on the diff, before
+the prompt is assembled.
+
+**Generalise:** a deferral justified by ONE caller acquires that caller as a
+dependency. When the caller is retired, re-run the deferred decision — nothing
+does that automatically, and the stale justification reads as a live one.
+
+---
+
+## CI-0046: the backlog is deliberately empty; `plans/` carries deferred work (2026-08-22)
+
+**Amends CI-0042 and the §16 declaration in `CLAUDE.md`.**
+
+**Context**
+
+CI-0042 retired `HANDOFF.md` and `ROADMAP.md` and declared the tracker their
+replacement — Live HANDOFF as `` Tracker — `label:handoff` ``, and open issues
+as the backlog. Its honesty condition for deleting `ROADMAP.md` was explicit:
+the five forward items *"live in #508, which is what makes the declaration
+honest"*, and the HANDOFF/ROADMAP-template coherence gap was *"explicitly NOT
+discharged here"*, tracked as #509.
+
+On 2026-08-23T00:10–00:11Z the founder closed all remaining open issues,
+33 of them `not_planned`, including #507 (the live handoff), #508, #509, #513
+(the CI-0043 cutover steps) and #460 (codeql's missing private variant). The
+repo now has **zero** open issues. Confirmed deliberate; the founder's direction
+is that it stays empty.
+
+**Decision**
+
+1. **The tracker is no longer declared as the backlog or the handoff.**
+   `CLAUDE.md` §16 is amended to say so. A declaration that names a surface
+   nobody maintains is worse than "not adopted": `gh issue list --label handoff`
+   returning zero rows read as *lost state* rather than as *by design*.
+2. **`plans/` is the sole durable carrier for deferred work.**
+   `plans/PLAN-027_v4-release-readiness.md` opens carrying the items whose only
+   record was a closed issue — #508's five forward items, #509's template
+   coherence gap, and the 🔴 pool re-registration from #513.
+3. **Filing an issue remains available and is not discouraged** — for a
+   cross-repo defect canon does not own, §18/CI-0020 still requires one on the
+   owning repo. What changed is that canon's own backlog is not read from here.
+
+**Consequences**
+
+- **The tracker-as-backlog model failed on its first adverse event, and the
+  failure mode is the point.** A bulk close is a single, ordinary, reversible-
+  looking action that destroyed the only carrier for four disclosed-but-open
+  items. Files in git do not have that property: `CHANGELOG.md` and this file
+  are append-only, and a plan's deletion shows in a diff.
+- CI-0042's other half stands: `HANDOFF.md` stays retired, git is its archive.
+  Session continuity is reconstructed from `plans/`, this file, recent commits
+  and open PRs.
+- #460 needs no carrier — the codeql private variant ships in this change.

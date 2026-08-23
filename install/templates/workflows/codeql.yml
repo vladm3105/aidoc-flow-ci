@@ -36,5 +36,10 @@ jobs:
       security-events: write
     with:
       languages: '["actions"]'
-      # PRIVATE consumers override:
-      # runner_labels: '["self-hosted", "ci", "ephemeral"]'
+      # PUBLIC variant — runs on the reusable's `ubuntu-latest` default, which is
+      # correct here: canon's public repos have hosted minutes, and codeql is
+      # widely tested on ubuntu. PRIVATE consumers do NOT hand-edit this: the
+      # installer resolves `workflows/codeql-private.yml` for them, which carries
+      # `runner_labels: '["self-hosted", "ci", "ephemeral"]'`. This used to be a
+      # commented-out override, and a commented override is not delivered by
+      # `--add-surface` — the private adopter got the hanging default instead.

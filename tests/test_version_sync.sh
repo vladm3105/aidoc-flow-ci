@@ -50,7 +50,19 @@ else
   # comparison (do not fail) when tags are unavailable — a shallow CI clone or a
   # fresh fork has none, and a guard that fails on "cannot check" would be noise
   # rather than signal. The pointers-agree assertion above still runs.
-  LATEST_TAG="$(git tag --list 'ci/v[0-9]*' 2>/dev/null | sort -V | tail -1)"
+  #
+  # FILTER TO EXACT ci/vX.Y.Z, the same regex `scripts/release.sh` uses (:59-65)
+  # and for the reason it documents: `sort -V` ranks `ci/v2.13.0-rc.1` ABOVE
+  # `ci/v2.13.0`, so an unfiltered glob lets a pre-release — or a stray tag like
+  # `ci/v0.0.1-ruletest` — become "latest". This is not hypothetical bookkeeping:
+  # THIS assertion is the one `release.sh prep` keys its expected-red classifier
+  # on (`:301`, "FAIL .*latest published tag"). If it reds for the WRONG reason,
+  # a genuinely broken suite is classified as the benign FT-21 chicken-and-egg
+  # and the operator is told to merge past it. `grep` exits 1 on no match, which
+  # under `set -e` would abort the assignment rather than yield the empty string
+  # the no-tags branch handles — hence `|| true`.
+  LATEST_TAG="$(git tag --list 'ci/v[0-9]*' 2>/dev/null \
+    | { grep -E '^ci/v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -1)"
   if [ -z "$LATEST_TAG" ]; then
     echo "  ---  no ci/v* tags reachable (shallow clone?) — skipping latest-tag comparison"
   elif [ "$VERSION_VAL" = "$LATEST_TAG" ]; then
@@ -259,6 +271,7 @@ docs/AI_CI_DEPLOYMENT.md
 docs/BRANCH_PROTECTION.md
 docs/MIGRATION_v2.0.0.md
 docs/MIGRATION_v3.0.0.md
+docs/MIGRATION_v4.0.0.md
 docs/PLAYBOOK_governance-canon-rollout.md
 docs/REVIEWER_APP_ONBOARDING.md
 docs/UPDATE_GUIDE.md

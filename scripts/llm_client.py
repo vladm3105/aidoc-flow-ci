@@ -22,12 +22,19 @@ class ResponseShapeError(ValueError):
 
 MAX_RESPONSE_BYTES = 1_000_000
 MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
-SECRET_PATTERNS = (
-    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----.*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", re.S),
-    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
-    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{30,}\b"),
-    re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
-)
+# NO REDACTION LIVES HERE, DELIBERATELY. `SECRET_PATTERNS`,
+# `redact_secret_shaped()` and `restore_redactions()` were removed with the
+# `doc-maintainer` flow (CI-0040 / #496), which was their ONLY caller —
+# `completion()` never called them. A 2026-07-18 review proposed deleting them as
+# dead and the proposal was correctly dropped at the time BECAUSE doc-maintainer
+# used them; deleting that flow voided the reason without voiding the code, and
+# what remained was worse than absent: a reader of this module reasonably
+# concluded the client redacts, and it never did.
+#
+# Redaction for ai-review happens in `.github/workflows/ai-review.yml`, on the
+# diff, BEFORE the prompt is assembled — `.ai-review/diff-for-review.txt` is the
+# only copy that leaves that step. Add patterns THERE. Adding them back here
+# would protect nothing and would re-create the same false impression.
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -250,25 +257,6 @@ def normalize_json_object(content: str) -> str:
     if not isinstance(value, dict):
         raise ResponseShapeError("completion JSON must be an object")
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-
-
-def redact_secret_shaped(text: str) -> tuple[str, dict[str, str]]:
-    redactions: dict[str, str] = {}
-    for pattern in SECRET_PATTERNS:
-        def replace(match: re.Match[str]) -> str:
-            token = f"[REDACTED_SECRET_{len(redactions)}]"
-            redactions[token] = match.group(0)
-            return token
-        text = pattern.sub(replace, text)
-    return text, redactions
-
-
-def restore_redactions(text: str, redactions: dict[str, str]) -> str:
-    for token, original in redactions.items():
-        if text.count(token) != 1:
-            raise ResponseShapeError(f"model did not preserve redaction token {token}")
-        text = text.replace(token, original)
-    return text
 
 
 def validate_verdict(value: object) -> None:

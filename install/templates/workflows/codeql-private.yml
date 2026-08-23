@@ -1,0 +1,60 @@
+# Caller template for aidoc-flow-ci's reusable codeql workflow.
+#
+# PRIVATE variant → self-hosted ci/ephemeral pool (OPS-0049; never
+# ubuntu-latest). This account has NO GitHub-hosted Actions minutes for private
+# repos, so a job left on the reusable's `ubuntu-latest` default does not fail —
+# it QUEUES FOREVER, and `timeout-minutes` cannot save it because the clock
+# starts when the job starts. The symptom is a required check pinned on
+# "Expected — Waiting for status to be reported", with nothing naming the cause.
+#
+# codeql was the ONE generic surface shipping without this variant: the public
+# template carried the override as a COMMENT, and `install.sh --add-surface`
+# writes the resolved template verbatim with no label injection, so a private
+# adopter following the documented command landed on the hanging default. Every
+# other opt-in surface (labeler, links, markdown-lint, secret-scan, pre-commit,
+# standards-drift, audit-trail, quick-gates, links-external) already had its
+# pair; this closes the set.
+#
+# Note CodeQL itself needs GitHub Advanced Security to SURFACE alerts, which is
+# N/A on private repos without GHAS — the scan still runs and the upload no-ops,
+# exactly as sast-scan/trivy-scan do. That is why the gate is still worth having
+# here: `sast-scan` (semgrep) is the private repos' real SAST, and this covers
+# the workflow-definition class semgrep's `p/default` ruleset does not.
+#
+# Triggers per GitHub's recommended pattern: push + PR to default
+# branch + weekly cron + workflow_dispatch. Cron is staggered (Mon
+# 14:20 UTC = ~10:20 EST / 7:20 PST) to avoid contention with other
+# weekly jobs.
+#
+# Adjust the `languages` input to match your repo. Default ["actions"]
+# scans the workflows themselves — every consumer benefits. Add other
+# languages as appropriate (e.g., '["actions","python","javascript-typescript"]').
+
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '20 14 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  call:
+    uses: vladm3105/aidoc-flow-ci/.github/workflows/codeql.yml@ci/v3.0.0
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    with:
+      languages: '["actions"]'
+      runner_labels: '["self-hosted", "ci", "ephemeral"]'
