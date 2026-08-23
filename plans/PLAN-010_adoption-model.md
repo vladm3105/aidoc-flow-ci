@@ -427,7 +427,7 @@ caller" needs a tag to pin.
 | 19  | audit-trail is a deployed caller (`uses:` a canon reusable)                  | `audit-trail-check.yml@`            | .github/workflows/audit-trail.yml:22                   |
 | 19a | it is canon's ONLY one — verified by enumerating all 16 workflows; every other `uses:` of a canon reusable is commented out or absent | `uses:`                             | .github/workflows/audit-trail.yml:22                   |
 | 20  | `suite` is canon's own regression gate, absent from the template             | `suite`                             | .github/workflows/tests.yml:21                         |
-| 21  | branch-protection PUT is ONE atomic payload (contexts+enforce_admins; no staged flag) | `branches/${default_branch}/protection` | install/apply-standards.sh:706         |
+| 21  | branch-protection PUT is ONE atomic payload (contexts+enforce_admins; no staged flag) — still one payload per branch after PLAN-028 B2 made the target a LOOP over the declared set | `branches/${branch}/protection` | install/apply-standards.sh:973         |
 | 22  | REPO_STANDARDS §2 has a verified-emitted-names table (name accuracy only)    | `Verified emitted check-names`      | docs/REPO_STANDARDS.md:110                             |
 | 22a | §2's required-checks baseline is explicitly "+ tier-specific" (D3-B's basis) | `+ tier-specific`                   | docs/REPO_STANDARDS.md:84                              |
 | 23  | test_checknames asserts a context maps to a reusable JOB, not a deployed caller | `a real reusable job`            | tests/test_checknames.sh:4                             |

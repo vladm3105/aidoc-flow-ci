@@ -1232,7 +1232,7 @@ team member either), correcting an earlier draft of this section.
 | 66 | The wizard checks the *target* repo's installed callers, the half the map cannot supply | `local have; have="$($GH api "repos/$repo/contents/.github/workflows?ref=$defbr"` | install/deploy-ci-wizard.sh:156 |
 | 67 | `--apply` exits 2 without `--tier`, so no apply run is section-scoped | `"") echo "apply-standards: --apply requires --tier <governance\|product\|ops\|umbrella\|bootstrap>" >&2; exit 2 ;;` | install/apply-standards.sh:151 |
 | 68 | `apply_run` calls all four write sections unconditionally | `apply_labels` | install/apply-standards.sh:805 |
-| 69 | The backup captures labels, repo-settings, four `actions.*` endpoints and branch-protection — and no rulesets | `printf '  "branch_protection": '` | install/apply-standards.sh:770 |
+| 69 | The backup captures labels, repo-settings, four `actions.*` endpoints and branch-protection — and no rulesets. PLAN-028 B2 made `branch_protection` a MAP KEYED BY BRANCH; the set of endpoints captured is unchanged | `printf '  "branch_protection": {'` | install/apply-standards.sh:1052 |
 | 74 | Step 1 resolves a duplicate job name deterministically by sorted filename, not glob order | `name_to_reusable.setdefault(nm, base)` | install/required-context-map.py:58 |
 | 75 | The umbrella tier declares no required status checks, so the map emits zero rows for it | `"required_status_checks": null` | install/templates/branch-protection-umbrella.json:4 |
 | 76 | The wizard iterates template FILES, not emitted rows, specifically so a zero-context tier still reports | `# List tiers from the template FILES (not only tiers the map emitted rows` | install/deploy-ci-wizard.sh:197 |

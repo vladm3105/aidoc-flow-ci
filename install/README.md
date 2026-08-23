@@ -69,6 +69,7 @@ templates as they are fetched.
 | `--codeowner <handle>` | `config.json` `trust.ai_review` + `governance.code_owners`, and every owner route in `.github/CODEOWNERS` (leading `@` optional) | `vladm3105` |
 | `--canon-operations-url <url>` | the 7 `CLAUDE.md` links to the operations canon repo | `../operations` |
 | `--canon-ci-url <url>` | the `CLAUDE.md` link to this CI canon repo | `../aidoc-flow-ci` |
+| *(no flag)* `${INTEGRATION_BRANCH}` | the `branches:` filter of every caller trigger arm — 19 sites across 17 templates (PLAN-028 B5) | resolved per repo: `.github/aidoc-ci.json`'s `integration_branch`, else the repo's GitHub default branch, else `main` |
 
 ```bash
 CI_TAG=ci/v3.0.0 bash install.sh acme/their-repo --visibility private \
@@ -77,8 +78,13 @@ CI_TAG=ci/v3.0.0 bash install.sh acme/their-repo --visibility private \
   --canon-ci-url https://github.com/acme/ci-canon
 ```
 
-Omitting all three produces **byte-identical** output to the pre-D2
-templates. `install.sh` fails closed if any placeholder survives
+Omitting all three de-branding flags produces output identical to the pre-D2
+templates **except** for the trigger arms: since PLAN-028 B5 those carry
+`${INTEGRATION_BRANCH}`, which has no flag and is always resolved, so a caller
+lands with `branches: ["main"]` where it previously read `branches: [main]`. The
+quoting differs; the branch does not, for any repo whose default is `main`. A
+consumer whose default is `master`/`develop` gets *their* branch — which is the
+fix, since those post-merge arms never fired before. `install.sh` fails closed if any placeholder survives
 substitution, so a half-branded file is never written. Only files
 `install.sh` newly writes are substituted — an existing `config.json`,
 `CLAUDE.md`, or `.github/CODEOWNERS` is preserved untouched.

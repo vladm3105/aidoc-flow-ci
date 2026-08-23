@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v3.0.0/schemas/aidoc-ci-v1.schema.json",
+  "title": "aidoc-flow CI per-repo declaration v1",
+  "description": "Per-repo shape declaration read by apply-standards.sh and check-standards-drift.sh. PLAN-028 B0. The file is OPTIONAL: an absent file means the single-branch model resolved against the repo's API-reported default branch, which is exactly the behaviour that shipped before this file existed.",
+  "type": "object",
+  "required": ["version", "branching"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "version": {"const": 1},
+    "_note": {"type": "string"},
+    "branching": {
+      "type": "object",
+      "required": ["model"],
+      "properties": {
+        "_note": {"type": "string"},
+        "model": {
+          "description": "single-branch = today's behaviour (the default, and what an absent file means). dev-staging-main = the PLAN-028 promotion model; adoption is per-repo opt-in.",
+          "enum": ["single-branch", "dev-staging-main"]
+        },
+        "integration_branch": {
+          "description": "Where feature PRs merge. null = resolve from the GitHub API's default_branch (M4-sec: never hardcode 'main'). Under dev-staging-main this SHOULD also be the repo's default_branch, so Code Scanning alerts and every default-branch resolver anchor to the branch that actually receives merges.",
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+        },
+        "protected_branches": {
+          "description": "Every branch apply-standards.sh protects and check-standards-drift.sh verifies. null = the model's default set: [integration_branch] for single-branch, [integration_branch, staging, main] for dev-staging-main.",
+          "type": ["array", "null"],
+          "items": {"type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"},
+          "uniqueItems": true,
+          "maxItems": 16
+        },
+        "promotion_branches": {
+          "description": "The subset of protected_branches that receives FAST-FORWARD promotions rather than PR merges. Each one is protected with the tier profile OVERLAID WITH enforce_admins:false, because that is the only mechanism on a user-owned account that permits the promotion push at all (CI-0048, measured). null = the model's default: [] for single-branch, [staging, main] for dev-staging-main. SECURITY: enforce_admins:false exempts admins from EVERY protection on that branch, so the PR requirement there is advisory, not enforced. Accepted deliberately — see DECISIONS.md CI-0049.",
+          "type": ["array", "null"],
+          "items": {"type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"},
+          "uniqueItems": true,
+          "maxItems": 16
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -201,6 +201,16 @@ jobs:
           fi
           # Resolve the default branch ($GH_REPO is github.repository — trusted, not PR-controlled). Fall back
           # to `main` if the lookup fails (fail-safe: same behavior as before PLAN-005 PR-G).
+          #
+          # PLAN-028 B2b row 3 — REVIEWED, NO CHANGE, and the reason is the invariant, not inertia.
+          # Under the dev→staging→main model the default branch becomes `dev`, and the trust property
+          # stated above is PRESERVED: `dev` is the base of every feature PR (so a PR still cannot
+          # modify it) and apply-standards.sh protects it with the full tier profile — it is NOT a
+          # promotion branch, so it keeps enforce_admins:true. This reusable deliberately does NOT read
+          # the consumer's .github/aidoc-ci.json: it runs against arbitrary consumers, so trusting a
+          # consumer-controlled file here would ADD a trust surface. The invariant that keeps this
+          # correct — integration_branch MUST be the repo's GitHub default_branch — is enforced by
+          # apply-standards.sh and reported by check-standards-drift.sh. See docs/BRANCHING.md §8.
           DEFAULT_BRANCH=$(gh api "repos/$GH_REPO" -q '.default_branch' 2>/dev/null)
           [ -n "$DEFAULT_BRANCH" ] || DEFAULT_BRANCH=main
           CFG=$(mktemp); cfg_err=$(mktemp); cfg_ok=

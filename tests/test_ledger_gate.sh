@@ -205,6 +205,44 @@ assert_eq "$rc" "2" "an unknown argument exits 2"
 assert_contains "$out" "usage:" "an unknown argument prints usage"
 assert_absent  "$out" "CANON-STUB-RAN" "an unknown argument runs nothing"
 
+echo "== PLAN-028 B3: the wrapper FORWARDS --promote and skips the ledger gate =="
+# The wrapper rejected every argument but --ledger-only, so canon's promotion
+# mode was unreachable through it — and this file is the reference design every
+# consumer wrapper is copied from. Forwarding alone was not enough: the parser
+# had to learn the flag, or the usage error fired before canon ever ran.
+d="$(_mk promote 0 0)"
+_plan "$d" "PLAN-942_live.md" "In Progress"
+# Make the stub echo its own argv so forwarding is observed, not assumed.
+cat > "$d/repo/scripts/pre_push_check.sh" <<'CANON'
+#!/usr/bin/env bash
+echo "CANON-STUB-RAN args:$*"
+exit 0
+CANON
+chmod +x "$d/repo/scripts/pre_push_check.sh"
+out="$( cd "$d/repo" && env CHECK_PLAN="$d/check_plan.py" bash scripts/pre_push_check_ci.sh --promote staging 2>&1 )"; rc=$?
+assert_eq "$rc" "0" "--promote exits with canon's rc"
+assert_contains "$out" "CANON-STUB-RAN args:--promote staging" "--promote is forwarded to canon verbatim"
+assert_contains "$out" "claim-ledger gate is skipped" "--promote skips the ledger gate, and says so"
+assert_absent  "$out" "Claim ledgers verified" "--promote does not run the ledger gate over an empty range"
+
+# The wrapper must not swallow canon's refusal — a promotion canon rejects has
+# to fail the wrapper too, or the gate is decorative.
+d="$(_mk promotefail 1 0)"
+_plan "$d" "PLAN-943_live.md" "In Progress"
+out="$( cd "$d/repo" && env CHECK_PLAN="$d/check_plan.py" bash scripts/pre_push_check_ci.sh --promote staging 2>&1 )"; rc=$?
+assert_eq "$rc" "1" "a promotion canon REFUSES fails the wrapper too"
+
+# Argument handling stays exhaustive now that the parser is a loop.
+d="$(_mk promotearg 0 0)"
+_plan "$d" "PLAN-944_live.md" "In Progress"
+out="$( cd "$d/repo" && env CHECK_PLAN="$d/check_plan.py" bash scripts/pre_push_check_ci.sh --promote 2>&1 )"; rc=$?
+assert_eq "$rc" "2" "--promote with no target exits 2"
+out="$( cd "$d/repo" && env CHECK_PLAN="$d/check_plan.py" bash scripts/pre_push_check_ci.sh --promote staging --typo 2>&1 )"; rc=$?
+assert_eq "$rc" "2" "a trailing unknown argument after --promote still exits 2"
+assert_absent "$out" "CANON-STUB-RAN" "a rejected argument list runs nothing"
+out="$( cd "$d/repo" && env CHECK_PLAN="$d/check_plan.py" bash scripts/pre_push_check_ci.sh --ledger-only --promote staging 2>&1 )"; rc=$?
+assert_eq "$rc" "2" "--ledger-only and --promote together are refused rather than silently ordered"
+
 echo "== the wrapper is executable (pre-commit language: script needs it) =="
 # This repo has already shipped a non-executable hook script once; the mode bit
 # reported success while every clone's hook failed to exec. The fixture copies

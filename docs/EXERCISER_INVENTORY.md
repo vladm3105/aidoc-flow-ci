@@ -86,6 +86,7 @@ installer/update path plus the offline tests that drive it.
 | --- | --- | --- |
 | `.github/ai-review/config.json` | `install.sh` bootstrap (`test_install.sh`); `test_contract.sh` schema | offline-test |
 | `.github/docs-sync.json` | `--update` walk; `self-docs-sync.yml` consumes canon's own copy | self-caller + offline-test |
+| `.github/aidoc-ci.json` | `test_scripts.sh` drives the resolver in both directions (declared three-branch set fetched and compared; unreadable declaration reported, not silently treated as absent); `test_pre_push_range.sh` drives it through `--promote`. Canon does not carry one — an ABSENT file is the behaviour under test | offline-test |
 | `.github/dependabot.yml` | `apply-standards.sh` subset-check (`test_scripts.sh`) | offline-test |
 | `.github/CODEOWNERS` | `install.sh` substitution (`test_install.sh`); `apply-standards.sh` | offline-test |
 | `.github/pull_request_template.md` | `--update` walk | offline-test |

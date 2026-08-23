@@ -13,7 +13,7 @@ name: trivy-scan
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: ["${INTEGRATION_BRANCH}"]
 
 permissions:
   contents: read

@@ -49,6 +49,178 @@ toplevel="$(git rev-parse --show-toplevel 2>/dev/null)" || {
 }
 cd "$toplevel" || exit 2
 
+# --- PLAN-028 B3: the PROMOTION push ------------------------------------
+# The bug this closes: `git push origin dev:staging` from a current
+# `dev` produces an EMPTY commit range, and an empty range is a HARD FAILURE
+# below (#432). So canon's own mandatory gate refused EVERY promotion the
+# branching standard prescribes, and the failure message's remedy — amend a
+# commit — could not clear it. A gate that cannot be satisfied is not a gate.
+#
+# THIS IS NOT A BYPASS, and the distinction is the whole design. A promotion
+# pushes NO new content: every commit already exists on the integration branch,
+# where this same gate ran on the way in. So the phrase check has nothing to
+# check and the linters have no files — asserting either would be a lie. What
+# IS checkable is that the promotion is what it claims to be, and all three
+# conditions below must hold:
+#
+#   1. the target is a branch the repo DECLARED as a promotion branch;
+#   2. HEAD is exactly the integration branch's REMOTE tip — so the content
+#      being promoted is provably the reviewed, already-pushed content and not
+#      a local commit riding along;
+#   3. the target's remote tip is an ANCESTOR of HEAD — a true fast-forward.
+#
+# Fail any one and this refuses, with the remedy that actually clears it.
+#
+# The hook path never reaches here: pre-commit wires this entry with
+# `pass_filenames: false` and passes no arguments, so an unopted repo runs the
+# identical script it ran before. Arguments are parsed strictly so a typo
+# surfaces instead of silently running the normal path.
+PROMOTE_TARGET=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --promote)
+      PROMOTE_TARGET="${2:-}"
+      [ -n "$PROMOTE_TARGET" ] || { echo "::error::pre_push_check: --promote requires a target branch (e.g. --promote staging)" >&2; exit 2; }
+      shift 2 ;;
+    -h|--help)
+      echo "usage: pre_push_check.sh [--promote <target-branch>]"
+      echo "  (no arguments) validate the pending push: linters + the OPS-0069 audit-trail phrase"
+      echo "  --promote <b>  validate a FAST-FORWARD promotion push into <b> (PLAN-028)"
+      exit 0 ;;
+    -*)
+      echo "::error::pre_push_check: unknown option '$1' (see --help)" >&2; exit 2 ;;
+    *)
+      # POSITIONAL args are IGNORED, deliberately. git invokes a pre-push hook
+      # as `hook <remote> <url>`, so a consumer who symlinks this script
+      # straight into `.git/hooks/pre-push` — a shape that worked before this
+      # parser existed — would otherwise have EVERY push fail with
+      # `unknown argument 'origin'`. Only unrecognised OPTIONS are refused.
+      shift ;;
+  esac
+done
+
+# Reads `.github/aidoc-ci.json` once. Sets PROMO_DECL (1 if this repo declares a
+# promotion model), PROMO_INTEGRATION, and PROMO_LIST (space-separated).
+PROMO_DECL=0
+PROMO_INTEGRATION=""
+PROMO_LIST=""
+promotion_decl_resolve() {
+  local decl=".github/aidoc-ci.json" model
+  [ -f "$decl" ] || return 0
+  if ! command -v jq >/dev/null 2>&1; then
+    # Say what is actually wrong. Falling through to "not a declared promotion
+    # branch" sent the reader to edit a file that is already correct.
+    echo "::error::pre_push_check: $decl exists but jq is not installed, so this repo's branching declaration cannot be read." >&2
+    echo "::error::  Install jq, or push without the promotion gate at your own discretion." >&2
+    exit 2
+  fi
+  if ! jq -e 'type == "object" and (.branching | type) == "object"' "$decl" >/dev/null 2>&1; then
+    echo "::error::pre_push_check: $decl is present but is not a readable object with a .branching object — fix it or delete it." >&2
+    exit 2
+  fi
+  model="$(jq -r '.branching.model // "single-branch"' "$decl")"
+  PROMO_INTEGRATION="$(jq -r '.branching.integration_branch // empty' "$decl")"
+  if [ -z "$PROMO_INTEGRATION" ]; then
+    # NEVER a literal `dev` — the model's name is not the branch's name. Same
+    # resolution rule as every other reader: declaration, then default branch.
+    PROMO_INTEGRATION="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
+    [ -n "$PROMO_INTEGRATION" ] || PROMO_INTEGRATION=main
+  fi
+  # An explicit list wins — including an explicit EMPTY one, which is an opt-out.
+  if jq -e '(.branching | has("promotion_branches")) and (.branching.promotion_branches != null)' "$decl" >/dev/null 2>&1; then
+    PROMO_LIST="$(jq -r '.branching.promotion_branches // [] | join(" ")' "$decl")"
+    PROMO_DECL=1
+  elif [ "$model" = "dev-staging-main" ]; then
+    PROMO_LIST="staging main"
+    PROMO_DECL=1
+  fi
+  return 0
+}
+
+# TRUE only when this repo declares a promotion model AND HEAD is exactly the
+# integration branch's already-pushed remote tip. Both halves are required: the
+# first keeps every undeclared repo on the unchanged hard-fail path, and the
+# second is what makes "nothing here is unverified" a fact rather than an
+# assumption — content that exists only locally moves HEAD off origin's tip.
+promo_head_sha=""
+promotion_shaped_push() {
+  promotion_decl_resolve
+  [ "$PROMO_DECL" -eq 1 ] || return 1
+  local int_sha
+  int_sha="$(git rev-parse --verify --quiet "refs/remotes/origin/${PROMO_INTEGRATION}")" || return 1
+  promo_head_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || return 1
+  [ "$promo_head_sha" = "$int_sha" ] || return 1
+  return 0
+}
+
+promotion_is_declared_target() {
+  local t="$1" b
+  for b in $PROMO_LIST; do [ "$b" = "$t" ] && return 0; done
+  return 1
+}
+
+if [ -n "$PROMOTE_TARGET" ]; then
+  promotion_decl_resolve
+  promo_ok=0
+  integration="$PROMO_INTEGRATION"
+  [ "$PROMO_DECL" -eq 1 ] && promotion_is_declared_target "$PROMOTE_TARGET" && promo_ok=1
+  if [ "$promo_ok" -ne 1 ]; then
+    echo "::error::pre_push_check: '$PROMOTE_TARGET' is not a declared promotion branch of this repo." >&2
+    echo "::error::  Promotion is opt-in. Declare it in .github/aidoc-ci.json:" >&2
+    echo "::error::    \"branching\": { \"model\": \"dev-staging-main\", \"promotion_branches\": [\"staging\", \"main\"] }" >&2
+    echo "::error::  Without that declaration this repo has no promotion path and a normal push is the only route." >&2
+    exit 1
+  fi
+
+  head_sha="$(git rev-parse --verify HEAD)"
+  int_ref="refs/remotes/origin/${integration}"
+  if ! int_sha="$(git rev-parse --verify --quiet "$int_ref")"; then
+    # Offline by design (the hook has no network on the push path), so this is
+    # a stale-clone report, not a lookup this script can perform for you.
+    echo "::error::pre_push_check: $int_ref is not in this clone, so the promotion source cannot be verified." >&2
+    echo "::error::  Run: git fetch origin ${integration}" >&2
+    exit 1
+  fi
+  if [ "$head_sha" != "$int_sha" ]; then
+    echo "::error::pre_push_check: HEAD is not the tip of origin/${integration}, so this is NOT a promotion." >&2
+    echo "::error::    HEAD              $head_sha" >&2
+    echo "::error::    origin/${integration}  $int_sha" >&2
+    echo "::error::  A promotion moves ALREADY-REVIEWED content that is already on the integration" >&2
+    echo "::error::  branch. Commits that exist only here have never been through this gate, and" >&2
+    echo "::error::  promoting them would carry them past it. Push them as a normal PR instead," >&2
+    echo "::error::  or fetch and reset: git fetch origin ${integration} && git checkout ${integration} && git reset --hard origin/${integration}" >&2
+    exit 1
+  fi
+  tgt_ref="refs/remotes/origin/${PROMOTE_TARGET}"
+  if tgt_sha="$(git rev-parse --verify --quiet "$tgt_ref")"; then
+    if ! git merge-base --is-ancestor "$tgt_sha" "$head_sha"; then
+      echo "::error::pre_push_check: origin/${PROMOTE_TARGET} is NOT an ancestor of HEAD — this push is not a fast-forward." >&2
+      echo "::error::    origin/${PROMOTE_TARGET}  $tgt_sha" >&2
+      echo "::error::  ${PROMOTE_TARGET} holds a commit that ${integration} does not. The usual cause is a" >&2
+      echo "::error::  release-prep or hotfix merge made directly on the target. Back-merge it into" >&2
+      echo "::error::  ${integration} first — a forced promotion would discard it." >&2
+      exit 1
+    fi
+    # Say that this is measured against a LOCAL cache. The hook has no network
+    # on the push path, so origin/<target> may be stale. It is stale in the safe
+    # direction (the server rejects a genuine non-fast-forward), but the word
+    # VERIFIED must not imply a fresh read.
+    ff_note="fast-forward from ${tgt_sha} (against the last-fetched tip of origin/${PROMOTE_TARGET}; offline — run 'git fetch' first if in doubt)"
+  else
+    ff_note="target branch does not exist yet — the first push creates it (trivially a fast-forward)"
+  fi
+
+  echo "pre_push_check: PROMOTION ${integration} -> ${PROMOTE_TARGET}"
+  echo "  VERIFIED: '${PROMOTE_TARGET}' is a declared promotion branch"
+  echo "  VERIFIED: HEAD == origin/${integration} (${head_sha}) — the content is already reviewed and pushed"
+  echo "  VERIFIED: ${ff_note}"
+  echo "  NOT CHECKED, and deliberately so: the OPS-0069 phrase and the mechanical"
+  echo "  linters. A promotion introduces NO new commit and NO changed file, so"
+  echo "  both ran on this exact content on its way into ${integration}."
+  echo "pre_push_check: PROMOTION OK"
+  exit 0
+fi
+
 # --- push range ---
 # ONE resolution, two consumers: the linters' file range (`BASE`...HEAD) and the
 # OPS-0069 phrase range (`commit_range`). These were computed independently, and
@@ -71,14 +243,27 @@ cd "$toplevel" || exit 2
 # Reading the pushed refs is the real fix and is tracked separately (#432).
 # shellcheck disable=SC1083  # @{upstream} is git ref-syntax, not shell brace expansion
 upstream_ref="$(git rev-parse --abbrev-ref --symbolic-full-name @{upstream} 2>/dev/null || echo '')"
+# Resolved offline: the hook has no network on the push path.
+#
+# PLAN-028 B3: this used to be a hardcoded `origin/main`. On a repo whose
+# integration branch is not `main` — a `master`/`develop` consumer today, or any
+# adopter of the promotion model — the first-push fallback diverged from the
+# WRONG branch, so the range was the `main..dev` delta PLUS the feature commits:
+# the gate re-linted, and demanded an audit phrase for, commits that were
+# reviewed and merged long ago. `refs/remotes/origin/HEAD` is the same answer
+# without a network call, and on a single-branch repo it resolves to `main`, so
+# the fallback is unchanged where it was already right.
+DEFAULT_BRANCH_LOCAL="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
+[ -n "$DEFAULT_BRANCH_LOCAL" ] || DEFAULT_BRANCH_LOCAL=main
+
 if [ -n "$upstream_ref" ] && git rev-parse --verify --quiet "$upstream_ref" >/dev/null; then
   commit_range="${upstream_ref}..HEAD"
   BASE="$(git rev-parse --verify --quiet "$upstream_ref")"
 else
-  # First push (no upstream yet) — scan since main-divergence.
-  commit_range="origin/main..HEAD"
-  BASE="$(git merge-base HEAD origin/main 2>/dev/null \
-          || git merge-base HEAD main 2>/dev/null \
+  # First push (no upstream yet) — scan since divergence from the DEFAULT branch.
+  commit_range="origin/${DEFAULT_BRANCH_LOCAL}..HEAD"
+  BASE="$(git merge-base HEAD "origin/${DEFAULT_BRANCH_LOCAL}" 2>/dev/null \
+          || git merge-base HEAD "$DEFAULT_BRANCH_LOCAL" 2>/dev/null \
           || git rev-list --max-parents=0 HEAD | tail -1)"
 fi
 
@@ -96,9 +281,6 @@ else
 fi
 
 rc=0
-# Resolved offline: the hook has no network on the push path.
-DEFAULT_BRANCH_LOCAL="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
-[ -n "$DEFAULT_BRANCH_LOCAL" ] || DEFAULT_BRANCH_LOCAL=main
 
 # `git diff` FAILING is not an empty change set. Unrelated histories exit 128
 # here and the status was discarded, so zero files were linted and the run still
@@ -277,7 +459,37 @@ fi
 # or unresolvable range — the bot arm needs a non-empty author list and the
 # revert arm needs at least one commit — so `audit_ok` is already 0 by the time
 # control arrives here. A guard that cannot be observed to fail is not a guard.
-if [ "$range_empty" = 1 ]; then
+if [ "$range_empty" = 1 ] && promotion_shaped_push; then
+  # PLAN-028 B3, second half — found in pre-push review, and it is the half that
+  # decides whether B3 is real.
+  #
+  # `--promote` is only reachable when a human types it. The pre-commit wiring
+  # runs this script with NO arguments (`pass_filenames: false`), so on an actual
+  # `git push origin dev:staging` control reached the empty-range arm below and
+  # BLOCKED the push — the exact defect B3 claims to close — leaving
+  # `git push --no-verify` as the only way through. That trains the operator to
+  # disable every pre-push hook on a routine operation, which is worse than the
+  # bug.
+  #
+  # So the no-argument path recognises the shape itself. This is not a
+  # weakening: `promotion_shaped_push` requires a declaration AND that HEAD is
+  # exactly the integration branch's already-pushed remote tip. When that holds,
+  # every commit in play has already been through this gate on its way into the
+  # integration branch, so there is genuinely nothing unverified — which is a
+  # stronger statement than the empty range alone could make. An UNDECLARED repo
+  # never takes this path and still hard-fails.
+  echo "pre_push_check: PROMOTION-SHAPED push detected (no declared argument needed)."
+  echo "  VERIFIED: HEAD == origin/${PROMO_INTEGRATION} (${promo_head_sha})"
+  echo "            so every commit here is already on the integration branch, where"
+  echo "            this gate ran on it. The empty range is expected, not a failure."
+  echo "  Declared promotion branches: ${PROMO_LIST:-(none)}"
+  echo "  NOT CHECKED, deliberately: the OPS-0069 phrase and the mechanical linters —"
+  echo "  a promotion introduces no new commit and no changed file."
+  echo "  To verify a SPECIFIC target's fast-forward too:"
+  echo "    scripts/pre_push_check.sh --promote <target-branch>"
+  echo "pre_push_check: PROMOTION OK"
+  rc=0
+elif [ "$range_empty" = 1 ]; then
   # #432. The range holds no commits, so NOTHING was verified — not the phrase,
   # and not the mechanical linters, which had no files. That is neither a pass
   # nor an OPS-0069 violation, and the old message claimed the latter: it sent
@@ -287,7 +499,10 @@ if [ "$range_empty" = 1 ]; then
   echo "::error::  ALREADY been pushed, so @{upstream} is HEAD and no commit is in range."
   echo "::error::  Amending a commit will not change this — the phrase is not the problem."
   echo "::error::  Run this BEFORE 'git push'. To inspect a branch that is already pushed:"
-  echo "::error::    git log --oneline origin/main..HEAD"
+  echo "::error::    git log --oneline origin/${DEFAULT_BRANCH_LOCAL}..HEAD"
+  echo "::error::  Promoting ${DEFAULT_BRANCH_LOCAL} to a declared promotion branch? That push is"
+  echo "::error::  legitimately empty of NEW commits — use the promotion mode instead:"
+  echo "::error::    scripts/pre_push_check.sh --promote <target-branch>"
   echo "::error::  Exiting non-zero: a run that verified nothing must not approve a push."
   rc=1
 elif [ "$range_unresolvable" = 1 ]; then

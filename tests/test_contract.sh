@@ -1457,4 +1457,89 @@ PY_CN
 )"
 assert_ok "[ \"$_co_n\" -ge 15 ]" "the checkout sweep actually found checkouts to check (got $_co_n)"
 
+# --- PLAN-028 B5: the integration-branch placeholder contract ----------------
+# `on.push.branches:` accepts no expressions, so the ONLY way a trigger arm can
+# follow a repo's integration branch is install-time substitution. Three things
+# have to hold together, and each is asserted from the artefact itself rather
+# than from a count written down here.
+echo "== PLAN-028 B5: trigger-arm placeholder =="
+
+# 1. No caller template may hardcode a branch in a trigger filter again. This is
+#    the assertion that catches a new workflow added with `branches: [main]`.
+_b5_literal="$(grep -l 'branches: \[main\]' "$ROOT"/install/templates/workflows/*.yml 2>/dev/null | wc -l)"
+assert_eq "$_b5_literal" "0" "B5: no caller template hardcodes 'branches: [main]'"
+
+# 2. The placeholder is present, and the count is DERIVED from the tree — a
+#    pinned number would drift silently the first time a workflow is added.
+_b5_sites="$(grep -ho 'branches: \["\${INTEGRATION_BRANCH}"\]' "$ROOT"/install/templates/workflows/*.yml 2>/dev/null | wc -l)"
+assert_ok "[ '$_b5_sites' -ge 19 ]" "B5: every trigger arm carries \${INTEGRATION_BRANCH} (found $_b5_sites)"
+
+# 3. QUOTED, and that is load-bearing. Bare ${...} inside a YAML FLOW SEQUENCE
+#    is a parse error — `{` opens a flow mapping — so an unquoted placeholder
+#    makes every one of these workflows unparseable, which actionlint reports as
+#    a syntax error and GitHub reports as nothing at all.
+_b5_bare="$(grep -c 'branches: \[\${INTEGRATION_BRANCH}\]' "$ROOT"/install/templates/workflows/*.yml 2>/dev/null | awk -F: '{s+=$2} END{print s+0}')"
+assert_eq "$_b5_bare" "0" "B5: the placeholder is QUOTED (bare \${...} in a flow sequence is a YAML parse error)"
+
+# 4. install.sh must both SUBSTITUTE it and FAIL CLOSED on a survivor. A
+#    substitution without the assertion would ship a workflow whose trigger
+#    names a branch called '${INTEGRATION_BRANCH}' — one that never fires, and
+#    never says so.
+assert_ok "grep -qF 'text.replace(\"\${INTEGRATION_BRANCH}\", integration)' '$ROOT/install/install.sh'" \
+  "B5: install.sh substitutes \${INTEGRATION_BRANCH}"
+assert_ok "grep -q 'CODEOWNER_HANDLE|CANON_OPERATIONS_URL|CANON_CI_URL|INTEGRATION_BRANCH' '$ROOT/install/install.sh'" \
+  "B5: install.sh's fail-closed placeholder assertion covers INTEGRATION_BRANCH"
+
+# 5. THE REGRESSION THIS NEARLY SHIPPED. sync/check-drift.sh skipped drift
+#    comparison for any template declaring a substitution. Declaring
+#    INTEGRATION_BRANCH on 11 workflow entries would therefore have silently
+#    stopped comparing most of canon's workflow surface while still reporting
+#    green. It must RESOLVE the placeholder and compare, not skip.
+assert_ok "grep -q 'INTEGRATION_BRANCH) : ;;' '$ROOT/sync/check-drift.sh'" \
+  "B5: check-drift handles INTEGRATION_BRANCH rather than skipping the file"
+assert_ok "grep -q 'unresolvable_subs' '$ROOT/sync/check-drift.sh'" \
+  "B5: check-drift still skips substitutions it genuinely cannot resolve"
+# check-drift must NOT resolve a branch NAME. Doing so produced permanent false
+# drift twice over: `refs/remotes/origin/HEAD` is absent in an actions/checkout
+# workspace (so every non-`main` consumer diffed against `main`), and a
+# --repin-only consumer differed by quoting alone. It normalizes the line.
+assert_ok "! grep -qE 'INTEGRATION_BRANCH=\"dev\"|symbolic-ref.*origin/HEAD' '$ROOT/sync/check-drift.sh'" \
+  "B5: check-drift does NOT guess a branch name (no literal dev, no origin/HEAD)"
+
+# Drive the normalizer itself: a per-consumer branch value is not drift, in
+# either quoting; a genuine body change still is.
+_b5n="$(mktemp -d)"
+sed -n '/^import re, sys$/,/^open(canon_path/p' "$ROOT/sync/check-drift.sh" > "$_b5n/norm.py"
+echo 'open(canon_path, "w", encoding="utf-8").write("\n".join(canon))' >> "$_b5n/norm.py"
+printf 'name: t\non:\n  push:\n    branches: ["${INTEGRATION_BRANCH}"]\njobs: {}\n' > "$_b5n/canon.yml"
+_b5n_fail=0
+for _v in 'branches: [main]' 'branches: ["dev"]' 'branches: [develop]'; do
+  printf 'name: t\non:\n  push:\n    %s\njobs: {}\n' "$_v" > "$_b5n/local.yml"
+  cp "$_b5n/canon.yml" "$_b5n/c.yml"
+  python3 "$_b5n/norm.py" "$_b5n/c.yml" "$_b5n/local.yml"
+  diff -q "$_b5n/c.yml" "$_b5n/local.yml" >/dev/null || _b5n_fail=$((_b5n_fail+1))
+done
+assert_eq "$_b5n_fail" "0" "B5: a per-consumer branch value is not drift (bare or quoted, any name)"
+printf 'name: t\non:\n  push:\n    branches: [main]\njobs: {evil: 1}\n' > "$_b5n/local.yml"
+cp "$_b5n/canon.yml" "$_b5n/c.yml"
+python3 "$_b5n/norm.py" "$_b5n/c.yml" "$_b5n/local.yml"
+assert_ok "! diff -q '$_b5n/c.yml' '$_b5n/local.yml' >/dev/null" \
+  "B5: a REAL body change on a placeholder-bearing file is still drift"
+rm -rf "$_b5n"
+
+# 6. Post-substitution, every touched template must still parse and lint. The
+#    substitution runs on the real templates, into a scratch tree.
+_b5_tmp="$(mktemp -d)"
+for _f in "$ROOT"/install/templates/workflows/*.yml; do
+  sed 's/\${INTEGRATION_BRANCH}/dev/g' "$_f" > "$_b5_tmp/$(basename "$_f")"
+done
+_b5_bad=0
+for _f in "$_b5_tmp"/*.yml; do
+  python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1]))" "$_f" >/dev/null 2>&1 || _b5_bad=$((_b5_bad+1))
+done
+assert_eq "$_b5_bad" "0" "B5: every caller template parses as YAML after substitution"
+_b5_resolved="$(grep -ho 'branches: \["dev"\]' "$_b5_tmp"/*.yml 2>/dev/null | wc -l)"
+assert_eq "$_b5_resolved" "$_b5_sites" "B5: substitution resolves every placeholder site ($_b5_sites)"
+rm -rf "$_b5_tmp"
+
 suite_summary "contract"

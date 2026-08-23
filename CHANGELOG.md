@@ -5,6 +5,91 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — the enforcement surfaces for the three-branch model (PLAN-028 Phase B)
+
+The branching standard shipped documented-but-unenforceable. Phase B builds the
+machinery. **No repo has adopted the model, canon included** — adoption is
+PLAN-028 Phases C and D.
+
+> **Supersedes the "documented and NOT adopted" entry below**, which is in this
+> same unreleased section and states that the prerequisites are open and that
+> PLAN-028 is "In Progress and not adoptable". Both were true when written; the
+> five hazards it enumerates are the ones this entry closes. Read that entry as
+> the problem statement and this one as the outcome.
+
+Every surface below defaults to the behaviour that shipped before it, so an
+unopted repo observes nothing — with **one stated exception**: after
+`install.sh --update`, trigger arms read `branches: ["main"]` where they read
+`branches: [main]`. Same branch; the placeholder has to be quoted because a bare
+`${…}` in a YAML flow sequence is a parse error. `sync/check-drift.sh` does not
+report it as drift.
+
+**`.github/aidoc-ci.json` — the per-repo branch-set declaration.** `--tier`
+cannot carry it: three repos share the `product` tier. The file is **optional**,
+and an absent file is a valid declaration meaning single-branch against the
+repo's API-reported `default_branch` — never a hardcoded `main`, which would
+revert defect M4-sec. Schema: `schemas/aidoc-ci-v1.schema.json`; contract:
+`BRANCHING.md` §8.
+
+- **`apply-standards.sh`** protects every declared branch, applying one
+  branch-agnostic tier profile per branch, and overlays `enforce_admins: false`
+  on each declared promotion branch — the only mechanism CI-0048 measured that
+  permits a promotion push at all. It says so at the point of application: on
+  such a branch the gate is **advisory for admins, not enforced** (CI-0049). The
+  pre-mutation backup now snapshots **every** branch the run will mutate, keyed
+  by branch; it covered only the default branch while `--apply` wrote to three.
+- **`check-standards-drift.sh`** verifies every declared branch and applies the
+  same overlay to the canon side — without which every adopter's `staging` and
+  `main` would report permanent, unfixable drift on `enforce_admins` forever.
+- **`pre_push_check.sh`** closes the defect where canon's own mandatory gate
+  refused **every** promotion the standard prescribes: a fast-forward promotion
+  has an empty commit range, and an empty range is a hard failure. The gate now
+  recognises a promotion-shaped push **on the hook path**, with no arguments —
+  which is how `pre-commit` invokes it, and therefore the only path a real
+  `git push` takes. That mattered: a first draft put the logic behind an explicit
+  `--promote` flag the hook never passes, so the push was still blocked and
+  `--no-verify` — which disables *every* pre-push hook — was the only way
+  through. It is not a bypass: it requires a declaration **and** that `HEAD` is
+  exactly `origin/<integration>`, so every commit in play has already been
+  through this gate. An undeclared repo, or a declared single-branch one, still
+  hard-fails. `--promote <target>` additionally verifies the target is declared
+  and that its tip is an ancestor of `HEAD`. Every condition is mutation-tested —
+  including two that initially had no teeth and were rewritten until they did.
+- **`release.sh prep`** starts from, and targets, the integration branch. It
+  branched from `main` and squash-merged back into `main`, which puts a commit on
+  `main` that `dev` does not have and ends fast-forward promotion permanently.
+  `tag` still requires `main`, on purpose. Resolves to `main` on this repo today.
+- **19 trigger sites across 17 caller templates** carry a `${INTEGRATION_BRANCH}`
+  placeholder, resolved by `install.sh` at fetch time. `on.push.branches:` accepts
+  no expressions, so substitution is the only mechanism that can work — and it
+  means **`install.sh --update` delivers this, `--repin` cannot**: a re-pin
+  rewrites `uses:` tag strings, never a caller body. Left as-is, the flip would
+  have silently stopped all 17 post-merge arms and created **no CodeQL check run
+  at all** on feature PRs.
+
+**A regression this nearly shipped**, recorded because the mechanism is general:
+`sync/check-drift.sh` skipped drift comparison for any template declaring a
+substitution, so declaring `${INTEGRATION_BRANCH}` on 11 workflow entries would
+have **stopped comparing most of canon's workflow surface while still reporting
+green**. It now distinguishes a placeholder it can resolve (substitute, then
+compare exactly) from one it cannot (skip, and say so), and the manifest warns at
+the point of edit.
+
+**Fixed in passing.** `pre_push_check.sh`'s first-push fallback follows
+`refs/remotes/origin/HEAD` instead of a hardcoded `origin/main`, which on a
+`master`/`develop` consumer had it lint the wrong delta. `release.sh`'s new
+branch resolver carries an explicit `|| true`, without which `set -e` plus
+`pipefail` killed `prep` silently on the very fallback path it was written for.
+The multi-branch pre-mutation backup captures each branch with a checked read:
+`gh … || echo null` writes the API error body *and* the fallback, producing
+unparseable JSON (CI-0018 again).
+
+**`git push --ff-only` is not a valid invocation** and the standard prescribed it
+in three places. `--ff-only` is a `merge`/`pull` option; `git push` has none and
+exits 129 with a usage dump — and a plain `git push` is fast-forward-only
+already. CI-0048 recorded this when the probe hit it; the runbook text had not
+been corrected. It is now, everywhere it appears as an instruction.
+
 ### Changed — promotion is an ADMIN action; the branching standard said otherwise
 
 `docs/BRANCHING.md` §5a claimed a fast-forward promotion "requires an authorized

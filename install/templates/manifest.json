@@ -19,7 +19,14 @@
     "REPORTED as a WARN and left unapplied so their entry is never clobbered.",
     "Fields: path=consumer path; template=default template under",
     "install/templates/; visibility_variants=per-visibility template override;",
-    "substitute=de-branding placeholders install.sh substitutes at fetch time;",
+    "substitute=placeholders install.sh resolves at fetch time. Two kinds, and",
+    "the difference matters to sync/check-drift.sh: de-branding values it",
+    "CANNOT resolve (CODEOWNER_HANDLE, the canon URLs) force that file to be",
+    "skipped from drift comparison, while INTEGRATION_BRANCH (PLAN-028 B5, on",
+    "the 11 caller entries whose trigger arms name a branch) IS resolvable",
+    "there, so check-drift substitutes it and still compares exactly. Adding a",
+    "NEW unresolvable placeholder to a workflow entry silently stops drift",
+    "checking that workflow — teach check-drift to resolve it instead;",
     "safe_to_replace=--update --non-interactive may replace without prompting;",
     "auto_install=install.sh bootstraps it (false = optional adoption)."
   ],
@@ -73,7 +80,9 @@
         "public": "workflows/codeql.yml",
         "private": "workflows/codeql-private.yml"
       },
-      "substitute": [],
+      "substitute": [
+        "INTEGRATION_BRANCH"
+      ],
       "safe_to_replace": false,
       "_note": "consumer-customized (the `languages` input) — never auto-replace. VARIANTS ADDED: codeql was the one generic surface with no -private pair. The public template carried the self-hosted override as a COMMENT, and add_surface_mode writes the resolved template verbatim with no label injection, so a private adopter running the documented `install.sh --add-surface .github/workflows/codeql.yml` landed on the reusable's ubuntu-latest default and the job QUEUED FOREVER (no hosted minutes on private; timeout-minutes cannot fire on a job that never starts).",
       "auto_install": false
@@ -82,7 +91,9 @@
       "path": ".github/workflows/dep-scan.yml",
       "template": "workflows/dep-scan.yml",
       "_note": "PLAN-014: SCA gate (osv-scanner). Single protected template (self-hosted, uniform public+private); no visibility_variants — a flip is a no-op. Report-only until fail-on-findings graduates.",
-      "substitute": [],
+      "substitute": [
+        "INTEGRATION_BRANCH"
+      ],
       "safe_to_replace": true,
       "auto_install": false
     },
@@ -90,7 +101,9 @@
       "path": ".github/workflows/trivy-scan.yml",
       "template": "workflows/trivy-scan.yml",
       "_note": "PLAN-014: IaC/misconfig gate (trivy config mode). Single protected template (self-hosted, uniform public+private); no visibility_variants. Report-only until fail-on-findings graduates.",
-      "substitute": [],
+      "substitute": [
+        "INTEGRATION_BRANCH"
+      ],
       "safe_to_replace": true,
       "auto_install": false
     },
@@ -98,7 +111,9 @@
       "path": ".github/workflows/sast-scan.yml",
       "template": "workflows/sast-scan.yml",
       "_note": "PLAN-014 Phase 3: SAST gate (semgrep, pip-installed — not a binary). Single protected template (self-hosted, uniform public+private); no visibility_variants. Complements native CodeQL (N/A on private). Report-only until fail-on-findings graduates.",
-      "substitute": [],
+      "substitute": [
+        "INTEGRATION_BRANCH"
+      ],
       "safe_to_replace": true,
       "auto_install": false
     },
@@ -106,7 +121,9 @@
       "path": ".github/workflows/docs-sync.yml",
       "template": "workflows/docs-sync.yml",
       "_note": "PLAN-013: single protected template (self-hosted, uniform public+private); no visibility_variants.",
-      "substitute": [],
+      "substitute": [
+        "INTEGRATION_BRANCH"
+      ],
       "safe_to_replace": true,
       "auto_install": false
     },
@@ -128,7 +145,9 @@
         "public": "workflows/links.yml",
         "private": "workflows/links-private.yml"
       },
-      "substitute": [],
+      "substitute": [
+        "INTEGRATION_BRANCH"
+      ],
       "safe_to_replace": true,
       "auto_install": false
     },
@@ -151,7 +170,9 @@
         "public": "workflows/markdown-lint.yml",
         "private": "workflows/markdown-lint-private.yml"
       },
-      "substitute": [],
+      "substitute": [
+        "INTEGRATION_BRANCH"
+      ],
       "safe_to_replace": true,
       "auto_install": false
     },
@@ -162,7 +183,9 @@
         "public": "workflows/pre-commit.yml",
         "private": "workflows/pre-commit-private.yml"
       },
-      "substitute": [],
+      "substitute": [
+        "INTEGRATION_BRANCH"
+      ],
       "safe_to_replace": true,
       "_note": "PLAN-018 F2: auto_install=true — this caller emits `call / Lint / format / security hooks`, a REQUIRED status check on every tier that has required checks at all, and the bootstrap tier's only one. It is the sole exception to the auto_install=false-for-every-non-bootstrap-surface rule, because without a producer, armed protection pins every PR on a check that never reports. Naming is ASYMMETRIC (public variant is the bare name) — see REPO_STANDARDS.md §16.9. STILL TRUE UNDER v3, and #481 is why: quick-gates only becomes the bootstrap producer when PLAN-026 §C0 substitutes its context into the four tier templates, and §C0 cannot land until the fleet actually HAS quick-gates.yml (C1–C5). Until both land together, THIS caller is what the templates require, so this flag and that substitution move as one change or one of them is wrong.",
       "auto_install": true
@@ -174,7 +197,9 @@
         "public": "workflows/secret-scan.yml",
         "private": "workflows/secret-scan-private.yml"
       },
-      "substitute": [],
+      "substitute": [
+        "INTEGRATION_BRANCH"
+      ],
       "safe_to_replace": true,
       "auto_install": false
     },
@@ -186,7 +211,9 @@
         "public": "workflows/quick-gates.yml",
         "private": "workflows/quick-gates-private.yml"
       },
-      "substitute": [],
+      "substitute": [
+        "INTEGRATION_BRANCH"
+      ],
       "safe_to_replace": true,
       "auto_install": false,
       "replaces": [
@@ -199,7 +226,9 @@
       "path": ".github/workflows/scanners.yml",
       "template": "workflows/scanners.yml",
       "_note": "PLAN-025 P3a: consolidates dep-scan + trivy-scan + sast-scan into ONE job. secret-scan is deliberately NOT here — it is ubuntu-latest and fork-VISIBLE, and a merged job would report `skipped` on fork PRs, which SATISFIES a required context, so gitleaks would go green having never run. Emits the BARE context `scanners`. UNIFORM PROTECTED (PLAN-014 §1a): self-hosted on public and private alike, matching the v2 callers — so a visibility flip is a no-op and NO visibility_variants are needed (the PLAN-013 AI-flows precedent).",
-      "substitute": [],
+      "substitute": [
+        "INTEGRATION_BRANCH"
+      ],
       "safe_to_replace": true,
       "auto_install": false,
       "replaces": [
@@ -263,6 +292,14 @@
     {
       "path": ".github/docs-sync.json",
       "template": "docs-sync.json",
+      "substitute": [],
+      "safe_to_replace": false,
+      "auto_install": false
+    },
+    {
+      "path": ".github/aidoc-ci.json",
+      "template": "aidoc-ci.json",
+      "_note": "PLAN-028 B0: the per-repo shape declaration (branch set + promotion model). OPTIONAL and auto_install:false — an ABSENT file means the single-branch model resolved against the API-reported default branch, i.e. pre-PLAN-028 behaviour. safe_to_replace:false because this is a per-repo policy declaration, not a canon body; --update must never overwrite an adopter's branch set.",
       "substitute": [],
       "safe_to_replace": false,
       "auto_install": false

@@ -88,6 +88,39 @@ run_check() {
   OUT="$(cd "$w" && PATH="$TMP/bin:$PATH" bash "$script" </dev/null 2>&1)" && RC=0 || RC=$?
 }
 
+# Same, with arguments — for the PLAN-028 B3 promotion mode.
+run_check_args() {
+  local script="$1" w="$2"; shift 2
+  OUT="$(cd "$w" && PATH="$TMP/bin:$PATH" bash "$script" "$@" </dev/null 2>&1)" && RC=0 || RC=$?
+}
+
+# A repo whose integration branch is `dev` and whose remote already has it.
+# $1 = destination dir; $2 = the .github/aidoc-ci.json body ('' = no file).
+new_promo_repo() {
+  local d="$1" decl="${2:-}"
+  mkdir -p "$d"
+  git init -q --bare "$d/remote.git"
+  git init -q -b dev "$d/work"
+  git -C "$d/work" config user.email tester@example.invalid
+  git -C "$d/work" config user.name  Tester
+  git -C "$d/work" remote add origin "$d/remote.git"
+  if [ -n "$decl" ]; then
+    mkdir -p "$d/work/.github"
+    printf '%s\n' "$decl" > "$d/work/.github/aidoc-ci.json"
+  fi
+  : > "$d/work/seed.md"
+  git -C "$d/work" add -A
+  git -C "$d/work" commit -q -m "seed" -m "$PHRASE"
+  git -C "$d/work" push -q -u origin dev
+  # Set origin/HEAD so an UNDECLARED repo resolves the SAME integration branch
+  # a declared one does. Without this, 10b would hard-fail because
+  # refs/remotes/origin/main is missing rather than because no declaration
+  # exists — and the assertion would survive deleting the declaration check.
+  git -C "$d/work" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/dev
+}
+
+PROMO_DECL='{"version":1,"branching":{"model":"dev-staging-main","integration_branch":"dev"}}'
+
 for copy in scripts/pre_push_check.sh install/templates/pre_push_check.sh; do
   script="$ROOT/$copy"
   echo "== $copy =="
@@ -247,6 +280,144 @@ for copy in scripts/pre_push_check.sh install/templates/pre_push_check.sh; do
   run_check "$script" "$d/work"
   assert_eq "$RC" "0" "$copy: the founder-OK phrase satisfies OPS-0069"
   assert_contains "$OUT" "OPS-0069 audit-trail present" "$copy: founder-OK is accepted as the audit trail"
+
+  # --- 9. PLAN-028 B3: the PROMOTION push -----------------------------------
+  # The bug: a fast-forward promotion has an EMPTY range, and empty is a hard
+  # failure — so canon's own gate refused every promotion the standard
+  # prescribes. These assert the mode is a real check and not an escape hatch:
+  # each of its three conditions must be able to REFUSE.
+
+  # 9a. No declaration = no promotion path. This is the guard that keeps
+  #     --promote from being a bypass any repo can invoke.
+  d="$TMP/$(printf '%s' "$copy" | tr '/.' '__')_promo_undecl"; new_promo_repo "$d" ""
+  run_check_args "$script" "$d/work" --promote staging
+  assert_eq "$RC" "1" "$copy: --promote on a repo with NO declaration is refused"
+  assert_contains "$OUT" "not a declared promotion branch" "$copy: names the missing declaration"
+  assert_absent   "$OUT" "PROMOTION OK" "$copy: an undeclared promotion claims no pass"
+
+  # 9b. A branch outside the declared set is refused even WITH a declaration.
+  d="$TMP/$(printf '%s' "$copy" | tr '/.' '__')_promo_wrongtgt"; new_promo_repo "$d" "$PROMO_DECL"
+  run_check_args "$script" "$d/work" --promote release
+  assert_eq "$RC" "1" "$copy: --promote to an undeclared branch is refused"
+
+  # 9c. The happy path: HEAD is origin/dev, staging does not exist yet.
+  d="$TMP/$(printf '%s' "$copy" | tr '/.' '__')_promo_ok"; new_promo_repo "$d" "$PROMO_DECL"
+  run_check_args "$script" "$d/work" --promote staging
+  assert_eq "$RC" "0" "$copy: a genuine promotion of already-pushed content passes"
+  assert_contains "$OUT" "PROMOTION OK" "$copy: the promotion reports its own pass"
+  assert_contains "$OUT" "does not exist yet" "$copy: names why the fast-forward is trivial"
+  assert_contains "$OUT" "NOT CHECKED" "$copy: states what it did NOT verify"
+
+  # 9d. A LOCAL commit that was never pushed must not ride along on a
+  #     promotion — it has never been through this gate.
+  d="$TMP/$(printf '%s' "$copy" | tr '/.' '__')_promo_local"; new_promo_repo "$d" "$PROMO_DECL"
+  add_commit "$d/work" sneaky.md nophrase
+  run_check_args "$script" "$d/work" --promote staging
+  assert_eq "$RC" "1" "$copy: an unpushed local commit blocks the promotion"
+  assert_contains "$OUT" "not the tip of origin/dev" "$copy: names the real cause"
+  assert_absent   "$OUT" "PROMOTION OK" "$copy: claims no pass with unreviewed content in the range"
+
+  # 9e. A target holding a commit the integration branch does not = NOT a
+  #     fast-forward. Promoting anyway would discard it.
+  d="$TMP/$(printf '%s' "$copy" | tr '/.' '__')_promo_ff"; new_promo_repo "$d" "$PROMO_DECL"
+  git -C "$d/work" checkout -q -b staging
+  add_commit "$d/work" hotfix.md phrase
+  git -C "$d/work" push -q -u origin staging
+  git -C "$d/work" checkout -q dev
+  run_check_args "$script" "$d/work" --promote staging
+  assert_eq "$RC" "1" "$copy: a non-fast-forward promotion is refused"
+  assert_contains "$OUT" "not a fast-forward" "$copy: names the divergence"
+
+  # 9f. Argument handling fails loudly rather than falling through to the
+  #     normal path, where a typo would look like a clean run.
+  d="$TMP/$(printf '%s' "$copy" | tr '/.' '__')_promo_args"; new_promo_repo "$d" "$PROMO_DECL"
+  run_check_args "$script" "$d/work" --promote
+  assert_eq "$RC" "2" "$copy: --promote with no target exits 2"
+  run_check_args "$script" "$d/work" --bogus
+  assert_eq "$RC" "2" "$copy: an unknown argument exits 2"
+  assert_absent "$OUT" "local pre-push checks passed" "$copy: a bad argument never reports a pass"
+
+  # 9g. THE BEHAVIOUR-PRESERVING DEFAULT. A repo carrying a declaration must
+  #     run the identical normal path when invoked with no arguments — the
+  #     promotion mode is reachable only by asking for it.
+  d="$TMP/$(printf '%s' "$copy" | tr '/.' '__')_promo_noargs"; new_promo_repo "$d" "$PROMO_DECL"
+  add_commit "$d/work" work.md phrase
+  run_check "$script" "$d/work"
+  assert_eq "$RC" "0" "$copy: a declared repo with no arguments runs the normal path"
+  assert_contains "$OUT" "OPS-0069 audit-trail present" "$copy: the normal phrase check still runs"
+  assert_absent   "$OUT" "PROMOTION" "$copy: no argument, no promotion mode"
+
+  # --- 10. The hook path. pre-commit runs this with NO arguments, so if the
+  # no-argument path cannot recognise a promotion, `--promote` is unreachable on
+  # a real `git push` and the push is blocked anyway — leaving --no-verify as
+  # the only route, which disables every pre-push hook.
+  d="$TMP/$(printf '%s' "$copy" | tr '/.' '__')_promoauto"; new_promo_repo "$d" "$PROMO_DECL"
+  run_check "$script" "$d/work"
+  assert_eq "$RC" "0" "$copy: a promotion-shaped push passes with NO arguments (the hook path)"
+  assert_contains "$OUT" "PROMOTION-SHAPED push detected" "$copy: the no-argument path recognises the shape"
+  assert_contains "$OUT" "PROMOTION OK" "$copy: and reports its own pass"
+
+  # 10b. THE TEETH. An UNDECLARED repo must still hard-fail on an empty range —
+  # the auto-detect must not become a general empty-range amnesty.
+  d="$TMP/$(printf '%s' "$copy" | tr '/.' '__')_promoauto_undecl"; new_promo_repo "$d" ""
+  run_check "$script" "$d/work"
+  assert_eq "$RC" "1" "$copy: an UNDECLARED repo still hard-fails on an empty range"
+  assert_contains "$OUT" "is EMPTY" "$copy: and still names the empty range"
+  assert_absent   "$OUT" "PROMOTION OK" "$copy: no declaration, no auto-pass"
+
+  # 10b-ii. THE DECLARATION TOOTH. A repo that HAS a declaration but declares
+  # no promotion model must still hard-fail. This is the case that isolates the
+  # PROMO_DECL check: with a file present, the integration branch DOES resolve
+  # and HEAD IS its tip, so every other condition is satisfied — only "this repo
+  # declared a promotion model" stands between it and an auto-pass. Without this
+  # case, deleting that check leaves the suite green.
+  d="$TMP/$(printf '%s' "$copy" | tr '/.' '__')_promoauto_single"; \
+    new_promo_repo "$d" '{"version":1,"branching":{"model":"single-branch","integration_branch":"dev"}}'
+  run_check "$script" "$d/work"
+  assert_eq "$RC" "1" "$copy: a declared SINGLE-BRANCH repo still hard-fails on an empty range"
+  assert_absent "$OUT" "PROMOTION OK" "$copy: no promotion model declared, no auto-pass"
+
+  # 10b-iii. An explicit `"promotion_branches": []` is an opt-OUT and must be
+  # honoured, not overwritten by the model default.
+  d="$TMP/$(printf '%s' "$copy" | tr '/.' '__')_promoauto_optout"; \
+    new_promo_repo "$d" '{"version":1,"branching":{"model":"dev-staging-main","integration_branch":"dev","promotion_branches":[]}}'
+  run_check_args "$script" "$d/work" --promote staging
+  assert_eq "$RC" "1" "$copy: an explicit empty promotion_branches is an opt-out, not the model default"
+  assert_contains "$OUT" "not a declared promotion branch" "$copy: and says so"
+
+  # 10c. THE OTHER TOOTH. An EMPTY range on a branch that is NOT the integration
+  # tip must still hard-fail — re-pushing an already-pushed feature branch is the
+  # everyday case, and the auto-detect must not swallow it. This is the assertion
+  # that fails if the HEAD == origin/<integration> condition is removed; a test
+  # using a NEW local commit cannot reach it, because a new commit makes the
+  # range non-empty and the empty-range arm never runs.
+  d="$TMP/$(printf '%s' "$copy" | tr '/.' '__')_promoauto_offtip"; new_promo_repo "$d" "$PROMO_DECL"
+  git -C "$d/work" checkout -q -b feat
+  add_commit "$d/work" feat.md phrase
+  git -C "$d/work" push -q -u origin feat
+  run_check "$script" "$d/work"
+  assert_eq "$RC" "1" "$copy: an empty range on a NON-integration branch still hard-fails"
+  assert_absent "$OUT" "PROMOTION OK" "$copy: an already-pushed feature branch is not a promotion"
+  assert_contains "$OUT" "is EMPTY" "$copy: and is still reported as the empty range it is"
+
+  # 10d. A local commit moves HEAD off origin's tip; content that never went
+  # through this gate must not ride along.
+  d="$TMP/$(printf '%s' "$copy" | tr '/.' '__')_promoauto_local"; new_promo_repo "$d" "$PROMO_DECL"
+  add_commit "$d/work" local.md nophrase
+  run_check "$script" "$d/work"
+  assert_absent "$OUT" "PROMOTION-SHAPED" "$copy: unpushed content is not a promotion shape"
+  assert_eq "$RC" "1" "$copy: and the phrase check still refuses it"
+
+  # --- 11. git invokes a pre-push hook as `hook <remote> <url>`. A consumer
+  # symlinking this straight into .git/hooks/pre-push worked before the parser
+  # existed and must keep working.
+  d="$TMP/$(printf '%s' "$copy" | tr '/.' '__')_gitargs"; new_repo "$d"
+  add_commit "$d/work" hookarg.md phrase
+  run_check_args "$script" "$d/work" origin "https://example.invalid/r.git"
+  assert_eq "$RC" "0" "$copy: git's positional hook arguments are ignored, not rejected"
+  assert_absent "$OUT" "unknown" "$copy: and are not reported as unknown"
+  run_check_args "$script" "$d/work" --bogus
+  assert_eq "$RC" "2" "$copy: an unknown OPTION is still refused"
 done
 
 # --- 8. Byte-identity drift guard (#477) --------------------------------------

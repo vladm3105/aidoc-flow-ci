@@ -23,28 +23,29 @@ repository contract encoded by flow-ci.
 opted in follows the single-branch model unchanged, and every rule below that
 names `dev` reads as "the default branch" for it.
 
-> ### ⚠️ Do NOT flip a default branch on this document alone
+> ### ⚠️ Declare the model — do not just flip the default branch
 >
-> The three-branch model has prerequisites that are **not yet implemented**, and
-> flipping the default branch without them breaks things **silently** — not
-> loudly. `plans/PLAN-028` catalogues them; the ones that bite immediately:
+> The enforcement surfaces are **implemented** as of PLAN-028 Phase B. Every
+> hazard the earlier draft of this box listed is closed, and each one is closed
+> by a mechanism you can check:
 >
-> - **CodeQL stops running on every feature PR.** `codeql.yml` and
->   `codeql-private.yml` filter `pull_request:` to `branches: [main]`, and that
->   filter matches the PR's **base**. A PR into `dev` creates **no check run at
->   all** — an absent gate, not a failing one.
-> - **All 17 post-merge `push: [main]` arms stop firing**, because merges land
->   on `dev`.
-> - **The Code Scanning baseline is never populated.** Alerts anchor to the
->   *default* branch, and there is no `push: dev` run to populate it.
-> - **Two trust anchors move**: `composition.yml` reads its allowlist from the
->   default branch *because that base is protected and non-PR-mutable*, and
->   `ai-review.yml` resolves its canon pin from it.
-> - **Branch protection follows the flip** — `apply-standards.sh` protects the
->   API-reported default branch, so it would protect `dev` and never protect
->   `main`.
+> - **CodeQL and the 17 post-merge arms follow the model.** The 19 trigger sites
+>   across 17 caller templates carry a `${INTEGRATION_BRANCH}` placeholder that
+>   `install.sh` resolves at fetch time. `on.push.branches:` accepts no
+>   expressions, so this is the only mechanism that can work — and it means the
+>   change arrives via `install.sh --update`, **never** via `--repin`, which
+>   rewrites `uses:` tag strings only.
+> - **The Code Scanning baseline is populated**, because the substituted `push`
+>   arm names the integration branch, which is also the default branch.
+> - **Branch protection follows the declaration, not the default branch** —
+>   `apply-standards.sh` protects every branch in `protected_branches` and
+>   `check-standards-drift.sh` verifies every one of them.
+> - **The two trust anchors do not move**, and §8 explains the invariant that
+>   keeps that true.
 >
-> Track PLAN-028 to completion before adopting.
+> **What is still open** is canon's own adoption and the per-repo cutover path
+> (PLAN-028 Phases C and D). No repo has adopted the model yet, including canon.
+> The machinery is in place; the migrations are not.
 
 ## 1. Protected branches
 
@@ -199,9 +200,14 @@ to the PR head SHA.
 `dev` → `staging` → `main` moves by **fast-forward push**:
 
 ```sh
-git push --ff-only origin dev:staging
-git push --ff-only origin staging:main
+git push origin dev:staging
+git push origin staging:main
 ```
+
+**No `--ff-only` flag** — `git push` has none, and using it fails `rc=129` with a
+usage dump. It is a `merge`/`pull` option. A plain `git push` is *already*
+fast-forward-only: the server refuses a non-fast-forward update unless you force
+it. (Measured while running the CI-0048 probe, which is how this was caught.)
 
 **This does not contradict §5.** Squash governs how a *working branch* enters
 `dev`. Promotion is not a merge at all, so no merge method applies and the three
@@ -242,10 +248,20 @@ validation, audit, or protection.
 Releases are immutable `ci/vX.Y.Z` tags cut from `main`. Tags are not working
 branches.
 
-**Under the three-branch model the release flow itself must change**, and this
-is not yet done: `release.sh prep` branches from `main` and its PR is squashed
-back into `main`, which puts a commit on `main` that `dev` does not have and
-ends fast-forward promotion permanently. PLAN-028 B4 owns it.
+**Under the three-branch model the release flow itself changes, and it has**
+(PLAN-028 B4). `release.sh prep` used to branch from `main` and have its PR
+squashed back into `main` — which puts a commit on `main` that `dev` does not
+have and ends fast-forward promotion permanently. `prep` now starts from, and
+its PR targets, the **integration branch**; the release commit reaches `main` by
+promotion like everything else. `release.sh tag` still requires `main`, on
+purpose: tags are cut on the release branch, and by then `main` carries that
+same commit.
+
+One thing `prep` cannot do for you: `gh pr create`'s default base is the repo's
+default branch. That is the integration branch under this model, so the default
+is right — but `prep` prints the explicit `--base` anyway, because relying on a
+default that is only coincidentally correct is how §5a's invariant gets broken
+once and then permanently.
 
 ## 7. Enforcement map
 
@@ -260,10 +276,161 @@ is the point.
 | Squash-only, update-branch, auto-delete of the remote branch | `repo-settings.json` |
 | Audit phrase | local pre-push hook + `audit-trail-check.yml` |
 | Naming and single-purpose branch | **Review convention** documented here |
-| **Promotion is fast-forward only** | **Convention** — nothing verifies that a push to `staging`/`main` was a fast-forward |
+| **Promotion is fast-forward only** | **Local pre-push CHECK, on the hook path.** With no arguments — how `pre-commit` invokes it — the hook recognises a promotion-shaped push (a declaration exists *and* `HEAD` is exactly `origin/<integration>`) and passes it instead of failing on the empty range; anything else still hard-fails. `--promote <target>` additionally verifies the target is declared and that its tip is an ancestor of `HEAD`. **Server-side it is NOT enforceable**: to GitHub a fast-forward push and a force-push are the same call, and `enforce_admins: false` exempts the only actor who can make either. The local check is offline, so it reads the last-fetched `origin/<target>` |
+| **The branch set a repo opted into** | `.github/aidoc-ci.json` (§8), applied by `apply-standards.sh --apply` and verified by `check-standards-drift.sh` |
+| **The integration branch is the GitHub default branch** | `apply-standards.sh` WARNS, `check-standards-drift.sh` counts it as DRIFT (§8) |
 | **Post-merge local cleanup (§3a)** | **Local pre-push WARNING** (`pre_push_check.sh` §6) + `delete_branch_on_merge` for the remote. Not server-enforceable — nothing can prune your clone — so the hook reports and never blocks. It detects merged-ness from **PR state**, not ancestry: squash merge rewrites the SHA, so `git branch --merged` finds nothing (measured: it listed only `main` while 14 of 16 local branches had merged PRs) |
 | Exceptional bypass authority | `aidoc-flow-operations` OPS decisions |
 
 Apply enforceable settings with `install/apply-standards.sh --apply`. Verify
 server-side settings with `sync/check-standards-drift.sh --strict`. See
 [`BRANCH_PROTECTION.md`](BRANCH_PROTECTION.md).
+
+## 8. Declaring the model — `.github/aidoc-ci.json`
+
+`--tier` cannot express a branch set: three repos share the `product` tier, so
+which branches a repo protects is not derivable from it. The declaration lives
+in `.github/aidoc-ci.json`, and it is **optional**.
+
+**An absent file is a valid declaration.** It means the single-branch model
+resolved against the repo's API-reported default branch — exactly the behaviour
+that shipped before the file existed. That is deliberate: every surface PLAN-028
+touched defaults to the pre-PLAN-028 behaviour, so a repo that never opts in
+observes no change at all.
+
+```jsonc
+{
+  "version": 1,
+  "branching": {
+    "model": "dev-staging-main",   // or "single-branch" (the default)
+    "integration_branch": null,    // null = the repo's GitHub default_branch
+    "protected_branches": null,    // null = [integration, "staging", "main"]
+    "promotion_branches": null     // null = ["staging", "main"]
+  }
+}
+```
+
+`model` alone is enough; the three `null`s take the model's defaults. Set them
+explicitly only to depart from those defaults.
+
+Two rules about `null` that every reader of this file implements identically:
+
+- **`integration_branch: null` resolves to the repo's GitHub `default_branch`,
+  never to a literal `dev`.** The *model* is named `dev-staging-main`; the
+  *branch* is whatever the repo actually uses. Inventing `dev` for a consumer on
+  `develop` would write `branches: ["dev"]` into all 19 trigger sites — a branch
+  that does not exist — killing every post-merge arm silently.
+- **`null` and an explicit `[]` are different.** `null` takes the model default;
+  `[]` is an opt-out and is honoured as one. Declaring
+  `"promotion_branches": []` means no branch gets the `enforce_admins: false`
+  overlay, and nothing overrides that.
+
+**The two lists are not independent.** Every branch in `promotion_branches` must
+also be in `protected_branches`, and the integration branch must be in neither
+promotion list. `apply-standards.sh` refuses both violations rather than applying
+a partial configuration — so narrowing `protected_branches` to `["dev"]` while
+leaving `promotion_branches` at `null` is an error, because the model default
+fills it with `staging` and `main`, which are then unprotected. Narrow both
+together, or neither.
+
+### 8a. The invariant: the integration branch MUST be the default branch
+
+Four canon surfaces resolve the branch at **run time** from the GitHub API's
+`default_branch`, and they **cannot** read this declaration:
+
+| Surface | What it resolves | Why it cannot read the declaration |
+| --- | --- | --- |
+| `composition.yml` trusted allowlist | the ai-review config's base | a **trust** boundary — it runs against arbitrary consumers, so trusting a consumer-controlled file here would *add* a trust surface |
+| `ai-review.yml` FT-15 pin resolution | the caller's adopted canon tag | same; also a **trust** boundary |
+| `check-pin-currency.sh` | which branch's pins the fleet audit reports | runs against repos it has no checkout of |
+| `deploy-ci-wizard.sh` | which branch's workflows are "deployed" | same |
+
+So the declaration does not move those anchors. **This invariant does:** the
+integration branch must be the repo's GitHub `default_branch`. Hold it and all
+four stay correct with no edits — `dev` is then the default branch, the base of
+every feature PR (so a PR still cannot modify it), and protected with the full
+tier profile. Break it and four surfaces silently anchor to a branch that no
+longer receives merges, two of them trust anchors.
+
+`apply-standards.sh` **warns** on divergence rather than failing, because the
+adopter's flip is a two-step — create `dev`, then change the repo default — and
+refusing to protect anything in between leaves them worse off than a loud
+report. `check-standards-drift.sh` counts it as **drift**, because by the time
+drift runs the two-step should be over.
+
+### 8b. What a promotion branch costs
+
+Every branch in `promotion_branches` is protected with the tier profile
+**overlaid with `enforce_admins: false`** — measured in PLAN-028 B1 as the only
+mechanism on a user-owned account that permits the promotion push at all.
+
+That overlay exempts admins from **every** protection on that branch, not just
+the PR requirement. Say it plainly: on `staging` and `main`, the gate is
+**advisory for admins, not enforced**. That is an accepted trade (`DECISIONS.md`
+CI-0049), not an oversight — enforcing it needs a GitHub organization. The
+integration branch is *not* a promotion branch and keeps `enforce_admins: true`,
+which is why it remains a sound trust anchor under §8a.
+
+### 8c. Adopting
+
+**Order matters, and three of these steps fail outright if taken out of order.**
+
+1. **Create BOTH promotion branches and push them.** `apply-standards.sh` PUTs
+   protection to every declared branch and a PUT to a branch that does not exist
+   404s, aborting the run partway — after it has already protected the first one.
+
+   ```sh
+   git switch -c staging main && git push -u origin staging
+   git switch -c dev     main && git push -u origin dev
+   ```
+
+2. **Set the repo's GitHub default branch to `dev`** (Settings → General).
+   **Before step 3, not after.** Declaring the model while the default is still
+   `main` makes `main` both the integration branch and a promotion branch, and
+   `apply-standards.sh` refuses that outright — because the
+   `enforce_admins: false` overlay would otherwise land on the branch
+   `composition.yml` and `ai-review.yml` anchor their trust to (§8a, §8b).
+
+3. **Add `.github/aidoc-ci.json`, and COMMIT AND PUSH it** to the new default
+   branch:
+
+   ```jsonc
+   { "version": 1, "branching": { "model": "dev-staging-main" } }
+   ```
+
+   Steps 4-6 all read the **pushed** copy over the API, not your working tree —
+   deliberately, so that what is enforced is what the repo declares rather than
+   whatever the operator happens to have checked out.
+
+4. **Apply protection** — `--repo` is REQUIRED with `--apply`:
+
+   ```sh
+   bash install/apply-standards.sh --repo <owner>/<repo> --tier <tier> --apply
+   ```
+
+   Protects all three, with the promotion overlay on `staging` and `main`.
+
+5. **Rewrite the trigger arms** — `bash install/install.sh <owner>/<repo> --update`.
+   **`--repin` will not do this**: it rewrites `uses:` tag strings only, never a
+   caller body.
+
+   **`codeql.yml` is `safe_to_replace: false`**, so `--update` preserves your
+   copy rather than replacing it — correct, because its language matrix is
+   consumer-customized, but it means **you must edit its two `branches:` filters
+   by hand**. Skip this and CodeQL produces *no check run at all* on feature PRs
+   and never populates the Code Scanning baseline. `sync/check-drift.sh` reports
+   the file as drifted until you do.
+
+6. **Verify**: `bash sync/check-standards-drift.sh --tier <tier> --strict` for
+   server settings, and `bash sync/check-drift.sh` for the workflow bodies.
+
+Promote with `git push origin dev:staging` — no `--ff-only` flag exists for
+`push`, and it is fast-forward-only already (§5a).
+
+The pre-push hook recognises a promotion-shaped push on its own, so the ordinary
+`git push` runs it with no arguments and passes. To verify a specific target's
+fast-forward explicitly before pushing:
+
+```sh
+scripts/pre_push_check.sh --promote staging
+```

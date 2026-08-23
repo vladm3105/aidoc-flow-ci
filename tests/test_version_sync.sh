@@ -282,6 +282,8 @@ docs/security.md
 install/README.md
 install/install.sh
 install/templates/config.json.template
+install/templates/aidoc-ci.json
+schemas/aidoc-ci-v1.schema.json
 README.md
 EXPECTED
 _svr_expected="$(printf '%s\n' "$_svr_expected" | sort)"

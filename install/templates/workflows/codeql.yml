@@ -13,9 +13,9 @@ name: codeql
 
 on:
   push:
-    branches: [main]
+    branches: ["${INTEGRATION_BRANCH}"]
   pull_request:
-    branches: [main]
+    branches: ["${INTEGRATION_BRANCH}"]
   schedule:
     - cron: '20 14 * * 1'
   workflow_dispatch:

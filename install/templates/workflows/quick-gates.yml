@@ -47,7 +47,7 @@ on:
   # appear outside PR context. It also makes the `push` arm
   # of the D3 concurrency allowlist below reachable rather than dead code.
   push:
-    branches: [main]
+    branches: ["${INTEGRATION_BRANCH}"]
 
 # D9: one job, one grant — a composite action has no declaration of its own, so
 # this is the whole ceiling. None of the three checks writes.

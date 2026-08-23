@@ -388,12 +388,58 @@ if [ "$MODE_VERIFY" = 1 ]; then
   exit "$vrc"
 fi
 
+# Resolved ONCE, into a global, before the fetch loop — NOT lazily inside the
+# per-file substitution. A `$(resolve_integration_branch)` call site is a
+# SUBSHELL, so a cache assigned inside the function never reaches the parent:
+# the first draft's cache was dead code and the API call ran once per fetched
+# file (~20 per --update). That is not merely slow — a single transient failure
+# among those calls silently writes the fallback branch into SOME trigger arms
+# and the right one into others, and a `push:` arm naming a branch that does not
+# exist never fires and never says so.
+INTEGRATION_BRANCH=""
+resolve_integration_branch() {
+  local b=""
+  if [ -f ".github/aidoc-ci.json" ] && command -v jq >/dev/null 2>&1; then
+    b="$(jq -r '.branching.integration_branch // empty' .github/aidoc-ci.json 2>/dev/null || true)"
+  fi
+  # NEVER a literal `dev`. The MODEL is named `dev-staging-main`, but the
+  # integration branch is whatever the repo declares or whatever its default
+  # branch actually is. Inventing `dev` for a consumer on `develop` writes
+  # `branches: ["dev"]` into all 19 trigger sites — a branch that does not
+  # exist — so every post-merge arm dies and CodeQL's pull_request filter
+  # matches nothing. One resolution rule, shared with apply-standards.sh,
+  # check-standards-drift.sh, check-drift.sh and release.sh: declaration, then
+  # the repo's default branch, then `main`.
+  # CI-0018: `gh` writes the API error body to STDOUT and exits non-zero, so
+  # `$(gh … || echo main)` CONCATENATES the error JSON with the fallback.
+  # Assign on success only, then validate before it is written into a workflow.
+  if [ -z "$b" ]; then
+    if ! b="$(gh api "repos/${TARGET_REPO}" --jq '.default_branch' 2>/dev/null)"; then
+      b=""
+    fi
+  fi
+  case "$b" in
+    ''|null|*..*|/*|*/|*[!A-Za-z0-9._/-]*)
+      echo "  NOTE  could not resolve an integration branch for ${TARGET_REPO} — trigger arms will use 'main'" >&2
+      b="main" ;;
+  esac
+  printf '%s\n' "$b"
+}
+
 # Clone the consumer to a stable user-visible location (NOT a temp dir
 # with auto-cleanup trap) — the user needs to inspect + commit after this
 # script exits.
 WORK_DIR="${WORK_DIR:-$PWD/aidoc-flow-ci-bootstrap-$$}"
 gh repo clone "$TARGET_REPO" "$WORK_DIR/consumer" -- --depth 1
 cd "$WORK_DIR/consumer"
+
+# PLAN-028 B5: resolve the integration branch ONCE, here — after the clone (so
+# the consumer's own `.github/aidoc-ci.json` is readable) and before any
+# template is fetched. Every `${INTEGRATION_BRANCH}` substitution in this run
+# uses this one value, so a transient API failure cannot write one branch into
+# some trigger arms and a different one into others.
+INTEGRATION_BRANCH="$(resolve_integration_branch)"
+echo "  integration branch: $INTEGRATION_BRANCH (trigger arms will filter on it)"
 
 # >>> MANDATORY-BACKUP >>>  (extracted verbatim by tests/test_install.sh — keep
 # these markers; the test drives THIS code rather than a copy of it.)
@@ -591,7 +637,35 @@ fetch_template() {
   fi
   # FT-39: reject an empty/HTML 200 body before it is written over a gate.
   validate_fetched "$dst" "$src" || return 1
+  # PLAN-028 B5. Substitution belongs HERE, not at each call site. The
+  # bootstrap caller installs (ai-review, composition, pre-commit) used bare
+  # fetch_template and never called substitute_placeholders, so once the caller
+  # templates gained `${INTEGRATION_BRANCH}` a cold start wrote a workflow whose
+  # `push:` arm filtered on a branch literally named `${INTEGRATION_BRANCH}`. It
+  # parses, actionlint accepts it, GitHub accepts it — and it never fires. The
+  # fail-closed assertion that exists to stop exactly that lived inside the
+  # function the bootstrap path did not call. One choke point, so a future
+  # template placeholder cannot reintroduce the gap.
+  #
+  # Uniform and idempotent: a template with no declared placeholder is a no-op,
+  # and the three call sites that still substitute explicitly become no-ops.
+  substitute_placeholders "$dst"
 }
+
+# PLAN-028 B5 — the branch install.sh writes into the trigger arms.
+#
+# `on.push.branches:` and `on.pull_request.branches:` take NO expressions:
+# GitHub evaluates trigger filters before any expression context exists, so a
+# workflow body simply cannot resolve the branch at run time. That is why the
+# 17 caller templates carry a `${INTEGRATION_BRANCH}` placeholder and it is
+# resolved HERE, at fetch time, into a literal.
+#
+# Resolution order — the consumer's own declaration, then the repo's ACTUAL
+# default branch, then `main`. For a repo with no declaration this returns the
+# default branch, which is what the templates hardcoded before B5 for every
+# repo whose default IS `main`, and a strict improvement for the `master` /
+# `develop` consumers whose post-merge arms silently never fired.
+#
 
 substitute_placeholders() {
   # $1 = file to substitute in place. Replaces the canonical de-branding
@@ -601,20 +675,25 @@ substitute_placeholders() {
   # discipline as PLAN-004 C2's env-var indirection). A post-substitution
   # assertion fails closed if any DECLARED placeholder survives (a typo in
   # the template or a missed replacement), so a half-branded file can never
-  # be committed. It greps ONLY the three declared names — NOT a blanket
+  # be committed. It greps ONLY the four declared names — NOT a blanket
   # ${...} scan — so unrelated shell-style ${VAR} text a consumer may
   # legitimately carry elsewhere does not trip it (per PLAN-004 Pass-4).
   local file="$1"
-  python3 - "$file" "$CODEOWNER_HANDLE" "$CANON_OPERATIONS_URL" "$CANON_CI_URL" <<'PYEOF'
+  # Resolve on first use if the post-clone resolution has not run yet (a mode
+  # that fetches before cloning). Assigned to the GLOBAL, so the API call
+  # happens once per run rather than once per file.
+  [ -n "$INTEGRATION_BRANCH" ] || INTEGRATION_BRANCH="$(resolve_integration_branch)"
+  python3 - "$file" "$CODEOWNER_HANDLE" "$CANON_OPERATIONS_URL" "$CANON_CI_URL" "$INTEGRATION_BRANCH" <<'PYEOF'
 import sys
-path, handle, ops_url, ci_url = sys.argv[1:5]
+path, handle, ops_url, ci_url, integration = sys.argv[1:6]
 text = open(path, encoding="utf-8").read()
 text = text.replace("${CODEOWNER_HANDLE}", handle)
 text = text.replace("${CANON_OPERATIONS_URL}", ops_url)
 text = text.replace("${CANON_CI_URL}", ci_url)
+text = text.replace("${INTEGRATION_BRANCH}", integration)
 open(path, "w", encoding="utf-8").write(text)
 PYEOF
-  if grep -nE '\$\{(CODEOWNER_HANDLE|CANON_OPERATIONS_URL|CANON_CI_URL)\}' "$file" >&2; then
+  if grep -nE '\$\{(CODEOWNER_HANDLE|CANON_OPERATIONS_URL|CANON_CI_URL|INTEGRATION_BRANCH)\}' "$file" >&2; then
     echo "  FAIL  unresolved canon placeholder(s) remain in ${file} (substitution bug — refusing to leave a half-branded file)" >&2
     exit 1
   fi
