@@ -905,6 +905,59 @@ goes stale exactly the same way. The artifact states its own version instead:
 
 **Origin:** #458.
 
+#### 4.3h The GATE decides what is on the IMPORT PATH — clear before you fetch (#495)
+
+§4.3e governs what a scanner _covers_. This governs what a workflow _executes_,
+which is strictly more severe: the failure is arbitrary code running with the
+job's credentials, not a coverage gap.
+
+**Rule.** Any canon surface that fetches an interpreter asset into a
+repo-relative directory and then runs it MUST clear that directory
+**before** the fetch, under a post-condition that refuses to proceed if the
+directory survives. The same applies to a directory a later step _trusts_ —
+one whose contents decide what gets written, or where.
+
+The vehicle is not exotic. `python3 <dir>/<script>.py` puts `<dir>` on
+`sys.path[0]`; a fetch that overwrites only the names it knows leaves every
+other committed file in place and importable, so a consumer-committed
+`json.py` shadows the stdlib module the fetched script imports and executes
+at import time.
+
+1. **Clear before the fetch, not after the run.** A post-run purge is hygiene;
+   it recovers nothing, because the module has already had its effect. Order is
+   the whole defence, so **assert the order**, not merely that both lines exist.
+2. **The post-condition is the gate; the `rm` is best-effort.** `rm -rf … ||
+   true` is deliberate — a bare `rm -rf` that fails on permissions aborts under
+   `set -e` before the `::error::`, producing a red step with no stated cause.
+3. **Test `-e` AND `-L`.** `-e` catches the real exploit, a surviving
+   **directory** of committed files — and `mkdir -p` is no backstop for it,
+   returning 0 silently on an existing directory. `-L` catches what `-e` cannot
+   see: `-e` follows the link and reads false on a **broken** symlink. `rm -rf`
+   removes a symlink, live or dangling, and never follows it, so `-L` fires only
+   when the unlink itself failed, or on ELOOP.
+4. **Refuse with a non-zero exit, not a warning.** A gate that prints
+   `::error::` and exits 0 lets the consumer's own module execute verbatim.
+   Assert the exit, not the message — a REPRODUCED fail-open: changing `exit 1`
+   to `exit 0` left a nine-assertion suite fully green.
+5. **Fold captured stderr before echoing it** (§4.3e rule 8, same forgery
+   vector through a different writer).
+6. **Prefer removing the search path outright.** `PYTHONSAFEPATH=1` (Python
+   3.11+) drops `sys.path[0]` entirely, making the guarantee independent of
+   directory hygiene and pre-empting a refactor to `python3 -m <op>` or a `cd`
+   that would re-open the vector. Defence in depth, not a replacement for the
+   clear.
+7. **A post-run purge must stay best-effort.** Placed mid-job under the default
+   `bash -e`, a failing purge fails the step — and because sibling steps carry
+   plain `if:` expressions with an implicit `success()`, it silently suppresses
+   whatever they produce.
+
+**Origin:** #495 (re-filed from #404, whose PLAN-024 A5 carve-out was not
+honoured). Applied surface: `.github/workflows/docs-sync.yml`, for both
+`.docs-sync-scripts/` (executed) and `.docs-sync-proposed/` (trusted — the ops
+write a `.proposed`/`.target` pair there and live mode reads it to decide what to
+write where, so a committed pair is arbitrary-content-to-arbitrary-path for a
+bot commit made with the branch-protection-bypass App identity).
+
 ### 4.4 `markdown-lint` config template (`install/templates/.markdownlint.json`)
 
 The canon `.markdownlint.json` is the recommended ruleset consumers **copy**

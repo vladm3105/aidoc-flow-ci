@@ -181,6 +181,52 @@ jobs:
           # `workflow_ref` broke external adopters, who fetched
           # <their-org>/aidoc-flow-ci and 404'd).
           BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${FETCH_REF}/scripts/docs-sync"
+
+          # CLEAR BEFORE FETCH — both scratch directories, before anything runs.
+          #
+          # `.docs-sync-scripts/` is executed: `python3 .docs-sync-scripts/<op>.py`
+          # puts that directory on `sys.path[0]`, and the fetch below overwrites
+          # only the three names it knows. Anything else committed there by the
+          # consumer arrives via actions/checkout and stays importable, so a
+          # committed `json.py` shadows the stdlib module a fetched script imports
+          # and RUNS AT IMPORT TIME (#495).
+          #
+          # `.docs-sync-proposed/` is trusted: the ops write `<op>.proposed` (new
+          # file content) and `<op>.target` (the DESTINATION PATH) into it, and
+          # live mode reads that pair to decide what to write where. A committed
+          # pair is therefore an arbitrary-content-to-arbitrary-path primitive for
+          # a bot commit made with the branch-protection-bypass App identity. It
+          # also inflates the `proposed` count that gates live mode and feeds the
+          # IPLAN-0018 §3.1 graduation metric.
+          #
+          # Same class either way: the gate, not the scanned repo, decides — D23
+          # in actions/sast-scan, and §4.3h in REPO_STANDARDS.
+          #
+          # `rm -rf` is best-effort and the post-condition is what enforces, the
+          # shape scanners.yml's SARIF purge uses. `|| true` is deliberate: a bare
+          # `rm -rf` that fails on permissions aborts under `set -e` BEFORE the
+          # ::error:: below, producing a red step with no stated cause.
+          for _d in .docs-sync-scripts .docs-sync-proposed; do
+            _rmerr="$(mktemp)"
+            rm -rf "$_d" 2>"$_rmerr" || true
+            # `-e` catches the real exploit: a surviving DIRECTORY of committed
+            # .py files. `mkdir -p` is NO backstop for it — it returns 0 silently
+            # on an existing directory. `-L` catches what `-e` cannot see: `-e`
+            # follows the link and reads false on a BROKEN symlink. `rm -rf` does
+            # remove a symlink (live or dangling) and never follows it, so `-L`
+            # fires only when the unlink itself failed, or on ELOOP — rare, and
+            # exactly the cases that must not proceed.
+            if [ -e "$_d" ] || [ -L "$_d" ]; then
+              # Newlines are legal in git paths and the runner parses every line
+              # for `::command::` — fold rm's stderr before interpolating it.
+              _rm_err="$(tr '\n\r' '  ' < "$_rmerr" | cut -c1-300)"
+              rm -f "$_rmerr"
+              echo "::error::docs-sync: could not clear ${_d}/ — refusing to run the operations rather than trust a directory this repo controls (#495). rm_stderr='${_rm_err}'. INFRASTRUCTURE error, not a sync result."
+              exit 1
+            fi
+            rm -f "$_rmerr"
+          done
+
           mkdir -p .docs-sync-scripts
           for op in changelog_stub version_sync cross_ref_repair; do
             curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
@@ -195,18 +241,27 @@ jobs:
         env:
           CONFIG_PATH: ${{ inputs.config_path }}
           MERGE_SHA: ${{ github.sha }}
+          # Defence in depth for #495: drops sys.path[0] entirely, so the script's
+          # own directory is NOT searched for imports. Makes the guarantee
+          # independent of directory hygiene, and pre-empts a refactor to
+          # `python3 -m <op>` or a `cd` that would re-open the vector. Python
+          # 3.11+; :100 pins 3.12. All three ops import stdlib only, so it is
+          # drop-in — assert that before adding a non-stdlib import.
+          PYTHONSAFEPATH: '1'
         run: python3 .docs-sync-scripts/changelog_stub.py
 
       - name: Run operation 2 — Version-string propagation
         if: ${{ steps.cfg.outputs.skip != 'true' }}
         env:
           CONFIG_PATH: ${{ inputs.config_path }}
+          PYTHONSAFEPATH: '1'   # see operation 1 — defence in depth for #495
         run: python3 .docs-sync-scripts/version_sync.py
 
       - name: Run operation 3 — Cross-ref dead-link repair
         if: ${{ steps.cfg.outputs.skip != 'true' }}
         env:
           CONFIG_PATH: ${{ inputs.config_path }}
+          PYTHONSAFEPATH: '1'   # see operation 1 — defence in depth for #495
         run: python3 .docs-sync-scripts/cross_ref_repair.py
 
       - name: Count proposed changes
@@ -221,6 +276,32 @@ jobs:
           COUNT=$(find .docs-sync-proposed -maxdepth 1 -name '*.proposed' -type f | wc -l)
           echo "proposed=$COUNT" >> "$GITHUB_OUTPUT"
           echo "::notice::docs-sync proposed $COUNT changes"
+
+      # HYGIENE, NOT A GATE. The #495 control is the clear BEFORE the fetch;
+      # once a module has run it has already had its effect, so deleting its
+      # source afterwards recovers nothing. This only keeps fetched code from
+      # outliving the steps that run it.
+      #
+      # Therefore best-effort, matching the pre-fetch `rm`: this step has no
+      # `set` line and the file has no `defaults:`, so it runs under GitHub's
+      # default `bash -e`. A bare `rm -rf` would FAIL the step on a permissions
+      # error — and because the two steps below carry plain `if:` expressions
+      # with no status function, Actions ANDs in an implicit `success()`, so a
+      # failed purge would silently suppress the dry-run PR comment, which is
+      # alpha.1's only user-visible output.
+      #
+      # Only `.docs-sync-scripts` — `.docs-sync-proposed` must survive for the
+      # apply step to read. It is cleared before the ops run instead.
+      #
+      # `always()` so the tree is cleaned on the failure path too. In the skip
+      # path the fetch never ran, so this also removes any COMMITTED copy —
+      # harmless, because nothing downstream commits when skip is set.
+      #
+      # doc-maintainer.yml carried the same purge at its :561 (the file's last
+      # line) until CI-0040 retired it; see `git show 2df9e87^`.
+      - name: Purge fetched operation scripts
+        if: always()
+        run: rm -rf .docs-sync-scripts 2>/dev/null || true
 
       - name: Apply changes (live mode only)
         if: ${{ steps.cfg.outputs.skip != 'true' && steps.cfg.outputs.dry_run != 'true' && steps.detect.outputs.proposed != '0' }}

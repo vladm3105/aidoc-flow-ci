@@ -318,6 +318,58 @@ PYEOF
 )"
 assert_contains "$novar_sg" "OK" "sast-scan manifest entry has NO visibility_variants (flip is a no-op)"
 
+echo "== #495 docs-sync — the gate decides what executes (REPO_STANDARDS §4.3h) =="
+# `python3 .docs-sync-scripts/<op>.py` puts that dir on sys.path[0] and the fetch
+# overwrites only the three names it knows, so a committed `json.py` shadows the
+# stdlib module a fetched script imports and runs at import time. `.docs-sync-proposed`
+# is the same class: the ops write a `.proposed`/`.target` pair there and live mode
+# reads it to decide WHAT to write WHERE, so a committed pair is arbitrary-content-
+# to-arbitrary-path for a bot commit.
+#
+# These assertions are written to red on SOFTENING, not just deletion. Two earlier
+# drafts passed while the defence was disabled: `exit 1`->`exit 0` (gate warns and
+# proceeds), and dropping the `-e` arm (a committed DIRECTORY sails through, since
+# `mkdir -p` returns 0 silently on an existing dir). Both are pinned below.
+DS=.github/workflows/docs-sync.yml
+assert_ok "test -f '$DS'" "docs-sync reusable exists"
+# CI-0033 §27.1 — decide on captured OUTPUT, never a pipeline's exit status.
+ds_gate="$(grep -n 'if \[ -e "\$_d" \] || \[ -L "\$_d" \]; then' "$DS" | head -1 | cut -d: -f1)"
+ds_clear="$(grep -n 'rm -rf "\$_d" 2>"\$_rmerr" || true' "$DS" | head -1 | cut -d: -f1)"
+ds_mkdir="$(grep -n 'mkdir -p .docs-sync-scripts' "$DS" | head -1 | cut -d: -f1)"
+ds_loop="$(grep -n 'for _d in .docs-sync-scripts .docs-sync-proposed; do' "$DS" | head -1 | cut -d: -f1)"
+assert_ok "[ -n '$ds_loop' ]" "docs-sync clears BOTH scratch dirs (.docs-sync-scripts AND .docs-sync-proposed)"
+assert_ok "[ -n '$ds_clear' ]" "docs-sync clears before fetching (#495)"
+assert_ok "[ -n '$ds_gate' ]" "docs-sync has a post-condition on the clear"
+# THE TEETH. A gate that prints ::error:: and exits 0 lets the consumer's own
+# module execute verbatim — worse than the shadow-import path #495 describes.
+ds_exit="$(awk -v s="${ds_gate:-0}" 'NR>s && NR<=s+8 && /^[[:space:]]*exit 1$/{print NR; exit}' "$DS")"
+assert_ok "[ -n '$ds_exit' ]" "docs-sync's post-condition EXITS NON-ZERO, not merely warns (fail-open guard)"
+# BOTH ARMS. `-e` is the real exploit (surviving directory); `-L` is the broken
+# symlink `-e` cannot see. Asserting only one lets the other be dropped silently.
+ds_e="$(awk -v s="${ds_gate:-0}" 'NR==s && /\[ -e "\$_d" \]/{print NR}' "$DS")"
+ds_l="$(awk -v s="${ds_gate:-0}" 'NR==s && /\[ -L "\$_d" \]/{print NR}' "$DS")"
+assert_ok "[ -n '$ds_e' ]" "post-condition keeps the -e arm (a surviving DIRECTORY — the actual #495 exploit)"
+assert_ok "[ -n '$ds_l' ]" "post-condition keeps the -L arm (a broken symlink, which -e reads as absent)"
+# ORDER IS THE DEFENCE. A clear after the mkdir, or after the ops, reads as fixed
+# and defends nothing.
+ds_op1="$(grep -n 'python3 .docs-sync-scripts/changelog_stub.py' "$DS" | head -1 | cut -d: -f1)"
+assert_ok "[ -n '$ds_clear' ] && [ -n '$ds_mkdir' ] && [ '$ds_clear' -lt '$ds_mkdir' ]" "docs-sync: the clear PRECEDES the mkdir"
+assert_ok "[ -n '$ds_clear' ] && [ -n '$ds_op1' ] && [ '$ds_clear' -lt '$ds_op1' ]" "docs-sync: the clear PRECEDES the first operation that executes a fetched module"
+# Defence in depth — sys.path[0] removed outright, so the guarantee does not rest
+# on directory hygiene alone.
+ds_safepath="$(grep -c "PYTHONSAFEPATH: '1'" "$DS")"
+assert_eq "$ds_safepath" "3" "all three operation steps set PYTHONSAFEPATH=1 (sys.path[0] dropped)"
+# The purge is HYGIENE, not a gate — it must be best-effort, or a failed rm skips
+# the dry-run comment (both downstream steps have plain if:, so implicit success()).
+ds_purge="$(grep -n 'name: Purge fetched operation scripts' "$DS" | head -1 | cut -d: -f1)"
+ds_apply="$(grep -n 'name: Apply changes (live mode only)' "$DS" | head -1 | cut -d: -f1)"
+ds_purge_always="$(awk -v s="${ds_purge:-0}" 'NR>s && NR<=s+2 && /if: always\(\)/{print NR; exit}' "$DS")"
+ds_purge_soft="$(awk -v s="${ds_purge:-0}" 'NR>s && NR<=s+3 && /rm -rf .docs-sync-scripts 2>\/dev\/null \|\| true/{print NR; exit}' "$DS")"
+assert_ok "[ -n '$ds_purge' ]" "docs-sync purges the fetched modules after the operations run"
+assert_ok "[ -n '$ds_purge_always' ]" "docs-sync's purge runs on the failure path too (if: always())"
+assert_ok "[ -n '$ds_purge_soft' ]" "docs-sync's purge is BEST-EFFORT (|| true) — a failed rm must not suppress the dry-run comment"
+assert_ok "[ -n '$ds_purge' ] && [ -n '$ds_apply' ] && [ '$ds_purge' -lt '$ds_apply' ]" "docs-sync purges BEFORE live-mode apply"
+
 echo "== deploy-ci-wizard knows the PLAN-014 scanner surfaces =="
 WZ=install/deploy-ci-wizard.sh
 assert_ok "grep -q 'dep-scan:' '$WZ' && grep -q 'trivy-scan:' '$WZ' && grep -q 'sast-scan:' '$WZ'" "wizard ALL_WF surveys the three scanner surfaces"
