@@ -5,6 +5,75 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Security — docs-sync clears its scratch directories before running (#495)
+
+`docs-sync` fetched its three operation modules into `.docs-sync-scripts/`
+without clearing the directory first, then ran them with `python3
+.docs-sync-scripts/<op>.py` — which puts that directory on `sys.path[0]`.
+
+The fetch overwrites only the three names it knows, so anything else committed
+to that path in a consumer repo arrived via `actions/checkout` and stayed on the
+import path. A committed `json.py`, `os.py` or `subprocess.py` shadows the
+stdlib module a fetched script imports and **executes at import time**.
+
+**What that reaches.** Not an LLM key — `docs-sync` makes no model call at all
+(`REPO_STANDARDS.md` §4.0b and the CI-0040 entry below both say so), and the
+three operation steps pass only `CONFIG_PATH`/`MERGE_SHA`, not `GITHUB_TOKEN`.
+The exposure is the job it runs in: a Python child can append to `$GITHUB_ENV`
+and `$GITHUB_PATH`, whose paths are in every step env, and so control later
+steps — including the one holding `GH_TOKEN`. In live mode the runner also
+holds `AIDOC_FLOW_BOT_KEY`, an App key whose purpose is branch-protection
+bypass. Classified CWE-427.
+
+`docs-sync` is `push: main`, so a fork PR cannot reach it — the input is a
+**committed** path reaching a trusted post-merge run, not a fork attack. That
+bounds the exposure without closing it, and PLAN-024 A6 made this flow the
+workspace's sole doc automation.
+
+**`.docs-sync-proposed/` had the same shape and is fixed in the same change.**
+Nothing executes it, but the ops write a `.proposed` (content) and a `.target`
+(**destination path**) pair there, and live mode reads that pair to decide what
+to write where — so a committed pair is an arbitrary-content-to-arbitrary-path
+primitive for the bot commit. It also inflates the `proposed` count that gates
+live mode and feeds the IPLAN-0018 §3.1 graduation metric.
+
+Changes in `.github/workflows/docs-sync.yml`:
+
+- **Both directories are cleared before anything runs**, under one
+  post-condition that refuses with a non-zero exit if either survives. The `rm`
+  is best-effort by design — a bare `rm -rf` that fails on permissions aborts
+  under `set -e` before the `::error::` and yields a red step with no stated
+  cause — so the check is what enforces. It tests `-e` (a surviving
+  **directory**, the actual exploit; `mkdir -p` returns 0 silently on one and is
+  no backstop) and `-L` (a **broken** symlink, which `-e` follows and reads as
+  absent). `rm`'s stderr is captured and folded into the refusal.
+- **`PYTHONSAFEPATH=1`** on the three operation steps drops `sys.path[0]`
+  outright, so the guarantee no longer rests on directory hygiene alone and a
+  refactor to `python3 -m <op>` cannot re-open the vector.
+- **A best-effort purge**, `if: always()`, mirroring the one `doc-maintainer.yml`
+  carried at its last line until CI-0040 retired it (`git show 2df9e87^`). It is
+  hygiene, not a control: once a module has run, deleting its source recovers
+  nothing.
+
+Codified as `REPO_STANDARDS.md` **§4.3h** — *the gate decides what is on the
+import path* — the §4.3e sibling for surfaces that **execute** a fetched asset
+rather than scan one.
+
+Fourteen assertions in `tests/test_contract.sh` pin it, and they are written to
+red on **softening**, not just deletion: two earlier drafts left the suite fully
+green while the defence was disabled — `exit 1` changed to `exit 0`, and the
+`-e` arm dropped. Both are now pinned, along with both orderings. Twelve
+mutations, each confirmed to red.
+
+**Consumer action: none beyond re-pinning.** The reusable's body changed; no
+inputs or secrets did. A consumer stays exposed on its current pin until it
+re-pins to the tag that ships this.
+
+Re-filed from #404, which reproduced this against `doc-maintainer` and was
+closed *not planned — flow deprecated*; PLAN-024 A5 carved it out of that
+closure because the defect survives verbatim in `docs-sync`, and the carve-out
+was not honoured.
+
 ### Changed! — runner labels are now `[self-hosted, ci, ephemeral]` (CI-0043, 2026-08-22)
 
 `ci-runner` -> **`ci`** and `single-use` -> **`ephemeral`**. Breaking: a job
