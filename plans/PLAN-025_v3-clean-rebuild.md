@@ -100,7 +100,7 @@ the port checklist *and* the rulebook.
 | D24 | `dep-scan` passes `--no-call-analysis=all` | osv-scanner's Go call-analysis is **on by default** and compiles source — arbitrary code execution at scan time on the self-hosted pool | Claim 27 |
 | D25 | `trivy` restricted to `dockerfile,kubernetes,cloudformation,azure-arm` | terraform/helm fetch PR-controlled remote sources; a `.tf` `module { source = "https://…" }` makes the runner clone an attacker-chosen URL. `--tf-exclude-downloaded-modules` does **not** prevent the fetch | Claim 28 |
 | D26 | `semgrep` uses an explicit `--config`, never repo-local auto-discovery; `--metrics off` | A PR injecting its own rules; telemetry from private repos | Claim 29 |
-| D27 | Scanner fork guard is a **job-level** `if: head.repo.fork != true` | Keeps fork code off the self-hosted pool. **Distinct from D7** — that is the runner-label half; this is the admission half, and a composite action cannot express it (§3.2a) | Claim 30 |
+| D27 | Scanner fork guard is a **job-level** `if:` comparing repo IDENTITY | Keeps fork code off the self-hosted pool. **Distinct from D7** — that is the runner-label half; this is the admission half, and a composite action cannot express it (§3.2a). **AMENDED 2026-08-23 (CI-0050 round):** the original spelling `head.repo.fork != true` is NULL-PERMISSIVE and was replaced fleet-wide by the identity form, which also enumerates every PR-ish event because a `workflow_call` reusable sees the CALLER's event. Canonical rule: `docs/REPO_STANDARDS.md` §4.3k | Claim 30 |
 | D28 | audit-trail identity: GitHub's `pull_request.user.type`/`.login`, never commit `%an` | `%an` is attacker-spoofable on fork PRs | Claim 31 |
 | D29 | audit-trail **ordering**: the bot exemption runs before the fetch/cat-file guard | An unreachable `BASE_SHA` must not fail a PR the gate would have exempted outright | Claim 31 |
 | D30 | audit-trail fails loud on an unreachable `BASE_SHA`/`HEAD_SHA` | "Silent PASS on unreachable BASE_SHA was the load-bearing failure mode this workflow exists to prevent" | Claim 32 |
@@ -709,7 +709,7 @@ governance.
 | 27 | dep-scan disables osv-scanner call analysis, which compiles source by default | `no-call-analysis` | .github/workflows/dep-scan.yml:20 |
 | 28 | trivy is restricted to scanners that cannot fetch PR-controlled remote sources | `cloudformation` | .github/workflows/trivy-scan.yml:15 |
 | 29 | semgrep uses an explicit config so a PR cannot inject rules | `--config` | .github/workflows/sast-scan.yml:29 |
-| 30 | The scanner fork guard is a job-level condition, not a step-level skip | `head.repo.fork` | .github/workflows/dep-scan.yml:57 |
+| 30 | The scanner fork guard is a job-level condition, not a step-level skip | `head.repo.full_name == github.repository` (was `head.repo.fork`, amended per §4.3k — a grep for the OLD string now matches only the explanatory COMMENT, so re-verify against a non-comment line) | .github/workflows/dep-scan.yml (job guard) |
 | 31 | audit-trail derives identity from GitHub metadata, never spoofable commit author | `PR_USER_TYPE` | .github/workflows/audit-trail-check.yml:105 |
 | 32 | A silent pass on an unreachable BASE_SHA was the failure this gate exists to prevent | `load-bearing failure mode` | .github/workflows/audit-trail-check.yml:147 |
 | 33 | audit-trail refuses pull_request_target because a PR-HEAD checkout there is an RCE | `pull_request_target` | .github/workflows/audit-trail-check.yml:72 |

@@ -53,8 +53,15 @@ concurrency:
 jobs:
   scan:
     name: sast-scan
-    # FORK GUARD: a fork PR never runs the scanner on the self-hosted pool.
-    if: ${{ github.event.pull_request.head.repo.fork != true }}
+    # FORK GUARD (D27). Identity, NOT a negated flag. `head.repo.fork != true` is
+    # NULL-PERMISSIVE: a deleted fork on a `reopened` event yields a null
+    # `head.repo`, so `head.repo.fork` is null, `null != true` is TRUE, and the
+    # job runs a fork-origin tree while holding `security-events: write`.
+    # `fork == false` does NOT fix it either — GitHub coerces both null and
+    # false to 0, so `null == false` is true. Comparing full_name fails CLOSED,
+    # because `null == 'owner/repo'` is false. Matches scanners.yml, which
+    # carried this fix while these five surfaces did not.
+    if: ${{ !contains(fromJSON('["pull_request","pull_request_target","pull_request_review"]'), github.event_name) || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
     timeout-minutes: 20
     steps:
@@ -300,7 +307,8 @@ jobs:
         # continue-on-error: private repos w/o GHAS return 403; the fail-on-findings
         # GATE above is the compliance control. A failed upload must NOT fail the job.
         continue-on-error: true
-        if: always() && hashFiles('semgrep.sarif') != '' && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)
+        # D27 identity form, not a negated null-permissive flag — see the job guard.
+        if: always() && hashFiles('semgrep.sarif') != '' && (!contains(fromJSON('["pull_request","pull_request_target","pull_request_review"]'), github.event_name) || github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
           sarif_file: semgrep.sarif

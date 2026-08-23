@@ -191,8 +191,21 @@ coldstart_material_changes() {
   # shellcheck disable=SC2086  # deliberate word-split: many pathspecs
   while IFS= read -r f; do
     [ -n "$f" ] || continue
-    a="$(git show "$prev:$f" 2>/dev/null | sed -E 's#ci/v[0-9]+\.[0-9]+\.[0-9]+#ci/vX.Y.Z#g')"
-    b="$(git show "HEAD:$f" 2>/dev/null | sed -E 's#ci/v[0-9]+\.[0-9]+\.[0-9]+#ci/vX.Y.Z#g')"
+    # `|| true` on the git half is LOAD-BEARING. A path ADDED since $prev (or
+    # DELETED before HEAD) makes `git show` exit 128, and under `set -o pipefail`
+    # that status is the PIPELINE's — so the assignment fails and `set -e` kills
+    # the caller. The empty side is the whole point: it is how an added or
+    # deleted template is DETECTED as material (F1 was a deletion). Without this,
+    # the first release to add or remove a manifest template aborts the function.
+    #
+    # It aborted ASYMMETRICALLY, which is why no test caught it: `tag` calls this
+    # inside `changed="$(...)"`, and bash does not propagate the subshell's
+    # set -e death to the parent there, so `tag` behaved correctly; the plain
+    # call in `coldstart_changed` (the `_coldstart-changed` seam that
+    # ft30-dry-run.sh and tests/test_scripts.sh drive) died rc=128 with no
+    # output, and both callers read that empty output as "surface unchanged".
+    a="$(git show "$prev:$f" 2>/dev/null || true)"; a="$(printf '%s' "$a" | sed -E 's#ci/v[0-9]+\.[0-9]+\.[0-9]+#ci/vX.Y.Z#g')"
+    b="$(git show "HEAD:$f" 2>/dev/null || true)"; b="$(printf '%s' "$b" | sed -E 's#ci/v[0-9]+\.[0-9]+\.[0-9]+#ci/vX.Y.Z#g')"
     [ "$a" = "$b" ] || changed+=("$f")
   done < <(git diff --name-only "$prev..HEAD" -- $surface 2>/dev/null)
   [ "${#changed[@]}" -eq 0 ] || printf '%s\n' "${changed[@]}"

@@ -118,6 +118,24 @@ promotion_decl_resolve() {
     echo "::error::pre_push_check: $decl is present but is not a readable object with a .branching object — fix it or delete it." >&2
     exit 2
   fi
+  if ! jq -e '["$schema","_note","version","branching"] as $top | ["_note","model","integration_branch","protected_branches","promotion_branches"] as $br
+    | ((keys_unsorted - $top) | length) == 0
+    and (.version == 1)
+    and ((.branching | keys_unsorted - $br) | length) == 0' "$decl" >/dev/null 2>&1; then
+    # AIDOC-CI-DECL-VALIDATE — keys + version. The schema declares
+    # `additionalProperties: false` at both levels and requires `version`, and no
+    # reader enforced any of it. `"promotion_branchs": []` (one transposed letter)
+    # read as "not set", took the model default, and applied enforce_admins:false to
+    # the two branches the operator was opting OUT of. jq, not jsonschema: this runs
+    # on consumer machines and runner images that ship neither. Key lists are pinned
+    # to schemas/aidoc-ci-v1.schema.json by tests/test_scripts.sh. NOT full schema
+    # validation — no types, enums or maxItems; it covers unknown keys + version.
+    echo "::error::pre_push_check: $decl has unknown keys or a bad version." >&2
+    echo '::error::  Allowed top-level: $schema, _note, version, branching (version must be 1).' >&2
+    echo "::error::  Allowed under .branching: _note, model, integration_branch, protected_branches, promotion_branches." >&2
+    echo "::error::  A MISSPELLED key is silently ignored by every reader and takes the model DEFAULT instead." >&2
+    exit 2
+  fi
   model="$(jq -r '.branching.model // "single-branch"' "$decl")"
   PROMO_INTEGRATION="$(jq -r '.branching.integration_branch // empty' "$decl")"
   if [ -z "$PROMO_INTEGRATION" ]; then
@@ -485,10 +503,30 @@ if [ "$range_empty" = 1 ] && promotion_shaped_push; then
   echo "  Declared promotion branches: ${PROMO_LIST:-(none)}"
   echo "  NOT CHECKED, deliberately: the OPS-0069 phrase and the mechanical linters —"
   echo "  a promotion introduces no new commit and no changed file."
-  echo "  To verify a SPECIFIC target's fast-forward too:"
+  # NOT CHECKED, and NOT deliberately — this arm cannot see the TARGET.
+  #
+  # `--promote <target>` enforces all three conditions a promotion is defined by:
+  # (1) the target is a declared promotion branch, (2) HEAD == the integration
+  # branch's remote tip, (3) the target's tip is an ancestor of HEAD. This arm
+  # takes no argument, so it can only establish (2) — and it was printing
+  # "PROMOTION OK" anyway. That banner passed `git push --force origin dev:main`
+  # discarding a hotfix merged straight onto `main`, and it passed
+  # `git push origin dev:anything-at-all` to a branch nobody declared, because
+  # neither (1) nor (3) was ever evaluated. On an adopted repo `main` carries
+  # `enforce_admins:false` (CI-0049), so the server does not refuse it either.
+  #
+  # State what was actually established. A gate that names a weaker fact is
+  # worth more than one that names a stronger fact it did not check.
+  echo "  NOT CHECKED, and this arm CANNOT check them — it receives no target:"
+  echo "    · that the target is a DECLARED promotion branch"
+  echo "    · that the push is a FAST-FORWARD of the target (a --force here can"
+  echo "      discard commits made directly on the target, e.g. a merged hotfix)"
+  echo "  For those two, name the target:"
   echo "    scripts/pre_push_check.sh --promote <target-branch>"
-  echo "pre_push_check: PROMOTION OK"
-  rc=0
+  echo "pre_push_check: EMPTY RANGE OK (promotion-shaped; target NOT verified)"
+  # Do NOT clobber an earlier failure. `rc=0` here erased any prior rc=1 —
+  # notably the gate-malfunction arm — turning a broken gate into a pass.
+  [ "$rc" -eq 0 ] || echo "  NOTE: an earlier check already failed; that failure stands."
 elif [ "$range_empty" = 1 ]; then
   # #432. The range holds no commits, so NOTHING was verified — not the phrase,
   # and not the mechanical linters, which had no files. That is neither a pass

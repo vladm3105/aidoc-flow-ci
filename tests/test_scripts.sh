@@ -352,6 +352,12 @@ cat > "$TMP/drift-contract/bin/gh" <<'SH'
 #!/usr/bin/env bash
 case "$*" in
   "auth status") exit 0 ;;
+  # PLAN-028 B0: the declaration read. Model the COMMON case — the repo declares
+  # nothing — which the real API answers with a 404 and gh reports by EXITING
+  # NON-ZERO. Must precede the loose `repos/owner/repo` glob below, which would
+  # otherwise match this path and hand back the repo-settings body as if it were
+  # a contents response (the stub ignores --jq, so `.content` is never applied).
+  *"contents/.github/aidoc-ci.json"*) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
   *"branches/main/protection"*) cat "$DRIFT_FIXTURES/bp-actual.json" ;;
   *"actions/permissions/selected-actions"*) echo '{"github_owned_allowed":true,"verified_allowed":false,"patterns_allowed":["vladm3105/*","actions/*","github/*"]}' ;;
   *"actions/permissions/workflow"*) echo '{"default_workflow_permissions":"read"}' ;;
@@ -397,6 +403,12 @@ cat > "$TMP/drift-pa/bin/gh" <<'SH'
 #!/usr/bin/env bash
 case "$*" in
   "auth status") exit 0 ;;
+  # PLAN-028 B0: the declaration read. Model the COMMON case — the repo declares
+  # nothing — which the real API answers with a 404 and gh reports by EXITING
+  # NON-ZERO. Must precede the loose `repos/owner/repo` glob below, which would
+  # otherwise match this path and hand back the repo-settings body as if it were
+  # a contents response (the stub ignores --jq, so `.content` is never applied).
+  *"contents/.github/aidoc-ci.json"*) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
   *"branches/main/protection"*) cat "$DRIFT_FIXTURES/bp.json" ;;
   *"actions/permissions/selected-actions"*) echo "{\"github_owned_allowed\":true,\"verified_allowed\":false,\"patterns_allowed\":${PA_LOCAL}}" ;;
   *"actions/permissions/workflow"*) echo '{"default_workflow_permissions":"read"}' ;;
@@ -662,6 +674,11 @@ cat > "$TMP/drift-b2/bin/gh" <<'SH'
 #!/usr/bin/env bash
 case "$*" in
   "auth status") exit 0 ;;
+  # PLAN-028 B0: the declaration read. THIS stub models a repo that DOES declare
+  # a branch set. Must precede the loose `repos/owner/repo` glob below, which
+  # would otherwise match this path first and hand back the repo-settings body
+  # as if it were a contents response (the stub ignores --jq, so `.content` is
+  # never applied).
   *"contents/.github/aidoc-ci.json"*) cat "$DRIFT_FIXTURES/decl.b64" ;;
   *"branches/dev/protection"*) echo "FETCHED:dev" >> "$DRIFT_FETCHLOG"; cat "$DRIFT_FIXTURES/bp-dev.json" ;;
   *"branches/staging/protection"*) echo "FETCHED:staging" >> "$DRIFT_FETCHLOG"; cat "$DRIFT_FIXTURES/bp-promo.json" ;;
@@ -894,6 +911,12 @@ assert_absent "$_owed_blk" '_coldstart-changed "$PREV_TAG" 2>&1' \
 
 # And the two must AGREE on this tree. A delegation that returns something
 # different from what `tag` computes is the same defect wearing the fix's clothes.
+# CI-0050: never let a test swallow a non-zero exit from the thing it tests.
+# `| sort || true` is exactly the shape that converted the rc=128 abort into an
+# empty result and let the floor below print "unchanged cold-start surface" for
+# a release that changed 32 files. Assert the EXIT CODE first, separately.
+bash "$ROOT/scripts/release.sh" _coldstart-changed >/dev/null 2>&1
+assert_eq "$?" "0" "release.sh _coldstart-changed EXITS 0 (it aborted rc=128 on an added/deleted template)"
 _rel_changed="$(bash "$ROOT/scripts/release.sh" _coldstart-changed 2>/dev/null | sort || true)"
 _ft30_changed="$(bash "$FT30" --check 2>/dev/null | sed -n '/gate is OWED/,/^$/p' | grep '^         ' | sed 's/^ *//' | sort || true)"
 # FLOOR. Both captures are "" whenever the cold-start surface is unchanged since
@@ -992,5 +1015,197 @@ rm -rf "$_d"
 _d="$(_fs_mk novis "$_fs_expected")"
 assert_contains "$(_fs_run "$_d" "")" "FAIL" "an unresolvable target visibility fails closed"
 rm -rf "$_d" "$FS_BLK" "$FS_DRV"
+
+echo ""
+echo "== AIDOC-CI-DECL-VALIDATE: every reader enforces the schema's key set =="
+# The schema shipped `additionalProperties: false` at both levels and required
+# `version`, and NOTHING enforced either: all four readers checked only
+# `.branching is an object`. `"promotion_branchs": []` (one transposed letter)
+# therefore read as "not set", took the model default `[staging, main]`, and
+# applied `enforce_admins:false` to the two branches the operator was explicitly
+# opting OUT of — a typo inverting the one setting that makes the gate advisory.
+#
+# The guard is a jq key-difference, so the key lists are a HAND COPY of the
+# schema in four files. That is the drift this block exists to catch: derive the
+# lists FROM the schema and assert every reader carries exactly them.
+_SCHEMA="$ROOT/schemas/aidoc-ci-v1.schema.json"
+assert_ok "test -f '$_SCHEMA'" "the aidoc-ci schema exists"
+
+# ONE normalizer for both sides. Sorting before vs after stripping the `$`
+# sigil gives different orders ("$schema" sorts first, "schema" does not), which
+# is a difference in the COMPARISON, not in the data — exactly the kind of
+# false red that gets an assertion deleted instead of fixed.
+_norm_keys() { tr -d '[]"' | tr ',' '\n' | sed 's/^\$//; /^$/d' | sort | paste -sd, -; }
+_top_from_schema="$(jq -r '.properties | keys_unsorted | join(",")' "$_SCHEMA" | _norm_keys)"
+_br_from_schema="$(jq -r '.properties.branching.properties | keys_unsorted | join(",")' "$_SCHEMA" | _norm_keys)"
+
+# Both levels must still be closed, or the guard is enforcing a rule the schema
+# no longer states.
+assert_eq "$(jq -r '.additionalProperties' "$_SCHEMA")" "false" \
+  "schema still closes additionalProperties at the top level"
+assert_eq "$(jq -r '.properties.branching.additionalProperties' "$_SCHEMA")" "false" \
+  "schema still closes additionalProperties under .branching"
+
+_DECL_READERS="install/apply-standards.sh sync/check-standards-drift.sh scripts/pre_push_check.sh install/templates/pre_push_check.sh"
+for _r in $_DECL_READERS; do
+  _f="$ROOT/$_r"
+  assert_ok "grep -q 'AIDOC-CI-DECL-VALIDATE' '$_f'" "$_r carries the declaration validator"
+  # Pull the two jq key arrays out of the guard and compare to the schema.
+  _top_in_reader="$(grep -o '\[\"\$schema\"[^]]*\]' "$_f" | head -1 | _norm_keys)"
+  _br_in_reader="$(grep -o '\[\"_note\",\"model\"[^]]*\]' "$_f" | head -1 | _norm_keys)"
+  assert_eq "$_top_in_reader" "$_top_from_schema" \
+    "$_r top-level key list matches the schema"
+  assert_eq "$_br_in_reader" "$_br_from_schema" \
+    "$_r .branching key list matches the schema"
+  # The key lists are compared above; the VERSION clause is a separate
+  # conjunct and was asserted nowhere — deleting it from all four readers left
+  # the suite green, because the behavioural battery drove a retyped copy.
+  # NON-COMMENT lines only. The marker comment in apply-standards.sh quotes this
+  # clause verbatim to explain the mutation that motivated it, so a plain grep is
+  # satisfied by the COMMENT while the clause itself is gone — caught by
+  # mutation-testing this very assertion, which stayed green for that file while
+  # the other three went red.
+  # Decide on the captured OUTPUT, never on the pipeline STATUS. `grep -q` exits
+  # on its first match and SIGPIPEs the upstream `grep -vE`; under `pipefail`
+  # that makes the pipeline 141 and the assertion reds at random — it failed on
+  # a DIFFERENT file on each of two consecutive runs of an unchanged tree. This
+  # is the `printf | grep -q` SIGPIPE inversion CLAUDE.md records, reproduced by
+  # writing a new assertion in the shape the rule warns about.
+  _vclause="$(grep -vE '^[[:space:]]*#' "$_f" | grep 'and (.version == 1)' || true)"
+  assert_ok "[ -n \"$_vclause\" ]" \
+    "$_r enforces the version clause on a NON-COMMENT line"
+done
+
+# BEHAVIOURAL: the shipped template must pass its own validator, and the typo
+# that motivated it must be refused. Driving the filter, not re-describing it.
+# EXTRACT the shipped filter and drive THAT. A hand-retyped copy is the
+# "guard driven against a hand-retyped copy of itself" defect PLAN-027 §3 lists
+# among the things this review exists to catch — deleting `and (.version == 1)`
+# from all four readers would leave a retyped battery fully green.
+FIX_DECL="$(mktemp)"
+_DECL_FILTER_FILE="$(mktemp)"
+awk '/# >>> DECL-FILTER >>>/{inb=1; next}
+     /# <<< DECL-FILTER <<</{inb=0}
+     inb && /jq -e/{sub(/^[[:space:]]*if ! jq -e ./, ""); print; next}
+     inb && !/^[[:space:]]*#/{sub(/. "\$decl_raw".*$/, ""); print}' \
+  "$ROOT/install/apply-standards.sh" > "$_DECL_FILTER_FILE"
+assert_ok "test -s '$_DECL_FILTER_FILE'" "the shipped declaration filter was extracted from apply-standards.sh"
+assert_ok "grep -q 'version == 1' '$_DECL_FILTER_FILE'" \
+  "the EXTRACTED filter carries the version clause (not a retyped copy asserting it)"
+_declchk() { # $1 = json -> "ACCEPT" | "REJECT"
+  printf '%s' "$1" > "$FIX_DECL"
+  if jq -e -f "$_DECL_FILTER_FILE" "$FIX_DECL" >/dev/null 2>&1
+  then echo ACCEPT; else echo REJECT; fi
+}
+assert_eq "$(_declchk "$(cat "$ROOT/install/templates/aidoc-ci.json")")" "ACCEPT" \
+  "the SHIPPED aidoc-ci.json template passes its own validator"
+assert_eq "$(_declchk '{"version":1,"branching":{"model":"dev-staging-main"}}')" "ACCEPT" \
+  "a minimal valid declaration is accepted"
+assert_eq "$(_declchk '{"version":1,"branching":{"model":"dev-staging-main","promotion_branches":[]}}')" "ACCEPT" \
+  "an EXPLICIT empty promotion_branches (the opt-out) is still accepted"
+assert_eq "$(_declchk '{"version":1,"branching":{"model":"dev-staging-main","promotion_branchs":[]}}')" "REJECT" \
+  "the promotion_branchs TYPO is REJECTED (it silently became the model default)"
+assert_eq "$(_declchk '{"version":2,"branching":{"model":"single-branch"}}')" "REJECT" \
+  "an unsupported version is REJECTED (v1 semantics must not parse a v2 file)"
+assert_eq "$(_declchk '{"branching":{"model":"single-branch"}}')" "REJECT" \
+  "a declaration with no version is REJECTED (the schema requires it)"
+assert_eq "$(_declchk '{"version":1,"branching":{"model":"x"},"rogue":1}')" "REJECT" \
+  "an unknown TOP-LEVEL key is REJECTED"
+rm -f "$FIX_DECL" "$_DECL_FILTER_FILE"
+
+echo ""
+echo "== B2/M1: the DEFAULT branch must never carry the promotion overlay =="
+# The integration-vs-promotion FATAL compared a declaration-supplied value
+# (INTEGRATION_BRANCH) against another declaration-supplied one, so declaring
+# `integration_branch` explicitly DISARMED it. Take the reverse ordering to the
+# one it was written for: default still `main`, declaration says `dev`. Then
+# `main != dev` passes the old check while `main` — the branch composition.yml
+# and ai-review.yml resolve at RUNTIME — stays in the promotion set and gets
+# `enforce_admins:false`. The verifier blessed it too, because it applied the
+# same overlay to the canon side and compared equal.
+mkdir -p "$TMP/drift-m1/fixtures" "$TMP/drift-m1/bin"
+cp "$TMP/drift-pa/fixtures/"*.json "$TMP/drift-m1/fixtures/"
+cp "$TMP/drift-b2/bin/curl" "$TMP/drift-m1/bin/" 2>/dev/null || cp "$TMP/drift-pa/bin/curl" "$TMP/drift-m1/bin/"
+# default_branch stays `main` — the flip to `dev` has NOT happened yet.
+jq '. + {default_branch:"main", visibility:"public"}' "$TMP/drift-pa/fixtures/repo.json" \
+  > "$TMP/drift-m1/fixtures/repo-actual.json"
+jq '.enforce_admins = false' "$TMP/drift-pa/fixtures/bp.json" > "$TMP/drift-m1/fixtures/bp-promo.json"
+jq '.' "$TMP/drift-pa/fixtures/bp.json" > "$TMP/drift-m1/fixtures/bp-plain.json"
+printf '%s' '{"version":1,"branching":{"model":"dev-staging-main","integration_branch":"dev"}}' \
+  | base64 -w0 > "$TMP/drift-m1/fixtures/decl.b64"
+sed -e 's|cat "$DRIFT_FIXTURES/bp-dev.json"|cat "$DRIFT_FIXTURES/bp-plain.json"|' \
+    -e 's|cat "$DRIFT_FIXTURES/bp-promo.json"|cat "$DRIFT_FIXTURES/bp-promo.json"|' \
+    -e 's|echo dev ;;|echo main ;;|' \
+    "$TMP/drift-b2/bin/gh" > "$TMP/drift-m1/bin/gh"
+chmod +x "$TMP/drift-m1/bin/gh"
+_m1_log="$TMP/drift-m1/fetched.log"; : > "$_m1_log"
+m1_out="$(PA_LOCAL="$_pa_canon" DRIFT_FIXTURES="$TMP/drift-m1/fixtures" DRIFT_FETCHLOG="$_m1_log" \
+  PATH="$TMP/drift-m1/bin:$PATH" \
+  bash "$ROOT/sync/check-standards-drift.sh" --tier product --repo owner/repo --ci-tag ci/v2.0.0 2>&1 || true)"
+assert_contains "$m1_out" "is a declared promotion branch" \
+  "M1: the DEFAULT branch being a promotion branch is REPORTED (the integration-branch check cannot see this ordering)"
+assert_contains "$m1_out" "resolve at RUNTIME" \
+  "M1: the report says WHY it matters (runtime resolvers cannot read the declaration)"
+
+# apply-standards.sh must REFUSE the same shape outright, not warn.
+#
+# `--check` never reaches the resolver (it is --apply-only), and running
+# `--apply` would perform real mutations. So SOURCE the shipped script with a
+# main-guard stub and call `resolve_branch_declaration` directly — the real
+# function, not a re-implementation, so a mutation to the guard goes red here.
+_m1_repo="$TMP/m1-apply"; mkdir -p "$_m1_repo/.github"
+printf '%s' '{"version":1,"branching":{"model":"dev-staging-main","integration_branch":"dev"}}' \
+  > "$_m1_repo/.github/aidoc-ci.json"
+_m1_drv="$TMP/m1-drv.sh"
+cat > "$_m1_drv" <<'DRV'
+set -uo pipefail
+# Stub the two things the resolver reaches out with.
+apply_default_branch() { echo main; }
+gh() {
+  case "$*" in
+    *"contents/.github/aidoc-ci.json"*) base64 -w0 < "$M1_DECL" ;;
+    *) echo '{}' ;;
+  esac
+}
+export -f gh 2>/dev/null || true
+# Pull ONLY the resolver + its helpers out of the shipped script.
+eval "$(sed -n '/^apply_valid_branch_name() {/,/^}/p' "$APPLY_SH")"
+eval "$(sed -n '/^resolve_branch_declaration() {/,/^}/p' "$APPLY_SH")"
+BRANCH_DECL_RESOLVED=0
+AIDOC_CI_DECL=".github/aidoc-ci.json"
+REPO_LABEL="owner/repo"
+PROTECTED_BRANCHES=(); PROMOTION_BRANCHES=()
+# The real `apply_default_branch` sets this; it is stubbed here, so the driver
+# must supply it. $M1_RESOLVED selects which arm of the guard is exercised:
+# 1 = the API read SUCCEEDED and `main` really is the default (the finding);
+# 0 = the read FAILED and `main` is only the fallback (must refuse WITHOUT
+#     asserting which branch is default — a fully-adopted repo on `dev` would
+#     otherwise be told to set its default to `dev`, which is already true).
+APPLY_DEFAULT_BRANCH_RESOLVED="${M1_RESOLVED:?driver must state whether the default branch resolved}"
+resolve_branch_declaration
+echo "NO-REFUSAL"
+DRV
+_m1_run() { M1_RESOLVED="$1" APPLY_SH="$ROOT/install/apply-standards.sh" \
+  M1_DECL="$_m1_repo/.github/aidoc-ci.json" bash "$_m1_drv" 2>&1 || true; }
+
+# ARM 1 — the default branch WAS resolved. This is A2 finding #6 proper.
+_m1_apply="$(_m1_run 1)"
+assert_contains "$_m1_apply" "is this repo's GitHub DEFAULT branch" \
+  "M1: apply-standards REFUSES a promotion branch that is the repo's default branch"
+assert_contains "$_m1_apply" "integration-branch check above did not catch it" \
+  "M1: the refusal explains why the sibling guard could not see this ordering"
+assert_absent "$_m1_apply" "NO-REFUSAL" \
+  "M1: the refusal is FATAL (the resolver exits, it does not fall through)"
+
+# ARM 2 — the read FAILED, so `main` is a FALLBACK, not a fact. Still refuse,
+# but do NOT name a default branch we could not read: a fully-adopted repo whose
+# real default is `dev` would be refused and told to set it to `dev`.
+_m1_unres="$(_m1_run 0)"
+assert_contains "$_m1_unres" "could not resolve the GitHub default branch" \
+  "M1: an UNRESOLVED default branch still refuses (fail-closed)"
+assert_absent "$_m1_unres" "is this repo's GitHub DEFAULT branch" \
+  "M1: and does NOT assert a default branch it could not read"
+assert_absent "$_m1_unres" "NO-REFUSAL" \
+  "M1: the unresolved-read refusal is also FATAL"
 
 suite_summary "scripts"

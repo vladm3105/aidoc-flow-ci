@@ -10,6 +10,7 @@ docs cover consumer-facing intro, install, and release notes:
 | [`../CHANGELOG.md`](../CHANGELOG.md) | Release notes per `ci/vX.Y.Z` tag |
 | [`MIGRATION_v2.0.0.md`](MIGRATION_v2.0.0.md) | Migration guide from `ci/v1.x` to `ci/v2.0.0` (LiteLLM unification — breaking change) |
 | [`MIGRATION_v3.0.0.md`](MIGRATION_v3.0.0.md) | Migration guide from `ci/v2.x` to `ci/v3.0.0` (composite actions + job consolidation — required-context strings change) |
+| [`MIGRATION_v4.0.0.md`](MIGRATION_v4.0.0.md) | Migration guide from `ci/v3.0.0` to `ci/v4.0.0` (runner-label rename, `doc-maintainer` deleted, unified LLM credentials — **read before repinning to v4**) |
 | [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) | Pre-tag checklist for cutting a `ci/vX.Y.Z` release |
 | [`EXERCISER_INVENTORY.md`](EXERCISER_INVENTORY.md) | Which manifest surface / reusable / script each test exercises; unexercised rows must name an FT (the coverage gate) |
 
@@ -39,7 +40,7 @@ This `docs/` tree covers reference + design topics.
 | [`security.md`](security.md) | Threat model, trust boundaries, fork-PR handling, secrets model, `pull_request_target` rationale, SHA-pinning, layered secret-scan defense |
 | [`overrides.md`](overrides.md) | The 3 override modes (parameter / full replacement / custom workflow) with concrete examples per mode; what you cannot do; conflict resolution; examples in the wild |
 | [`runners.md`](runners.md) | How to register self-hosted runner pools with the right labels; reference image (`aidoc-flow-runner:latest`) provisioning; per-origin cost/latency/CLI/fork-safety tradeoffs; scaling + adding new origins |
-| [`architecture.md`](architecture.md) | How the pieces fit together: reusable-workflow model; the 12 shared workflows; trust + verdict flow (ai-review + composition); per-repo policy surfaces; versioning + tag scheme |
+| [`architecture.md`](architecture.md) | How the pieces fit together: reusable-workflow model; the 15 reusable workflows; trust + verdict flow (ai-review + composition); per-repo policy surfaces; versioning + tag scheme |
 | [`WORKFLOWS.md`](WORKFLOWS.md) | **Workflow registry** — canonical enumeration of all 15 reusable workflows, per-repo applicability matrix, per-workflow skip-guidance, adoption sequencing for new repos, current pin state. Source-of-truth for CI-library capabilities. |
 | [`REPO_STANDARDS.md`](REPO_STANDARDS.md) | **Repo standards canon** — the static-settings rulebook for every workspace repo. 6-tier taxonomy (governance / product / ops-private / umbrella / bootstrap / paused) drives per-tier requirements for branch protection, GitHub security settings, labels, dependabot, CODEOWNERS, PR template, Actions permissions, merge/cleanup settings, `.gitignore`/`.gitattributes`. Companion to `WORKFLOWS.md` (workflow-side compliance) + `aidoc-flow-operations/docs/REPO_ONBOARDING.md` (CI activation). Per PLAN-001. |
 
@@ -50,9 +51,12 @@ question, an incident, or a release that motivates the page) rather
 than preemptively — so we document real usage, not hypothetical
 patterns. All previously-listed planned docs (`architecture`, `runners`,
 `overrides`, `security`) now exist under "Available now". No docs are
-currently queued; per-release migration guidance lives in
-[`docs/MIGRATION_v2.0.0.md`](MIGRATION_v2.0.0.md) for the
-`ci/v2.0.0` LiteLLM unification (breaking change).
+currently queued.
+
+Per-release migration guidance is **one guide per MAJOR**, all listed in
+the index above — do not read this paragraph as naming the current one.
+It used to name `MIGRATION_v2.0.0.md`, and stayed that way through the
+v3.0.0 cut, so a reader starting here was pointed two MAJORs behind.
 
 ## How to contribute a new doc
 

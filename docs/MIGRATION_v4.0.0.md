@@ -201,6 +201,39 @@ None of this is required to adopt v4; it is what you get.
   Every shipped template already complies. If you need a different pack, ask for
   it in canon rather than setting it in the caller — the gate deciding coverage
   is the whole point of the change.
+- **A `dev` → `staging` → `main` branching model, fully OPT-IN (PLAN-028).**
+  v4 ships the machinery; **no repo has adopted it, canon included.** With no
+  `.github/aidoc-ci.json` in your repo, every surface reproduces its pre-v4
+  behaviour, resolved against your repo's API-reported default branch — never a
+  hardcoded `main`. You do not have to do anything.
+
+  **The one unconditional effect, and it is cosmetic.** After
+  `install.sh --update` — not `--repin`, which rewrites `uses:` strings only —
+  caller trigger arms read `branches: ["main"]` where they read
+  `branches: [main]`. Same branch; the placeholder has to be quoted because a
+  bare `${…}` in a YAML flow sequence is a parse error. `sync/check-drift.sh`
+  does not count it as drift. Expect one line of diff per trigger arm, once.
+
+  **`.github/aidoc-ci.json` is now VALIDATED, and `version` is required.** All
+  four readers reject unknown keys at either level and any `version` other than
+  `1`. This is deliberate: `"promotion_branchs": []` — one transposed letter —
+  used to read as "not set", take the model default, and apply
+  `enforce_admins: false` to the two branches you were opting out of. If you
+  hand-wrote a declaration against a pre-v4 build, add `"version": 1` and check
+  your key spellings; `scripts/pre_push_check.sh` will refuse the push and name
+  the offending keys.
+
+  **If you want to adopt it, read [`BRANCHING.md`](BRANCHING.md) §8 first — the
+  step ORDER is load-bearing.** Create the integration branch and make it the
+  repo's GitHub default *before* adding the declaration. Declaring the model
+  while `main` is still the default would put `enforce_admins: false` on the
+  branch `composition.yml` and `ai-review.yml` anchor their trust to;
+  `apply-standards.sh` now refuses both orderings that produce it, rather than
+  warning. And understand the cost before you opt in: per CI-0049 a promotion
+  branch's protection is **advisory for admins, not enforced** — that is the
+  only mechanism on a user-owned account that permits the promotion push at
+  all, and there is no CI-side check that a promotion is a fast-forward.
+
 - **ai-review no longer ships the unredacted diff** in its artifact or to the
   autofix model. One consequence worth knowing before you diagnose it as a
   regression: the fixer now sees `[REDACTED_SECRET_SHAPED_CONTENT]` wherever the

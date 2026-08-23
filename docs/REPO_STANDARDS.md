@@ -1211,6 +1211,109 @@ write a `.proposed`/`.target` pair there and live mode reads it to decide what t
 write where, so a committed pair is arbitrary-content-to-arbitrary-path for a
 bot commit made with the branch-protection-bypass App identity).
 
+#### 4.3k A fork test must be an IDENTITY, never a negated nullable flag (D27)
+
+`github.event.pull_request.head.repo.fork` is **null**, not false, when the fork
+was deleted before a `reopened` event. `null != true` is TRUE, so
+`if: ${{ …head.repo.fork != true }}` runs the job on a fork-origin tree while it
+holds `security-events: write`. `fork == false` is not a fix either — GitHub
+coerces both null and false to 0, so `null == false` is also true.
+
+**The required form compares identity, which fails CLOSED because
+`null == 'owner/repo'` is false:**
+
+```yaml
+if: ${{ !contains(fromJSON('["pull_request","pull_request_target","pull_request_review"]'),
+                  github.event_name)
+        || github.event.pull_request.head.repo.full_name == github.repository }}
+```
+
+**Enumerate every PR-ish event — a bare `github.event_name != 'pull_request'` is
+not enough, and in a reusable it is actively wrong.** These are `workflow_call`
+reusables, so `github.event_name` is the **caller's** event. A consumer whose
+caller is wired to `pull_request_target` makes `!= 'pull_request'` TRUE, and the
+guard then ADMITS a live fork that the old nullable-flag spelling correctly
+skipped — running fork code on the self-hosted pool with `security-events:
+write`. The first version of this rule shipped the narrow form and would have
+propagated it to every consumer.
+
+Four rules, each learned the hard way:
+
+1. **Apply it to every surface in the same change.** `scanners.yml` carried this
+   fix while the six v2 reusables every un-migrated consumer still calls kept the
+   defective spelling — including a workflow whose own comment described the bug
+   it was not fixing.
+2. **Check the polarity before converting a site.** Not every nullable-flag read
+   fails open. `composition.yml` builds `IS_FORK` and tests `= "true"`: a null
+   there means "not exempted", so the gate BLOCKS, and converting it to the
+   identity form would make a deleted fork _exempt_. **Converting a
+   fail-closed site to the identity form is a regression.**
+3. **Assert the form on the line that carries it.** An unanchored
+   `grep -q 'full_name == github.repository'` is satisfied by the SARIF upload
+   guard while the job guard regresses. Anchor to the job-level `if:`, and
+   separately forbid the null-permissive spelling outside comments.
+4. **PIN THE EXEMPTION POSITIVELY, not in prose.** Rule 2 has exactly one
+   counterexample in canon (`composition.yml`), and a rule of the form "this
+   spelling is banned" is executed by sweeps and by agents. Left as a paragraph,
+   the next uniform pass inverts the ai-review gate. `tests/test_contract.sh`
+   asserts that `composition.yml` **still contains** `head.repo.fork` and still
+   tests `IS_FORK` against the literal `"true"` — the two properties that make
+   its null fail closed. **A documented exemption with no assertion is a defect
+   waiting for a tidy-up.**
+
+**`secret-scan` has no job-level fork guard, deliberately** — it must scan fork
+PRs, which is the highest-value case, and its gate is `gitleaks --exit-code`,
+not the SARIF upload. Do not "apply the rule to every surface" there.
+
+#### 4.3l Every resolver that turns a caller pin into a FETCH REF must peel-verify (FT-28)
+
+A caller may pin `@<40-hex> # ci/vX.Y.Z`. GitHub executes the SHA, so the asset
+fetch must use the SHA — but `raw.githubusercontent` serves **any commit
+reachable in the public canon repo, including never-merged fork-PR commits**,
+while the trailing tag comment reads as the released version in review. The
+resolver must therefore peel the claimed tag through the API and refuse when the
+pinned SHA is not that tag's commit.
+
+**The rule is the CONSTRUCTION, not the workflow.** Any file containing
+`FETCH_REF="${CANON_SHA:-$CANON_TAG}"` needs the block. `ai-review.yml` carried
+it from FT-28; `standards-drift.yml` and `docs-sync.yml` had the identical
+construction and none of the verification — and those two are the ones that
+**execute** what they fetch (`bash "$SCRIPT"`, `python3 …/*.py` whose output is
+committed by the App identity holding the branch-protection bypass). Fetching
+data unverified is a stale comparison base; fetching _code_ unverified is
+arbitrary code execution.
+
+Ship the block between `# >>> FT28-PEEL-VERIFY >>>` / `# <<< FT28-PEEL-VERIFY <<<`
+markers so the test extracts and DRIVES the shipped code rather than a copy, and
+**derive the required set from the tree** (`grep -rlE 'FETCH_REF="\$\{CANON_SHA…'`,
+with `--include='*.yml'` so a `*.yml.bak` leftover cannot join the set) rather
+than pinning a count in one file — a count is satisfied by the files that already
+comply while a new resolver ships without one.
+
+#### 4.3m A declaration file's schema must be ENFORCED by every reader
+
+`schemas/aidoc-ci-v1.schema.json` declared `additionalProperties: false` at both
+levels and required `version`; all four readers of `.github/aidoc-ci.json`
+checked only "`.branching` is an object". A schema nothing validates against is
+documentation, and the gap is not cosmetic: `"promotion_branchs": []` — one
+transposed letter — is invisible to `has("promotion_branches")`, so the reader
+takes the **model default** and writes `enforce_admins: false` onto the two
+branches the operator was explicitly opting out of. **A typo inverted the one
+setting that makes the gate advisory.**
+
+1. **Validate with `jq`, not a jsonschema dependency** — these run on consumer
+   machines and on a runner image that ships neither.
+2. **PIN the key lists to the schema by test.** The guard hand-copies them into
+   four files; derive them from the schema in the suite and assert every reader
+   carries exactly them, or the schema and its enforcement drift apart silently.
+3. **Say what it does NOT check.** This validates keys and `version`; it does not
+   check types, enums or `maxItems`. A guard that claims more than it enforces is
+   the defect it was written to close.
+4. **A reader's severity matches its role.** The mutating surface
+   (`apply-standards.sh`) and the push gate refuse outright; the _verifier_
+   warns and counts a fetch error, because a verifier that exits fatal stops
+   reporting the rest.
+
 ### 4.4 `markdown-lint` config template (`install/templates/.markdownlint.json`)
 
 The canon `.markdownlint.json` is the recommended ruleset consumers **copy**

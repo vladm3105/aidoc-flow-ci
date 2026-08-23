@@ -1170,7 +1170,7 @@ team member either), correcting an earlier draft of this section.
 | 2 | `pre-commit.yml` has a step that runs the repo's hooks | `- name: Run hooks` | .github/workflows/pre-commit.yml:92 |
 | 3 | That step runs whatever hooks the consumer's config declares, against all files | `pre-commit run --all-files` | .github/workflows/pre-commit.yml:98 |
 | 4 | Canon reusables may `uses:` only `actions/*`, `github/*`, `vladm3105/aidoc-flow-ci/*`; tools install as pinned binaries | `### 4.3 Reusable workflows install tools as BINARIES, never third-party actions` | docs/REPO_STANDARDS.md:439 |
-| 5 | A Class A scanner fork-guards by skipping the job for fork PRs | `if: ${{ github.event.pull_request.head.repo.fork != true }}` | .github/workflows/dep-scan.yml:57 |
+| 5 | A Class A scanner fork-guards by skipping the job for fork PRs | `if:` comparing `head.repo.full_name == github.repository` across every PR-ish event (amended 2026-08-23; the original `head.repo.fork != true` was null-permissive — `docs/REPO_STANDARDS.md` §4.3k) | .github/workflows/dep-scan.yml (job guard) |
 | 6 | A Class A reusable defaults to the self-hosted single-use pool | `default: '["self-hosted", "ci-runner", "single-use"]'` | .github/workflows/dep-scan.yml:42 |
 | 7 | The scanner precedent ships report-only via a `fail-on-findings` toggle | `fail-on-findings:` | .github/workflows/dep-scan.yml:27 |
 | 8 | A compliance-evidence table exists mapping each rule to its audit trail | `## 12. Compliance evidence — where each rule's audit-trail lives` | docs/REPO_STANDARDS.md:1028 |

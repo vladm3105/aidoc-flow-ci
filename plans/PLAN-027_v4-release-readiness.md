@@ -1,9 +1,29 @@
 # PLAN-027 — `ci/v4.0.0` release readiness, and the deferred work the tracker no longer holds
 
-**Status:** In Progress — Phase A EXECUTED and verified 2026-08-22 (suite
-2037/0, every guard mutation-tested); Phase B is the release cut, not started;
-Phase C is the carried-over deferred work, not started. Not `Completed` until B
-lands — the tag is the deliverable, and A alone is a branch.
+**Status:** In Progress.
+
+- **Phase A** EXECUTED, verified 2026-08-22 at `8ccd168` (suite 2037/0, every
+  guard mutation-tested).
+- **Phase A2** EXECUTED 2026-08-23 — a SECOND review round over the post-`8ccd168`
+  delta (PRs #516, #517, #518, #519). See §3a; suite 20 groups / 2252 assertions
+  / 0 failures measured on the fold branch AFTER its own pre-push review round,
+  every new guard mutation-tested. The earlier figure in this line read 2214 —
+  measured before the last fix landed, which the fold review caught.
+- **Phase B:** B2, B3, B4 EXECUTED. **B1 — the cut itself — NOT started**, and it
+  is the only thing between this plan and `Completed`.
+- **Phase C** carried-over deferred work, not started.
+
+Not `Completed` until B1 lands — the tag is the deliverable, and A alone is a
+branch. **The per-item status above is deliberate:** a single "Phase B not
+started" line was carried while B3 and B4 were already correct on disk, which is
+the same stale-status-line defect CI-0045 recorded against PLAN-024's header.
+
+**Cross-plan dependency, added 2026-08-23:** PLAN-028 Phase B (#519) landed
+AFTER this plan's Phase A verification and modified `scripts/release.sh`,
+`install/apply-standards.sh`, `sync/check-standards-drift.sh` and both
+`pre_push_check.sh` copies — the release mechanism this plan's B1 drives. Phase
+A's 2037/0 figure therefore does not describe HEAD. Re-measured at HEAD as part
+of A2; that is what B1 must be run against.
 **Owner:** canon (aidoc-flow-ci)
 **Scope:** closing the pre-production review of the v3 line, cutting
 `ci/v4.0.0`, and holding the deferred items whose only record was a closed
@@ -128,6 +148,62 @@ templates; a derived row-set with no floor; an exemption justified by a comment
 that mentioned the thing it was meant to prove; a guard driven against a
 hand-retyped copy of itself. Every one of them was green.
 
+## 3a. Phase A2 — the SECOND review round (EXECUTED 2026-08-23)
+
+**Why there is a second round.** §3's review ran at `8ccd168`. Commits
+PR #516, PR #517, PR #518 and PR #519 landed after it. #517–#519 are PLAN-028 Phase B — a C3
+change to `apply-standards.sh`, `check-standards-drift.sh`, both
+`pre_push_check.sh` copies, `release.sh`, and a new shipped template — heading
+into the tag with **no lens coverage at all**. Five independent read-only lenses
+were run over `ci/v3.0.0..HEAD` weighted to that delta; every BLOCKER and HIGH
+was verified against source before acceptance.
+
+**Findings and disposition — all accounted for.**
+
+| # | Finding | Sev | Disposition |
+|---|---|---|---|
+| 1 | `release.sh` aborts rc=128 when a cold-start template is added/deleted; `_coldstart-changed` seam silently returns empty; the parity test asserts a false "unchanged surface" | HIGH | FIXED + 9 assertions driving both entry points |
+| 2 | FT-28 pin-peel missing on `standards-drift.yml` + `docs-sync.yml`, which EXECUTE what they fetch | HIGH | FIXED; test derives the required set from the tree |
+| 3 | Null-permissive fork guard on 7 v2 surfaces (+2 more found: `codeql`, `ai-review`) | HIGH | FIXED on 9; `composition.yml` deliberately NOT changed (its null fails closed) |
+| 4 | `MIGRATION_v4.0.0.md` silent on PLAN-028 entirely | HIGH | FIXED |
+| 5 | `BRANCH_PROTECTION.md` instructs keeping `enforce_admins: true`, which canon now inverts in two documented cases | HIGH | FIXED |
+| 6 | `enforce_admins:false` can land on the API-default branch (FATAL guard compares two declaration-supplied values) | MED | FIXED in `apply-standards.sh` + mirrored in the verifier |
+| 7 | `aidoc-ci.json` schema enforced by nobody; a key typo inverts an explicit opt-out | MED | FIXED in all 4 readers; key lists pinned to the schema by test |
+| 8 | Drift: a fetched-but-undecodable declaration read as "absent", silently | MED | FIXED — warns + `FETCH_ERRORS` |
+| 9 | `pre_push_check.sh` prints `PROMOTION OK` without checking target or fast-forward | MED | FIXED — reports the weaker fact it can justify; `rc=0` no longer clobbers an earlier failure |
+| 10 | PLAN-027's own status line stale; no PLAN-028 cross-reference | MED | FIXED — this header |
+| 11 | `docs/runners.md` describes the `gh` pin as self-expiring; #435 fixed it | MED | FIXED |
+| 12 | `docs/README.md` index missing v4; "Planned" footer two MAJORs stale; 12-vs-15 workflow count | MED | FIXED |
+| 13 | `composition.yml` cites `scripts/ci-runner/build-image.sh`, absent from this repo | LOW | FIXED (pre-existing at `ci/v3.0.0`, not a v4 regression) |
+| 14 | `UPDATE_GUIDE.md` v4 table omits the trigger-arm requoting its own §3 documents | LOW | FIXED |
+| 15 | `sarif-path` unconstrained | LOW | **NOT fixed** — already carried as §5 C6; unchanged by this round |
+| 16 | No CI-side promotion verifier (nothing asserts a promotion push is a fast-forward) | HIGH-as-gap | **NOT fixed** — see C7 below. Zero blast radius today: no repo has adopted |
+| 17 | 🔴 FT-30 cold-start dry-run owed and unexecuted | BLOCKER | **OPEN — founder-gated.** §4 B1 |
+| 18 | 🔴 MAJOR-bump LiteLLM smoke never run against the current workflow | BLOCKER | **OPEN — founder-gated.** See below |
+
+**Two items this plan cannot close, and neither is a code defect.**
+
+- **FT-30 (#17).** Measured: `release.sh tag` fires the gate and names 32
+  changed bootstrap-path files. `--dry-run-verified` is owed. 🔴 founder-executed,
+  writes to a throwaway repo, and must run against the **prep-merge SHA**.
+- **LiteLLM smoke (#18).** `.github/workflows/llm-smoke.yml` has **zero runs**.
+  The last success (2026-08-10, `7a474a9`) was the previous file,
+  `litellm-smoke.yml` — the two-arm version, **before** CI-0040 rewrote the
+  credential resolution the smoke exists to test. Canon also has **0 registered
+  runners**, so the workflow's default `["self-hosted","ci","ephemeral"]` queues
+  forever, and `ubuntu-latest` cannot reach a private-network proxy. The gate is
+  therefore unsatisfiable *on canon as written* and must be dispatched with a
+  label set that has a runner which can reach the proxy. Re-derive with:
+  `gh api repos/vladm3105/aidoc-flow-ci/actions/workflows/.github%2Fworkflows%2Fllm-smoke.yml/runs --jq '.workflow_runs | length'`
+
+**What this round confirms about the previous one.** §3's A5 recorded that every
+cycle found a blocker inside the previous cycle's fold. This round extends it
+one step further out: the defect that mattered most (#1) was introduced by
+**PLAN-028 Phase B**, a change reviewed under its own plan and merged green,
+into a file PLAN-027 depends on — and canon's own suite stayed green because the
+one test covering it swallowed the crash with `2>/dev/null … || true`. *A plan's
+verification does not survive another plan editing its files.*
+
 ## 4. Phase B — the cut
 
 - **B1 — `release.sh prep ci/v4.0.0`**, then merge the prep PR with `--admin`
@@ -136,13 +212,14 @@ hand-retyped copy of itself. Every one of them was green.
   `install/install.sh` and `install/templates/manifest.json`, both on the
   bootstrap write path. The 🔴 cold-start dry-run is therefore owed and must run
   against the **prep-merge SHA**, not against `main` before the prep lands.
-- **B2 — the release notes.** `release.sh tag` publishes the promoted
-  `## Unreleased` section verbatim. It is ~1000 lines of implementation
-  forensics, inside which the two things an adopter must act on are one line
-  each. Add a short **Breaking changes** block at the top of the promoted
-  section pointing at `docs/MIGRATION_v4.0.0.md`, before the tag. This is a
-  release-time step, not a codebase change.
-- **B3 — `docs/UPDATE_GUIDE.md:303`.** Its v1.x→v2.0.0 quick-reference tells the
+- **B2 — the release notes. EXECUTED 2026-08-23.** `release.sh tag` publishes
+  the promoted `## Unreleased` section verbatim, and it is now ~1670 lines of
+  implementation forensics. A **⚠️ Breaking changes** block now opens that
+  section: the three things an adopter must act on, the two ordering rules, an
+  explicit "not breaking, so you do not misread it" paragraph covering the LLM
+  credential unification and the opt-in branching model, and a pointer to
+  `docs/MIGRATION_v4.0.0.md`.
+- **B3 — `docs/UPDATE_GUIDE.md`. EXECUTED (landed in #515).** Its v1.x→v2.0.0 quick-reference tells the
   operator to set `LLM_URL`/`LLM_API_KEY`, but the full guide it summarises
   (`docs/MIGRATION_v2.0.0.md`) requires `LITELLM_BASE_URL` /
   `LITELLM_REVIEW_API_KEY`, and the `LLM_URL` fallback did not exist at
@@ -150,7 +227,7 @@ hand-retyped copy of itself. Every one of them was green.
   bringing a genuine v1.x consumer forward follows the quick-reference and the
   ai-review job cannot find its secret. Two docs, same step, mutually exclusive
   names. Correct the quick-reference to the names the pinned tag actually reads.
-- **B4 — README / UPDATE_GUIDE v4 framing.** `README.md:38-40` says `ci/v3.0.0`
+- **B4 — README / UPDATE_GUIDE v4 framing. EXECUTED (landed in #515).** `README.md:38-40` says `ci/v3.0.0`
   "is the latest tag"; `UPDATE_GUIDE.md` has a v2.x→v3.0.0 section and none for
   v4. Both must change in the same PR that cuts the tag — a tag that falsifies
   the README is not a shipped release.
@@ -199,6 +276,43 @@ under CI-0046, not re-filed.
   rather than a committed file. Fix shape: each action refuses a `sarif-path`
   that is not its own default, or that already exists when the step starts.
   Disclosed in §4.3i rule 3 rather than left to be rediscovered.
+
+- **C7 — there is no CI-side promotion verifier (from A2 #16).** Nothing in
+  `.github/workflows/` or `install/templates/workflows/` asserts that a push to
+  a promotion branch is a fast-forward of the integration branch — `grep -rn
+  'promot'` over both returns one comment and zero logic. Under the model,
+  `main` carries `enforce_admins: false` (the only mechanism CI-0048 found that
+  permits the promotion push at all), push-triggered callers are narrowed to the
+  integration branch, and `audit-trail-check` is `pull_request`-only — so the
+  local pre-push hook is the sole control, and `--no-verify` bypasses it by
+  design. **Not urgent and deliberately deferred: no repo has adopted the model,
+  canon included, so the blast radius today is zero.** It must be closed before
+  Phase C/D adoption, not before the tag. Fix shape: a `promotion-check`
+  reusable on `push: [staging, main]` asserting the pushed SHA is contained in
+  `origin/<integration>`, made a required context — a server-side check that
+  `enforce_admins: false` does not disable for non-force pushes.
+
+- **C8 — the FT-30 gate's "empty means unchanged" shape (from the A2 fold
+  review).** Three residues, none of them the crash that was fixed, all sharing
+  one property: the surface computation reports "nothing changed" for every
+  partial failure, and `tag` reads that as AUTO-WAIVE.
+  1. `scripts/release.sh:210` — `done < <(git diff --name-only … 2>/dev/null)`
+     discards the `git diff` exit status. A failure there yields zero loop
+     iterations and an auto-waive.
+  2. Same function — a template that is **empty or newline-only** on one side
+     compares equal to an absent one, so adding or deleting such a file waives.
+     (Both forms had this; the fix did not introduce it.)
+  3. `tests/test_contract.sh` strips comments with `grep -vE`, where
+     `tests/test_actions.sh:573-586` already has a YAML-parsed helper written
+     precisely because a grep matched the comment explaining a banned spelling.
+     The new assertions err toward a false RED, so this is hygiene, not a hole.
+  **Fix shape for 1 and 2:** have `coldstart_material_changes` return non-zero
+  or emit a sentinel when the diff itself is uncomputable, and have `tag` fail
+  CLOSED on it — the gate should distinguish "nothing changed" from "could not
+  tell". **Deferred deliberately:** the release-blocking crash is fixed and
+  under test through both entry points, and changing the gate's waive contract
+  is a change to the release mechanism itself, which is the wrong thing to do
+  in the change that cuts the release. Do it first in the next cycle.
 
 - **C5 — `install/templates/workflows/sast-scan.yml` vs `scanners.yml`.** Two
   live adoption paths reach SAST: the individual caller (pinning the reusable)

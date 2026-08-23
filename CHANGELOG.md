@@ -5,6 +5,206 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### ⚠️ Breaking changes — read this before repinning
+
+`ci/v4.0.0` is a MAJOR. Everything an adopter must ACT on is in this block; the
+rest of this section is implementation detail. Full procedure, with the ordering
+that matters: [`docs/MIGRATION_v4.0.0.md`](docs/MIGRATION_v4.0.0.md).
+
+| # | Change | What happens if you ignore it |
+| --- | --- | --- |
+| 1 | **Runner labels renamed** `ci-runner`→`ci`, `single-use`→`ephemeral` (CI-0043) | Jobs **queue forever** — no failure, no timeout, no log. `timeout-minutes` cannot save a job that never starts. |
+| 2 | **`doc-maintainer.yml` deleted** (CI-0040) | A caller repinned to v4 gets `startup_failure`, which produces no logs. |
+| 3 | **`sast`/`dep`/`trivy` `config` + `scan-path` are now allowlisted** | A caller passing anything other than `p/default`, `p/security-audit`, `p/python` (or `scan-path` other than `.`) now **fails with a named error** instead of silently scanning nothing. |
+
+**Two ordering rules carry the whole risk, and both fail silently:**
+
+1. **Register the coexistence runner label set BEFORE repinning**
+   (`self-hosted,ci-runner,single-use,ci,ephemeral`), confirm a real job lands
+   on the new labels, and only then narrow to `self-hosted,ci,ephemeral`.
+2. **Delete your `doc-maintainer.yml` caller BEFORE repinning**, not after.
+
+**Not breaking, listed so you do not misread it as breaking:** LLM credentials
+unify on `LLM_URL`/`LLM_API_KEY` — the `LITELLM_*` names still resolve. The
+`dev` → `staging` → `main` branching model ships **fully opt-in**: with no
+`.github/aidoc-ci.json` every surface reproduces its pre-v4 behaviour. The one
+unconditional effect is cosmetic — after `install.sh --update`, caller trigger
+arms read `branches: ["main"]` where they read `branches: [main]`.
+
+`ci/v3.0.0` was **not** re-cut and remains a valid pin and the rollback target
+(CI-0044).
+
+### Fixed — the `ci/v4.0.0` pre-production review, round 2 (the post-#515 delta)
+
+PLAN-027's five-lens review ran at `8ccd168`. Four commits landed **after** it:
+PR #516, and PRs #517/#518/#519 (PLAN-028 Phase B) — so a C3 change to the enforcement
+surfaces was heading into the tag with no lens coverage. This is that coverage,
+and the delta is where most of what follows was found.
+
+**Release mechanism.**
+
+- **`release.sh` aborted on any release that ADDS or DELETES a cold-start
+  template.** `coldstart_material_changes` reads both sides with
+  `git show <rev>:<path> | sed`; when the path exists on only one side `git show`
+  exits 128 and `set -o pipefail` makes that the pipeline's status. `v4` adds
+  `install/templates/aidoc-ci.json` (#519), so this was live.
+  **It failed ASYMMETRICALLY, which is why nothing caught it:** `tag` calls the
+  function inside `changed="$(…)"`, where bash does not propagate the subshell's
+  `set -e` death, so `tag` behaved correctly and every existing test passed. The
+  plain call in `coldstart_changed` — the `_coldstart-changed` seam that
+  `ft30-dry-run.sh` and `tests/test_scripts.sh` drive — died `rc=128` with empty
+  output, and **both callers read empty as "surface unchanged"**. So the FT-30
+  preflight reported it could not compute the surface, and the ft30/release
+  parity assertion printed "both report an unchanged cold-start surface" while
+  32 files had in fact changed. Fixed; `tests/test_release.sh` now drives the
+  add case, the delete case (F1 itself), and BOTH entry points, and asserts the
+  two agree.
+
+**Security — a defence present on some surfaces and absent on others.**
+
+- **FT-28 pin-peel verification added to `standards-drift.yml` and
+  `docs-sync.yml`.** Both carried the identical
+  `FETCH_REF="${CANON_SHA:-$CANON_TAG}"` construction as `ai-review.yml` and
+  none of its verification — while, unlike ai-review, they **execute** what they
+  fetch (`bash "$SCRIPT"`; `python3 .docs-sync-scripts/*.py`, whose output is
+  committed by the App token that holds the branch-protection bypass).
+  `raw.githubusercontent` serves any commit reachable in the public canon repo,
+  including never-merged fork-PR commits, while the trailing `# ci/vX.Y.Z` reads
+  as released in review. `tests/test_resolver.sh` now drives all four blocks and
+  **derives the required set from the tree**, so a fifth resolver cannot ship
+  without one.
+- **The null-permissive fork guard, fixed on 9 surfaces.** `scanners.yml`
+  documented the defect and fixed it; the v2 reusables every not-yet-migrated
+  consumer still calls did not. `head.repo.fork != true` is null-permissive — a
+  deleted fork on a `reopened` event yields a null `head.repo`, `null != true`
+  is TRUE, and the job runs a fork-origin tree holding `security-events: write`
+  (`fork == false` does not fix it either: GitHub coerces null and false alike).
+  Replaced with the identity form on the `sast`/`dep`/`trivy` job guards, the
+  four SARIF upload guards, `codeql.yml`'s `upload:` selector, and
+  `ai-review.yml`'s `IS_FORK` — the last mattering because a null there fell
+  through to the trust allowlist and would **trust** an allowlisted author
+  pushing from a deleted fork. `composition.yml` is deliberately left alone: its
+  null case fails CLOSED (not exempted → the gate blocks), and the identity form
+  would make a deleted fork exempt.
+  **`tests/test_contract.sh` had been pinning the defective spelling**, so the
+  assertion actively held the bug in place; it now requires the identity form on
+  the job-level `if:` and forbids the null-permissive spelling outside comments.
+
+**PLAN-028 declaration surface.**
+
+- **`enforce_admins: false` could land on the repo's ACTUAL default branch.**
+  The FATAL guard compared promotion branches against `INTEGRATION_BRANCH` —
+  itself declaration-supplied — so declaring `integration_branch` explicitly
+  disarmed it. The reverse of the ordering it was written for (default still
+  `main`, declaration says `dev`) passed the check and stripped admin
+  enforcement from the branch every runtime resolver actually reads.
+  `apply-standards.sh` now refuses both orderings; `check-standards-drift.sh`
+  mirrors it and reports rather than blessing.
+- **The schema was decorative.** `schemas/aidoc-ci-v1.schema.json` declares
+  `additionalProperties: false` at both levels and requires `version`, and no
+  reader enforced any of it — all four checked only "`.branching` is an object".
+  `"promotion_branchs": []` (one transposed letter) therefore read as "not set",
+  took the model default, and applied `enforce_admins: false` to the two
+  branches the operator was explicitly opting **out** of. All four readers now
+  validate keys and version, and the key lists are pinned to the schema by test.
+- **A declaration that fetched but failed to decode was treated as absent** by
+  `check-standards-drift.sh` — no warning, no `FETCH_ERRORS`, a clean
+  single-branch report for a repo that may have declared three. The adjacent
+  bad-JSON arm already warned; this arm did not. (BSD `base64` wants `-D`, so an
+  operator run decodes nothing while CI is fine.)
+- **`pre_push_check.sh` claimed a promotion pass it had not checked.** The
+  no-argument arm — the one that runs on a real `git push` — establishes only
+  that HEAD is the integration branch's remote tip. It cannot see the target, so
+  it can evaluate neither "the target is declared" nor "this is a fast-forward",
+  and it printed `PROMOTION OK` anyway: enough to wave through
+  `git push --force origin dev:main` discarding a hotfix merged onto `main`. It
+  now reports `EMPTY RANGE OK (promotion-shaped; target NOT verified)` and names
+  the two conditions it cannot evaluate. It also no longer sets `rc=0`
+  unconditionally, which erased any earlier failure including the
+  gate-malfunction arm.
+
+**Found by the pre-push review OF THIS FOLD (OPS-0065), not by the round that
+motivated it.** Recorded because the pattern repeats: every fold so far has
+introduced a defect of the same class it was closing.
+
+- **The identity fork guard was keyed to `github.event_name != 'pull_request'`,
+  which is WRONG IN A REUSABLE.** `workflow_call` sees the **caller's** event, so
+  a consumer whose caller is wired to `pull_request_target` made the first clause
+  TRUE and the guard **admitted a live fork the old spelling correctly skipped** —
+  fork code on the self-hosted pool with `security-events: write`. The fix
+  traded a null-permissive hole for an event-permissive one. All 16 sites now
+  enumerate `pull_request`, `pull_request_target` and `pull_request_review`,
+  including the four pre-existing `scanners.yml` / `self-scanners.yml` sites this
+  fold had copied the narrow form FROM, and `REPO_STANDARDS.md` §4.3k no longer
+  prescribes the narrow spelling to consumers.
+- **The `composition.yml` exemption was protected only by prose.** §4.3k bans
+  `head.repo.fork` outside comments and has exactly one legitimate
+  counterexample — `composition.yml`, whose null means "not exempted" and
+  therefore BLOCKS. A mechanical sweep for the banned spelling would have taken
+  the "forks are human-review-only, pass without enforcement" branch and turned
+  the required `composition` context **green with zero review**. Now pinned
+  POSITIVELY by `tests/test_contract.sh`, along with the six converted surfaces
+  that had no assertion at all.
+- **The new promotion FATAL asserted a fact it did not have.**
+  `apply_default_branch()` falls back to the literal `main` when the repo read
+  fails, so a correctly adopted repo whose real default is `dev` would be refused
+  with "set the default branch to dev" — already true. Both the guard and its
+  drift mirror now branch on whether the default branch was actually resolved,
+  and say so instead of naming a branch.
+- **The `secret-scan.yml` upload comment pointed at a job guard that does not
+  exist there** — an invitation to "apply the rule to every surface" by adding
+  one, which would disable secret scanning on fork PRs, the highest-value case.
+- **A new test asserted a string the code could not emit.** The M1 driver
+  sources the real `resolve_branch_declaration` but stubs `apply_default_branch`,
+  so the `APPLY_DEFAULT_BRANCH_RESOLVED` flag the fix introduced was never set
+  and the guard took its *unresolved-read* arm. Both arms are now driven
+  explicitly. Caught because the reviewer re-ran the suite instead of trusting
+  the quoted figure — the fold's own suite number was measured before its last
+  fix landed.
+- **A test asserted the version clause and was satisfied by a COMMENT.** The
+  per-reader `grep` for `and (.version == 1)` matched the marker comment that
+  quotes the clause while explaining it, so the assertion stayed green for
+  `apply-standards.sh` under a mutation that deleted the real clause. Found by
+  mutation-testing the assertion itself. Now excludes comment lines.
+- **A new assertion reproduced the SIGPIPE inversion `CLAUDE.md` documents.**
+  `grep -vE … | grep -q …` exits on first match, SIGPIPEs the upstream grep, and
+  under `pipefail` reports 141 — so the assertion redded at random, on a
+  *different file* on each of two consecutive runs of an unchanged tree. It now
+  decides on captured OUTPUT, not pipeline status, which is the rule the repo
+  already had. Three consecutive runs confirm determinism.
+- **The behavioural declaration battery drove a hand-retyped copy of the jq
+  filter**, so deleting `and (.version == 1)` from all four readers left it
+  green. The filter is now marker-delimited in `apply-standards.sh` and
+  EXTRACTED, matching the FT28 pattern.
+- **Three conformance-ledger rows still cited the null-permissive spelling as
+  canon** (`PLAN-025` D27 + Claim 30, `PLAN-023` Claim 5), pointing at
+  `dep-scan.yml:57` — now a *comment* mentioning the banned string, so a
+  grep-shaped verifier would still "find" its evidence. Amended.
+- **`docs/security.md` §2.2, the document that owns fork-PR handling**, still
+  illustrated the boundary with `if pr.head.repo.fork:`. Updated with the
+  identity rule, the caller-event caveat, and the `composition.yml` exemption.
+- **The peel-verify harness pre-defined BOTH token names**, so a resolver
+  referencing `${GITHUB_TOKEN}` in a step that sets `GH_TOKEN` stayed green while
+  dying under the real `set -u`. It now runs `set -euo pipefail` and exports only
+  the names that resolver's own `env:` declares.
+
+**Docs of record.**
+
+- `MIGRATION_v4.0.0.md` was **silent on PLAN-028 entirely** — the whole opt-in
+  branching model, the adoption step order, and the one unconditional
+  `--update` effect. Added.
+- `BRANCH_PROTECTION.md` told operators to keep `enforce_admins: true` and
+  promised `--check` would flag drift; canon ships two deliberate exceptions and
+  taught the drift checker not to report one of them. Both now documented.
+- `docs/runners.md` still described the runner image's `gh` pin as
+  self-expiring and named #435 as the pending fix; #435 shipped — `gh` installs
+  from an immutable release asset with per-arch SHA-256 verification.
+- `docs/README.md` indexed no v4 migration guide and its "Planned" footer still
+  pointed at `MIGRATION_v2.0.0.md`, two MAJORs behind; workflow count corrected
+  12 → 15. `UPDATE_GUIDE.md`'s v4 table gained the trigger-arm row its own §3
+  already documented. `composition.yml`'s remediation hint pointed at
+  `scripts/ci-runner/build-image.sh`, a path that does not exist in this repo.
+
 ### Added — the enforcement surfaces for the three-branch model (PLAN-028 Phase B)
 
 The branching standard shipped documented-but-unenforceable. Phase B builds the

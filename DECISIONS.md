@@ -3395,3 +3395,61 @@ effect; the manifest's own `_comment` now warns at the point of edit.
   advisory. Recorded here so the trade is not mistaken for a permanent one.
 - The trigger-arm change reaches consumers via `install.sh --update` **only**.
   `--repin` rewrites `uses:` tag strings and cannot deliver a caller-body edit.
+
+## CI-0050: a plan's verification does not survive another plan editing its files (2026-08-23)
+
+**Context.** PLAN-027 §3 recorded Phase A as "EXECUTED and verified 2026-08-22
+(suite 2037/0, every guard mutation-tested)" — a true statement about
+`8ccd168`. PLAN-028 Phase B then landed (#519) and modified `scripts/release.sh`,
+`install/apply-standards.sh`, `sync/check-standards-drift.sh` and both
+`pre_push_check.sh` copies. Four commits sat between the verification and HEAD,
+and neither plan referenced the other.
+
+**What it cost.** #519 added `install/templates/aidoc-ci.json`, a new
+manifest-derived cold-start template. `coldstart_material_changes` reads both
+sides of the diff with `git show <rev>:<path> | sed`; for a path that exists on
+only one side, `git show` exits 128 and `set -o pipefail` makes that the
+pipeline's status. The function died under `set -e`.
+
+**Three properties made it invisible, and they are the reusable part:**
+
+1. **It failed asymmetrically.** `tag` calls the function inside
+   `changed="$(…)"`. Bash does not propagate a command-substitution subshell's
+   `set -e` death to the parent, so `tag` behaved perfectly. Only the plain call
+   — the `_coldstart-changed` seam — actually aborted. **The same function was
+   simultaneously correct and broken depending on its call form.**
+2. **Both consumers of the broken seam read "empty" as "nothing changed."**
+   `ft30-dry-run.sh --check` reported it could not compute the surface;
+   `tests/test_scripts.sh` captured it as `2>/dev/null … || true` and took its
+   documented vacuous branch, printing *"both report an unchanged cold-start
+   surface (auto-waive state)"* while 32 files had changed.
+3. **The suite stayed green, and its own comment said why.** The floor at that
+   assertion reads *"Non-vacuous for this release only by accident (install.sh
+   and manifest.json both changed)."* The accident stopped holding and nothing
+   noticed.
+
+**Decision.**
+
+- **A plan that cites a suite figure as evidence MUST cite the commit it was
+  measured at**, and any plan whose phases execute against files another plan is
+  editing must carry a cross-reference. PLAN-027 and PLAN-028 now do.
+- **A review round is scoped to a DIFF RANGE, not to a plan.** Where commits land
+  after a review, the range from the reviewed commit to HEAD gets its own round
+  before the artifact ships. PLAN-027 §3a is that round.
+- **Never let a test swallow a non-zero exit from the thing it is testing.**
+  `cmd 2>/dev/null | sort || true` converts a crash into an empty result that
+  reads as a valid answer. Where a seam's *exit code* is part of its contract,
+  assert the exit code.
+- **A guard reachable by two call forms must be driven through BOTH.** The gate
+  fixture drove `tag` exhaustively and never drove the plain call, which is the
+  only one that could fail.
+
+**Consequence.** `ci/v4.0.0` is cut from a tree whose release mechanism has been
+exercised through both entry points, with the add-template and delete-template
+cases (the latter being F1 itself) under test.
+
+**Still open, and NOT closed by this entry:** the 🔴 FT-30 cold-start dry-run
+(owed — `release.sh tag` names 32 changed files) and the 🔴 MAJOR-bump LiteLLM
+smoke, which has **never run against the post-CI-0040 workflow** and cannot run
+on canon as written (0 registered runners; the proxy is private-network). Both
+are founder-executed and tracked in PLAN-027 §3a.
