@@ -629,19 +629,80 @@ if [ -f actions/trivy-scan/action.yml ]; then
   assert_absent "$sclist" "helm" "trivy: helm NOT in --misconfig-scanners (fetches remote charts)"
   assert_contains "$ts" "sha256sum --check --strict" "trivy: tarball checksum-verified (D20)"
 fi
-# D23 IS NOT SAST-ONLY (#425), and it is not ACTION-only either. Four shipped
-# surfaces run a scanner: the two composite actions AND the two `workflow_call`
+# D23 IS NOT SAST-ONLY (#425), and it is not ACTION-only either. SIX shipped
+# surfaces run a scanner: the three composite actions AND the three `workflow_call`
 # reusables of the same names, which carry their own inline bodies and are what
-# `install/templates/workflows/{dep,trivy}-scan.yml` pin. Assert all four, then
+# `install/templates/workflows/{dep,trivy,sast}-scan.yml` pin. Assert all six, then
 # DRIVE them — a static assertion passes against code that deletes nothing.
+#
+# THE LIST IS THE GUARD, AND IT WAS THE HOLE. This read "Four shipped surfaces"
+# and named four, omitting BOTH sast surfaces — the origin D23 was reproduced
+# against. #425 hardened the two extensions and left the origin behind, and
+# because the omitted surfaces were never driven, nothing went red: the shipped
+# `.github/workflows/sast-scan.yml` carried `-type f` with no post-condition, and
+# the suite was fully green over it. A surface missing from this list is a surface
+# with NO D23 coverage at all, so the count in this comment is load-bearing —
+# the `d23_listed` vs `d23_expected` assertion below pins it against the TREE
+# rather than against this prose. (This comment named a `d23_surface_count`
+# variable that does not exist; a reader verifying the claim would have found
+# nothing and reasonably concluded the pin was aspirational.)
 #
 # MEASURED bypasses this closes (pinned tool versions):
 #   trivy 0.72.0        root `.trivyignore` / `trivy.yaml`  -> misconfigs 3 -> 0
 #   osv-scanner 2.4.0   `osv-scanner.toml` beside a manifest -> results 24 -> 0
 #   osv-scanner 2.4.0   `.gitignore` naming a manifest       -> 70 -> 24 (targeted,
 #                       exit 1 so D12's zero-coverage arm never fires) or rc=128
-D23_SURFACES="actions/trivy-scan/action.yml:trivy:action actions/dep-scan/action.yml:dep:action .github/workflows/trivy-scan.yml:trivy:job .github/workflows/dep-scan.yml:dep:job"
-d23_end() { if [ "$1" = trivy ]; then printf '# STATIC scanners ONLY'; else printf '# `--no-ignore` IS A D23 DEFENSE'; fi; }
+#   semgrep 1.170.0     `.semgrepignore` containing `*`      -> coverage -> 0
+D23_SURFACES="actions/trivy-scan/action.yml:trivy:action actions/dep-scan/action.yml:dep:action actions/sast-scan/action.yml:sast:action .github/workflows/trivy-scan.yml:trivy:job .github/workflows/dep-scan.yml:dep:job .github/workflows/sast-scan.yml:sast:job"
+d23_end() {
+  case "$1" in
+    trivy) printf '# STATIC scanners ONLY' ;;
+    sast)  printf '# Static AST scan' ;;
+    *)     printf '# `--no-ignore` IS A D23 DEFENSE' ;;
+  esac
+}
+
+# The list above is hand-maintained, which is exactly how sast fell out of it.
+# Derive the truth from the TREE and compare: any file under actions/ or
+# .github/workflows/ whose name ends -scan is a scanner surface and owes D23.
+# A new scanner added without a D23_SURFACES entry reds HERE rather than shipping
+# an ungated gate.
+# `secret-scan` is EXCLUDED, and not by oversight: gitleaks' config is
+# `.gitleaks.toml`, which canon SHIPS as a template (`install/templates/.gitleaks.toml`)
+# and every adopter is meant to carry. Stripping it would delete the gate's own
+# configuration — the coverage defense removing coverage, the failure mode the
+# trivy block's depth-1 rule exists to avoid. Its PR-supplied-config exposure is
+# handled gate-side by pinning `--config` instead.
+# ANCHORED exclusion, not a substring. `grep -v 'secret-scan'` also removes
+# `.github/workflows/self-secret-scan.yml` — correct today, but by coincidence:
+# a future `self-sast-scan.yml` self-caller would be INCLUDED and would red this
+# guard for a file that owes no D23 coverage at all. Exclude the secret-scan
+# surfaces by name and self-callers by rule.
+# Globs + a filter loop, not `ls | grep` (SC2010): a glob yields the real names
+# and cannot be confused by a filename `ls` would mangle.
+d23_expected=""
+for _cand in actions/*-scan/action.yml .github/workflows/*-scan.yml; do
+  [ -e "$_cand" ] || continue
+  # MATCH ON THE SURFACE NAME, not the basename. For `actions/<name>/action.yml`
+  # the basename is always `action.yml`, so both filters below were DEAD on that
+  # arm — a future `actions/secret-scan/action.yml` would have entered the
+  # expected set and redded the derivation guard for a file that owes no D23
+  # coverage, while the comment claimed it was excluded by name.
+  case "$_cand" in
+    actions/*) _surface="$(basename "$(dirname "$_cand")")" ;;
+    *)         _surface="$(basename "$_cand" .yml)" ;;
+  esac
+  case "$_surface" in
+    secret-scan) continue ;;   # canon SHIPS .gitleaks.toml — see above
+    self-*)      continue ;;   # self-callers own no D23 surface of their own
+  esac
+  d23_expected="$d23_expected$_cand
+"
+done
+d23_expected="$(printf '%s' "$d23_expected" | sort | tr '\n' ' ')"
+d23_listed="$(printf '%s\n' $D23_SURFACES | sed 's/:.*//' | sort | tr '\n' ' ')"
+assert_eq "$d23_listed" "$d23_expected" \
+  "D23_SURFACES covers EVERY scanner surface in the tree (a missing one has no D23 coverage at all)"
 
 for _e in $D23_SURFACES; do
   _act="${_e%%:*}"; _rest="${_e#*:}"; _kind="${_rest%%:*}"; _shape="${_rest##*:}"
@@ -692,6 +753,12 @@ _d23_fixture() {
   mkdir -p "$1/svc"
   ln -sf /etc/hostname "$1/svc/osv-scanner.toml"
   : > "$1/sub/README.md"
+  # semgrep's pair. `.semgrepignore` is resolved from CWD, but a nested one is
+  # swept too — no repo legitimately SCANS a file by these names, so recursion
+  # costs nothing. The SYMLINK is the reproduced bypass (`-type f` misses it).
+  : > "$1/.semgrepignore"; : > "$1/.semgreprc"
+  : > "$1/sub/deep/.semgrepignore"
+  ln -sf /etc/hostname "$1/svc/.semgrepignore"
   # SCANNABLE CONTENT that shares a config name. `deploy/trivy.yaml` is a
   # plausible Kubernetes manifest and kubernetes is in --misconfig-scanners;
   # MEASURED: trivy reads its config from the working directory ONLY, so a
@@ -715,6 +782,11 @@ for _e in $D23_SURFACES; do
     assert_fail "[ -L '$_d23/t/sub/.trivyignore' ]" "$_tag: the SYMLINKED .trivyignore is GONE (the reproduced bypass)"
     assert_ok   "[ -e '$_d23/t/deploy/trivy.yaml' ]" \
       "$_tag: a NESTED trivy.yaml SURVIVES — trivy reads config from CWD only, so stripping it would delete coverage"
+  elif [ "$_kind" = sast ]; then
+    assert_fail "[ -e '$_d23/t/.semgrepignore' ]"           "$_tag: the root .semgrepignore is actually GONE (not just rc=0)"
+    assert_fail "[ -e '$_d23/t/.semgreprc' ]"               "$_tag: the root .semgreprc is actually GONE"
+    assert_fail "[ -e '$_d23/t/sub/deep/.semgrepignore' ]"  "$_tag: a DEEPER .semgrepignore is GONE"
+    assert_fail "[ -L '$_d23/t/svc/.semgrepignore' ]"       "$_tag: a SYMLINKED .semgrepignore is GONE (the reproduced bypass)"
   else
     assert_fail "[ -e '$_d23/t/sub/osv-scanner.toml' ]"      "$_tag: a nested osv-scanner.toml is GONE (config is per-directory)"
     assert_fail "[ -e '$_d23/t/sub/deep/osv-scanner.toml' ]" "$_tag: a DEEPER osv-scanner.toml is GONE"
@@ -756,6 +828,24 @@ for _e in $D23_SURFACES; do
   _out="$( cd "$_d23/t" && bash "$_d23/blk.sh" 'no/such/dir' 2>&1 || true )"
   assert_contains "$_out" "not an existing directory" "$_tag: a bad scan-path is diagnosed as a bad scan-path"
 
+  # (e2) A REAL, EXISTING SUBDIRECTORY must now be REFUSED. This is the coverage
+  # half of scan-path validation, and it is separate from cases (c) and (d):
+  # `-delete` is caught by the leading-`-` guard and `no/such/dir` by the
+  # is-a-directory guard, so BOTH pass while a scan-path that is merely NARROW
+  # sails through. `scan-path: sub` is an existing directory with no leading `-`
+  # that scans a code-free tree, exits 0, writes a valid empty SARIF, and the
+  # gate goes green — the same bypass D26 closes for `config`, through the other
+  # door. Assert the coverage message specifically, not just "something refused":
+  # the other two guards also refuse some inputs, and a generic ::error:: check
+  # would certify a validation that is not there.
+  _d23_fixture "$_d23/t"
+  _out="$( cd "$_d23/t" && bash "$_d23/blk.sh" 'sub' 2>&1 || true )"
+  assert_fail "( cd '$_d23/t' && bash '$_d23/blk.sh' 'sub' >/dev/null 2>&1 )" \
+    "$_tag: an EXISTING but narrower scan-path is REFUSED (a subtree is a coverage choice)"
+  assert_contains "$_out" "must be the repo root" \
+    "$_tag: ...refused by the COVERAGE guard, naming it — not incidentally by another check"
+  assert_ok "[ -e '$_d23/t/sub/README.md' ]" "$_tag: ...and it refused BEFORE deleting anything"
+
   # (e) mktemp failure must not abort before the ::error:: — the bare-assignment
   # shape the block's own `|| fst=$?` comment exists to prevent.
   _d23_fixture "$_d23/t"
@@ -783,8 +873,15 @@ fi
 
 if [ -f actions/sast-scan/action.yml ]; then
   ss="$(runbody actions/sast-scan/action.yml)"
-  # The strip must be an executed `find … -delete`, not a mention.
-  strip="$(printf '%s' "$ss" | grep -E "find .*semgrepignore.*-delete" || true)"
+  # The strip must be EXECUTED, not merely described. This matched a literal
+  # `find … -delete` one-liner until sast was brought onto the shared `d23_scan`
+  # shape, where the find action arrives via "$@" and the pattern can no longer
+  # appear on any line — the assertion was measuring the STRIP'S SPELLING, not
+  # its effect, and would have gone red on the correct code. It is narrowed to
+  # the one thing still worth asserting statically here; the EFFECT (the file is
+  # actually gone, in both directions, including the symlink form) is asserted by
+  # the driven D23 cases above, which now cover this surface.
+  strip="$(printf '%s' "$ss" | grep -vE '^[[:space:]]*#' | grep -E "d23_scan -print -delete" || true)"
   if [ -n "$strip" ]; then
     _g "sast: PR-supplied .semgrepignore is DELETED before scanning (D23 — a verified gate bypass)"
   else
@@ -793,6 +890,90 @@ if [ -f actions/sast-scan/action.yml ]; then
   assert_contains "$ss" "--metrics off" "sast: no telemetry (D26)"
   assert_contains "$ss" '--config "$CONFIG"' "sast: explicit ruleset, never repo-local discovery (D26)"
 fi
+
+# D26 IS NOW ENFORCED, NOT ASSERTED IN PROSE. "Explicit --config → a PR cannot
+# inject rules" was true of semgrep's DISCOVERY and false of the INPUT: `config`
+# comes from the caller, and on `on: pull_request` the caller's file comes from
+# the PR HEAD. semgrep's --config takes a registry ref, a LOCAL PATH, or a URL,
+# so `config: ./empty.yaml` gives a zero-rule scan that exits 0 with a legitimate
+# empty SARIF and the gate goes green having checked nothing. Both sast surfaces
+# must refuse anything outside the registry namespaces — and both must be
+# checked: the reusable and the composite action carry independent bodies, which
+# is exactly how D23 stayed unfixed on one of them.
+for _sg in actions/sast-scan/action.yml .github/workflows/sast-scan.yml; do
+  [ -f "$_sg" ] || continue
+  _shape=action; case "$_sg" in .github/*) _shape=job ;; esac
+  _sgb="$(anybody "$_sg" "$_shape" | grep -vE '^[[:space:]]*#' || true)"
+  _b="$(basename "$_sg")"
+  # DRIVE THE SHIPPED TEXT. The first draft of this block ran a hand-retyped
+  # `case "$CONFIG" in p/*|r/*)` inside the test and never executed `$_guard` —
+  # so it asserted bash's `case` semantics, not the gate. It would have stayed
+  # green through a fully INVERTED guard (arms swapped: registry refs refused,
+  # local paths accepted), because the two static `assert_contains` around it
+  # match text that survives the swap, and `exit 1` appears ~8 times in that body
+  # anyway. Extract and RUN it.
+  _guard="$(printf '%s\n' "$_sgb" | sed -n '/^[[:space:]]*case "\$CONFIG" in/,/^[[:space:]]*esac/p')"
+  _glen="${#_guard}"
+  assert_ok "[ \"$_glen\" -gt 40 ]" "$_b: the config guard was located (${_glen} chars)"
+  # `cfg_safe` is set on the line ABOVE the extracted range and is interpolated
+  # into the refusal message; seed it so the extracted block runs standalone.
+  _drive_cfg() { CONFIG="$1" cfg_safe="$1" bash -c "$_guard"; }
+  for _ok in 'p/default' 'p/security-audit' 'p/python'; do
+    assert_ok "_drive_cfg '$_ok'" "$_b: '$_ok' is ACCEPTED (a gate-approved ruleset must still work)"
+  done
+  # The refused set now includes the two shapes a NAMESPACE check let through —
+  # an individual rule and a narrow pack — because a one-rule scan is a green
+  # gate that checked nothing, which is the defect D26 names.
+  for _bad in './empty.yaml' 'https://evil.example/x.yaml' '/tmp/x.yaml' \
+              'r/generic.comment.something' 'p/comment' 'p/../s/attacker-snippet'; do
+    assert_fail "_drive_cfg '$_bad'" "$_b: '$_bad' is REFUSED (a PR-chosen ruleset is a coverage choice)"
+  done
+done
+
+# The shipped callers must not themselves violate the rule they will now be
+# refused for — a template that ships a non-registry config bricks on adoption.
+for _sc in install/templates/workflows/sast-scan.yml install/templates/workflows/scanners.yml; do
+  [ -f "$_sc" ] || continue
+  # PARSE THE YAML, do not grep for a quoting style. The first draft matched
+  # `config: *'[^']+'` — single quotes REQUIRED. `sast-scan.yml:31` ships
+  # `config: 'p/default'` and matched; `scanners.yml` ships `config: p/default`
+  # UNQUOTED and did not, so `_cfgs` was empty, the loop body was skipped by its
+  # own `[ -n ]` guard, and ZERO assertions were emitted for the consolidated v3
+  # caller — the one every v3 adopter installs, and the whole reason this check
+  # exists. A check that silently covers nothing reads exactly like a check that
+  # passed.
+  _cfgs="$(python3 - "$_sc" <<'PY_CFG'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+for j in (d.get("jobs") or {}).values():
+    if not isinstance(j, dict):
+        continue
+    # v3 shape: a step invoking the sast composite action.
+    for st in (j.get("steps") or []):
+        if isinstance(st, dict) and "/actions/sast-scan" in str(st.get("uses", "")):
+            c = (st.get("with") or {}).get("config")
+            if c:
+                print(c)
+    # v2 shape: the job itself calls the sast reusable.
+    if "/sast-scan.yml" in str(j.get("uses", "")):
+        c = (j.get("with") or {}).get("config")
+        if c:
+            print(c)
+PY_CFG
+)"
+  # FLOOR. Without it a parse failure, a renamed input or a restructured template
+  # empties `_cfgs` and this whole block vanishes with zero failures — the same
+  # silent-vacuum shape the quoting bug produced.
+  assert_ok "[ -n \"$_cfgs\" ]" \
+    "$(basename "$_sc"): a sast config: value was actually found to check (empty = this check covers nothing)"
+  while IFS= read -r _c; do
+    [ -n "$_c" ] || continue
+    case "$_c" in
+      p/default|p/security-audit|p/python) _g "$(basename "$_sc"): ships config '$_c' (gate-approved — passes the D26 guard)" ;;
+      *) _r "$(basename "$_sc"): ships config '$_c', which the D26 guard REFUSES — the template would brick on adoption" ;;
+    esac
+  done <<< "$_cfgs"
+done
 
 echo "== verdict steps fail closed, and evaluate every check (D6/§3.2c) =="
 # THE GATE-BYPASS CLASS. Deleting the verdict step from BOTH quick-gates variants
@@ -1043,6 +1224,87 @@ for _row in "${_vv_rows[@]}"; do
   [ "$variants" = "yes" ] || continue
   assert_ok "[ -f 'install/templates/$priv' ]" \
     "$b: the private variant it declares ($priv) is actually on disk"
+done
+
+# THE SAME RULE, VIA THE OTHER ROUTE — and this is the one that was blind.
+# The loop above only fires on a template carrying a LITERAL `runs-on:
+# ubuntu-latest`. A v2-shaped caller has no `runs-on:` at all: it passes
+# `runner_labels` to a reusable, and when it passes NOTHING the reusable's own
+# default decides. `codeql.yml` was exactly that — no `runs-on:`, no
+# `runner_labels` in `with:`, and a reusable defaulting to `"ubuntu-latest"` —
+# so `case "$rl" in *ubuntu-latest*)` never matched and it fell through the
+# `*) continue` arm. It was the ONE generic surface shipping with no private
+# pair, and the effect is identical to the literal case: on a private repo the
+# job QUEUES FOREVER (no hosted minutes; `timeout-minutes` cannot fire on a job
+# that never starts). A commented-out `# runner_labels:` override does not
+# count — `add_surface_mode` writes the resolved template verbatim.
+_eff_rows=()
+while IFS= read -r _r; do _eff_rows+=("$_r"); done < <(python3 - <<'PY_EFF'
+import json, os, yaml
+
+m = json.load(open("install/templates/manifest.json"))
+for e in m.get("files") or []:
+    t = e.get("template") or ""
+    if not t.startswith("workflows/"):
+        continue
+    f = os.path.join("install/templates", t)
+    if not os.path.exists(f):
+        continue
+    d = yaml.safe_load(open(f)) or {}
+    jobs = (d.get("jobs") or {})
+    for j in jobs.values():
+        if not isinstance(j, dict):
+            continue
+        uses = str(j.get("uses") or "")
+        if "/aidoc-flow-ci/.github/workflows/" not in uses:
+            continue
+        if j.get("runs-on") is not None:
+            continue                      # literal form — the loop above owns it
+        with_ = j.get("with") or {}
+        if "runner_labels" in with_:
+            continue                      # explicit, whatever it is
+        # Nothing passed: the REUSABLE's default decides.
+        reusable = ".github/workflows/" + uses.split("/.github/workflows/")[1].split("@")[0]
+        if not os.path.exists(reusable):
+            continue
+        rd = yaml.safe_load(open(reusable)) or {}
+        wc = ((rd.get("on") or rd.get(True) or {}).get("workflow_call") or {})
+        dflt = str(((wc.get("inputs") or {}).get("runner_labels") or {}).get("default", ""))
+        if "ubuntu-latest" not in dflt:
+            continue
+        v = e.get("visibility_variants") or {}
+        ok = bool(v.get("public") and v.get("private"))
+        print("%s|%s|%s" % (t, "yes" if ok else "no", v.get("private") or ""))
+PY_EFF
+)
+# FLOOR, for the reason `tests/test_contract.sh`'s checkout sweep carries one.
+# This generator prints to stdout and its traceback to stderr, so `import yaml`
+# raising, a manifest key change, or the reusable-lookup path failing to resolve
+# all yield an EMPTY array — and the loop below then runs zero times, silently
+# deleting the codeql regression guard that is the reason `codeql-private.yml`
+# exists. Same author, same change, floor applied on one surface and not this one.
+assert_ok "[ \"${#_eff_rows[@]}\" -ge 1 ]" \
+  "the reusable-default sweep found rows to check (got ${#_eff_rows[@]}) — an empty result is a parse failure, not a clean tree"
+for _row in "${_eff_rows[@]}"; do
+  IFS='|' read -r tpl variants priv <<< "$_row"
+  [ -n "$tpl" ] || continue
+  b="$(basename "$tpl")"
+  assert_eq "$variants" "yes" \
+    "$b: passes no runner_labels and the reusable defaults to ubuntu-latest, so it needs a private variant (OPS-0049 — this is codeql's blind spot)"
+  [ "$variants" = "yes" ] || continue
+  assert_ok "[ -f 'install/templates/$priv' ]" \
+    "$b: the private variant it declares ($priv) is on disk"
+  # And the variant must actually SELECT the pool — a private variant that
+  # forgot the labels is the same hang wearing the fix's name.
+  assert_contains "$(python3 - "install/templates/$priv" <<'PY_PRL'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+for j in (d.get("jobs") or {}).values():
+    if isinstance(j, dict) and (j.get("with") or {}).get("runner_labels"):
+        print(str(j["with"]["runner_labels"])); raise SystemExit(0)
+print("<NONE>")
+PY_PRL
+)" "self-hosted" "$(basename "$priv"): actually passes the self-hosted pool, not just documents it"
 done
 
 echo "== links-external actually reports (D42) =="
@@ -1632,5 +1894,171 @@ _bt="$( CONFIG_PATH="$_d11/badtype.yaml" RUN_STAGE=pre-commit bash "$_d11/guard.
 assert_contains "$_bt" "::error::" "D11: a non-iterable stages: fails with a stated cause"
 assert_absent   "$_bt" "Traceback"  "D11: ...not a raw traceback"
 rm -rf "$_d11"
+
+echo "== canon EXERCISES its own v3 composite actions (self-quick-gates / self-scanners) =="
+# THE GAP THESE CLOSE: before them, `grep -r 'aidoc-flow-ci/actions/'
+# .github/workflows/` returned NOTHING. All four self-callers invoked the pre-v3
+# `workflow_call` reusables, no consumer called the composite actions either, and
+# the entire v3 layer was verified only by the text-parsing assertions in THIS
+# file. A static assertion cannot find a runtime fault, and this surface has had
+# two (#349, #436).
+#
+# Assert (a) they exist and run the LOCAL tree, and (b) they do not drift from
+# the templates consumers actually adopt — a self-exerciser running a different
+# configuration from the shipped one proves the wrong thing.
+_pairs="self-quick-gates:quick-gates self-scanners:scanners"
+for _pair in $_pairs; do
+  _self=".github/workflows/${_pair%%:*}.yml"
+  _tmpl="install/templates/workflows/${_pair##*:}.yml"
+  _sb="$(basename "$_self")"
+  if [ ! -f "$_self" ]; then
+    _r "$_sb missing — the v3 composite actions are exercised NOWHERE (they were, until #514+)"
+    continue
+  fi
+  _g "$_sb exists"
+
+  # (a) LOCAL references. A `@ci/vX.Y.Z` pin here would exercise the code that
+  # already SHIPPED and stay blind to the change under review — and would
+  # startup_failure on every release prep (FT-21), since the prep bumps pins to a
+  # tag that does not exist yet.
+  _uses="$(grep -oE 'uses: [^ ]+' "$_self" | grep -F '/actions/' || true)"
+  assert_contains "$_uses" "./actions/" "$_sb: invokes the LOCAL actions (exercises this tree, not the released tag)"
+  assert_absent "$_uses" "aidoc-flow-ci/actions/" "$_sb: ...and does NOT pin the released tag (that would test shipped code)"
+
+  # (b) SAME ACTION SET as the template consumers get.
+  _self_acts="$(grep -oE 'uses: \./actions/[a-z-]+' "$_self" | sed 's|.*/||' | sort | tr '\n' ' ')"
+  _tmpl_acts="$(grep -oE 'uses: vladm3105/aidoc-flow-ci/actions/[a-z-]+@' "$_tmpl" | sed 's|.*/||; s|@||' | sort | tr '\n' ' ')"
+  assert_eq "$_self_acts" "$_tmpl_acts" \
+    "$_sb: exercises exactly the action set $(basename "$_tmpl") ships (no silently-skipped check)"
+
+  # (b2) SAME LOAD-BEARING INPUTS. The templates document, at length, that every
+  # input is passed explicitly BECAUSE a changed default would silently change
+  # what the gate does. A self-exerciser that inherits a default is exercising a
+  # configuration nobody adopts.
+  _self_with="$(python3 - "$_self" <<'PY_W'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+out = []
+for j in (d.get("jobs") or {}).values():
+    for st in (j.get("steps") or []):
+        if isinstance(st, dict) and "./actions/" in str(st.get("uses", "")):
+            n = str(st["uses"]).rsplit("/", 1)[1]
+            out.append("%s:%s" % (n, ",".join(sorted((st.get("with") or {}).keys()))))
+print(" ".join(sorted(out)))
+PY_W
+)"
+  _tmpl_with="$(python3 - "$_tmpl" <<'PY_W2'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+out = []
+for j in (d.get("jobs") or {}).values():
+    for st in (j.get("steps") or []):
+        u = str(st.get("uses", "")) if isinstance(st, dict) else ""
+        if "/aidoc-flow-ci/actions/" in u:
+            n = u.split("/actions/")[1].split("@")[0]
+            out.append("%s:%s" % (n, ",".join(sorted((st.get("with") or {}).keys()))))
+print(" ".join(sorted(out)))
+PY_W2
+)"
+  # Both sides come from separate python blocks; if BOTH fail to parse they are
+  # both "" and `assert_eq` passes on a comparison of two nothings. Floor first.
+  assert_ok "[ -n \"$_self_with\" ] && [ -n \"$_tmpl_with\" ]" \
+    "$_sb: both input sets were actually extracted (two empty strings compare equal)"
+  assert_eq "$_self_with" "$_tmpl_with" \
+    "$_sb: passes the SAME inputs as $(basename "$_tmpl") (an input added to one and not the other is drift)"
+
+  # (c) The verdict step must survive — it is what makes collect-then-fail real.
+  assert_contains "$(cat "$_self")" "name: verdict" "$_sb: keeps the collect-then-fail verdict step"
+
+  # (d) EVERY PATH-VALUED INPUT MUST RESOLVE IN CANON'S OWN TREE.
+  #
+  # The drift guard above compares the self-caller to the TEMPLATE, and the
+  # template is correct — consumers receive `.lychee.toml`, `.pre-commit-config.yaml`
+  # and the rest from the manifest at install time. Canon does not install its own
+  # templates, so a path that is right for a consumer can be absent here, and
+  # "matches the template" says nothing about it.
+  #
+  # `actions/links` REFUSES a requested-but-missing `config-file` rather than
+  # falling back to lychee defaults (deliberately — the fallback silently drops
+  # the tolerance profile). Canon had no root `.lychee.toml` and no `self-links`
+  # caller had ever needed one, so `self-quick-gates` would have exited 1 on its
+  # links step on EVERY run: a permanently-red workflow whose stated purpose is
+  # that a red means something. Caught in pre-push review, not by this suite —
+  # this assertion is why it would be caught next time.
+  while IFS= read -r _pv; do
+    [ -n "$_pv" ] || continue
+    assert_ok "[ -e '$_pv' ]" \
+      "$_sb: the input path '$_pv' EXISTS in canon's own tree (a consumer gets it from the manifest; canon does not)"
+  done < <(python3 - "$_self" <<'PY_PATHS'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+for j in (d.get("jobs") or {}).values():
+    if not isinstance(j, dict):
+        continue
+    for st in (j.get("steps") or []):
+        if not (isinstance(st, dict) and "./actions/" in str(st.get("uses", ""))):
+            continue
+        for k, v in (st.get("with") or {}).items():
+            v = str(v)
+            # A repo-relative path, not a glob/mode/flag/registry-ref. Multi-line
+            # values (the markdownlint globs) and `!`-prefixed exclusions are not
+            # paths. Neither is a semgrep REGISTRY ref: `p/default` contains a
+            # slash and looks path-shaped, but D26 exists precisely because it is
+            # resolved from the registry and must NEVER be a local path — the same
+            # namespaces the sast guard allowlists are excluded here, so the two
+            # cannot disagree about what `p/…` means.
+            if "\n" in v or v.startswith("!") or "*" in v:
+                continue
+            if v.startswith("p/") or v.startswith("r/"):
+                continue
+            if v.startswith(".") or "/" in v:
+                print(v)
+PY_PATHS
+)
+done
+
+# CANON'S OWN .lychee.toml MUST MATCH THE ONE IT SHIPS. `self-quick-gates` passes
+# `config-file: .lychee.toml`, and `actions/links` REFUSES a requested-but-missing
+# config rather than falling back — so the root copy is load-bearing, and canon
+# dogfooding a DIFFERENT tolerance profile from the one consumers receive is the
+# Wave-0 defect self-adoption exists to prevent.
+#
+# This assertion was CITED by `.lychee.toml`'s own header before it existed —
+# "tests/test_actions.sh asserts the two agree" was written into canon while
+# nothing compared the files. An unenforced claim in canon is the class this repo
+# records as costing the most downstream, and it landed inside a fold that was
+# correcting two other overclaims. Compare the SETTINGS, ignoring comments: the
+# two headers differ deliberately (one explains why the root copy exists).
+if [ -f .lychee.toml ] && [ -f install/templates/.lychee.toml ]; then
+  _ly_root="$(grep -vE '^[[:space:]]*(#|$)' .lychee.toml || true)"
+  _ly_tmpl="$(grep -vE '^[[:space:]]*(#|$)' install/templates/.lychee.toml || true)"
+  assert_ok "[ -n \"$_ly_root\" ]" ".lychee.toml has settings to compare (a comment-only file would compare equal to anything)"
+  assert_eq "$_ly_root" "$_ly_tmpl" \
+    ".lychee.toml matches the template canon ships (canon must not dogfood a different tolerance profile)"
+else
+  _r ".lychee.toml missing at the repo root — self-quick-gates' links step REFUSES a missing config-file and would be red on every run"
+fi
+
+# self-scanners CANNOT run on the pool (canon is public and has no runner of its
+# own; an unmatched label queues forever, D16), and it must KEEP the D27 fork
+# guard, which on a public repo is load-bearing rather than decorative.
+if [ -f .github/workflows/self-scanners.yml ]; then
+  assert_contains "$(grep -E '^ *runs-on:' .github/workflows/self-scanners.yml)" "ubuntu-latest" \
+    "self-scanners: runs on ubuntu-latest (canon has no self-hosted pool — the pool labels would queue forever)"
+  # COUNT the clauses, do not substring-match the file. `assert_contains` over the
+  # whole file is satisfied by the JOB-LEVEL `if:` alone, so it would pass
+  # unchanged with all three STEP-level clauses deleted — which is precisely the
+  # regression class the surrounding template comment describes ("the v3 port
+  # dropped it from all three"). One job guard + three SARIF-upload guards = 4.
+  _sc_guards="$(grep -c 'head\.repo\.full_name == github\.repository' .github/workflows/self-scanners.yml || true)"
+  assert_eq "$_sc_guards" "4" \
+    "self-scanners: the D27 identity guard appears on the job AND on all three SARIF uploads (got $_sc_guards)"
+  # And it must be the IDENTITY form, not the null-permissive `fork != true`:
+  # a deleted fork on a `reopened` event gives a null `head.repo`, and
+  # `null != true` is TRUE, so the negation form runs on fork-origin code with
+  # `security-events: write`. `null == 'owner/repo'` is false → fails closed.
+  assert_absent "$(grep -E '^[[:space:]]*if:' .github/workflows/self-scanners.yml || true)" "head.repo.fork != true" \
+    "self-scanners: uses the identity form, not the null-permissive negation (D27)"
+fi
 
 suite_summary "test_actions.sh"

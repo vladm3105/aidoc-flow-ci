@@ -63,6 +63,32 @@ if (( BASH_VERSINFO[0] < 4 )); then
   exit 1
 fi
 
+# HARD DEPENDENCIES, CHECKED BEFORE ANYTHING MUTATES. The header states
+# "Requires: gh … + curl + git + python3" and, until this block, checked only
+# `gh` — and that only at :1531, more than a thousand lines after the clone and
+# the pre-write backup. A host without `python3` therefore cloned the target,
+# wrote the backup, and then died inside `substitute_placeholders` with a bare
+# `python3: command not found`: recoverable from the backup, but with nothing
+# naming the missing dependency. Every other script in this repo
+# (apply-standards.sh, set-llm-secrets.sh) preflights; the installer — the one
+# entry point a NEW adopter runs first, on a machine canon has never seen — did
+# not. Placed above argument parsing so it costs no network call (the placement
+# rule the --visibility bug taught: validation must never require the network).
+_missing_deps=""
+for _dep in gh curl git python3; do
+  command -v "$_dep" >/dev/null 2>&1 || _missing_deps="$_missing_deps $_dep"
+done
+if [ -n "$_missing_deps" ]; then
+  echo "install.sh requires:$_missing_deps — not found on PATH." >&2
+  echo "  gh      GitHub CLI, authenticated for write on the target repo (gh auth login)" >&2
+  echo "  curl    fetches every template from raw.githubusercontent.com" >&2
+  echo "  git     clones the target and commits the installed surfaces" >&2
+  echo "  python3 renders manifest-driven placeholder substitution" >&2
+  echo "Refusing to start: this script clones and writes to a real repo, so a" >&2
+  echo "mid-run failure leaves a partially-installed tree behind." >&2
+  exit 1
+fi
+
 TARGET_REPO="${1:?usage: $0 <owner/repo> [--visibility public|private]}"
 shift
 # DEFAULTS TO PRIVATE ONLY AS A FALLBACK, AND IS AUTO-DETECTED BELOW. Leaving
@@ -910,6 +936,47 @@ PYADD
     else chmod 644 "$WORK_DIR/consumer/$want"; fi
     echo "  add       $want (from $tmpl)$([ "$exec_bit" = "1" ] && printf ' [executable]')"
     added=$((added + 1))
+
+    # DEPENDENCY: a caller with a LITERAL self-hosted `runs-on:` needs
+    # `.github/actionlint.yaml`, or the consumer's own gate rejects it.
+    #
+    # This is the v2→v3 shape change. Under v2 a private caller passed its labels
+    # as a JSON STRING input and the reusable did the `fromJSON`, so actionlint
+    # only ever saw an expression and had nothing to validate. v3 callers carry
+    # `runs-on: ["self-hosted","ci","ephemeral"]` literally, and actionlint's
+    # runner-label rule REJECTS labels it does not know — so `pre_push_check.sh`
+    # check 3 fails on every push, in the consumer, with nothing naming the
+    # missing config. The manifest entry for that file already said "NEW IN v3 and
+    # load-bearing … manifest entry + install.sh fetch" while carrying
+    # `auto_install: false`, i.e. it declared a requirement it did not deliver.
+    #
+    # Pulled as a DEPENDENCY rather than by flipping `auto_install`, deliberately:
+    # bootstrap runs on repos that carry the v2 callers and must not gain v3
+    # surfaces silently (see this mode's header). The config is inert where it is
+    # unused, so arriving alongside the caller that needs it is the narrow fix.
+    case "$(grep -E '^[[:space:]]*runs-on:' "$WORK_DIR/consumer/$want" 2>/dev/null || true)" in
+      *self-hosted*) ;;
+      *) continue ;;
+    esac
+    if [ -e "$WORK_DIR/consumer/.github/actionlint.yaml" ]; then
+      echo "  dep       .github/actionlint.yaml already present (needed by $want)"
+      continue
+    fi
+    local alcfg; alcfg=$(mktemp)
+    if ! curl -fsSL "${TEMPLATE_BASE}/actionlint.yaml" -o "$alcfg"; then
+      echo "  WARN      could not fetch actionlint.yaml — $want carries a literal self-hosted runs-on:," >&2
+      echo "            so the consumer's pre_push_check.sh check 3 will reject it until that config lands." >&2
+      rm -f "$alcfg"; continue
+    fi
+    if ! validate_fetched "$alcfg" "actionlint.yaml"; then rm -f "$alcfg"; continue; fi
+    mkdir -p "$WORK_DIR/consumer/.github"
+    if mv "$alcfg" "$WORK_DIR/consumer/.github/actionlint.yaml"; then
+      chmod 644 "$WORK_DIR/consumer/.github/actionlint.yaml"
+      echo "  dep       .github/actionlint.yaml (declares the labels $want selects)"
+    else
+      echo "  WARN      could not write .github/actionlint.yaml" >&2
+      rm -f "$alcfg"
+    fi
   done
   rm -f "$manifest"
 
@@ -1457,14 +1524,34 @@ rm -f "$PRECOMMIT_TMP"
 if [ -f ".pre-commit-config.yaml" ]; then
   _DETECTOR_TMP=$(mktemp)
   if curl -fsSL "${TEMPLATE_BASE%/templates}/check-precommit-hooks.sh" -o "$_DETECTOR_TMP" 2>/dev/null; then
-    # Capture rc — warn ONLY on 1 (genuinely zero hooks). rc 2 means the check
-    # could not determine (no PyYAML / unparseable), which is not the same as
-    # "zero" and must not raise a false vacuous-config alarm.
-    bash "$_DETECTOR_TMP" ".pre-commit-config.yaml" >/dev/null 2>&1 && _drc=0 || _drc=$?
-    if [ "${_drc:-0}" -eq 1 ]; then
-      echo "  ⚠️  WARN  .pre-commit-config.yaml selects ZERO hooks at the pre-commit stage —" >&2
-      echo "           the required 'call / Lint / format / security hooks' check would inspect" >&2
-      echo "           nothing. Run: install/check-precommit-hooks.sh .pre-commit-config.yaml" >&2
+    # FT-39 APPLIES HERE TOO, and it was skipped. `curl -f` rejects a 4xx/5xx,
+    # but a proxy, CDN or captive portal answers 200 with an HTML body — and this
+    # body is EXECUTED. An empty or HTML file `bash`es to rc 0 (or a parse error),
+    # so the detector silently became a no-op and the advisory NEVER fired: a
+    # vacuous pre-commit gate would ship unreported, which is precisely F3, the
+    # defect this check exists to catch. Validate before executing, exactly as
+    # `fetch_template` does for every template.
+    if validate_fetched "$_DETECTOR_TMP" "check-precommit-hooks.sh" '^#!.*(bash|sh)'; then
+      # Capture rc — warn ONLY on 1 (genuinely zero hooks). rc 2 means the check
+      # could not determine (no PyYAML / unparseable), which is not the same as
+      # "zero" and must not raise a false vacuous-config alarm.
+      bash "$_DETECTOR_TMP" ".pre-commit-config.yaml" >/dev/null 2>&1 && _drc=0 || _drc=$?
+      if [ "${_drc:-0}" -eq 1 ]; then
+        echo "  ⚠️  WARN  .pre-commit-config.yaml selects ZERO hooks at the pre-commit stage —" >&2
+        echo "           the required 'call / Lint / format / security hooks' check would inspect" >&2
+        echo "           nothing. Run: install/check-precommit-hooks.sh .pre-commit-config.yaml" >&2
+      elif [ "${_drc:-0}" -eq 2 ]; then
+        # rc 2 was DISCARDED entirely — `>/dev/null 2>&1` and no branch — so an
+        # environment that cannot run the check at all was indistinguishable from
+        # a clean pass. "Could not determine" is not "fine"; say which it was.
+        echo "  ⚠️  WARN  could not determine whether .pre-commit-config.yaml selects a" >&2
+        echo "           pre-commit-stage hook (no PyYAML, or the config did not parse)." >&2
+        echo "           The vacuous-gate check (FT-31/F3) did NOT run. Re-run by hand:" >&2
+        echo "           install/check-precommit-hooks.sh .pre-commit-config.yaml" >&2
+      fi
+    else
+      echo "  ⚠️  WARN  the zero-hook detector fetched an empty or non-script body —" >&2
+      echo "           skipping the FT-31 vacuous-gate check rather than executing it." >&2
     fi
   fi
   rm -f "$_DETECTOR_TMP"

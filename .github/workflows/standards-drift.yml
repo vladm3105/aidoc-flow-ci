@@ -68,6 +68,15 @@ jobs:
     steps:
       - name: Checkout caller repo (read @ci/v pins + local files)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Data-only checkout: the drift check reads the caller's tracked config
+          # and talks to the API with its own `GH_TOKEN` env, never with a
+          # credential in `.git/config`. Bare `uses:` left the default `true`,
+          # which persists the job token into the workspace for no reason — the
+          # convention nearly every other canon checkout follows (the one
+          # deliberate exception is audit-trail-check, which needs the
+          # credential for a later `git fetch` — D36, REPO_STANDARDS §4.3j).
+          persist-credentials: false
 
       - name: Fetch canon drift script + run against the caller repo
         env:

@@ -76,18 +76,50 @@ else
   bad "HEAD is NOT pushed — raw.githubusercontent cannot serve it; every template fetch would 404"
 fi
 
-# Is the gate even owed? Reuse release.sh's own definition rather than a copy of
-# it, so this cannot drift from the thing that actually refuses.
+# Is the gate even owed? DELEGATE to release.sh — the thing that actually
+# refuses — rather than re-deriving it here.
+#
+# This block used to CLAIM delegation while carrying its own `git diff` over
+# `install/`: no manifest derivation (so it missed the `visibility_variants`
+# templates entirely) and, worse, no `ci/vX.Y.Z` pin normalisation. Every prep
+# rewrites the self-pin in all ~37 shipped templates, so the copy answered
+# "OWED" on EVERY release while `release.sh tag` auto-waived — sending the
+# founder to run a 🔴 write-to-another-repo dry-run that was not owed. A
+# preflight that disagrees with the gate is worse than no preflight: it
+# reinstates the rubber stamp the conditional gate was built to remove.
 PREV_TAG="$(git tag -l 'ci/v*' | grep -E '^ci/v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
 if [ -n "$PREV_TAG" ]; then
-  CHANGED="$(git diff --name-only "$PREV_TAG..HEAD" -- install/ 2>/dev/null | grep -E '^install/(install\.sh|check-precommit-hooks\.sh|templates/)' || true)"
-  if [ -n "$CHANGED" ]; then
+  # `_coldstart-changed` fails CLOSED exactly as `tag` does (unreadable manifest,
+  # schema drift, no previous tag). Distinguish that from "nothing changed":
+  # both print nothing, and treating a failure as a waive is the fail-OPEN this
+  # whole gate exists to prevent.
+  # STREAMS SEPARATED. `2>&1` would fold any stderr release.sh emits into
+  # $CHANGED on the SUCCESS path, printing it as though it were a cold-start
+  # file — and breaking the suite assertion that compares this capture against a
+  # `2>/dev/null` capture of the same command. Today `coldstart_material_changes`
+  # suppresses git's stderr, so the path is clean; a git advice line would not be.
+  _cs_rc=0; _cs_err="$(mktemp)"
+  CHANGED="$(bash "$HERE/release.sh" _coldstart-changed "$PREV_TAG" 2>"$_cs_err")" || _cs_rc=$?
+  if [ "$_cs_rc" -ne 0 ]; then
+    # `warn`, NOT `bad` — and this is the whole point of the distinction.
+    # `bad` increments FAILED, which makes `--check` exit 1 and the real run
+    # print "refusing to write to $TARGET". So a preflight that cannot compute
+    # the surface would REFUSE TO PERFORM the dry-run that `release.sh tag` is
+    # simultaneously demanding, leaving `--dry-run-verified` passed without
+    # anything having been run — the rubber stamp the conditional gate exists to
+    # remove. The fail-closed behaviour already lives in `tag`; this preflight's
+    # job is to REPORT, and its own refusal must not block the remedy.
+    warn "could not compute the cold-start surface via release.sh — treat the gate as OWED and run this dry-run anyway ('release.sh tag' will demand --dry-run-verified regardless):"
+    sed 's/^/         /' "$_cs_err"
+    CHANGED=""
+  elif [ -n "$CHANGED" ]; then
     ok "FT-30 gate is OWED (bootstrap path changed since $PREV_TAG):"
     printf '%s\n' "$CHANGED" | sed 's/^/         /'
   else
     warn "no bootstrap-path change since $PREV_TAG — 'release.sh tag' should AUTO-WAIVE."
     warn "Running this anyway is harmless but proves nothing; a dry-run of unchanged code is noise."
   fi
+  rm -f "$_cs_err"
 else
   warn "no previous ci/vX.Y.Z tag — the gate fails CLOSED and the flag is required"
 fi
@@ -184,7 +216,13 @@ has "review job pins the self-hosted pool even on public repos" \
 has "LLM_URL + LLM_API_KEY" \
   && ok "LiteLLM secrets note printed" || bad "LiteLLM note missing"
 
-grep -qE '^\s+FAIL ' "$LOG" && { bad "installer emitted FAIL line(s):"; grep -E '^\s+FAIL ' "$LOG" | sed 's/^/         /'; } \
+# `[[:space:]]`, NEVER `\s`. `\s` is a GNU-grep extension; on BSD/macOS grep it
+# matches a LITERAL 's', so `^\s+FAIL ` cannot match an indented FAIL line and
+# this criterion prints "no FAIL lines" over a log that has them — a false
+# all-clear in the one 🔴 founder-executed gate, on the platform most likely to
+# be running it by hand. docs/RELEASE_CHECKLIST.md documents this exact trap for
+# a different command; release.sh:302,312 already uses the portable class.
+grep -qE '^[[:space:]]+FAIL ' "$LOG" && { bad "installer emitted FAIL line(s):"; grep -E '^[[:space:]]+FAIL ' "$LOG" | sed 's/^/         /'; } \
   || ok "no FAIL lines"
 grep -q '==> ABORT:' "$LOG" && { bad "installer ABORTed:"; grep '==> ABORT:' "$LOG" | sed 's/^/         /'; } \
   || ok "no ABORT"

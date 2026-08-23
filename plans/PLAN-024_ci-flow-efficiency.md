@@ -1,7 +1,8 @@
 # PLAN-024 — aidoc-flow-ci library optimization
 
-**Status:** PARTIALLY EXECUTED — Phase A **A5 is done**; A1/A2/A3/A6/A7 and all
-other phases Draft; superseded in part by PLAN-025 (D/E/F/G)
+**Status:** PARTIALLY EXECUTED — Phase A **A1/A2/A3/A5/A6/A7 are done**
+(A5 2026-08-20, the rest via #496, `2df9e87`/`d60e56f`); A4 and all other phases
+Draft; superseded in part by PLAN-025 (D/E/F/G)
 **Owner:** canon (aidoc-flow-ci)
 **Scope:** this repo's own artifacts — reusable workflows, install templates,
 canonical scripts, `docs/REPO_STANDARDS.md`. Consumer repos and other projects
@@ -13,11 +14,18 @@ withdrawal it is a docs + fragment change, not a workflow build.
 
 > **A5 executed 2026-08-20** on the founder's deprecation of `doc-maintainer`
 > — decision of record `DECISIONS.md` **CI-0040**. All eleven defects are closed
-> *not planned*. **No artifact or wiring has been removed:** 33 tracked files
-> still reference the flow and three `manifest.json` entries still make it
-> installable through the supported bootstrap path. The remainder is tracked as
-> **#496**, which also carries A4's `litellm-smoke` alias circularity — that
-> gate blocks the next tag.
+> *not planned*.
+>
+> **A1/A2/A3/A6/A7 EXECUTED 2026-08-21 via #496** (`2df9e87`, `d60e56f`).
+> This blockquote previously read *"No artifact or wiring has been removed"* and
+> stayed that way after the removal landed, so the plan and the tree disagreed on
+> a shipped breaking change. Removed: the reusable, the caller template, the
+> config and conventions templates, `scripts/doc-maintainer/` (593 lines), three
+> `manifest.json` entries, `LITELLM_DOC_API_KEY` and the second `llm-smoke` arm.
+> The flow is no longer installable through any supported path. Execution record:
+> `DECISIONS.md` **CI-0045**.
+>
+> **A4 remains open** (`litellm-smoke` alias circularity).
 >
 > **A5 deviated on one issue.** #404 was carved out of the closure by A5's own
 > text (*"#404 must NOT be closed"*) and was closed anyway. Its defect survives

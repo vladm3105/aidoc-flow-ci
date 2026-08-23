@@ -5,6 +5,358 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Security — the SAST gate was bypassable, on the surface D23 was reproduced against
+
+`.github/workflows/sast-scan.yml` — the reusable that
+`install/templates/workflows/sast-scan.yml` pins, and therefore what an adopter
+of that caller actually runs — carried the **pre-#425** ignore-file strip:
+
+```sh
+find "$SCAN_PATH" -type f \( -name '.semgrepignore' -o -name '.semgreprc' \) -print -delete 2>/dev/null || true
+```
+
+`-type f` does not match a symlink, and git stores symlinks natively (mode
+120000). A PR commits `.semgrepignore` as a symlink to any tracked file
+containing `*`; the strip skips it, semgrep follows the link, coverage goes to
+**zero**, and the scan writes a *valid* SARIF with `results: []`. `[ ! -s ]` is
+false, `jq -e '…| length'` yields `0` — truthy under `jq -e` — so the step
+reports `::notice::no SAST findings` and **exits 0**. The required `sast-scan`
+context goes green having scanned nothing. There was no root strip and **no
+post-condition at all**, so the `|| true` was the entire gate.
+
+This is the bypass `actions/sast-scan/action.yml` records as *"REPRODUCED
+2026-08-08"* and fixes — for trivy and dep-scan, not for the file it was
+reproduced against. D23 **originated** on sast-scan
+(`actions/dep-scan/action.yml`: "D23 (extended from sast-scan by #425)"); #425
+hardened the two extensions and never back-ported to the origin.
+
+**Why nothing went red for the life of the v3 line.** `tests/test_actions.sh`
+drove D23 through a `D23_SURFACES` list of **four** paths under a header
+asserting *"Four shipped surfaces run a scanner"*. There are six. Both sast
+surfaces were outside the guard **by construction**, so the entire driven
+battery — including the case that measures the `-delete` bypass — never ran
+against them. `docs/REPO_STANDARDS.md` §4.3e even recorded the gap as "known
+non-conformance": disclosed, tracked, and shipping.
+
+Changes:
+
+- **Both sast surfaces are brought onto the dep/trivy shape** — one shared
+  `d23_scan()` called by the strip *and* the post-condition (so they can never
+  cover different sets, #423's class), `\( -type f -o -type l \)`, the repo
+  root as a second strip root, captured-and-folded stderr, and a post-condition
+  that **refuses** rather than scanning with attacker-chosen coverage.
+- **`scan-path` is validated on the v3 action too.** `find` reads a leading `-`
+  as an option: `scan-path: -delete` has no path operand, so `-delete` evaluates
+  against the whole tree. On `scanners.yml` that also destroys `osv.sarif` and
+  `trivy.sarif` written by the two preceding steps, and all three uploads then
+  no-op on their `hashFiles` guards. This guard was the one piece #425 gave the
+  extensions and not the origin.
+- **The guard's surface list is DERIVED, not hand-maintained.**
+  `tests/test_actions.sh` now computes it from the tree
+  (`actions/*-scan/action.yml` + `.github/workflows/*-scan.yml`, less
+  `secret-scan`, whose `.gitleaks.toml` canon itself ships) and reds when the
+  derived and driven sets disagree. A new scanner added without an entry fails
+  there rather than shipping an ungated gate.
+
+Mutation-verified in both directions, and both mutations are stated so they can
+be re-run rather than taken on trust: replacing the D23 block in
+`.github/workflows/sast-scan.yml` with the pre-fix one-liner
+(`find "$SCAN_PATH" -type f \( -name '.semgrepignore' … \) -print -delete
+2>/dev/null || true`) takes `bash tests/test_actions.sh` from 0 failures to 13;
+removing `actions/sast-scan/action.yml:sast:action` from `D23_SURFACES` reds the
+derivation guard. Codified as `REPO_STANDARDS.md` §4.3e (conformance
+now complete, with the list-is-the-guard lesson recorded).
+
+### Security — a PR could choose the SAST ruleset (D26 was prose, not a guard)
+
+`sast-scan` claimed *"Explicit `--config` (registry ruleset), NEVER repo-local
+auto-discovery → a PR cannot inject rules."* True of semgrep's **discovery**,
+false of the **input**: `config` comes from the caller, and on `on:
+pull_request` the caller's workflow file comes from the PR head — the same
+access level D23 already assumes. semgrep's `--config` takes a registry ref, **a
+local path, or a URL**, so `config: ./empty.yaml` gives a zero-rule scan that
+exits 0 with a legitimate empty SARIF and the gate goes green.
+
+Both sast surfaces now accept exactly `p/default`, `p/security-audit` and
+`p/python`, validated before the ~30s pip install.
+
+**An exact set, not a namespace prefix — and the first fix was the prefix.**
+`p/*|r/*` does not deliver the rule: `r/` addresses an *individual* registry
+rule, so `config: r/generic.comment.something` passes a prefix check, resolves
+to a real one-rule ruleset, exits 0 with a valid SARIF and n=0, and the gate
+goes green having scanned essentially nothing — as does a narrow pack like
+`p/comment`. The original bypass took coverage to zero rules; a prefix check
+takes it to one. A prefix is also only a prefix: `p/../s/<snippet>` matches
+`p/*`. Caught in pre-push review.
+
+Costs nothing today: those three values are exactly what canon ships and
+documents. The suite asserts the shipped templates satisfy the guard so a
+template cannot brick on adoption — parsing the YAML rather than grepping for a
+quoting style, because the first draft required single quotes and `scanners.yml`
+ships `config: p/default` unquoted, so the check emitted **zero** assertions for
+the consolidated v3 caller every adopter installs.
+
+The guard's own test now **executes the shipped `case` block** instead of a
+hand-retyped copy of it. The copy asserted bash's `case` semantics, not the
+gate: it stayed green through a fully inverted guard. Inverting the guard on ONE
+surface (swapping the `case` arms in `actions/sast-scan/action.yml`) now produces
+nine failures; inverting both surfaces produces eighteen.
+
+Stated rather than overclaimed: `fail-on-findings` is also caller-supplied and
+canon ships it `false` for the report-only rollout, so a PR setting it false is
+not an escalation beyond the shipped default. Codified as §4.3i — *"explicit"
+describes where a value is written, not who controls it.*
+
+### Security — `scan-path` was the same coverage lever as `config`, one input away
+
+Found in the second review cycle of the D26 change above, which is the point
+worth keeping: the rule was written for `config`, enforced for `config`, and the
+identical bypass sat in the input beside it.
+
+All three scanners validated `scan-path` for **safety** — no leading `-` (or
+`find` reads it as an option) and it must be an existing directory. Neither
+constrains **coverage**. `scan-path: docs` passes both checks, scans a code-free
+tree, exits 0, writes a valid empty SARIF, `n=0`, and the required gate goes
+green — bit-for-bit the outcome the `config` guard closes.
+
+All six scanner surfaces now accept `.` only. `.` is the input's default and what
+every shipped caller passes, so nothing in the fleet changes. Driven as its own
+D23 case on all six: an existing-but-narrower path must be refused **by the
+coverage guard specifically**, not incidentally by the leading-`-` or
+is-a-directory check, and it must refuse before deleting anything.
+
+`sarif-path` is named in §4.3i as a **report** lever that is still unenforced —
+it cannot zero the findings count, but it can make one scanner overwrite
+another's SARIF and auto-resolve that category's alerts on `push: main`. Carried
+in `plans/PLAN-027` §C rather than fixed here.
+
+### Security — ai-review sent the UNREDACTED diff to the fixer and to a 24h artifact
+
+The reviewer prompt reads `.ai-review/diff-for-review.txt`, with private keys,
+`AKIA…`, `gh[pousr]_…` and `sk-…` replaced. Both downstream consumers read the
+**raw** `.ai-review/diff.txt`: the `ai-review-verdict` artifact shipped it
+(retrievable for 24h by anyone with Actions read) and the `autofix` fixer prompt
+`cat`-ed it. A PR that accidentally committed an AWS key had it hidden from the
+reviewer model and handed in the clear to the fixer model — the control applied
+to the safer consumer and skipped the riskier one.
+
+Both now read the redacted copy; the raw diff never leaves the step that
+produces it. `scripts/llm_client.py`'s `redact_secret_shaped` /
+`restore_redactions` are **removed**: `completion()` never called them, their
+only real caller was `scripts/doc-maintainer/`, and CI-0040/#496 deleted that
+flow. A 2026-07-18 review proposed deleting them as dead and was correctly
+overruled *because doc-maintainer used them*; removing that flow voided the
+reason without voiding the code, leaving a module that read as if it redacted
+and never did. `tests/test_scripts.sh` now asserts the property that was
+violated — no consumer outside the redaction step reads the raw diff — instead
+of exercising dead code.
+
+### Security — `persist-credentials: false` at every checkout that does not need it
+
+`persist-credentials` defaults to **true**, so keeping it off is an invariant
+held only by writing it at each site. Four of canon's sixteen pre-existing
+checkouts had drifted off it: `standards-drift.yml`, `standards-drift-self.yml`,
+ai-review's trust-config checkout (which may carry the reviewer App's token,
+scoped to a *different* repo than the one under review), and
+`audit-trail-check.yml`. Three are fixed.
+
+**The fourth is a deliberate exception, and the first draft of this change got
+it wrong.** `audit-trail-check.yml` is the one canon workflow that runs a
+**remote** git operation — `git fetch --no-tags origin "$BASE_SHA"`, 48 lines
+below the checkout, with a hard failure when the SHA is still unreachable. A
+sweep that read "untrusted-head checkout without `persist-credentials`" as a
+uniform defect set it `false` there too. `actions/checkout` authenticates by
+writing `http.https://github.com/.extraheader` into `.git/config`; removing it
+makes that fetch anonymous, so on every **private** consumer the required
+`call / verify` context would have redded on every PR with an error naming the
+wrong cause (`fetch-depth: 0`, which *is* set). It would not have reproduced on
+canon's own PRs — canon is public, so an anonymous fetch of a reachable SHA
+succeeds — which is exactly how it would have shipped green. Caught in pre-push
+review by two independent lenses; PLAN-025 **D36** had recorded the asymmetry
+and said so in as many words: *"inverting it reds the check on private
+consumers."*
+
+So the rule codified as §4.3j is **not** "every checkout sets it false". It is
+*omit it only where a later step needs the credential, and say why* — the
+scoping PLAN-025's Pass-3 already applied to D36, rediscovered the hard way.
+
+`tests/test_contract.sh` enforces it from parsed YAML in **both directions**: a
+non-exempt checkout that omits the setting fails, *and* an exempt checkout that
+sets it fails. The first draft enforced only the first direction, so
+re-introducing the exact regression passed clean — an allowlist that permits the
+defect it exists to prevent is not a guard. A converse sweep fails any
+non-exempt workflow that runs a remote git op after a credential-less checkout,
+and a count floor stops the whole check passing by finding zero checkouts.
+
+### Fixed — `release.sh prep` could re-pin the entire fleet BACKWARDS
+
+`prep` rejected a version that already existed as a tag, and one VERSION already
+carried. It accepted anything **lower**. `prep ci/v2.17.0` on a v3 tree passed
+every guard, `sync-version-refs.sh` rewrote `CI_TAG_FALLBACK` and all ~37
+shipped pins down to it, and `tag` published it `--latest` — the ci/v2.0.1
+incident re-created by the tool written to end it. Nothing downstream could
+catch it: `tag`'s FT-21 VERSION-match guard is *satisfied* by the rewrite.
+
+`prep` now compares with `sort -V` against VERSION and refuses, naming the
+direction and the consequence. Driven in `tests/test_release.sh` with a
+negative control (a higher version must NOT trip it) and mutation-verified.
+
+### Fixed — the FT-30 preflight said "gate is OWED" on every release while `tag` auto-waived
+
+`scripts/ft30-dry-run.sh` stated it would *"Reuse release.sh's own definition
+rather than a copy of it, so this cannot drift from the thing that actually
+refuses"* — and carried its own `git diff --name-only` over `install/`, with no
+manifest derivation (blind to every `visibility_variants` template) and no
+`ci/vX.Y.Z` pin normalisation. Every prep rewrites the self-pin in all ~37
+templates, so the copy answered **OWED** on every release while `release.sh tag`
+**AUTO-WAIVED** — sending the founder to run a 🔴 write-to-another-repo dry-run
+that was not owed, reinstating the rubber stamp the conditional gate removed.
+
+It now delegates to a new internal `release.sh _coldstart-changed`, and fails
+closed (unreadable manifest, schema drift, no previous tag) exactly as `tag`
+does rather than reading a failure as a waive. The suite asserts the two report
+the **identical** surface.
+
+### Fixed — the 🔴 FT-30 gate used `\s` in `grep -E`, the trap this repo documents
+
+`ft30-dry-run.sh:187` matched `^\s+FAIL` (with a trailing space). `\s` is a GNU extension; on
+BSD/macOS grep it matches a literal `s`, so the criterion prints `ok no FAIL
+lines` over a log that has them — a false all-clear in a founder-executed gate,
+on the platform most likely to be running it by hand.
+`docs/RELEASE_CHECKLIST.md` documents this exact trap for a *different* command
+and `release.sh` already used `[[:space:]]`.
+
+The driven battery runs under GNU grep and therefore can **never** catch this,
+which is why the guard is a static assertion: no `\s` in any matcher in that
+script. Mutation-verified — restoring `\s` leaves "a FAIL line is caught" green
+and reds only the static check.
+
+### Fixed — `prep`'s red-suite classifier, the logic that says "merge this RED PR", had no cover
+
+It decides whether a red prep suite is the known FT-21 chicken-and-egg or a real
+breakage, and it lived inline in `prep()` — reachable only by running a real
+prep. Every *other* release.sh guard was driven. It depends on three format
+strings owned by other files (`tests/lib.sh`'s space-terminated `FAIL` prefix and its
+`<name>: N passed, M failed` summary; `tests/run.sh`'s `━━` group header), and a
+rename in any of them turns the other-failures count to 0 — classifying a broken
+suite as benign and priming the operator to merge past it.
+
+Extracted as `classify_suite`, exposed through an internal `_classify-suite`
+subcommand, and driven over five canned outcomes (benign / extra-failure /
+crashed-without-summary / expected-assertion-absent / green), with all three
+format strings pinned against their real producers and the SGR strip driven on
+coloured input. Softening either arm reds the suite.
+
+### Fixed — `codeql` was the one generic surface with no private variant
+
+The public template carried the self-hosted override as a **comment**, and
+`install.sh --add-surface` writes the resolved template verbatim with no label
+injection — so a private adopter running the documented command landed on the
+reusable's `ubuntu-latest` default. With no hosted minutes on a private repo the
+job **queues forever**; `timeout-minutes` cannot fire on a job that never
+starts, and the check shows "Expected — Waiting for status to be reported" with
+nothing naming the cause.
+
+**This SUPERSEDES the `L1 dropped` decision** recorded earlier in this file,
+which concluded a `codeql-private.yml` variant was unnecessary because *"the
+`codeql.yml` reusable's `runner_labels` input already lets a private consumer
+pass the self-hosted pool"*. That premise is false in practice: the input exists,
+but the shipped template offers it only as a **comment**, and `--add-surface`
+writes the resolved template verbatim — so the private consumer never passes it
+and lands on the hanging default. The rest of that entry stands (CodeQL SARIF
+upload does need GHAS, and `sast-scan` is the private SAST substitute); what was
+wrong was treating "the input exists" as "the adopter gets it". This file is
+append-only, so the old entry stays — this paragraph is what makes the two
+readable together.
+
+`workflows/codeql-private.yml` ships and the manifest routes it. The existing
+paired-variant guard could not see this: it fires only on a template carrying a
+**literal** `runs-on: ubuntu-latest`, and codeql is a v2-shaped caller with no
+`runs-on:` at all — it fell through the `*) continue` arm. The suite now also
+resolves the **reusable's own `runner_labels` default** for any caller that
+passes none, and asserts the private variant actually selects the pool rather
+than merely documenting it.
+
+### Fixed — `install.sh` documented four hard dependencies and checked one, late
+
+The header states *"Requires: gh … + curl + git + python3"*; only `gh` was
+checked, at line ~1531 — after the clone and the pre-write backup. A host
+without `python3` therefore mutated a real repo and died inside
+`substitute_placeholders` with a bare `python3: command not found`: recoverable
+from the backup, with nothing naming the cause. Every other script in this repo
+preflights; the installer — the one entry point a new adopter runs first, on a
+machine canon has never seen — did not.
+
+All four are now checked before argument parsing, so validation costs no network
+call (the placement rule the `--visibility` bug taught).
+
+### Fixed — the zero-hook detector was fetched and EXECUTED without FT-39 validation
+
+`install.sh` raw-`curl`s `check-precommit-hooks.sh` and `bash`es it. `curl -f`
+rejects a 4xx/5xx, but a proxy, CDN or captive portal answers **200 with HTML** —
+and an empty or HTML body bashes to rc 0, so the detector silently became a
+no-op and the F3 vacuous-gate advisory never fired. Every other fetched asset
+goes through `validate_fetched`; the one that is *executed* did not. Its rc **2**
+("cannot determine" — no PyYAML, unparseable config) was also discarded
+outright, making "could not check" indistinguishable from "checked and clean".
+Both are fixed and reported.
+
+### Fixed — `--add-surface` installed v3 callers without the config they require
+
+`install/templates/manifest.json` said `.github/actionlint.yaml` is *"NEW IN v3
+and load-bearing … manifest entry + install.sh fetch"* while carrying
+`auto_install: false` — a requirement declared and not delivered. v3 callers
+carry a literal `runs-on: ["self-hosted","ci","ephemeral"]` (v2 passed labels as
+a string input, so actionlint only ever saw an expression), and actionlint
+rejects labels it does not know, so **every private v3 caller failed the
+consumer's own `pre_push_check.sh` check 3** with nothing naming the missing
+config.
+
+`--add-surface` now pulls it as a **dependency** whenever the caller it installs
+carries a literal self-hosted `runs-on:`. Not by flipping `auto_install`:
+bootstrap runs on repos still on the v2 callers and must not gain v3 surfaces
+silently. The manifest note records what actually delivers it.
+
+### Fixed — `sort -V` let a pre-release hijack "latest published tag"
+
+`tests/test_version_sync.sh` derived the latest tag from an unfiltered
+`ci/v[0-9]*` glob. `sort -V` ranks `ci/v2.13.0-rc.1` **above** `ci/v2.13.0`, so a
+pre-release or a stray tag becomes "latest" — measured: with `ci/v9.0.0-rc.1`
+present the old derivation returns `ci/v9.0.0-rc.1`, the new one returns
+`ci/v3.0.0`. This is not bookkeeping: it is the assertion `release.sh prep` keys
+its expected-red classifier on, so a red for the wrong reason gets a genuinely
+broken suite classified as the benign chicken-and-egg. Filtered with the same
+regex `release.sh` uses and for the reason it documents.
+
+### Added — canon EXERCISES its own v3 composite actions (`self-quick-gates`, `self-scanners`)
+
+Before these two workflows, `grep -r 'aidoc-flow-ci/actions/' .github/workflows/`
+returned **nothing**. All four self-callers invoked the pre-v3 `workflow_call`
+reusables, no consumer called the composite actions either, and the entire v3
+layer — the headline of the release — was verified only by the text-parsing
+assertions in `tests/test_actions.sh`. It was going to meet its first real
+runner on an adopter's PR. That class has already bitten this surface twice
+(#349: `python3` present while `python3 -m venv` is impossible, which made
+`sast-scan` inert; #436) and neither is findable statically.
+
+Both use **local** `uses: ./actions/<name>` rather than the released pin — the
+point is to exercise *this tree*, and a pin would also `startup_failure` on
+every release prep (FT-21). Neither is a required context: they duplicate the v2
+self-callers by construction, which is the add-new / observe-green / remove-old
+state `docs/MIGRATION_v3.0.0.md` step 3 describes.
+
+**What `self-scanners` does NOT prove, said plainly:** it runs on
+`ubuntu-latest`, because canon is public and has no self-hosted pool of its own
+(pool labels would queue forever, D16). It exercises the action *logic* — the
+D23 strips, the scan-path guards, the checksum-verified fetches, the SARIF
+handling, the collect-then-fail verdict — and **not** the runner image.
+Image-level faults stay the province of `build-image.sh`. The fork guard is
+kept: canon is public, so fork PRs are the normal case.
+
+A drift guard asserts each self-caller invokes the same action set with the same
+inputs as the template consumers adopt — otherwise canon would be exercising a
+configuration nobody runs.
+
 ### Security — docs-sync clears its scratch directories before running (#495)
 
 `docs-sync` fetched its three operation modules into `.docs-sync-scripts/`

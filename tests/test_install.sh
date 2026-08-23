@@ -932,4 +932,88 @@ assert_eq "$_repl_v3" \
   ".github/workflows/links-external.yml .github/workflows/quick-gates.yml .github/workflows/scanners.yml" \
   "the three consolidating callers declare what they replace"
 
+echo ""
+echo "== hard dependencies are preflighted BEFORE anything mutates =="
+# install.sh's own header states "Requires: gh … + curl + git + python3" and
+# checked only `gh`, at :1531 — more than a thousand lines after it clones the
+# target and writes the pre-write backup. A host without python3 therefore
+# mutated a real repo and then died inside substitute_placeholders with a bare
+# `python3: command not found`. Drive it with a PATH that has every OTHER
+# dependency, so a pass cannot come from the script failing for some other reason.
+_pfbin="$(mktemp -d)"
+for _b in gh curl git bash sed grep cat mktemp; do
+  _r="$(command -v "$_b" 2>/dev/null)" && ln -sf "$_r" "$_pfbin/$_b"
+done
+_pf_out="$(PATH="$_pfbin" bash "$ROOT/install/install.sh" owner/repo 2>&1; echo "rc=$?")"
+assert_contains "$_pf_out" "requires: python3" "install.sh refuses when python3 is absent, naming it"
+assert_contains "$_pf_out" "rc=1" "  and exits non-zero"
+# The point is that it refuses EARLY. If it had reached the network/clone path it
+# would have printed the visibility ABORT or a gh error instead.
+assert_absent "$_pf_out" "could not read" "  and refuses BEFORE the first network call (no partial install)"
+# Negative control: with a complete PATH it must NOT trip the dependency guard,
+# or the assertion above is satisfied by a script that refuses unconditionally.
+# NEGATIVE CONTROL, WITHOUT A NETWORK CALL. This originally ran
+# `install.sh owner/repo` with a complete PATH, which clears the preflight and
+# proceeds to `gh repo view owner/repo` — a live API call on every suite run
+# (so: offline-flaky), whose safety rested entirely on `github.com/owner/repo`
+# not resolving. If it ever resolves for whoever is running the suite, the
+# installer clones that repo and creates ~21 labels on it.
+#
+# Prove the same property by stopping at ARGUMENT VALIDATION instead: mutually
+# exclusive flags are rejected at install.sh:152, before any network call. The
+# run got past the dependency guard iff it reached that message.
+_pf_ok="$(bash "$ROOT/install/install.sh" owner/repo --update --repin 2>&1 || true)"
+assert_absent "$_pf_ok" "not found on PATH" "  a complete PATH does NOT trip the dependency guard"
+assert_contains "$_pf_ok" "mutually exclusive" "  ...and it reached ARGUMENT validation, i.e. the guard passed rather than the run dying early"
+assert_absent "$_pf_ok" "could not read" "  ...without making a network call (the control must not touch a live repo)"
+rm -rf "$_pfbin"
+
+echo ""
+echo "== --add-surface pulls .github/actionlint.yaml for a literal self-hosted caller =="
+# v3 callers carry `runs-on: ["self-hosted","ci","ephemeral"]` LITERALLY (v2
+# passed labels as a string input, so actionlint saw only an expression).
+# actionlint rejects labels it does not know, so without `.github/actionlint.yaml`
+# every private v3 caller fails the consumer's own `pre_push_check.sh` check 3 —
+# and the manifest entry for that file said "manifest entry + install.sh fetch"
+# while carrying `auto_install: false`, delivering nothing. Assert the DEPENDENCY
+# exists in add_surface_mode and is conditioned on the literal label, not on a
+# hardcoded filename list that the next such caller would fall outside of.
+# ANCHOR TO THE NEW BLOCK, not to `add_surface_mode` as a whole. Two of the
+# three original assertions could not fail: `add_surface_mode` ALREADY contained
+# "self-hosted" (a comment about doubled jobs on a serial pool) and
+# "validate_fetched" (the pre-existing template fetch), so both passed with the
+# entire actionlint dependency deleted. An assertion satisfied by code it is not
+# about is not covering that code.
+_as_blk="$(awk '/^add_surface_mode\(\) \{/,/^\}/' "$ROOT/install/install.sh")"
+_as_len="${#_as_blk}"
+assert_ok "[ \"$_as_len\" -gt 500 ]" "add_surface_mode was located in install.sh (${_as_len} chars)"
+_dep_blk="$(printf '%s\n' "$_as_blk" | sed -n '/DEPENDENCY: a caller with a LITERAL self-hosted/,/^  done$/p')"
+_dep_len="${#_dep_blk}"
+assert_ok "[ \"$_dep_len\" -gt 200 ]" "  the actionlint dependency block was located (${_dep_len} chars)"
+assert_contains "$_dep_blk" 'TEMPLATE_BASE}/actionlint.yaml' "  it FETCHES the config (not merely mentions the filename)"
+assert_contains "$_dep_blk" 'validate_fetched "$alcfg"' "  and validates THAT fetch (FT-39: no empty/HTML 200 over a config)"
+_dep_code="$(printf '%s\n' "$_dep_blk" | grep -vE '^[[:space:]]*#' || true)"
+assert_contains "$_dep_code" "self-hosted" "  gated on the caller carrying a literal self-hosted runs-on: (in CODE, not a comment)"
+
+echo ""
+echo "== the zero-hook detector is VALIDATED before it is executed (FT-39 ∩ FT-31) =="
+# This body is FETCHED over the network and then `bash`ed. `curl -f` rejects a
+# 4xx/5xx but a proxy/CDN/captive portal answers 200 with HTML — and an empty or
+# HTML file bashes to rc 0, so the detector silently became a no-op and the F3
+# vacuous-gate advisory NEVER fired. Every other fetched asset goes through
+# validate_fetched; the one that is EXECUTED did not.
+_zh_blk="$(awk '/PLAN-018 FT-31 — the zero-hook detector/,/^# Canonical labels/' "$ROOT/install/install.sh")"
+_zh_len="${#_zh_blk}"
+assert_ok "[ \"$_zh_len\" -gt 400 ]" "the zero-hook detector block was located (${_zh_len} chars)"
+assert_contains "$_zh_blk" "validate_fetched" \
+  "the fetched detector is validated before it is executed (an HTML 200 would otherwise run as a no-op)"
+# And the detector's own shebang must satisfy the marker the installer requires,
+# or validation rejects the real file and the advisory is skipped every run.
+assert_ok "grep -qE '^#!.*(bash|sh)' '$ROOT/install/check-precommit-hooks.sh'" \
+  "check-precommit-hooks.sh carries the shebang the installer's marker requires"
+# rc 2 (cannot determine) was discarded outright, making "could not check" look
+# identical to "checked and clean".
+assert_contains "$_zh_blk" "could not determine" \
+  "rc 2 (no PyYAML / unparseable) is REPORTED, not silently read as a pass"
+
 suite_summary "test_install"

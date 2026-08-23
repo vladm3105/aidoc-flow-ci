@@ -60,6 +60,145 @@ _branches_after="$(git -C "$ROOT" branch --format='%(refname)' | sort)"
 assert_eq "$_branches_before" "$_branches_after" "prep: rejection changed no branches (no side effect)"
 
 echo ""
+echo "== prep refuses a version LOWER than VERSION (monotonicity) =="
+# The two guards above reject a version that already EXISTS as a tag or that
+# VERSION already carries. NEITHER rejects a LOWER one — and a prep rewrites
+# CI_TAG_FALLBACK plus every shipped `@ci/vX.Y.Z` pin, then `tag` publishes the
+# result `--latest`. So `prep ci/v2.17.0` on a v3 tree re-pinned the whole fleet
+# BACKWARDS onto a version below the current release, and nothing downstream
+# could catch it: `tag`'s FT-21 VERSION-match guard is SATISFIED by the rewrite.
+# That is the ci/v2.0.1 incident sync-version-refs.sh was written to end,
+# re-created by the tool that replaced the manual process.
+#
+# Derive the lower version from VERSION rather than hardcoding one, so this stays
+# true after any future cut. Assert the REFUSAL and its stated reason, then that
+# the same shape one MINOR ABOVE is not caught by this guard — a monotonicity
+# check that rejects everything is indistinguishable from a broken prep.
+# MINOR 99, not the current minor: the tag-exists guard runs BEFORE this one, so
+# a lower version that HAPPENS to be a real released tag (ci/v2.0.0 is) is caught
+# by that guard instead and this case silently certifies nothing. Pick a version
+# that is unambiguously lower AND has never been cut.
+_lower="$(printf '%s' "$cur" | awk -F. '{ mj=$1; sub(/^ci\/v/,"",mj); print "ci/v" (mj>0?mj-1:0) ".99.0" }')"
+if git -C "$ROOT" rev-parse --verify -q "refs/tags/$_lower" >/dev/null 2>&1; then
+  _r "monotonicity: $_lower unexpectedly exists as a tag — the case would test the wrong guard"
+  _lower="$cur"
+fi
+if [ "$_lower" = "$cur" ]; then
+  _r "monotonicity: could not derive a lower version from $cur — the case did not run"
+else
+  _branches_before="$(git -C "$ROOT" branch --format='%(refname)' | sort)"
+  run prep "$_lower"
+  assert_eq "$RC" "1" "prep: a version BELOW VERSION ($_lower < $cur) is rejected"
+  assert_contains "$OUT" "LOWER than the current VERSION" \
+    "prep: ...refused by the MONOTONICITY guard specifically, naming the direction"
+  # The refusal must say what it protects, or an operator reads it as a typo
+  # check and re-runs with --force-shaped reasoning.
+  assert_contains "$OUT" "BACKWARDS" "prep: ...and states the consequence (a backwards fleet re-pin)"
+  _branches_after="$(git -C "$ROOT" branch --format='%(refname)' | sort)"
+  assert_eq "$_branches_before" "$_branches_after" "prep: the monotonicity rejection changed no branches"
+
+  # NEGATIVE CONTROL — and it must NOT be a live prep.
+  #
+  # A HIGHER version clears EVERY guard in `prep`: the tag does not exist, VERSION
+  # differs, monotonicity passes by construction, the tree is clean, no prep branch
+  # exists, and on `main` the on-main and up-to-date guards both pass. `prep` has no
+  # terminal guard for that input — unlike `tag`, whose VERSION-match check always
+  # refuses. So a bare `run prep "$_higher"` RUNS A REAL PREP: it creates the prep
+  # branch, rewrites VERSION, retires the forward-pin markers across every shipped
+  # template, runs sync-version-refs over ~37 pins, promotes the CHANGELOG, and
+  # recursively invokes `bash tests/run.sh`.
+  #
+  # That would not show up here or on a PR — `actions/checkout` leaves a detached
+  # HEAD on `pull_request`, so the on-main guard refuses. It fires on the
+  # `push: main` run AFTER merge (checkout does `-B main`), and for any maintainer
+  # running the suite from a clean, up-to-date `main`. It also breaks this file's
+  # stated invariant at the top: "all of which exit before mutating anything ...
+  # it never runs a real prep/tag".
+  #
+  # Make a LATER guard terminal instead. Pre-creating the prep branch trips the
+  # branch-exists guard, which sits AFTER the monotonicity check and BEFORE any
+  # mutation — so the run still proves monotonicity did not fire, and cannot
+  # proceed. Assert the later guard POSITIVELY: without that, this case would also
+  # "pass" if prep died earlier for some unrelated reason, certifying nothing.
+  _higher="$(printf '%s' "$cur" | awk -F. '{ mj=$1; sub(/^ci\/v/,"",mj); print "ci/v" mj+1 ".0.0" }')"
+  _hbranch="release/${_higher//\//-}-prep"
+  if git -C "$ROOT" rev-parse --verify -q "$_hbranch" >/dev/null 2>&1; then
+    _r "monotonicity control: $_hbranch already exists — refusing to drive a live prep"
+    # And actually refuse. Without this the block below ran anyway, so the message
+    # said "refusing" while driving, and the cleanup `git branch -D` deleted a
+    # branch this test did NOT create — a repo mutation in the one file whose
+    # header invariant is that it never mutates anything.
+    _hbranch=""
+  else
+    # CHECK THAT IT WAS ACTUALLY CREATED. The whole safety of this control is
+    # that the branch-exists guard stops `prep` before it mutates anything. If
+    # `git branch` silently fails, every guard passes and a REAL prep runs —
+    # the exact hazard this control exists to remove, reachable through a
+    # discarded exit status.
+    if ! git -C "$ROOT" branch "$_hbranch" >/dev/null 2>&1 \
+       || ! git -C "$ROOT" rev-parse --verify -q "$_hbranch" >/dev/null 2>&1; then
+      _r "monotonicity control: could not pre-create $_hbranch — refusing to drive a live prep"
+      _hbranch=""
+    fi
+  fi
+  if [ -n "${_hbranch:-}" ]; then
+    # Cleanup is registered IMMEDIATELY, not left to the end of the block. The
+    # `branch -D` below is the normal path; this trap is what keeps a stray
+    # `release/ci-vN.0.0-prep` out of a developer's repo if anything between here
+    # and there exits early. `_r`/`assert_*` do not exit, but a `set -e` abort in
+    # a future edit would, and leaving a prep-shaped branch behind is exactly the
+    # state that makes the NEXT run of this case skip itself.
+    trap 'git -C "$ROOT" branch -D "$_hbranch" >/dev/null 2>&1 || true' EXIT
+    _branches_before="$(git -C "$ROOT" branch --format='%(refname)' | sort)"
+    _branch_before="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
+    run prep "$_higher"
+    assert_eq "$RC" "1" "prep: the HIGHER-version control still refuses (via a LATER guard)"
+    assert_absent "$OUT" "LOWER than the current VERSION" \
+      "prep: a HIGHER version ($_higher) is NOT caught by the monotonicity guard"
+    # TWO guards sit between monotonicity and the first mutation, and which one
+    # fires depends on the tree the suite runs against: `working tree not clean`
+    # (release.sh:244) when a developer runs it mid-change, `branch ... already
+    # exists` (:246) on the clean CI tree this case pre-creates the branch for.
+    # Both are terminal and both are AFTER monotonicity, so accept either — but
+    # name them, so a refusal from some THIRD reason still reds. Asserting only
+    # one made this case fail locally while passing in CI, which is the shape that
+    # gets an assertion loosened to `assert_ok true` on the next pass.
+    if printf '%s' "$OUT" | grep -qE 'already exists|working tree not clean'; then
+      _g "prep: ...it got PAST monotonicity and was stopped by a later pre-mutation guard"
+    else
+      _r "prep: ...refused for an UNEXPECTED reason — this case no longer proves monotonicity was passed (got: $OUT)"
+    fi
+    _branches_after="$(git -C "$ROOT" branch --format='%(refname)' | sort)"
+    assert_eq "$_branches_before" "$_branches_after" \
+      "prep: the HIGHER-version control created NO branch (it must never run a live prep)"
+    git -C "$ROOT" branch -D "$_hbranch" >/dev/null 2>&1
+    trap - EXIT
+    # And the tree it was driven against is untouched — the assertions whose
+    # absence let the live-prep hazard through in the first place. Capture the
+    # branch BEFORE the run: comparing two reads taken after it is a tautology
+    # that passes no matter what the run did (it was written that way first).
+    assert_eq "$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)" "$_branch_before" \
+      "prep: still on the same branch after the control (a live prep would have checked out the prep branch)"
+    # ASSERT THE CONTENT, NOT THE DIFF. `git diff --quiet -- VERSION` is FALSE
+    # during a real `release.sh prep`: prep writes VERSION at :262 and runs this
+    # suite at :355, before any commit. So this assertion would have failed on
+    # every cut, its FAIL text does not contain "latest published tag", and
+    # `classify_suite` would therefore have called the prep suite an UNEXPECTED
+    # red and `die`d — aborting the v4.0.0 cut after the branch, VERSION, the
+    # forward-pin retirement and the CHANGELOG promotion had all been written.
+    # That is the FT-21 self-exercising trap this file warns about twice in its
+    # own comments, re-created by the fold that was making this control safe.
+    #
+    # `$cur` was read from VERSION at the top of this block, so during a prep it
+    # already equals the rewritten value; a live prep inside this control would
+    # have rewritten it again, to $_higher. Content is prep-invariant, the diff
+    # is not.
+    assert_eq "$(tr -d '[:space:]' < "$ROOT/VERSION")" "$cur" \
+      "prep: VERSION was NOT rewritten by the control"
+  fi
+fi
+
+echo ""
 echo "== FT-30 dry-run gate is CONDITIONAL on the cold-start surface =="
 # The gate demands --dry-run-verified only when the release actually changes the
 # installer cold-start path. On THIS repo the surface is usually unchanged, so the
@@ -405,5 +544,85 @@ sv_line="$(grep -n 'bash "\$HERE/sync-version-refs.sh"' "$REL" | head -1 | cut -
 assert_ok "[ -n '$mk_line' ] && [ -n '$sv_line' ]" "both prep steps located by line number"
 assert_ok "[ '${mk_line:-0}' -lt '${sv_line:-0}' ]" \
   "marker retirement (line ${mk_line:-?}) runs BEFORE sync-version-refs (line ${sv_line:-?})"
+
+echo ""
+echo "== prep's red-suite classifier (the logic that says 'merge this RED PR') =="
+# THE ONLY GUARD WHOSE OUTPUT IS AN INSTRUCTION TO OVERRIDE A RED GATE, and it
+# had no cover: it lived inline in `prep()`, reachable only by running a real
+# prep. Every OTHER guard in release.sh is driven above. It is now
+# `classify_suite`, exposed through the internal `_classify-suite` subcommand.
+#
+# It depends on THREE format strings owned by other files — `tests/lib.sh`'s
+# `FAIL ` prefix and its `<name>: N passed, M failed` summary, and
+# `tests/run.sh`'s `━━ ` header. A rename in any of them turns `other_fails` to
+# 0, and a genuinely broken suite then classifies as the benign FT-21
+# chicken-and-egg. Pin all three against their real producers, then drive the
+# three outcomes.
+_cls() { bash "$ROOT/scripts/release.sh" _classify-suite "$1" "${2:-1}" 2>&1; echo "rc=$?"; }
+
+# (1) BENIGN: only the latest-tag assertion failed, every group finished.
+_benign="$(printf '%s\n' '━━ test_version_sync.sh ━━' '  FAIL VERSION (ci/v4.0.0) != latest published tag (ci/v3.0.0)' 'version-sync: 28 passed, 1 failed')"
+_out="$(_cls "$_benign")"
+assert_contains "$_out" "RED as EXPECTED" "benign FT-21 red is classified as expected"
+assert_contains "$_out" "rc=0" "  and prep is allowed to proceed"
+
+# (2) REAL RED: another assertion failed too. Must refuse, and must SHOW it —
+# an operator who is told "unexpected" without the line cannot act.
+_real="$(printf '%s\n' '━━ test_version_sync.sh ━━' '  FAIL VERSION (ci/v4.0.0) != latest published tag (ci/v3.0.0)' '  FAIL something genuinely broke' 'version-sync: 27 passed, 2 failed')"
+_out="$(_cls "$_real")"
+assert_contains "$_out" "UNEXPECTED red" "an additional FAIL is NOT classified as the chicken-and-egg"
+assert_contains "$_out" "something genuinely broke" "  and the offending assertion is printed"
+assert_contains "$_out" "rc=1" "  and prep refuses"
+
+# (3) CRASH: a group started and never printed its summary (set -e abort, missing
+# tool). Prints NO `FAIL` line at all, so an "any-other-FAIL" subtraction reads it
+# as benign — the misclassification the header/summary count exists to catch.
+_crash="$(printf '%s\n' '━━ test_version_sync.sh ━━' '  FAIL VERSION (ci/v4.0.0) != latest published tag (ci/v3.0.0)' 'version-sync: 28 passed, 1 failed' '━━ test_contract.sh ━━')"
+_out="$(_cls "$_crash")"
+assert_contains "$_out" "UNEXPECTED red" "a group that crashed without a summary is NOT classified as benign"
+assert_contains "$_out" "crashed without a summary" "  and is diagnosed as a crash, not as an assertion failure"
+assert_contains "$_out" "rc=1" "  and prep refuses"
+
+# (4) The expected assertion did not fire at all — something else broke first.
+_other="$(printf '%s\n' '━━ test_contract.sh ━━' '  FAIL a contract assertion' 'contract: 1 passed, 1 failed')"
+_out="$(_cls "$_other")"
+assert_contains "$_out" "did NOT fire" "a red WITHOUT the latest-tag assertion is called out specifically"
+assert_contains "$_out" "rc=1" "  and prep refuses"
+
+# (5) Green passes through untouched.
+_out="$(_cls "" 0)"
+assert_contains "$_out" "fully green" "a green suite is reported as green"
+assert_contains "$_out" "rc=0" "  and prep proceeds"
+
+# THE FORMAT STRINGS ARE A CONTRACT WITH OTHER FILES. Pin them against their real
+# producers, so a rename reds HERE rather than silently disarming the classifier.
+assert_contains "$(cat "$ROOT/tests/run.sh")" '━━ ' \
+  "tests/run.sh still emits the ━━ group header the classifier counts"
+# NB the literal `passed, ` does NOT appear in lib.sh: `suite_summary` prints
+# `%d passed\033[0m, %s%d failed`, i.e. an SGR reset sits between the words —
+# the same escape-sequence trap CLAUDE.md records for reading the suite total.
+# The classifier survives it because it strips SGR first (`sed 's/\x1b...//g'`);
+# this pin must therefore match the FORMAT, not the rendered line.
+assert_ok "grep -q '%d passed' '$ROOT/tests/lib.sh'" \
+  "tests/lib.sh still emits the 'N passed' half of the summary the classifier counts"
+assert_ok "grep -q '%d failed' '$ROOT/tests/lib.sh'" \
+  "tests/lib.sh still emits the 'M failed' half"
+# And the classifier must still strip SGR — without that step its own summary
+# count matches nothing on real (coloured) output and every group reads as crashed.
+_cls_fn="$(awk '/^classify_suite\(\) \{/,/^\}/' "$ROOT/scripts/release.sh")"
+assert_contains "$_cls_fn" "x1b" \
+  "classify_suite strips SGR before counting (coloured output otherwise reads as all-crashed)"
+# Drive it: a COLOURED benign red must still classify as benign. A static check
+# alone would pass against a strip that no longer works.
+_benign_colour="$(printf '\033[1m━━ test_version_sync.sh ━━\033[0m\n  \033[31mFAIL\033[0m VERSION (ci/v4.0.0) != latest published tag (ci/v3.0.0)\n\nversion-sync: \033[32m28 passed\033[0m, \033[31m1 failed\033[0m\n')"
+_out="$(_cls "$_benign_colour")"
+assert_contains "$_out" "RED as EXPECTED" "  ...and a COLOURED benign red still classifies as benign"
+# PIN THE PREFIX THE CLASSIFIER MATCHES, not the bare word. `grep -q 'FAIL'`
+# is satisfied by the six `T_FAIL` occurrences in lib.sh, so it passed no matter
+# what happened to `_r`'s output format — the one pin of the four here that could
+# not fail. The classifier greps `^[[:space:]]+FAIL ` on SGR-stripped output, so
+# what matters is the INDENT plus `FAIL` plus a space.
+assert_ok "grep -qE '  .*FAIL' '$ROOT/tests/lib.sh'" \
+  "tests/lib.sh still emits an INDENTED FAIL prefix — the shape the classifier greps, not merely the word"
 
 suite_summary "release"

@@ -166,12 +166,81 @@ coldstart_material_changes() {
   [ "${#changed[@]}" -eq 0 ] || printf '%s\n' "${changed[@]}"
 }
 
+# Decide whether a red suite during `prep` is the KNOWN FT-21 chicken-and-egg or
+# a real breakage. This is the logic that tells the operator to merge a RED prep
+# PR, so a misclassification here is how a genuine regression ships.
+#
+# EXTRACTED FROM `prep` so it can be DRIVEN. Inline, it was reachable only by
+# running a real prep — i.e. never — and `tests/test_release.sh` covered every
+# other guard while this one, the only one whose output is an instruction to
+# override a red gate, had no cover at all. It depends on three format strings
+# owned by other files (`tests/lib.sh`'s `FAIL ` prefix and its
+# `<name>: N passed, M failed` summary; `tests/run.sh`'s `━━ ` header), and a
+# rename in any of them silently turns `other_fails` to 0 — which classifies a
+# broken suite as benign. The test pins all three.
+#
+# $1 = raw suite output   $2 = suite rc   $3 = prep branch (for the recovery hint)
+# rc 0 = proceed, rc 1 = refuse.
+classify_suite() {
+  local out="$1" rc="$2" branch="${3:-<prep-branch>}"
+  local clean; clean="$(printf '%s\n' "$out" | sed 's/\x1b\[[0-9;]*m//g')"
+  if [ "$rc" -eq 0 ]; then
+    echo "  suite: fully green (unusual mid-prep, but fine)"
+    return 0
+  fi
+  # EXPECTED red = the suite failed for EXACTLY the version-sync latest-tag
+  # assertion and nothing else. Confirm this POSITIVELY, and rule out a
+  # crash-style failure that prints no `_r FAIL` line — a `set -e` abort, a
+  # missing binary, an early `exit 1` — which an "any-other-FAIL-line" subtraction
+  # would silently pass as the benign chicken-and-egg (the misclassification
+  # that would prime the operator to merge past a real breakage). Crashes are
+  # caught by counting started test groups (`━━ header`) vs finished ones
+  # (each prints a `<name>: N passed, M failed` summary): a group that dies
+  # mid-file never prints its summary.
+  local has_expected other_fails headers summaries
+  has_expected="$(printf '%s\n' "$clean" | grep -c 'FAIL .*latest published tag' || true)"
+  other_fails="$(printf '%s\n' "$clean" | grep -E '^[[:space:]]+FAIL ' | grep -vc 'latest published tag' || true)"
+  headers="$(printf '%s\n' "$clean" | grep -c '^━━ ' || true)"
+  summaries="$(printf '%s\n' "$clean" | grep -cE ': [0-9]+ passed, [0-9]+ failed' || true)"
+  if [ "$has_expected" -ge 1 ] && [ "$other_fails" -eq 0 ] && [ "$headers" -eq "$summaries" ]; then
+    echo "  suite: RED as EXPECTED — only version-sync's 'latest published tag' assertion"
+    echo "         fails (the tag does not exist yet). It goes green when you cut the tag."
+    return 0
+  fi
+  echo "  suite: UNEXPECTED red — this is NOT the FT-21 chicken-and-egg:" >&2
+  [ "$has_expected" -ge 1 ] || echo "    · the version-sync latest-tag assertion did NOT fire — something else broke the suite" >&2
+  if [ "$other_fails" -gt 0 ]; then
+    printf '%s\n' "$clean" | grep -E '^[[:space:]]+FAIL ' | grep -v 'latest published tag' | sed 's/^/    /' >&2
+  fi
+  [ "$headers" -eq "$summaries" ] || echo "    · a test group crashed without a summary ($headers started, $summaries finished — a set-e abort or missing tool)" >&2
+  echo "  Recover: git checkout main && git branch -D $branch && git checkout -- ." >&2
+  return 1
+}
+
 # --- prep ------------------------------------------------------------------
 prep() {
   local version="${1:-}"
   require_version_arg "$version" prep
   git rev-parse --verify -q "refs/tags/$version" >/dev/null && die "tag $version already exists — nothing to prep"
   [ "$version" = "$(current_version)" ] && die "VERSION already reads $version — prep already done?"
+
+  # MONOTONICITY. The guards above reject a version that ALREADY EXISTS or that
+  # VERSION already carries; neither rejects a LOWER one. `prep ci/v2.17.0` on a
+  # v3 tree passed every check, and `sync-version-refs.sh` would then rewrite
+  # CI_TAG_FALLBACK and all ~37 shipped pins DOWN to it, with `tag` publishing it
+  # `--latest`. That is the ci/v2.0.1 incident (`sync-version-refs.sh:47-52`)
+  # re-created by the very tool written to end it, and nothing downstream could
+  # catch it: VERSION would match the tag, so `tag`'s FT-21 guard is satisfied.
+  #
+  # Compare with `sort -V` against VERSION rather than against the newest tag:
+  # VERSION is what the pins are being moved FROM, and it is the value a partial
+  # or abandoned prep leaves behind. Equality is already handled above, so this
+  # tests strictly-less.
+  local cur; cur="$(current_version)"
+  if [ "$(printf '%s\n%s\n' "$cur" "$version" | sort -V | head -1)" != "$cur" ]; then
+    die "refusing to prep $version — it is LOWER than the current VERSION ($cur). A prep rewrites CI_TAG_FALLBACK and every shipped pin, so this would re-pin the fleet BACKWARDS onto $version and publish it as Latest. Cut a version above $cur."
+  fi
+
   [ -z "$(git status --porcelain)" ] || die "working tree not clean — commit or stash first"
   local branch="release/${version//\//-}-prep"
   git rev-parse --verify -q "$branch" >/dev/null && die "branch $branch already exists"
@@ -284,38 +353,7 @@ PY
   note "==> suite (the ONLY expected failure is version-sync's latest-tag assertion — FT-21)"
   local out rc=0
   out="$(bash tests/run.sh 2>&1)" || rc=$?
-  local clean; clean="$(printf '%s\n' "$out" | sed 's/\x1b\[[0-9;]*m//g')"
-  if [ "$rc" -eq 0 ]; then
-    echo "  suite: fully green (unusual mid-prep, but fine)"
-  else
-    # EXPECTED red = the suite failed for EXACTLY the version-sync latest-tag
-    # assertion and nothing else. Confirm this POSITIVELY, and rule out a
-    # crash-style failure that prints no `_r FAIL` line — a `set -e` abort, a
-    # missing binary, an early `exit 1` — which an "any-other-FAIL-line" subtraction
-    # would silently pass as the benign chicken-and-egg (the misclassification
-    # that would prime the operator to merge past a real breakage). Crashes are
-    # caught by counting started test groups (`━━ header`) vs finished ones
-    # (each prints a `<name>: N passed, M failed` summary): a group that dies
-    # mid-file never prints its summary.
-    local has_expected other_fails headers summaries
-    has_expected="$(printf '%s\n' "$clean" | grep -c 'FAIL .*latest published tag' || true)"
-    other_fails="$(printf '%s\n' "$clean" | grep -E '^[[:space:]]+FAIL ' | grep -vc 'latest published tag' || true)"
-    headers="$(printf '%s\n' "$clean" | grep -c '^━━ ' || true)"
-    summaries="$(printf '%s\n' "$clean" | grep -cE ': [0-9]+ passed, [0-9]+ failed' || true)"
-    if [ "$has_expected" -ge 1 ] && [ "$other_fails" -eq 0 ] && [ "$headers" -eq "$summaries" ]; then
-      echo "  suite: RED as EXPECTED — only version-sync's 'latest published tag' assertion"
-      echo "         fails (the tag does not exist yet). It goes green when you cut the tag."
-    else
-      echo "  suite: UNEXPECTED red — this is NOT the FT-21 chicken-and-egg:" >&2
-      [ "$has_expected" -ge 1 ] || echo "    · the version-sync latest-tag assertion did NOT fire — something else broke the suite" >&2
-      if [ "$other_fails" -gt 0 ]; then
-        printf '%s\n' "$clean" | grep -E '^[[:space:]]+FAIL ' | grep -v 'latest published tag' | sed 's/^/    /' >&2
-      fi
-      [ "$headers" -eq "$summaries" ] || echo "    · a test group crashed without a summary ($headers started, $summaries finished — a set-e abort or missing tool)" >&2
-      echo "  Recover: git checkout main && git branch -D $branch && git checkout -- ." >&2
-      die "suite has UNEXPECTED failures — fix before opening the prep PR"
-    fi
-  fi
+  classify_suite "$out" "$rc" "$branch" || die "suite has UNEXPECTED failures — fix before opening the prep PR"
 
   cat <<EOF
 
@@ -413,8 +451,32 @@ $(note "Done. Post-release (yours):")
 EOF
 }
 
+# INTERNAL. `scripts/ft30-dry-run.sh` reports whether the FT-30 gate is owed, and
+# it MUST reach that answer through the code that actually refuses — otherwise the
+# two drift and the preflight contradicts the gate. It had its own `git diff` over
+# `install/` with no manifest derivation and no pin normalisation, so it reported
+# "gate is OWED" on every release (each prep rewrites all ~37 template pins) while
+# `tag` AUTO-WAIVED — telling the founder to run a 🔴 write-to-another-repo dry-run
+# that was not owed, which is exactly the rubber stamp the conditional gate removed.
+#
+# Not documented in the usage string on purpose: it is a seam for canon's own
+# tooling, not a supported operator subcommand. It prints the material changes
+# (empty = auto-waive) and exits non-zero only if the surface cannot be computed,
+# which is the same fail-closed contract `tag` applies.
+coldstart_changed() {
+  local prev; prev="${1:-$(previous_tag)}"
+  [ -n "$prev" ] || die "coldstart-changed: no previous ci/vX.Y.Z tag — the gate fails CLOSED"
+  local surface
+  surface="$(coldstart_surface)" || die "coldstart-changed: could not compute the cold-start surface"
+  coldstart_material_changes "$prev" "$surface"
+}
+
 case "${1:-}" in
   prep) shift; prep "${1:-}" ;;
   tag)  shift; tag "$@" ;;
+  _coldstart-changed) shift; coldstart_changed "${1:-}" ;;
+  # INTERNAL, same contract as _coldstart-changed: a seam for tests/test_release.sh
+  # to drive the prep red-classifier with canned suite output. $1 = output, $2 = rc.
+  _classify-suite) shift; classify_suite "${1:-}" "${2:-1}" "<test>" ;;
   *) die "usage: release.sh {prep <ci/vX.Y.Z> | tag <ci/vX.Y.Z> [--dry-run-verified]}" ;;
 esac

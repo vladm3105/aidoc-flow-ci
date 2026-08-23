@@ -44,7 +44,7 @@ on:
   # and — the one that matters for the scanners — Code Scanning alerts are
   # anchored to the DEFAULT BRANCH, so with no push-to-main run the SARIF
   # baselines never refresh: fixed alerts stay open forever and new ones never
-  # appear outside PR context. It also makes the `push`/`workflow_dispatch` arms
+  # appear outside PR context. It also makes the `push` arm
   # of the D3 concurrency allowlist below reachable rather than dead code.
   push:
     branches: [main]

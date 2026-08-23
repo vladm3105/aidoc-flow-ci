@@ -1199,4 +1199,247 @@ else
   _r "_pool_has could not be extracted from deploy-ci-wizard.sh"
 fi
 
+
+echo ""
+echo "== persist-credentials: false everywhere a later step does not need it (D36) =="
+# THE RULE IS NOT "every checkout sets it false". It is **omit it only where a
+# later step needs the credential, and say why** — PLAN-025 Pass-3 finding 8,
+# which scoped D36 down from "audit-trail is the sole exception".
+#
+# Both halves are load-bearing, and the ci/v4.0.0 hardening pass got the second
+# one wrong first: a sweep read "untrusted-head checkout without
+# persist-credentials" as a uniform defect and set it false on
+# `audit-trail-check.yml`. That job runs `git fetch --no-tags origin "$BASE_SHA"`
+# in a LATER step and hard-fails when the SHA is still unreachable,
+# so on every PRIVATE consumer the fetch goes anonymous and the required
+# `call / verify` context REDS with an error naming the wrong cause. It would not
+# have reproduced on canon's own PRs — canon is public, so an anonymous fetch of
+# a reachable SHA succeeds — which is exactly how it would have shipped green.
+# Caught in pre-push review by two independent lenses.
+#
+# So: enforce `false` everywhere, EXCEPT a named exception list, and require the
+# exception to carry its reason in a comment. A silent exception is how the rule
+# decays back into "whatever each file happens to do".
+#
+# Enumerated from PARSED YAML, not grep: `assert_contains "$file" "persist-credentials"`
+# passes on a header comment that merely mentions it (this file's own D21
+# lesson), and cannot tell two checkouts apart when only one is set.
+_co_exempt=".github/workflows/audit-trail-check.yml"
+_co_bad="$(python3 - "$_co_exempt" <<'PY_CO'
+import glob, sys, yaml
+exempt = set(sys.argv[1].split())
+bad = []
+for f in sorted(glob.glob(".github/workflows/*.yml")):
+    d = yaml.safe_load(open(f)) or {}
+    for jn, j in (d.get("jobs") or {}).items():
+        if not isinstance(j, dict):
+            continue
+        for st in (j.get("steps") or []):
+            if isinstance(st, dict) and "actions/checkout@" in str(st.get("uses", "")):
+                if (st.get("with") or {}).get("persist-credentials") is not False and f not in exempt:
+                    bad.append("%s::%s" % (f, jn))
+print(" ".join(bad))
+PY_CO
+)"
+assert_eq "$_co_bad" "" \
+  "no unexempted workflow checkout leaves the job token in .git/config (persist-credentials: false at every site)"
+
+# The exception must be REAL — a later step that actually needs the credential —
+# and must SAY SO. Both directions: an exemption for a job that does no remote
+# git op is a hole, and an exemption with no stated reason is one waiting to be
+# "cleaned up" by the next sweep, which is what happened here.
+assert_ok "[ -n \"$_co_exempt\" ]" \
+  "the D36 exemption list is non-empty — emptying it makes the loop below run zero times and prove nothing"
+for _ex in $_co_exempt; do
+  assert_ok "[ -f '$_ex' ]" "the D36 exemption names a file that exists: $_ex"
+  # BOTH DIRECTIONS. The first draft of this sweep only checked that NON-exempt
+  # files set it false, so re-introducing the exact regression — setting
+  # `persist-credentials: false` on the exempt job — passed clean. An allowlist
+  # that permits the defect it exists to prevent is not a guard. Mutation-tested:
+  # adding the line to this file must red HERE.
+  assert_eq "$(python3 - "$_ex" <<'PY_EX'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+vals = []
+for j in (d.get("jobs") or {}).values():
+    if not isinstance(j, dict):
+        continue
+    for st in (j.get("steps") or []):
+        if isinstance(st, dict) and "actions/checkout@" in str(st.get("uses", "")):
+            vals.append(str((st.get("with") or {}).get("persist-credentials", "<default>")))
+print(",".join(vals))
+PY_EX
+)" "<default>" \
+    "$(basename "$_ex"): the exempt checkout LEAVES persist-credentials at its default — setting it false here reds the gate on every private consumer"
+  # JUSTIFY FROM PARSED `run:` BODIES, not a whole-file grep. The first draft
+  # used `assert_contains "$(cat "$_ex")" "git fetch"`, so ANY file could be
+  # added to the exemption list by writing a comment that says "a later step runs
+  # git fetch" — the exact `grep -q` failure this block's own header warns about,
+  # applied to three of its four assertions. An exempt file is also skipped by
+  # the converse sweep entirely, so nothing else would ever look at its code.
+  assert_ok "[ \"$(python3 - "$_ex" <<'PY_REAL'
+import re, sys, yaml
+# The SAME matcher the converse sweep uses — git's global options sit between
+# `git` and the subcommand, so a naive \bgit\s+fetch\b is blind to the real forms.
+RG = re.compile(
+    r"(?:^|[;&|(]|\$\(|\bthen\b|\bdo\b|\belse\b|&&|\|\||!)\s*git\s+"
+    r"(?:(?:-c\s*\S+|-C\s*\S+|--(?:git-dir|work-tree|exec-path|namespace)=\S+)\s+)*"
+    r"(fetch|push|pull|clone|ls-remote|remote\s+update|submodule\s+update)\b", re.M)
+
+
+def _cmds(run):
+    """Comment-stripped run body. A `# … git fetch …` comment and an
+    `echo "… git fetch stderr: …"` message both contain the phrase without
+    performing it — matching them is the same grep-the-documentation defect
+    this block's header warns about, one level down. Requiring the invocation
+    at a COMMAND position (line start, or after ; & | ( or $() excludes the
+    in-string case that comment-stripping alone leaves behind."""
+    out = []
+    for line in str(run).split("\n"):
+        out.append(line.split("#", 1)[0] if line.lstrip().startswith("#") else line)
+    return "\n".join(out)
+
+d = yaml.safe_load(open(sys.argv[1])) or {}
+n = 0
+for j in (d.get("jobs") or {}).values():
+    if not isinstance(j, dict):
+        continue
+    for st in (j.get("steps") or []):
+        if isinstance(st, dict) and RG.search(_cmds(st.get("run", ""))):
+            n += 1
+print(n)
+PY_REAL
+)\" -ge 1 ]" \
+    "$(basename "$_ex"): the exemption is REAL — a parsed run: body performs a remote git op that needs the credential"
+  # The reason must sit on the CHECKOUT STEP, where the next sweep will read it,
+  # not anywhere in the file.
+  _ex_co="$(sed -n '/uses: actions\/checkout@/,/^      - name:/p' "$_ex")"
+  assert_contains "$_ex_co" "D36" \
+    "$(basename "$_ex"): ...and the CHECKOUT STEP says why it is exempt (an unexplained exemption gets swept away)"
+  assert_contains "$_ex_co" "persist-credentials" \
+    "$(basename "$_ex"): ...naming the input it deliberately leaves at its default"
+done
+
+# And the converse: no NON-exempt workflow may run a remote git op, or it needs
+# an exemption nobody has granted it and will fail on a private consumer exactly
+# the way audit-trail would have.
+# GIT'S GLOBAL OPTIONS SIT BETWEEN `git` AND THE SUBCOMMAND. A `\bgit\s+(fetch|…)`
+# regex was the first draft and it is blind to every real invocation in this
+# repo: ai-review's autofix job runs `git -c core.hooksPath=/dev/null clone …`
+# and `… push origin …`, so the sweep printed "no NON-exempt workflow runs a
+# remote git op" over a tree containing two. It passed only because `-c …` sat
+# in between — a guard that reports a property the tree already violates.
+#
+# `ai-review::autofix` is a NAMED exemption, not an accident of the regex: it
+# checks out with `persist-credentials: false` and then clones into a SEPARATE
+# pristine tree with the App credential in the clone URL, so its remote ops never
+# depend on `.git/config` in the PR tree. That is the design §4.3j's table
+# records; it needs to be stated here rather than silently unmatched.
+_co_remote="$(python3 - "$_co_exempt" <<'PY_RG'
+import glob, re, sys, yaml
+exempt = set(sys.argv[1].split())
+# job-level exemptions: "<file>::<job>", with the reason in the comment above.
+job_exempt = {".github/workflows/ai-review.yml::autofix"}
+RG = re.compile(
+    r"(?:^|[;&|(]|\$\(|\bthen\b|\bdo\b|\belse\b|&&|\|\||!)\s*git\s+"
+    r"(?:(?:-c\s*\S+|-C\s*\S+|--(?:git-dir|work-tree|exec-path|namespace)=\S+)\s+)*"
+    r"(fetch|push|pull|clone|ls-remote|remote\s+update|submodule\s+update)\b", re.M)
+
+
+def _cmds(run):
+    """Comment-stripped run body. A `# … git fetch …` comment and an
+    `echo "… git fetch stderr: …"` message both contain the phrase without
+    performing it — matching them is the same grep-the-documentation defect
+    this block's header warns about, one level down. Requiring the invocation
+    at a COMMAND position (line start, or after ; & | ( or $() excludes the
+    in-string case that comment-stripping alone leaves behind."""
+    out = []
+    for line in str(run).split("\n"):
+        out.append(line.split("#", 1)[0] if line.lstrip().startswith("#") else line)
+    return "\n".join(out)
+
+out = []
+for f in sorted(glob.glob(".github/workflows/*.yml")):
+    if f in exempt:
+        continue
+    d = yaml.safe_load(open(f)) or {}
+    for jn, j in (d.get("jobs") or {}).items():
+        if not isinstance(j, dict) or "%s::%s" % (f, jn) in job_exempt:
+            continue
+        steps = j.get("steps") or []
+        if not any(isinstance(s, dict) and "actions/checkout@" in str(s.get("uses", "")) for s in steps):
+            continue
+        for s in steps:
+            if isinstance(s, dict) and RG.search(_cmds(s.get("run", ""))):
+                out.append("%s::%s" % (f, jn))
+print(" ".join(sorted(set(out))))
+PY_RG
+)"
+assert_eq "$_co_remote" "" \
+  "no NON-exempt workflow runs a remote git op after a credential-less checkout (it would go anonymous and red on private consumers)"
+
+# THE SWEEP MUST BE ABLE TO SEE ONE. A regex this specific is worthless if it
+# matches nothing at all, and the first draft's did exactly that. Prove it
+# recognises the forms actually used in this repo.
+_rg_probe="$(python3 <<'PY_PROBE'
+import re
+RG = re.compile(
+    r"(?:^|[;&|(]|\$\(|\bthen\b|\bdo\b|\belse\b|&&|\|\||!)\s*git\s+"
+    r"(?:(?:-c\s*\S+|-C\s*\S+|--(?:git-dir|work-tree|exec-path|namespace)=\S+)\s+)*"
+    r"(fetch|push|pull|clone|ls-remote|remote\s+update|submodule\s+update)\b", re.M)
+
+
+def _cmds(run):
+    out = []
+    for line in str(run).split("\n"):
+        out.append(line.split("#", 1)[0] if line.lstrip().startswith("#") else line)
+    return "\n".join(out)
+
+
+should_match = [
+    'git fetch --no-tags origin "$BASE_SHA"',
+    'fetch_err=$(git fetch --no-tags origin "$BASE_SHA" 2>&1) || true',
+    'git -c core.hooksPath=/dev/null clone --quiet --depth 1',
+    'git -c core.hooksPath=/dev/null push origin "HEAD:$REF"',
+    'git -C /tmp/x fetch origin',
+    'git --git-dir=/tmp/x/.git fetch origin',
+    # LIVE IN THIS REPO at ai-review.yml's autofix push. The first anchor set
+    # (^ ; & | ( and $() missed it, so the assertion's own label — "sees every
+    # real invocation form" — was contradicted by a line in the tree it sweeps.
+    'if ! git -c core.hooksPath=/dev/null push origin "HEAD:${PR_HEAD_REF}"; then',
+    '  if [ -n "$x" ]; then git fetch origin main; fi',
+    '  for r in a b; do git push origin "$r"; done',
+]
+# Prose that MENTIONS a remote op without performing one. Matching these is how
+# a guard certifies an exemption that a COMMENT alone created — the defect this
+# probe exists to keep out, found when a mutation that deleted the real
+# `git fetch` left the check green on the comment describing it.
+should_not = [
+    '          # ORDERING: this runs BEFORE the git fetch + cat-file',
+    '          echo "::error::unreachable after fetch. git fetch stderr: ${e}"',
+    '          # Line 152 runs `git fetch --no-tags origin "$BASE_SHA"`',
+]
+print(",".join("1" if RG.search(_cmds(c)) else "0" for c in should_match)
+      + "|" + ",".join("1" if RG.search(_cmds(c)) else "0" for c in should_not))
+PY_PROBE
+)"
+assert_eq "$_rg_probe" "1,1,1,1,1,1,1,1,1|0,0,0" \
+  "the remote-git-op matcher sees every real invocation form AND ignores prose that merely mentions one"
+
+# A count floor, so the sweep cannot pass by finding zero checkouts — a parser
+# change or a moved directory would otherwise read as a clean sweep.
+_co_n="$(python3 - <<'PY_CN'
+import glob, yaml
+n = 0
+for f in sorted(glob.glob(".github/workflows/*.yml")):
+    d = yaml.safe_load(open(f)) or {}
+    for j in (d.get("jobs") or {}).values():
+        if isinstance(j, dict):
+            n += sum(1 for st in (j.get("steps") or [])
+                     if isinstance(st, dict) and "actions/checkout@" in str(st.get("uses", "")))
+print(n)
+PY_CN
+)"
+assert_ok "[ \"$_co_n\" -ge 15 ]" "the checkout sweep actually found checkouts to check (got $_co_n)"
+
 suite_summary "contract"

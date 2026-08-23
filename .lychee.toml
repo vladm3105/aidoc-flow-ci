@@ -1,0 +1,44 @@
+# .lychee.toml — canon's own copy (Wave 0 self-adoption).
+#
+# WHY THIS FILE EXISTS AT THE ROOT. `self-quick-gates.yml` passes
+# `config-file: .lychee.toml` to `./actions/links`, mirroring the shipped
+# `install/templates/workflows/quick-gates.yml` that every consumer adopts. That
+# action REFUSES rather than falling back:
+#
+#   "config-file '…' was requested but does not exist. Refusing to run with
+#    lychee defaults — that silently drops the consumer's tolerance profile."
+#
+# Consumers receive `.lychee.toml` from the manifest at install; canon does not
+# install its own templates, and it had never run `links` on itself (there is no
+# `self-links.yml`), so the root copy was simply absent. Without it
+# `self-quick-gates` would exit 1 on its `links` step on EVERY run — a
+# permanently-red observational workflow, which is the fastest way to train
+# everyone to ignore the thing that exists to be read.
+#
+# KEEP IT IN STEP WITH `install/templates/.lychee.toml`. Canon dogfooding a
+# different tolerance profile from the one it ships is the Wave-0 defect this
+# self-adoption exists to prevent; `tests/test_actions.sh` asserts the two agree.
+
+# Behavior
+cache = true
+max_cache_age = "1d"
+max_concurrency = 14
+max_retries = 2
+timeout = 20
+
+# 200 + 206 are normal; 429 (rate-limit) is treated as success to
+# avoid CI flake against rate-limited services.
+accept = ["200", "206", "429"]
+
+# Excludes
+exclude_loopback = true
+exclude_all_private = true
+exclude_path = ["node_modules", "vendor", ".git", "target", "dist", "build"]
+
+# Hosts that 403 / 999 to automated user-agents (lychee will
+# false-positive otherwise). Curated from lychee community configs.
+exclude = [
+  '^https?://(www\.)?(twitter|x)\.com',
+  '^https?://(www\.)?linkedin\.com',
+  '^https?://localhost',
+]

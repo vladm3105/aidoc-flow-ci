@@ -93,6 +93,33 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
+          # `persist-credentials` IS DELIBERATELY LEFT AT ITS DEFAULT (true) HERE,
+          # and this is the ONE checkout in canon where that is correct — D36.
+          #
+          # The "OPS-0069 audit-trail phrase check" step below fetches the base
+          # ref from the remote and then hard-fails when that SHA is still
+          # unreachable. (Cited by STEP, not by line: the line numbers this
+          # comment first carried drifted by 14 the moment the comment itself was
+          # added, which is the same defect this PR fixed in `scanners.yml`.)
+          # On a PRIVATE consumer an
+          # unauthenticated fetch cannot resolve it, so setting
+          # `persist-credentials: false` here does not harden anything — it REDS
+          # THIS GATE on every PR for `operations`, `business`, `iplanic` and
+          # `interlog`. PLAN-025 D36 records the asymmetry and says so in as many
+          # words: *"inverting it reds the check on private consumers."*
+          #
+          # It was set to false in the first draft of the ci/v4.0.0 hardening pass,
+          # by a sweep that read "untrusted head checkout without persist-credentials"
+          # as a uniform defect. Caught in pre-push review. The rule is NOT "every
+          # checkout sets it false" — it is **omit it only where a later step needs
+          # the credential, and say why** (PLAN-025 Pass-3 finding 8, which scoped
+          # D36 down from "audit-trail is the sole exception"). This comment is the
+          # "say why".
+          #
+          # The residual exposure is bounded and understood: no PR code executes in
+          # this job. It checks out the head tree, fetches the base, and walks
+          # `git log` over the range. The credential is not reachable by anything
+          # the PR author controls.
 
       - name: OPS-0069 audit-trail phrase check
         env:

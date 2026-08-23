@@ -29,7 +29,7 @@ on:
         type: boolean
         default: false
       scan-path:
-        description: 'Path to scan (recursively) for config/IaC misconfigurations. Default "." (repo root).'
+        description: 'Path to scan. MUST be "." (the repo root) — a narrower subtree is a COVERAGE choice and is REFUSED (D26/§4.3i), because the caller is PR-mutable on pull_request.'
         type: string
         default: '.'
       runner_labels:
@@ -110,6 +110,22 @@ jobs:
             echo "::error::trivy-scan: scan-path '${sp_safe}' is not an existing directory — refusing rather than reporting a clean scan of nothing (D23)."
             exit 1
           fi
+          # COVERAGE, NOT JUST SAFETY. The two checks above validate that SCAN_PATH is
+          # safe to hand to `find`; neither constrains what gets SCANNED. `scan-path` is
+          # caller-supplied, and on `on: pull_request` the caller's workflow file comes
+          # from the PR HEAD — the same access level D23 assumes throughout. So
+          # `scan-path: docs` is an existing directory with no leading `-` that passes
+          # both checks, scans a code-free tree, exits 0, writes a valid SARIF with no
+          # results, and the gate goes GREEN. That is bit-for-bit the outcome D26 closes
+          # for `config` — the same bypass through a second door, and only one was shut.
+          #
+          # Costs nothing: `.` is the input's default and what every shipped caller
+          # passes. A repo that genuinely needs a narrower scan asks canon for a
+          # gate-side input, which is the rule restated — THE GATE decides coverage.
+          case "$SCAN_PATH" in
+            .) ;;
+            *) echo "::error::trivy-scan: scan-path must be the repo root '.'; got '${sp_safe}'. A PR-chosen subtree is a COVERAGE choice — an existing directory containing no code exits 0 with a valid empty SARIF and the gate goes green having scanned nothing (D26/§4.3i)."; exit 1 ;;
+          esac
           strip_roots=("$SCAN_PATH")
           if [ "$SCAN_PATH" != "." ]; then strip_roots+=("."); fi
           d23_scan() {

@@ -827,19 +827,169 @@ or via a new action input — never in a PR-mutable file.
 - **`.trivyignore.yaml` / `.trivyignore.yml`** are stripped defensively; measured
   at trivy 0.72.0 they are **not** auto-discovered.
 
-**Known non-conformance at the time of writing (2026-08-20).** The rule binds
-every scanner surface; two do not yet satisfy it, and both are tracked rather
-than silently excepted:
+**Conformance is COMPLETE for rules 1–5 and 7–9, and the list of surfaces is
+DERIVED.** (Rule 6 is open on `sast-scan` — see below; the earlier draft of this
+sentence said "complete" flatly and dropped that disclosure.) All six scanner
+surfaces satisfy those rules: `actions/{dep,trivy,sast}-scan/action.yml`
+and the three `workflow_call` reusables of the same names. The previously
+recorded non-conformance — `actions/sast-scan/action.yml` missing the
+`scan-path` validation, and `.github/workflows/sast-scan.yml` carrying the
+pre-#425 strip (`-type f` only, no root strip, **no post-condition**, so its
+`|| true` was the whole gate) — is discharged.
 
-- `actions/sast-scan/action.yml` — post-condition covers `scan-path` only while
-  the strip also clears the root (#423).
-- `.github/workflows/sast-scan.yml` — carries the pre-#425 strip: `-type f` only,
-  no root strip, and **no post-condition at all**, so its `|| true` is the whole
-  gate. Whether semgrep also honours `.gitignore` (rule 6) is unmeasured.
+**Read the shape of that gap before trusting the next one.** D23 ORIGINATED on
+`sast-scan`, and #425 hardened the two surfaces it was EXTENDED to while leaving
+the origin behind. It stayed there for the life of the v3 line, disclosed in
+this very section, because the test that drives D23 named **four** surfaces and
+called that "every shipped surface" — both sast surfaces were outside the guard
+by construction, so nothing could go red. A defence with a hand-maintained list
+of where it applies is a defence with a hand-maintained list of where it does
+not. `tests/test_actions.sh` now DERIVES the surface list from the tree
+(`actions/*-scan/action.yml` + `.github/workflows/*-scan.yml`, less
+`secret-scan`, whose config canon itself ships) and reds when the derived set
+and the driven set disagree.
+
+**`secret-scan` is the one deliberate exclusion.** gitleaks' config is
+`.gitleaks.toml`, which canon SHIPS as a template and every adopter is meant to
+carry — stripping it would delete the gate's own configuration, the coverage
+defence removing coverage. Its equivalent exposure is closed gate-side by
+pinning `--config`.
+
+**Rule 6 remains OPEN on `sast-scan`, and this paragraph is its only carrier.**
+Whether semgrep 1.170.0 honours `.gitignore` for target selection is
+**unmeasured**. `dep-scan` closes the equivalent hole gate-side with
+`--no-ignore` (osv-scanner was measured to take results 70 → 24 via a
+`.gitignore` naming a manifest); neither sast surface passes an equivalent flag.
+So `sast-scan` satisfies rules 1–5 and 7–9, not rule 6.
+
+This disclosure was deleted once already. The conformance rewrite above replaced
+a "known non-conformance" block that ended _"Whether semgrep also honours
+`.gitignore` (rule 6) is unmeasured"_ — and removing the carrier removed the
+open question with it, while the replacement asserted every surface satisfied
+the rule. That is the failure this section warns about two paragraphs down,
+committed inside the fix for it. **Measure it** (plant a `.gitignore` naming a
+file with a known finding, record the delta the way the trivy and osv numbers
+are recorded), then either add the gate-side flag and claim conformance, or keep
+this paragraph.
 
 **Origin:** `sast-scan` shipped D23 at `ci/v3.0.0`; #425 extended it to
 `trivy-scan` and `dep-scan` across both the actions and the reusables, and added
-rules 2 and 6–9 from what that work measured.
+rules 2 and 6–9 from what that work measured. The back-port to the origin
+surfaces, and the derived surface list, landed for `ci/v4.0.0`.
+
+#### 4.3i The GATE decides the RULESET, and an input is not "explicit" (D26)
+
+§4.3e governs config files the scanned repo COMMITS. This governs the coverage
+levers the scanned repo **passes**, which is the same hole through a door that
+looks like it is already shut.
+
+`sast-scan` carried the claim _"Explicit `--config` (registry ruleset), NEVER
+repo-local auto-discovery → a PR cannot inject rules."_ That was true of
+semgrep's DISCOVERY and false of the INPUT. `config` is supplied by the caller;
+on `on: pull_request` the caller's workflow file comes from the **PR head**, the
+same access level §4.3e already assumes. semgrep's `--config` accepts a registry
+ref, **a local path, or a URL** — so `config: ./empty.yaml` yields a zero-rule
+scan that exits 0 with a legitimate empty SARIF, `n=0`, `::notice::no SAST
+findings`, and a **green** required check that inspected nothing.
+
+The rule:
+
+1. **A coverage-determining input is validated against an allowlist of VALUES,
+   gate-side — not a namespace prefix.** `sast-scan` accepts exactly
+   `p/default`, `p/security-audit` and `p/python`.
+
+   The first fix allowed the registry namespaces (`p/*|r/*`) and did **not**
+   deliver this rule. `r/` addresses an _individual_ registry rule, so
+   `config: r/generic.comment.something` passes a prefix check, resolves to a
+   real ruleset of one rule, exits 0 with a valid SARIF, and the gate goes green
+   having scanned essentially nothing — as does a narrow pack like `p/comment`.
+   The original bypass took coverage to zero rules; a prefix check takes it to
+   one. A prefix is also only a prefix: `p/../s/<attacker-snippet>` matches
+   `p/*`. **A namespace is not a coverage guarantee.**
+
+   This costs nothing today — those three values are exactly what canon ships
+   and documents. A repo needing another pack asks canon to add it, which is the
+   rule restated: the gate decides coverage, not the scanned code.
+2. **"Explicit" describes where a value is WRITTEN, not who controls it.**
+   Passing an input explicitly protects against a changed DEFAULT. It says
+   nothing about whether the scanned code chose the value. Do not let the first
+   property be documented as if it delivered the second.
+2a. **`scan-path` is the same lever through a second door, and it is closed the
+   same way.** All three scanner surfaces validate `scan-path` for _safety_ — it
+   must not begin with `-` (or `find` reads it as an option) and must be an
+   existing directory. Neither constrains _coverage_: `scan-path: docs` passes
+   both, scans a code-free tree, exits 0, writes a valid empty SARIF, and the
+   gate goes green. The rule was written for `config`, applied to `config`, and
+   the identical bypass sat one input away — found in the second review cycle of
+   the change that introduced rule 1. All six surfaces now accept `.` only,
+   which is the input's default and what every shipped caller passes.
+
+3. **Claim only what is enforced.** `fail-on-findings` is also caller-supplied
+   and canon itself ships it `false` during a report-only rollout, so a PR
+   setting it false is not an escalation beyond the shipped default — that is
+   stated rather than quietly folded into the claim.
+
+   Still _not_ enforced, and named here rather than left to be rediscovered:
+   **`sarif-path`**. It cannot make the findings count read zero (the count is
+   computed from the file the scanner just wrote, and an unwritable or empty
+   path trips the infrastructure-error arm), but it is a **report** lever — a PR
+   pointing the sast step's `sarif-path` at `osv.sarif` makes semgrep overwrite
+   dep-scan's report, and on `push: main` Code Scanning keys an analysis by
+   category, so the dep-scan category is replaced by content holding none of its
+   rule IDs and its open alerts auto-resolve. Same harm as §4.3e's
+   "outlives the PR" paragraph, reached through an input. Carried in
+   `plans/PLAN-027` §C rather than fixed here.
+
+**Origin:** the D26 prose predates enforcement; the guard and its both-direction
+tests landed for `ci/v4.0.0`.
+
+#### 4.3j `persist-credentials: false` — everywhere a later step does not need it
+
+The input defaults to **true**, so this is an invariant held only by writing it
+at every site.
+
+**The rule is not "every checkout sets it false."** It is: _omit it only where a
+later step needs the credential, and say why._ Both halves are load-bearing, and
+the `ci/v4.0.0` hardening pass got the second one wrong before review caught it.
+
+A sweep read "untrusted-head checkout without `persist-credentials`" as a
+uniform defect and set it `false` on `audit-trail-check.yml` — the one canon
+workflow that runs a **remote** git operation:
+
+```sh
+fetch_err=$(git fetch --no-tags origin "$BASE_SHA" 2>&1) || true
+```
+
+`actions/checkout` authenticates by writing `http.https://github.com/.extraheader`
+into `.git/config`; `persist-credentials: false` removes it, and nothing else in
+that job configures a credential helper. On a **private** consumer the fetch
+then goes anonymous, the following `git cat-file -e` fails, and the required
+`call / verify` context reds on every PR with an error naming the wrong cause —
+`fetch-depth: 0`, which _is_ set. It would not reproduce on canon's own PRs
+(canon is public, so an anonymous fetch of a reachable SHA succeeds), which is
+exactly how it would have shipped green.
+
+So the current state, and the shape to keep:
+
+| Site | Setting | Why |
+|---|---|---|
+| every checkout in canon except one | `persist-credentials: false` | data-only — the job reads a tree and talks to the API with an explicit `GH_TOKEN` |
+| `audit-trail-check.yml` | left at the default | a later step runs `git fetch` against the remote (D36) |
+| ai-review `autofix` | `false` on the editing tree | the write-scoped credential is confined to a separate pristine clone |
+
+**An exemption must carry its reason at the site.** An unexplained exemption is
+one waiting to be tidied away by the next sweep, which is what happened here.
+
+Enforced by `tests/test_contract.sh` from **parsed YAML**, not grep — a
+`grep -q persist-credentials` passes on a header comment that merely mentions it,
+and cannot tell two checkouts apart when only one is set. The check runs in
+**both directions**: a non-exempt checkout that omits the setting fails, _and_ an
+exempt checkout that sets it fails. The first draft enforced only the first
+direction, so re-introducing the exact regression passed clean — an allowlist
+that permits the defect it exists to prevent is not a guard. A converse sweep
+also fails any non-exempt workflow that runs a remote git op after a
+credential-less checkout, and a count floor keeps the whole check from passing
+by finding zero checkouts.
 
 #### 4.3f A pinned tool must be pinned to something IMMUTABLE (#435)
 

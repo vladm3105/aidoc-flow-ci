@@ -1,46 +1,63 @@
-# quick-gates — v3 caller consolidating the PR lint checks into ONE job.
+# self-quick-gates — canon EXERCISES its own v3 composite actions.
 #
-# A `workflow_call` reusable always gets its own runner, so each check paid a
-# full provisioning cycle: on aidoc-flow-operations the audit-trail reusable took
-# ~167s to run a grep, almost entirely provisioning. Composite actions run in
-# THIS job and share one cycle.
+# WHY THIS EXISTS: until this file, the entire v3 layer had never executed
+# ANYWHERE. Canon's four self-callers (self-pre-commit, self-markdown-lint,
+# self-secret-scan, self-docs-sync) all invoke the pre-v3 `workflow_call`
+# reusables, `grep -r 'aidoc-flow-ci/actions/' .github/workflows/` returned
+# NOTHING, and no consumer calls them either. `tests/test_actions.sh` verifies
+# the composite actions by PARSING their text — job ids, permissions blocks,
+# timeout arithmetic, the D23 strip — which is necessary and is not the same as
+# running them. The headline feature of the release was going to meet its first
+# real runner on an adopter's PR.
 #
-# ── SCOPE: three checks, not four or five (PLAN-025 §3.2d) ───────────────────
-# pre-commit + markdownlint + links. Deliberately NOT here:
+# That is not a hypothetical class here. It has bitten twice on this exact
+# surface: #349 (`python3` present but `python3 -m venv` impossible, which made
+# `sast-scan` inert) and #436. Both are runtime-only — no amount of static
+# assertion finds them.
 #
-#   audit-trail  — needs `types: [… labeled, unlabeled]` so its skip-label
-#                  escape hatch can fire (D32). Adding those types would re-run
-#                  lint on every label write, which ai-review/labeler/auto-merge
-#                  do routinely. No single `types:` satisfies both, and
-#                  audit-trail additionally needs a job-level event refusal (D31)
-#                  and the D36 credential asymmetry — three defenses for one
-#                  provisioning cycle. It stays its own workflow.
-#   composition  — fires on pull_request_review + workflow_run, never
-#                  pull_request. Only same-trigger checks can share a job.
-#   secret-scan  — ubuntu-latest and fork-visible by design; the other scanners
-#                  are self-hosted and fork-guarded (PLAN-025 P3a).
+# ── LOCAL `uses: ./actions/…`, NOT the pinned tag ────────────────────────────
+# The other self-callers pin `@ci/vX.Y.Z` because they exercise a REUSABLE, and
+# a reusable must be resolved from a ref. These are composite actions in THIS
+# repo, so `./actions/<name>` resolves against the checked-out tree — which is
+# the entire point: pinning the released tag here would exercise the code that
+# already shipped and stay blind to the change under review. It also sidesteps
+# the FT-21 chicken-and-egg (a prep bumps every pin to a tag that does not exist
+# yet, and these would `startup_failure` on every release PR).
 #
-# ── D4: THE JOB ID IS THE REQUIRED STATUS CONTEXT ────────────────────────────
-# Renders as `quick-gates`. Renaming the job id silently un-satisfies
-# branch protection, which then never fires again. Migrate add-new → observe
-# green → remove old → delete old callers, reading BOTH live protection AND
-# rulesets (D19, D40) — never the branch-protection templates: canon's own
-# `main` requires `call / markdownlint` and `suite`, neither of which appears in
-# any template.
+# ── NOT a required context, deliberately — and only PARTLY duplicate ─────────
+# Canon's `main` requires exactly five contexts (measured, not remembered:
+# `gh api repos/vladm3105/aidoc-flow-ci/branches/main/protection
+# --jq '.required_status_checks.contexts'`) — `suite`, `call / verify`,
+# `call / markdownlint`, `call / Lint / format / security hooks`,
+# `call / gitleaks`.
 #
-# ── PRIVATE VARIANT — self-hosted, and that is SAFE here ─────────────────────
-# This job runs `pre-commit` over the PR's own files, i.e. it executes PR code.
-# On a PUBLIC repo that means it must stay `ubuntu-latest` (D7) — see the
-# `quick-gates.yml` sibling. On a PRIVATE repo there is no fork-PR surface, so
-# the ephemeral pool is both safe and REQUIRED: GitHub-hosted minutes
-# on a private repo are OPS-0049 billing exposure and against workspace policy.
+# So of the three checks this job runs: `pre-commit` and `markdownlint` DO
+# duplicate an existing required context, through the v3 actions instead of the
+# v2 reusables — the add-new/observe-green/remove-old state
+# docs/MIGRATION_v3.0.0.md step 3 describes. **`links` duplicates nothing.**
+# There is no `self-links.yml` and no links context in that list; canon has never
+# link-checked itself, which is also why it had no root `.lychee.toml` until this
+# change. A red `links` here is the ONLY signal for that class of defect on
+# canon's own tree.
 #
-# D1 — WHY THIS FILE EXISTS AS A SEPARATE TEMPLATE. `install.sh --update`
-# resolves each surface through manifest.json's `visibility_variants`. With no
-# private variant it re-applies the label-less generic, the reusable's
-# `ubuntu-latest` default wins, and jobs QUEUE FOREVER on a private repo — the
-# defect ci/v2.1.0 shipped the variants to close. Do not merge these two files.
-name: quick-gates
+# An earlier draft of this header called the whole job "duplicate coverage by
+# construction". That reads as "a red here is redundant with something already
+# gated", which is false for a third of what it runs — and it is the reading that
+# gets a genuinely new signal ignored.
+#
+# Adding it to branch protection is a separate, deliberate act; until then a red
+# here is a signal to a human, not a merge block. Do NOT wire the pre-commit and
+# markdownlint halves into protection while the v2 self-callers still satisfy
+# those contexts, or the two sets double-report.
+#
+# ── DRIFT ────────────────────────────────────────────────────────────────────
+# This mirrors `install/templates/workflows/quick-gates.yml`, which is what
+# consumers actually get. `tests/test_actions.sh` asserts the two invoke the same
+# action set with the same load-bearing inputs, so an input added to the shipped
+# template but not here (or vice versa) reds — otherwise canon would be
+# exercising a configuration nobody adopts.
+
+name: self-quick-gates
 
 on:
   pull_request:
@@ -75,9 +92,9 @@ concurrency:
           && contains(fromJSON('["opened","synchronize"]'), github.event.action)) }}
 
 jobs:
-  quick-gates:
-    name: quick-gates
-    runs-on: ["self-hosted", "ci", "ephemeral"]
+  self-quick-gates:
+    name: self-quick-gates
+    runs-on: ubuntu-latest
     # PLAN-025 §3.2b: a consolidated job's timeout is the SUM of the budgets it
     # absorbs (pre-commit 15 + markdownlint 10 + links 20), never the max and
     # never a round number picked by eye. An earlier draft shipped 15 — BELOW
@@ -126,7 +143,7 @@ jobs:
       - name: Lint / format / security hooks
         id: precommit
         continue-on-error: true
-        uses: vladm3105/aidoc-flow-ci/actions/pre-commit@ci/v3.0.0
+        uses: ./actions/pre-commit
         with:
           config-path: .pre-commit-config.yaml
 
@@ -138,7 +155,7 @@ jobs:
       - name: markdownlint
         id: markdownlint
         continue-on-error: true
-        uses: vladm3105/aidoc-flow-ci/actions/markdownlint@ci/v3.0.0
+        uses: ./actions/markdownlint
         with:
           globs: |
             **/*.md
@@ -176,7 +193,7 @@ jobs:
       - name: links
         id: links
         continue-on-error: true
-        uses: vladm3105/aidoc-flow-ci/actions/links@ci/v3.0.0
+        uses: ./actions/links
         with:
           mode: internal
           fail-on-error: 'true'

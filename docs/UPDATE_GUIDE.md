@@ -300,7 +300,17 @@ Quick-reference:
      boundary from inside the v2.0.0 section, skipping the context surgery the
      v3 migration below requires (#450). Its twin in MIGRATION_v2.0.0.md was
      already marked; this one was the outlier. -->
-1. Add `LLM_URL` + `LLM_API_KEY` secrets
+1. Add `LITELLM_BASE_URL` + `LITELLM_REVIEW_API_KEY` secrets — **these names,
+   not the modern ones.** The unified `LLM_URL` / `LLM_API_KEY` pair arrived
+   2026-08-21, long after `ci/v2.0.0` was cut, and the fallback that accepts the
+   old names (`secrets.LLM_URL || secrets.LITELLM_BASE_URL`) lives in the
+   reusable — so at the **frozen `ci/v2.0.0` pin this step targets**, `LLM_URL`
+   is not read at all and the ai-review job cannot find its secret. This
+   quick-reference said `LLM_URL` while the full guide it summarises
+   (`MIGRATION_v2.0.0.md` §2) said `LITELLM_*`: two documents, one step, mutually
+   exclusive names. Set the modern pair as well if you intend to keep moving
+   forward — `docs/MIGRATION_v4.0.0.md` §3 covers that — but this step needs the
+   `LITELLM_*` pair to work at its own pin.
 2. Set `.github/ai-review/config.json` to the **v2 shape** — BOTH fields, since
    CI-0014 asserts `version == 2` before reading anything and `litellm.model`
    has no default:
@@ -321,6 +331,35 @@ Quick-reference:
 That lands the consumer on `ci/v2.0.0`, not on the current release. Continue with
 the v3 migration below — it is a second breaking change and the two do not
 compose into one repin.
+
+## ci/v3.0.0 → ci/v4.0.0 breaking-change migration
+
+`ci/v4.0.0` changes the **operating contract**, not the packaging — the v3
+composite-action rework is unchanged. Three breaks, and the first two are not
+backward compatible:
+
+| Change | What breaks if you ignore it |
+|---|---|
+| Runner labels `ci-runner`→`ci`, `single-use`→`ephemeral` (CI-0043) | Jobs **queue forever** — no failure, no timeout, no log |
+| `doc-maintainer` reusable **deleted** (CI-0040) | A repinned caller gets `startup_failure`, which produces no logs |
+| LLM credentials unify on `LLM_URL`/`LLM_API_KEY` | Nothing — the `LITELLM_*` names still resolve |
+
+Two ordering rules carry the whole risk, and both are the kind that fail
+silently rather than loudly:
+
+1. **Register the coexistence runner label set BEFORE repinning**
+   (`self-hosted,ci-runner,single-use,ci,ephemeral`), confirm a real job lands
+   on the new labels, and only then narrow to `self-hosted,ci,ephemeral`. A job
+   whose labels match no registered runner queues forever; `timeout-minutes`
+   cannot fire on a job that never starts.
+2. **Delete your `doc-maintainer.yml` caller BEFORE repinning**, not after.
+
+`ci/v3.0.0` was **not** re-cut and remains a valid pin and the rollback target
+(`DECISIONS.md` CI-0044).
+
+- [`docs/MIGRATION_v4.0.0.md`](MIGRATION_v4.0.0.md) — complete checklist
+  (preconditions, the ordered runner cutover, the delete-before-repin rule,
+  secrets, rollback)
 
 ## ci/v2.x → ci/v3.0.0 breaking-change migration
 

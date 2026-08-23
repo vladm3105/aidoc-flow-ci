@@ -38,11 +38,11 @@ description: SAST via semgrep (version-pinned pip venv, explicit ruleset, data-o
 
 inputs:
   scan-path:
-    description: 'Path to scan.'
+    description: 'Path to scan. MUST be "." (the repo root) — a narrower subtree is a COVERAGE choice and is REFUSED (D26/§4.3i), because the caller is PR-mutable on pull_request.'
     required: false
     default: '.'
   config:
-    description: 'Semgrep ruleset. EXPLICIT only — never repo-local auto-discovery, so a PR cannot inject rules (D26).'
+    description: 'Semgrep ruleset. GATE-APPROVED VALUES ONLY: p/default, p/security-audit, p/python — anything else is REFUSED (D26/§4.3i). A local path, a URL, or a narrow/one-rule ref is a COVERAGE choice, and the caller is PR-mutable on pull_request.'
     required: false
     default: 'p/default'
   fail-on-findings:
@@ -85,6 +85,47 @@ runs:
 
         summary() { echo "sast-scan: $1" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"; }
 
+        # D26, ENFORCED — the claim below used to be prose only.
+        #
+        # "Explicit --config, never repo-local auto-discovery → a PR cannot inject
+        # rules" was true of DISCOVERY and false of the INPUT. `config` is supplied by
+        # the CALLER, and on `on: pull_request` the caller's workflow file comes from
+        # the PR HEAD — the same access level D23 already assumes. semgrep's --config
+        # takes a registry ref, A LOCAL PATH, or A URL. So `config: ./empty.yaml`
+        # (or an attacker-hosted URL) yields a zero-rule scan that exits 0 with a
+        # legitimate empty SARIF → `n=0` → `::notice::no SAST findings` → GREEN, having
+        # checked nothing. That is the D23 shape reached through the other door.
+        #
+        # Restrict to the semgrep REGISTRY namespaces the docs and every shipped caller
+        # already use (`p/` rulesets, `r/` individual rules). This is not a tuning
+        # limit: `install/templates/workflows/{sast-scan,scanners}.yml` document
+        # exactly `p/default`, `p/security-audit`, `p/python`. A repo needing a bespoke
+        # ruleset publishes it to the registry or asks canon for an input — the point
+        # of a gate is that the SCANNED code does not choose its own rules.
+        #
+        # NOT claimed: `fail-on-findings` is also caller-supplied, and canon itself
+        # ships it `false` for the report-only rollout, so a PR setting it false is not
+        # an escalation beyond the shipped default. Coverage is what this closes.
+        cfg_safe="$(printf '%s' "$CONFIG" | tr '\n\r' '??' | cut -c1-200)"
+        # AN EXACT SET, not a namespace prefix. A `p/*|r/*` prefix check was the first
+        # draft and it does not deliver what D26 claims: `r/` addresses an INDIVIDUAL
+        # registry rule, so `config: r/generic.comment.something` passes the prefix,
+        # resolves to a real ruleset of ONE rule, exits 0 with a valid SARIF and n=0,
+        # and the gate goes green having scanned essentially nothing. So does a narrow
+        # pack like `p/comment`. The original bypass took coverage to zero rules; a
+        # prefix check takes it to one. That is not a fix, it is a smaller number.
+        # A prefix is also only a prefix: `p/../s/<attacker-snippet>` matches `p/*`.
+        #
+        # The gate therefore NAMES the rulesets it accepts. These are exactly the ones
+        # canon ships and documents, so no shipped caller and no documented example
+        # changes. A repo needing a different pack asks canon to add it here — which is
+        # the point: THE GATE decides coverage, not the scanned code.
+        case "$CONFIG" in
+          p/default|p/security-audit|p/python) ;;
+          *) echo "::error::sast-scan: config must be one of the gate-approved rulesets (p/default, p/security-audit, p/python); got '${cfg_safe}'. A PR-chosen ruleset is a COVERAGE choice — a narrow or one-rule config exits 0 with a valid empty SARIF and the gate goes green having checked nothing (D26). To add a ruleset, change it in canon, not in the caller."; exit 1 ;;
+        esac
+
+
         # semgrep is Python — VERSION-pinned pip into an isolated venv (full transitive
         # hash-pinning is impractical for a large dep tree; version-pin is the accepted
         # supply-chain baseline for a pip tool — PLAN-014 §3). pip runs PyPI build code
@@ -94,6 +135,7 @@ runs:
         python3 -m venv "$VENV"
         "$VENV/bin/pip" install --quiet --disable-pip-version-check "semgrep==${SEMGREP_VERSION}"
 
+        # ── D23 (ORIGIN surface — parity with the #425 extensions) ───────────
         # THE GATE — NOT THE SCANNED PR — DECIDES COVERAGE. semgrep ALWAYS honors a
         # `.semgrepignore` (gitignore syntax) INDEPENDENTLY of --config, so a PR that
         # commits `.semgrepignore` containing `*` makes the scan cover zero files → a
@@ -102,18 +144,90 @@ runs:
         # defaults (which still skip vendored dirs). A repo that needs a real exclusion
         # must express it gate-side (the ruleset / a future input), never via a
         # PR-mutable file.
+        #
         # `-type f` MISSES A SYMLINK, and git stores symlinks natively (mode
         # 120000). A PR commits `.semgrepignore` as a symlink to any file
         # containing `*`; the strip skips it, semgrep follows the link, coverage
         # goes to zero and the gate goes green — the very bypass D23 closes.
         # REPRODUCED 2026-08-08. Also strip from the repo ROOT, because semgrep
         # resolves the ignore file from CWD, not from SCAN_PATH.
-        find "$SCAN_PATH" \( -type f -o -type l \) \( -name '.semgrepignore' -o -name '.semgreprc' \) -print -delete 2>/dev/null || true
-        rm -f ./.semgrepignore ./.semgreprc
-        # D23 IS A GATE, NOT A BEST EFFORT. The `|| true` above keeps a partial
-        # failure from aborting the step, so the post-condition is what actually
-        # enforces it: if any ignore file still resolves, refuse to scan rather
-        # than scan with attacker-controlled coverage.
+        #
+        # scan-path is an INPUT, and on `pull_request` the caller's workflow file comes
+        # from the PR HEAD — the same access level D23 already assumes. `find` reads its
+        # first operand as an OPTION when it begins with `-`: `scan-path: -delete` makes
+        # this `find -delete \( … \) …`, which has NO path operand, so `-delete` (which
+        # implies `-depth`) evaluates against the whole tree. MEASURED on the dep-scan
+        # and trivy-scan siblings: it EMPTIES THE WORKSPACE — here that also destroys
+        # `osv.sarif` and `trivy.sarif` already written by the two preceding steps of
+        # `scanners.yml`, so all three uploads silently no-op on their `hashFiles`
+        # guards. The post-condition then finds nothing and certifies the empty tree
+        # clean: the strip becomes the bypass. Validate before the value reaches find.
+        # This guard is the one piece #425 gave the two extensions and not the origin.
+        sp_safe="$(printf '%s' "$SCAN_PATH" | tr '\n\r' '??' | cut -c1-200)"
+        case "$SCAN_PATH" in
+          -*) echo "::error::sast-scan: scan-path may not begin with '-' (got '${sp_safe}') — refusing rather than handing it to find as an option (D23)."; exit 1 ;;
+        esac
+        if [ ! -d "$SCAN_PATH" ]; then
+          echo "::error::sast-scan: scan-path '${sp_safe}' is not an existing directory — refusing rather than reporting a clean scan of nothing (D23)."
+          exit 1
+        fi
+        # The repo ROOT is a SECOND strip root, not a separate `rm -f`: semgrep
+        # resolves the ignore file from CWD, so a run with `scan-path: sub/` must
+        # clean both. Expressing it as a root — rather than the `rm -f ./…` this
+        # replaces — is what lets the POST-CONDITION cover the same two places the
+        # strip does. With the `rm` form the post-condition swept only SCAN_PATH,
+        # so a root survivor could not be observed at all.
+        # COVERAGE, NOT JUST SAFETY. The two checks above validate that SCAN_PATH is
+        # safe to hand to `find`; neither constrains what gets SCANNED. `scan-path` is
+        # caller-supplied, and on `on: pull_request` the caller's workflow file comes
+        # from the PR HEAD — the same access level D23 assumes throughout. So
+        # `scan-path: docs` is an existing directory with no leading `-` that passes
+        # both checks, scans a code-free tree, exits 0, writes a valid SARIF with no
+        # results, and the gate goes GREEN. That is bit-for-bit the outcome D26 closes
+        # for `config` — the same bypass through a second door, and only one was shut.
+        #
+        # Costs nothing: `.` is the input's default and what every shipped caller
+        # passes. A repo that genuinely needs a narrower scan asks canon for a
+        # gate-side input, which is the rule restated — THE GATE decides coverage.
+        case "$SCAN_PATH" in
+          .) ;;
+          *) echo "::error::sast-scan: scan-path must be the repo root '.'; got '${sp_safe}'. A PR-chosen subtree is a COVERAGE choice — an existing directory containing no code exits 0 with a valid empty SARIF and the gate goes green having scanned nothing (D26/§4.3i)."; exit 1 ;;
+        esac
+        strip_roots=("$SCAN_PATH")
+        if [ "$SCAN_PATH" != "." ]; then strip_roots+=("."); fi
+        d23_scan() {
+          # $@ = the trailing find action, applied IDENTICALLY to strip and
+          # post-condition, so the two can never cover different sets (#423's shape).
+          d23_rc=0
+          find "${strip_roots[@]}" \( -type f -o -type l \) \
+               \( -name '.semgrepignore' -o -name '.semgreprc' \) "$@" || d23_rc=$?
+          return "$d23_rc"
+        }
+
+        # `mktemp` under `set -e` as a BARE assignment aborts the step before any
+        # ::error:: — the very shape `|| fst=$?` exists to prevent, twenty lines down.
+        ferr="$(mktemp)" || { echo "::error::sast-scan: D23 could not allocate a temp file — refusing to scan rather than skip the check."; exit 1; }
+
+        # D23 IS A GATE, NOT A BEST EFFORT. The `|| true` keeps a partial failure
+        # from aborting the step, so the POST-CONDITION is what actually enforces
+        # it. The strip's stderr is APPENDED to $ferr rather than discarded — with
+        # `2>/dev/null` the delete-failure reason ("Permission denied") is destroyed
+        # and the refusal then reports an EMPTY find_stderr exactly when it mattered.
+        #
+        # The strip's `-print` carries PR-CONTROLLED PATHS: newlines are legal in
+        # git paths and the runner parses EVERY output line for `::command::`, so an
+        # unfolded path could forge `::stop-commands::` and suppress the ::error::
+        # below. Capture, fold, then report.
+        stripped="$(d23_scan -print -delete 2>>"$ferr" || true)"
+        if [ -n "$stripped" ]; then
+          stripped_safe="$(printf '%s' "$stripped" | tr '\n\r' '??' | cut -c1-500)"
+          # A repo that committed one of these ON PURPOSE gets it deleted from the
+          # workspace. Say so, and say where the exclusion belongs instead — silence
+          # here is how a maintainer concludes the scanner is broken.
+          echo "::warning::sast-scan: D23 removed PR-supplied scanner config before scanning — it was NOT honoured. Express a real exclusion gate-side (the ruleset), never in a repo file (REPO_STANDARDS §4.3e). Removed: ${stripped_safe}"
+          summary "⚠️ D23 removed PR-supplied scanner config — NOT honoured: ${stripped_safe}"
+        fi
+
         # CI-0033 / §27.1: decide on captured OUTPUT, never on a pipeline's exit
         # status. This was `find … -print -quit | grep -q .`, and it was a
         # REPRODUCED fail-open — not by EPIPE (one write, so grep cannot leave
@@ -128,8 +242,7 @@ runs:
         # status and `set -e` (:82) would abort HERE, before the ::error:: below
         # — a red step with no stated cause.
         fst=0
-        ferr="$(mktemp)"
-        survivor="$(find "$SCAN_PATH" \( -type f -o -type l \) \( -name '.semgrepignore' -o -name '.semgreprc' \) -print -quit 2>"$ferr")" || fst=$?
+        survivor="$(d23_scan -print -quit 2>>"$ferr")" || fst=$?
         if [ -n "$survivor" ] || [ "$fst" -ne 0 ]; then
           # Newlines are legal in git paths and GitHub parses EVERY output line
           # for `::command::`, so an unsanitised path here lets a PR forge a
