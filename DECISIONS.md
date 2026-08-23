@@ -3221,3 +3221,64 @@ routing question is **global or repo-local**, not "is it an agent".
   `agents` — at `CLAUDE.md:568` and `CHANGELOG.md:36`. The live remote is
   `aidoc-flow-claude-agents-config`. Recorded here rather than left in a review
   thread; per §18 / CI-0020 the fix belongs on the owning repo.
+
+---
+
+## CI-0048: promotion is an ADMIN action, and on a user account that is the only mechanism (2026-08-23)
+
+**Decision of record for `PLAN-028` B1.** Three drafts of that plan proposed
+three different bypass mechanisms and each was retracted by the next review. The
+question was never answerable from source — it is a live API behaviour — so it
+was made a `PROBE` and measured.
+
+**Measured on a scratch branch of canon, 2026-08-23.** Fully reversible: the
+branch and its protection were created, exercised and deleted; `main` was not
+touched (verified before and after: `pr_required: true`, `enforce_admins: false`).
+
+| Mechanism | Result |
+| --- | --- |
+| Baseline — PR required, `enforce_admins: true` | push **rejected** — `remote: - Changes must be made through a pull request` / `[remote rejected] (protected branch hook declined)` |
+| `bypass_pull_request_allowances` | **HTTP 422** — `Only organization repositories can have users and team restrictions` |
+| `restrictions` | org-only, same class (CI-0030 already recorded the account type) |
+| `enforce_admins: false` | **push succeeds** (`8335910..43c49a7`) |
+| ruleset `bypass_actors` | inert alongside classic protection (CI-0029); and no branch ruleset exists here — see below |
+
+**Claim 91, settled in the same pass.** Canon carries exactly one ruleset —
+`immutable ci/v* release tags`, target `tag`, id 19687369 — and
+`gh api repos/vladm3105/aidoc-flow-ci/rules/branches/main` returns **0**. No
+branch ruleset shadows classic protection on `main`, so `enforce_admins: false`
+is not inert there.
+
+**Decision**
+
+1. **Promotion (`dev`→`staging`→`main`) is an ADMIN action.** There is no
+   per-actor bypass to grant, because every workspace repo is owned by a
+   personal User account (CI-0030). `docs/BRANCHING.md` §5a is corrected: it
+   previously implied a general mechanism.
+2. **The cost is stated, not buried.** On a repo whose sole collaborator is the
+   owner (`gh api repos/…/collaborators` → `vladm3105` alone),
+   `enforce_admins: false` makes the PR requirement on that branch **advisory
+   rather than enforced** — the only actor who exists is exempt. Protecting
+   `staging` and `main` this way buys process discipline, not a control GitHub
+   applies.
+3. **Enforcing it requires an organization.** That is a larger decision than a
+   branching model and is explicitly out of scope here; it is recorded so the
+   trade-off is not rediscovered as a surprise.
+
+**Two defects the probe exposed in the plan that specified it** — both invisible
+until it was run, which is the argument for probes over prose:
+
+- The runbook said `git push --ff-only`. **That is not a valid flag** — it is a
+  merge/pull option; push is fast-forward-only by default. It would have failed
+  `rc=129` with a usage dump.
+- The runbook said "create a throwaway repo". The available token has no
+  `delete_repo` scope, so following it literally would have **left an orphan
+  repo**. The scratch-branch form is fully reversible with `repo` alone.
+
+**Consequences**
+
+- `PLAN-028` B1 closes. Phases C and D are no longer gated on an unknown — they
+  are gated on the founder accepting an admin-only promotion gate.
+- The `PROBE` claim state (added to `verified-planning` the same day) did what it
+  was added for: it stopped the plan guessing and produced an answer in one
+  measurement, after three passes of prose had produced three wrong ones.

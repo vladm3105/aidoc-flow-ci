@@ -5,6 +5,40 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Changed — promotion is an ADMIN action; the branching standard said otherwise
+
+`docs/BRANCHING.md` §5a claimed a fast-forward promotion "requires an authorized
+bypass, and the mechanism is NOT yet settled", implying a general per-actor
+mechanism existed to be found. **It does not.** Measured on a scratch branch of
+canon (`DECISIONS.md` CI-0048), fully reversed afterwards, `main` untouched:
+
+| Mechanism | Result |
+|---|---|
+| PR required + `enforce_admins: true` | push **rejected** — `Changes must be made through a pull request` |
+| `bypass_pull_request_allowances` | **HTTP 422** — `Only organization repositories can have users and team restrictions` |
+| `restrictions` | org-only, same class |
+| `enforce_admins: false` | push **succeeds**, for an admin |
+
+Every workspace repo is owned by a personal User account (CI-0030), so no
+per-actor bypass can be granted. §5a now says **admin**, and states the cost
+plainly: on a repo whose sole collaborator is the owner, `enforce_admins: false`
+makes that branch's PR requirement **advisory rather than enforced**. It buys
+process discipline, not a control GitHub applies; enforcing it needs an
+organization.
+
+Also settled in the same pass: canon carries exactly one ruleset (`immutable
+ci/v* release tags`, target `tag`) and `rules/branches/main` returns **0** — so
+no branch ruleset shadows classic protection there.
+
+**Why this took a measurement.** Three drafts of `PLAN-028` proposed three
+different bypass mechanisms and each was retracted by the next review, because
+the answer is a live API behaviour no amount of reading source can settle. It
+was made a `PROBE` claim — the state added to `verified-planning` the same day —
+and one experiment ended the argument. The probe also exposed two defects in the
+runbook that specified it: `git push --ff-only` is not a valid flag (push is
+fast-forward-only by default), and the "throwaway repo" design would have left
+an orphan, because the token has no `delete_repo` scope.
+
 ### Added — the `dev` → `staging` → `main` branching model, documented and NOT adopted
 
 `docs/BRANCHING.md` gains the three-branch model (founder, 2026-08-23): `dev` is
@@ -40,11 +74,15 @@ and flipping a default branch without them breaks things **silently**:
 - **Branch protection follows the flip** — `apply-standards.sh` protects the
   API-reported default branch, so it would protect `dev` and never `main`.
 
-`plans/PLAN-028` carries the work, a 61-row claim ledger and three independent
-review passes. It is **Draft and NOT READY**: the promotion bypass mechanism is
-unresolved (three drafts produced three different answers, and the protection
-profile canon ships blocks the very push the model needs), and the OPS-0066
-review cap is spent.
+`plans/PLAN-028` carries the work. It is **In Progress and not adoptable**: the
+promotion bypass is unresolved — three drafts produced three different answers,
+and the protection profile canon ships blocks the very push the model needs — so
+it is now a `PROBE` claim that gates the phases depending on it. Phase A (this
+standard) is executed; Phases C/D are deferred to a follow-on plan.
+
+The plan was **re-scoped** after four independent review passes: three folds grew
+it 325 → 522 lines while retiring findings, which `verified-planning` §3.1 names
+as the signal to cut scope rather than fold again.
 
 ### Added — post-merge branch hygiene, and the detector that actually works
 
@@ -64,7 +102,10 @@ silently, so containment is checked first.
 **Recorded as a convention, not a gate.** `delete_branch_on_merge` is a server
 setting; nothing can prune your clone. §7's enforcement map says so rather than
 implying a check exists — a local pre-push warning is *available* at the same
-strength as the audit phrase, and PLAN-028 A4 decides whether to take it.
+strength as the audit phrase — **and it was taken**: `pre_push_check.sh` §6 now
+warns when a local branch whose PR is MERGED has not been deleted. It reports
+and never blocks, needs no network beyond an optional `gh`, and detects
+merged-ness from PR state because ancestry cannot see a squash merge.
 
 ### Security — the SAST gate was bypassable, on the surface D23 was reproduced against
 

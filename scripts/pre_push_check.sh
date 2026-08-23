@@ -96,6 +96,9 @@ else
 fi
 
 rc=0
+# Resolved offline: the hook has no network on the push path.
+DEFAULT_BRANCH_LOCAL="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
+[ -n "$DEFAULT_BRANCH_LOCAL" ] || DEFAULT_BRANCH_LOCAL=main
 
 # `git diff` FAILING is not an empty change set. Unrelated histories exit 128
 # here and the status was discarded, so zero files were linted and the run still
@@ -328,6 +331,44 @@ elif [ "$audit_ok" -ne 1 ]; then
   rc=1
 else
   echo "  ✅ OPS-0069 audit-trail present in push range."
+fi
+
+
+# --- 6. Post-merge branch hygiene (BRANCHING.md §3a) — WARN ONLY ---
+#
+# A4-residual, decided 2026-08-23. BRANCHING.md §3a asks you to delete a merged
+# local branch and prune stale remote-tracking refs. Nothing server-side can
+# enforce that — but this hook already ships into every adopting clone, and §7
+# counts a local pre-push hook as enforcement for the OPS-0069 phrase, so the
+# option was real and had to be decided rather than written off.
+#
+# TAKEN, as a WARNING and never a failure. It reports hygiene; it does not hold
+# up a push, and `rc` is deliberately untouched below.
+#
+# ANCESTRY IS THE WRONG DETECTOR AND FAILS SILENTLY. Squash merge rewrites the
+# SHA, so a merged branch is NOT an ancestor of the default branch: measured on
+# canon, `git branch --merged main` listed nothing but `main` itself while 14 of
+# 16 local branches had merged PRs. Merged-ness comes from PR state.
+#
+# `gh` is optional here on purpose — this must not become a network dependency
+# on the push path. No `gh`, no warning.
+if command -v gh >/dev/null 2>&1; then
+  _stale=""
+  for _b in $(git for-each-ref --format='%(refname:short)' refs/heads/ 2>/dev/null); do
+    [ "$_b" = "$DEFAULT_BRANCH_LOCAL" ] && continue
+    # any(), not .[0]: a reused or reopened branch has SEVERAL PRs, and an
+    # arbitrary element can read CLOSED while a merged PR exists.
+    if [ "$(gh pr list --head "$_b" --state all --json state \
+              --jq 'any(.[]; .state == "MERGED")' 2>/dev/null)" = "true" ]; then
+      _stale="$_stale $_b"
+    fi
+  done
+  if [ -n "$_stale" ]; then
+    echo "  ⚠️  hygiene: merged local branch(es) not yet deleted:$_stale"
+    echo "      BRANCHING.md §3a — 'git branch -D <b>' (-d refuses; squash means"
+    echo "      it is not an ancestor). Confirm containment first if you may have"
+    echo "      committed to the branch after the merge. Then 'git fetch --prune'."
+  fi
 fi
 
 echo "════════════════════════════════════════════════════════════════════"

@@ -55,9 +55,16 @@ them and how:
 
 | Branch | Role | Receives work by |
 | --- | --- | --- |
-| `dev` | development; the `default_branch` | **squash-merged PR** from a working branch |
-| `staging` | dev deployment | **fast-forward push** from `dev` |
+| `dev` | development — where code and changes land; the `default_branch` | **squash-merged PR** from a working branch |
+| `staging` | the **stable** dev deployment — what is deployed for the team to use | **fast-forward push** from `dev` |
 | `main` | production release; `ci/vX.Y.Z` tags cut here | **fast-forward push** from `staging` |
+
+**What each branch MEANS, because it decides what may promote** (founder,
+2026-08-23): `dev` holds development code and changes; `staging` is the
+**stable** dev deployment — the build the team actually runs; `main` is the
+production release. "Stable" is the load-bearing word: a fast-forward from `dev`
+to `staging` is an assertion that what is on `dev` is fit to be deployed, which
+is why promotion is a deliberate act and not automatic on merge.
 
 **`main` receives ONLY fast-forwards.** No human merge, no bot commit, no
 release-prep merge. This is the rule the whole model rests on: the moment any
@@ -205,12 +212,26 @@ Promoting by PR would defeat the model: with merge commits and rebase disabled,
 GitHub would **squash** the promotion, giving identical content a new SHA and
 permanently diverging the branches.
 
-> **A fast-forward push requires an authorized bypass, and the mechanism is NOT
-> yet settled.** "Require a pull request before merging" blocks direct pushes
-> for every non-bypass actor, and it is set on every shipped profile. PLAN-028
-> §3 carries the open candidates and the probe that must decide between them.
-> **Until that resolves, a consumer adopting this model cannot promote at all** —
-> which is why §0 says do not adopt yet.
+> **A fast-forward push requires an admin, and on a user-owned account that is
+> the only mechanism there is.** Measured 2026-08-23 (PLAN-028 B1), not inferred:
+>
+> | Mechanism | Result |
+> |---|---|
+> | baseline — PR required, `enforce_admins: true` | push **rejected**: *"Changes must be made through a pull request"* |
+> | `bypass_pull_request_allowances` | **HTTP 422** — *"Only organization repositories can have users and team restrictions"* |
+> | `restrictions` | org-only, same class |
+> | `enforce_admins: false` | **push succeeds** — for an admin |
+>
+> **So promotion is an ADMIN action.** Every aidoc-flow repo is owned by a
+> personal User account, so no per-actor bypass can be granted; the only lever
+> is exempting admins from the branch's rules wholesale.
+>
+> **And be clear about what that costs.** On a repo whose sole collaborator is
+> the owner, `enforce_admins: false` makes the PR requirement on that branch
+> **advisory rather than enforced** — the only actor who exists is exempt.
+> Protecting `staging` and `main` this way buys process discipline, not a
+> control GitHub applies. Enforcing it would require an **organization**, which
+> is a larger decision than a branching model.
 
 ## 6. Hotfixes and releases
 
@@ -240,7 +261,7 @@ is the point.
 | Audit phrase | local pre-push hook + `audit-trail-check.yml` |
 | Naming and single-purpose branch | **Review convention** documented here |
 | **Promotion is fast-forward only** | **Convention** — nothing verifies that a push to `staging`/`main` was a fast-forward |
-| **Post-merge local cleanup (§3a)** | **Convention — not server-enforceable.** `delete_branch_on_merge` handles the remote; nothing can prune your clone. A local pre-push warning is *available* at the same strength as the audit phrase above; PLAN-028 A4 decides whether to take it |
+| **Post-merge local cleanup (§3a)** | **Local pre-push WARNING** (`pre_push_check.sh` §6) + `delete_branch_on_merge` for the remote. Not server-enforceable — nothing can prune your clone — so the hook reports and never blocks. It detects merged-ness from **PR state**, not ancestry: squash merge rewrites the SHA, so `git branch --merged` finds nothing (measured: it listed only `main` while 14 of 16 local branches had merged PRs) |
 | Exceptional bypass authority | `aidoc-flow-operations` OPS decisions |
 
 Apply enforceable settings with `install/apply-standards.sh --apply`. Verify
