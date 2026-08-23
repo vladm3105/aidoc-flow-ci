@@ -3132,3 +3132,92 @@ is that it stays empty.
   Session continuity is reconstructed from `plans/`, this file, recent commits
   and open PRs.
 - #460 needs no carrier — the codeql private variant ships in this change.
+
+---
+
+## CI-0047: `aidoc-flow-claude-agents-config` is the canonical source for agent definitions and global agent settings (2026-08-23)
+
+**Context**
+
+`docs/REPO_STANDARDS.md` §0 named **two** canonical sources — this repo for CI
+and governance-workflow canon, `aidoc-flow-operations` for OPS-NNNN decisions
+and the multi-agent **review prompt templates**. Neither owns the agents
+themselves.
+
+That gap was invisible while it did not matter and became visible the moment it
+did: this workspace dispatches `security-auditor`, `code-reviewer`,
+`preprod-review-lens`, `verified-planning-reviewer` and twelve more by name, in
+every repo, and nothing in canon said where those names resolve. A consumer
+asking "what is `preprod-review-lens` and who may change it" had no row to read.
+
+**Decision**
+
+`vladm3105/aidoc-flow-claude-agents-config` is the canonical source for:
+
+- the **agent definitions** (`agents/*.md`) an agent type resolves to when
+  dispatched — including its tools and model tier;
+- the **global agent settings**: the global `CLAUDE.md`, the global `AGENTS.md`
+  (Codex reads the same tracked file via `~/.codex`), path-scoped `rules/`, and
+  user-level `skills/`.
+
+§0 becomes a three-source table and `CLAUDE.md`'s disambiguation follows.
+
+**Two boundaries that will be got wrong, stated so they are not**
+
+**(a) Prompts vs agents.** `aidoc-flow-operations` owns the review **prompts** —
+which prompt a diff class gets, and the verdict schema it must satisfy
+(OPS-0067). The agent-config repo owns the **agents** — what a type resolves to
+when dispatched. "What the reviewer is *asked*" is an operations change; "what
+the reviewer *is*" is an agent-config change.
+
+**(b) GLOBAL agents vs a repo's OWN agents — this decision covers only the
+first.** The §0 rows are scoped to the **user-level** `~/.claude/agents/` set
+that any repo can dispatch. A repository's project-local `.claude/agents/*.md`
+stays owned by that repository. The live counter-example is
+`aidoc-flow-operations` itself, which carries sixteen AI-employee personas
+(`ceo.md`, `cto-platform.md`, `aidoc-flow-lead.md`, …) under its own structural
+-change process. A first draft of this entry framed the rule as "which agents
+exist → agent-config repo", which would have misrouted every one of them; the
+routing question is **global or repo-local**, not "is it an agent".
+
+**What this does NOT do**
+
+- **No fetch, no install, no pin.** Canon cites the repo as a source of record.
+  Nothing in this repository reads it, and no workflow may be added that does —
+  it is not a distribution surface like `install/templates/`.
+- **It does not make the config a deliverable.** That repository's working tree
+  **is** `~/.claude`; a tracked edit changes the rules in force with no deploy
+  step. There is nothing to version or roll out, which is precisely why it is
+  cited rather than consumed.
+
+**Two constraints that bind how it is cited**
+
+1. **It is PRIVATE**, by intent — no single tracked file is a credential, but
+   together they map the autonomy tiers, merge policy and repo topology. That is
+   not a new precedent: `aidoc-flow-operations` is private and §0 has named it in
+   four rows since it was written.
+2. **Cite it by repository NAME, never as a `https://github.com/…` URL — and
+   not because CI would catch it.** A first draft justified this by claiming the
+   `links` gate would 404 on the URL and red the check. **That is false**, and
+   the correction matters more than the rule: canon's blocking `links` gate runs
+   `mode: internal`, which adds `--offline` and skips external URLs entirely,
+   and the `external` mode that does reach the network ships
+   `fail-on-error: false` and cannot fail a job. **No gate in this repository
+   would ever flag it.** The URL would simply be dead for every reader of a
+   PUBLIC repo without access — which is precisely why the convention has to be
+   held by hand rather than delegated to a check. (`exclude_all_private` in
+   `.lychee.toml` is unrelated: private **IP ranges**, not private repos.) Every
+   existing §0 row already uses the bare-name form.
+
+**Consequences**
+
+- A consumer citing an agent definition now has a row to cite, and the
+  operations/agent-config boundary is written down before it is confused rather
+  than after.
+- `PLAN-028` reserved CI-0047 for the branching decision and is re-pointed to
+  **CI-0048**; that plan is still Draft, so nothing shipped under the old number.
+- **Upstream defect, not canon's to fix:** `aidoc-flow-operations` cites this
+  repository under a stale pre-rename name — `aidoc-flow-claude-config`, without
+  `agents` — at `CLAUDE.md:568` and `CHANGELOG.md:36`. The live remote is
+  `aidoc-flow-claude-agents-config`. Recorded here rather than left in a review
+  thread; per §18 / CI-0020 the fix belongs on the owning repo.
