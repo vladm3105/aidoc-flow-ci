@@ -40,11 +40,15 @@ and flipping a default branch without them breaks things **silently**:
 - **Branch protection follows the flip** — `apply-standards.sh` protects the
   API-reported default branch, so it would protect `dev` and never `main`.
 
-`plans/PLAN-028` carries the work, a 61-row claim ledger and three independent
-review passes. It is **Draft and NOT READY**: the promotion bypass mechanism is
-unresolved (three drafts produced three different answers, and the protection
-profile canon ships blocks the very push the model needs), and the OPS-0066
-review cap is spent.
+`plans/PLAN-028` carries the work. It is **In Progress and not adoptable**: the
+promotion bypass is unresolved — three drafts produced three different answers,
+and the protection profile canon ships blocks the very push the model needs — so
+it is now a `PROBE` claim that gates the phases depending on it. Phase A (this
+standard) is executed; Phases C/D are deferred to a follow-on plan.
+
+The plan was **re-scoped** after four independent review passes: three folds grew
+it 325 → 522 lines while retiring findings, which `verified-planning` §3.1 names
+as the signal to cut scope rather than fold again.
 
 ### Added — post-merge branch hygiene, and the detector that actually works
 
@@ -64,7 +68,7 @@ silently, so containment is checked first.
 **Recorded as a convention, not a gate.** `delete_branch_on_merge` is a server
 setting; nothing can prune your clone. §7's enforcement map says so rather than
 implying a check exists — a local pre-push warning is *available* at the same
-strength as the audit phrase, and PLAN-028 A4 decides whether to take it.
+strength as the audit phrase, and PLAN-028 A4-residual decides whether to take it.
 
 ### Security — the SAST gate was bypassable, on the surface D23 was reproduced against
 

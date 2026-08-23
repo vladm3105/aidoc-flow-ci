@@ -208,7 +208,7 @@ permanently diverging the branches.
 > **A fast-forward push requires an authorized bypass, and the mechanism is NOT
 > yet settled.** "Require a pull request before merging" blocks direct pushes
 > for every non-bypass actor, and it is set on every shipped profile. PLAN-028
-> §3 carries the open candidates and the probe that must decide between them.
+> **B1** carries the open candidates and the probe that must decide between them.
 > **Until that resolves, a consumer adopting this model cannot promote at all** —
 > which is why §0 says do not adopt yet.
 
@@ -240,7 +240,7 @@ is the point.
 | Audit phrase | local pre-push hook + `audit-trail-check.yml` |
 | Naming and single-purpose branch | **Review convention** documented here |
 | **Promotion is fast-forward only** | **Convention** — nothing verifies that a push to `staging`/`main` was a fast-forward |
-| **Post-merge local cleanup (§3a)** | **Convention — not server-enforceable.** `delete_branch_on_merge` handles the remote; nothing can prune your clone. A local pre-push warning is *available* at the same strength as the audit phrase above; PLAN-028 A4 decides whether to take it |
+| **Post-merge local cleanup (§3a)** | **Convention — not server-enforceable.** `delete_branch_on_merge` handles the remote; nothing can prune your clone. A local pre-push warning is *available* at the same strength as the audit phrase above; PLAN-028 **A4-residual** decides whether to take it |
 | Exceptional bypass authority | `aidoc-flow-operations` OPS decisions |
 
 Apply enforceable settings with `install/apply-standards.sh --apply`. Verify

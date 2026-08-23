@@ -7,9 +7,12 @@ retiring findings, which is the defect signal, and the prescribed response is to
 cut scope rather than fold a fourth time.
 
 **The decision set** (§3.2 — the claims that change what gets built): which
-bypass mechanism makes promotion possible (Claim 62, PROBE); whether `main` can
+bypass mechanism makes promotion possible (Claim 90, PROBE); whether `main` can
 receive the release-prep merge (B4); which branch each runtime resolver should
-anchor to (B2/B2b); and what the non-adopting default must be (B0). Everything
+anchor to (B2/B2b); what the non-adopting default must be (B0); **where the Code
+Scanning baseline should live** (B5 — it decides which of the 19 trigger sites
+move); and **the remedy shape for a pre-push gate that refuses every promotion**
+(B3, upstream `#432`). Everything
 else in this plan is evidence for those four.
 **Owner:** canon (aidoc-flow-ci)
 **Scope:** the branching standard, the enforcement surfaces that would silently
@@ -25,7 +28,9 @@ caller-body change, so B5's trigger edits reach a re-pinning consumer not at all
 consumer surfaces = MAJOR, additive = MINOR), an opt-in change with a
 behaviour-preserving default is MINOR. **One reach path the earlier drafts missed:** a tag pin resolves the
 **reusable** body, so any change to `.github/workflows/*.yml` reaches every
-re-pinning consumer immediately — and §5 Class A rows 3 and 4 (`composition.yml`,
+re-pinning consumer immediately — **and so does any script a reusable fetches at
+that pin**: `standards-drift.yml` curls `sync/check-standards-drift.sh` from the
+adopted tag at run time, which is the very file B2 and B2c edit — and §3 Class A rows 3 and 4 (`composition.yml`,
 `ai-review.yml`) are reusables this plan assigns remediation. MINOR therefore
 holds **only under an invariant the plan has never stated**: that every reusable
 change defaults to today's `default_branch` behaviour. Without it, moving
@@ -59,11 +64,17 @@ for every non-bypass actor. No PR merge method fast-forwards
 promotion PR would be **squashed**: a new SHA for identical content, the exact
 divergence FF-only exists to prevent.
 
+**Why one half is asserted and the other probed.** That a non-null
+`required_pull_request_reviews` blocks direct pushes is documented GitHub
+behaviour that three independent reviews agreed on. Which bypass *lifts* it on a
+user-owned repo is where three drafts produced three different answers — that
+disagreement, not the fact's category, is what makes it a probe.
+
 **Which bypass works on a user-owned repo cannot be settled from source.** Three
 drafts produced three different answers — `restrictions` (narrows rather than
 exempts, and org-only per Claim 19), a ruleset `bypass_actors` (inert alongside
 classic protection, Claim 32), `enforce_admins: false` (the incumbent, Claim 9,
-but it exempts admins from *everything* on that branch). **This is Claim 62, a
+but it exempts admins from *everything* on that branch). **This is Claim 90, a
 PROBE.** It is the reason the earlier drafts churned: the process demanded prose
 where only a measurement would do.
 
@@ -76,7 +87,7 @@ B4 owns it.
 *(An earlier draft also claimed docs-sync writes to `main`. It does not — the
 live-mode step is a stub, Claim 35. Retracted; the history is in the Review log.)*
 
-## 5. What the flip breaks — TWO opposite classes, needing opposite fixes
+## 3. What the flip breaks — TWO opposite classes, needing opposite fixes
 
 Draft 2 listed ten surfaces under one premise ("they resolve the branch at
 runtime, so they follow the flip"). That premise is **false for three of them**,
@@ -120,7 +131,7 @@ path the code **deliberately rejects** — it does not use `github.workflow_ref`
 precisely because that is the caller's default branch (FT-15). The flip changes
 nothing there. Removed.
 
-## 6. Phases
+## 4. Phases
 
 ### Phase A — the standard — **EXECUTED** (#517, 2026-08-23)
 
@@ -142,9 +153,30 @@ passes corrected in it before it shipped.
   **revert M4-sec**, a deliberate security fix that removed exactly that
   hardcoding (Claim 41), with consumers on `master`/`develop` a real handled
   case. The correct default is both today's behaviour and forward-compatible.
-- **B1. 🔴 Probe, then write** — see §3.
+- **B1. 🔴 The bypass mechanism — PROBE FIRST (Claims 90, 91).** The cut deleted
+  the section this used to point at, taking the deliverable with it; it lives
+  here now. Three candidates, and **canon's own precedent is to trial on a
+  throwaway private repo, never on canon** (`DECISIONS.md` records a probe
+  created on `aidoc-flow-business`, read back, deleted):
+
+  | Candidate | Status |
+  |---|---|
+  | `required_pull_request_reviews.bypass_pull_request_allowances` | semantically correct (exempts rather than narrows); acceptance on a **user-owned** repo is the unknown |
+  | `enforce_admins: false` | the incumbent — canon already runs it (Claim 9) and B2 edits the field. Cost: exempts admins from *everything* on that branch |
+  | ruleset `bypass_actors` | **refuted alongside classic protection** (Claim 70) — but *replacing* classic protection with a ruleset is unexamined |
+
+  **Acceptance criterion:** a non-admin actor completes
+  `git push --ff-only origin <src>:<dst>` against a branch carrying the
+  candidate payload. Applying the payload is not the measurement — the push is.
+  Record the payload that worked; it becomes B2's input.
 - **B2. Protection targeting** — every declared branch, not `default_branch`.
-  Covers §5 Class A rows 1-2 **only**.
+  Covers §3 Class A rows 1-2 **only**.
+- **B2c. The drift checker's blind spot (§6).** Conditional on B1's outcome: if
+  B1 lands a field *inside* `required_pull_request_reviews`, extend
+  `check-standards-drift.sh`'s four-field `review_filter` so the bypass is
+  visible to drift detection. If B1 lands `enforce_admins: false`, no change is
+  needed — that field is already compared directly. §6 identified this remedy
+  and no phase owned it.
 - **B2b. The other five Class A resolvers — rows 3-7, and TWO ARE TRUST
   BOUNDARIES.** The pass-2 fold assigned all of Class A to B2, whose text
   covers protection targeting alone; rows 3 (`composition.yml`'s allowlist),
@@ -157,8 +189,8 @@ passes corrected in it before it shipped.
   fallback is the lesser half. A promotion push from a current `dev` yields an
   **empty** commit range, and the script treats empty as a **hard failure**
   (Claim 34b) — canon's own mandatory gate refuses every promotion, with a
-  remedy that cannot clear it. Both copies ship.
-- **B4. Release flow — a CHANGE** (§4a). State which branch `prep` starts from
+  remedy that cannot clear it. Both copies ship, and are identical in the load-bearing respects (`install/templates/pre_push_check.sh`, Claim 92).
+- **B4. Release flow — a CHANGE** (§2b). State which branch `prep` starts from
   and which its PR targets. `tag`'s `main` guard may stay; `prep`'s cannot.
 - **B5. Triggers — 19 sites, not 2.** Draft 2 named CodeQL and "post-merge
   scanners"; the real count is `branches: [main]` **19 times across 17 files**
@@ -167,8 +199,24 @@ passes corrected in it before it shipped.
   - **CodeQL is the sharpest case:** an absent check, not a reduced one — and
     because `codeql` is in no tier's required contexts (Claim 42), it fails as a
     silently missing gate rather than a hung PR.
-  - Where the Code Scanning baseline should live is a **real decision** (§5).
+  - Where the Code Scanning baseline should live is a **real decision** (§3).
   - Still true: do not blanket-add `dev`/`staging`.
+
+- **A4-residual. Decide the post-merge-hygiene pre-push warning.** Phase A
+  shipped, but it left one decision open and **merged canon delegates to it by
+  name**: `docs/BRANCHING.md` §7 says "a local pre-push warning is *available* at
+  the same strength as the audit phrase above; **PLAN-028 A4 decides whether to
+  take it**", and `CHANGELOG.md` repeats it. The cut removed Phase A as planned
+  work and took the undecided decision with it, leaving two live dangling
+  references. Decide it here — take the local hook, or decline it and say why —
+  and update both surfaces in the same change.
+
+- **B6. `docs/REPO_STANDARDS.md` update — MANDATORY, not optional.** `CLAUDE.md`
+  requires that *every* canon-body change ships with a rulebook update, and
+  B0/B2/B2b/B2c/B3/B5 all change canon bodies (`install/`, `sync/`, `scripts/`,
+  `install/templates/workflows/`). B0 in particular introduces a new
+  consumer-facing declaration contract. `standards-drift` is the check that
+  detects the divergence if this is skipped.
 
 ### Phases C and D — DEFERRED to a follow-on plan
 
@@ -188,15 +236,14 @@ phases. Two constraints carry forward so they are not rediscovered:
 - Every shipped consumer profile sets `enforce_admins: true` (Claim 17), so a
   consumer has no promotion path until a template changes.
 
-## 7. What this plan does NOT do
+## 5. What this plan does NOT do
 
 - Cut over any consumer.
 - Change the squash-only rule for feature PRs.
-- Decide the promotion actor (🔴 B1).
 - Blanket-add `dev`/`staging` triggers.
 - Claim the post-merge hygiene rule is enforced (A4).
 
-## 8. Known gap in the drift checker — corrected
+## 6. Known gap in the drift checker — corrected
 
 Draft 2 claimed the checker "reads **neither** `restrictions` **nor**
 `required_pull_request_reviews`". **The second half was false.** It *does*
@@ -207,8 +254,8 @@ compare `required_pull_request_reviews`, as a normalized four-field subset
 The conclusion survives **for a different reason**, and the difference changes
 the fix: the filter is an **allowlist of four sub-fields**, so
 `bypass_pull_request_allowances` is projected away and is invisible; `restrictions`
-is genuinely unread; and rulesets are not read at all (relevant to §3's refuted
-candidate). **But not for every candidate, and the pass-2 fold overstated this too.** If B1 lands `enforce_admins: false` — the candidate §3 calls the incumbent — drift detection **already catches it**: the checker compares `enforce_admins` directly, and `CLAUDE.md` records it firing on canon today. §8 is true only for `bypass_pull_request_allowances` and `restrictions`. So the remedy depends on which candidate B1 picks — extend the `review_filter` only if B1 lands a field inside `required_pull_request_reviews`.
+is genuinely unread; and rulesets are not read at all (relevant to B1's refuted
+candidate). **But not for every candidate, and the pass-2 fold overstated this too.** If B1 lands `enforce_admins: false` — the candidate §3 calls the incumbent — drift detection **already catches it**: the checker compares `enforce_admins` directly, and `CLAUDE.md` records it firing on canon today. §6 is true only for `bypass_pull_request_allowances` and `restrictions`. So the remedy depends on which candidate B1 picks — extend the `review_filter` only if B1 lands a field inside `required_pull_request_reviews`.
 
 Where a remedy IS needed it is **extend the `review_filter`**, not "make it read
 `required_pull_request_reviews` at all". Folding a wrong statement about a gate
@@ -218,7 +265,7 @@ into a plan is the same failure this repo records as "assert the teeth".
 
 | # | Claim | Symbol | Citation |
 | --- | --- | --- | --- |
-| 62 | The standard protects exactly one branch, `main`, per tier | `All non-paused repos protect` | docs/REPO_STANDARDS.md:124 |
+| 62 | Before #517 the standard protected exactly one branch; it now protects the repo's DEFAULT branch, and all three under the opt-in model — which is why B0's non-adopting default must be 'the default branch', not 'main' | `All non-paused repos protect` | docs/REPO_STANDARDS.md:124 |
 | 63 | `pre_push_check.sh` falls back to `merge-base HEAD origin/main` when there is no upstream | `git merge-base HEAD origin/main` | scripts/pre_push_check.sh:80 |
 | 64 | `apply-standards.sh` PUTs branch protection to the API-reported default branch | `branches/${default_branch}/protection` | install/apply-standards.sh:710 |
 | 65 | `check-standards-drift.sh` resolves the default branch from the API and verifies that branch | `DEFAULT_BRANCH=$(gh api` | sync/check-standards-drift.sh:166 |
@@ -235,7 +282,7 @@ into a plan is the same failure this repo records as "assert the teeth".
 | 17 | Every non-umbrella shipped profile sets `enforce_admins: true`, so consumers have no admin bypass | `"enforce_admins": true` | install/templates/branch-protection-product.json:14 |
 | 18 | Branch protection and rulesets aggregate and the stricter wins; ruleset `bypass_actors` is scoped by threat model | `bypass_actors` | DECISIONS.md:1877 |
 | 19 | `vladm3105` is a personal User account with no orgs, so org-only fields are unavailable | `personal **User** account` | DECISIONS.md:1973 |
-| 20 | docs-sync's header DECLARES a required bypass scoped to the aidoc-flow-bot App — a design requirement in a `SAFETY` comment, NOT evidence that one is provisioned (see §3) | `bypass scoped to aidoc-flow-bot App only` | .github/workflows/docs-sync.yml:15 |
+| 20 | docs-sync's header DECLARES a required bypass scoped to the aidoc-flow-bot App — a design requirement in a `SAFETY` comment, NOT evidence that one is provisioned (see B1) | `bypass scoped to aidoc-flow-bot App only` | .github/workflows/docs-sync.yml:15 |
 | 21 | `release.sh prep` creates the prep branch from the current checkout, which its guard forces to be `main` | `git checkout -q -b "$branch"` | scripts/release.sh:258 |
 | 22 | The release checklist merges the prep PR into main with a squash + admin merge | `gh pr merge <N> --squash --delete-branch --admin` | docs/RELEASE_CHECKLIST.md:175 |
 | 23 | The text "commit these changes directly to main" is the BODY OF A DRY-RUN PR COMMENT describing what live mode *would* do — it is not the behaviour, and citing it as such was the §4 overclaim (see Claim 35 for the actual stub) | `commit these changes directly to main` | .github/workflows/docs-sync.yml:337 |
@@ -267,8 +314,10 @@ into a plan is the same failure this repo records as "assert the teeth".
 
 | 61 | `branches: [main]` appears 19 times across 17 shipped caller templates — 2 `pull_request` filters, 17 `push` arms | `branches: [main]` | install/templates/workflows/codeql.yml:16 |
 
-| 62 | Which bypass permits a fast-forward push on a USER-OWNED repo whose branch has `required_pull_request_reviews` — **blocks B1, and through it Phases C and D** | `n/a` | PROBE: gh api -X PUT repos/vladm3105/aidoc-flow-ci/branches/dev/protection --input p.json  # trial each candidate on a throwaway branch |
-| 63 | Whether a branch RULESET exists on canon's `main` that would aggregate with classic protection and defeat `enforce_admins: false` — **blocks the Phase C sequencing decision** | `n/a` | PROBE: gh api repos/vladm3105/aidoc-flow-ci/rulesets --jq '.[].target' |
+| 90 | Which bypass permits a fast-forward push on a USER-OWNED repo whose branch has `required_pull_request_reviews` — **blocks B1, and through it Phases C and D** | `n/a` | PROBE: on a THROWAWAY private repo — apply candidate payload, then `git push --ff-only origin a:b` as a NON-admin and observe. Applying is not the measurement; the push is |
+| 91 | Whether a branch RULESET on canon's `main` aggregates with classic protection and defeats `enforce_admins: false` — **blocks B1**, whose incumbent candidate is exactly that field. (Recorded prior, not a substitute for measuring: canon's rulesets were `[]` pre-FT-52 and FT-52 added one **tag** ruleset, so the expected answer is 'no branch ruleset' — confirm, do not assume) | `n/a` | PROBE: gh api repos/vladm3105/aidoc-flow-ci/rulesets --jq '.[].target' |
+
+| 92 | The shipped consumer copy of the pre-push gate carries the identical empty-range refusal | `EMPTY — NOTHING was verified` | install/templates/pre_push_check.sh:282 |
 
 ## Review log
 
@@ -314,7 +363,7 @@ Also folded, all verified before acceptance:
 - **B0 would have reverted a security fix.** "Non-adopting default: protect
   `main`" — written twice — is exactly the hardcoding removed as M4-sec
   (Claim 41). It is now "protect the API-reported default branch".
-- **§8 was false.** The checker *does* read `required_pull_request_reviews`
+- **§6 was false.** The checker *does* read `required_pull_request_reviews`
   (Claim 43). The gap is real but is the allowlist projecting away the bypass
   field — a different fix.
 - **§5 merged two opposite classes.** Split: runtime resolvers (follow the flip,
@@ -358,7 +407,7 @@ Folded:
 - **§8's conclusion was false for the incumbent candidate** — the checker
   compares `enforce_admins` directly, so if B1 lands that, drift detection
   already catches it. Narrowed to the two fields it is actually true for.
-- **§5 Class A rows 3–7 had no owning phase.** B2's text covers protection
+- **§3 Class A rows 3–7 had no owning phase.** B2's text covers protection
   targeting only, so the two **trust boundaries** were the rows with no work
   item. B2b added.
 - **A4's detector was unsound**: `.[0].state` takes an arbitrary element of an
@@ -430,7 +479,7 @@ new rule names.
 
 **What the cut added, and why it is the point:**
 
-Claims **62** and **63** are `PROBE` rows — the state added in the same skill
+Claims **90** and **91** are `PROBE` rows — the state added in the same skill
 change. The bypass mechanism and the ruleset surface are **live facts**; source
 cannot settle either. Under the old rules they had nowhere legitimate to sit, so
 three consecutive drafts *guessed* and each fold retracted the last. They now
@@ -441,3 +490,45 @@ Everything else is evidence for them.
 
 **Result:** re-scoped; the reduced artifact is UNREVIEWED and one pass is owed
 on it.
+
+### Pass 4 - 2026-08-23 - independent (on the RE-SCOPED artifact)
+
+`verified-planning-reviewer`, fresh context, reviewing the 403-line cut rather
+than the 522-line plan the first three passes saw. **11 load-bearing, 5 minor.**
+
+**Its verdict on the new PROBE mechanism, which is what this pass existed to
+test: "Honest in kind, not yet honest in instrument."** Both rows are genuinely
+unmeasurable from source — the mechanism is *not* being used to park work — but
+its first use was executed badly in exactly the two ways that matter:
+
+- **Claim 90's command could not produce the answer it was cited for.** It
+  applied a protection payload and never attempted the push. Applying is not the
+  measurement; the push is. Also targeted **canon** rather than a throwaway,
+  against this repo's own probe precedent.
+- **Claim 91 named a phase this same cut had deleted**, so it blocked nothing —
+  and the fact it carries is really an input to **B1**, whose incumbent
+  candidate is the very field a ruleset would defeat.
+
+**That is a gap in the rule I wrote, not just in this plan.** §3.1 requires a
+PROBE to name a command and a blocked phase; it does not require the command to
+*settle* the claim, nor guard against the named phase being deleted out from
+under it. Both are now fixed here; the rule should follow.
+
+**And the failure mode MOVED, which is the other result worth recording.** The
+reviewer found **no surviving semantic falsehood in the source-cited body** —
+the place all three previous passes kept finding them. What broke instead was
+the plan's **internal integrity under a mechanical cut**: the renumber collided
+two ledger IDs with the new PROBEs and left nine prose references dangling or
+resolving to the wrong row; B1 lost its entire body when §3 was deleted; and
+**two decisions were orphaned while merged canon still delegated to them by
+name** (`BRANCHING.md` pointed at "PLAN-028 §3" and "PLAN-028 A4"). So the
+subtractive fold is safer on *facts* and more dangerous to *references* — a
+trade the rule should state.
+
+All folded, including three phases that owned nothing (B2c for §6's remedy, B6
+for the mandatory rulebook update, A4-residual for the orphaned decision), the
+semver reach path through scripts fetched at the pin, and B0's form constraint
+imposed by an offline local hook.
+
+**Result:** folded; the fold is unreviewed and the reduced plan is **In
+Progress**, gated on Claims 90 and 91.
