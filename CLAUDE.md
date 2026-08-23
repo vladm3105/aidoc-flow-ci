@@ -25,7 +25,7 @@ customers. Its consumers are the sibling aidoc-flow repos
 (operations, business, framework, iplanic, iplan-runner,
 iplan-standard, engramory, interlog, umbrella).
 
-**Canonical-source disambiguation (workspace has TWO canonical repos —
+**Canonical-source disambiguation (workspace has THREE canonical repos —
 do not confuse):**
 
 - **`aidoc-flow-ci` (this repo)** = CI reusable workflows + config
@@ -41,6 +41,34 @@ do not confuse):**
   cross-repo playbooks (T-C, T-C', T-D), autonomy-tiers table, AI-
   employees team registry. When a consumer cites an OPS-NNNN business
   decision or multi-agent review prompt template, point at operations.
+- **`aidoc-flow-claude-agents-config`** = the **agent harness** — the
+  `agents/*.md` definitions an agent type resolves to when dispatched
+  (`security-auditor`, `code-reviewer`, `preprod-review-lens`,
+  `verified-planning-reviewer`, …), plus the global `CLAUDE.md`, the
+  global `AGENTS.md` that Codex reads, path-scoped `rules/`, and
+  user-level `skills/`. When the question is **which agents exist, how
+  they are defined, or the global rules the AI itself runs under**,
+  point here.
+
+  **Two things it is NOT.** (a) Not the review prompts — operations owns
+  what a reviewer is *asked*, per diff class; this repo owns what a
+  reviewer *is*. (b) Not a repo's OWN agents: this covers the **global**
+  `~/.claude/agents/` set any repo can dispatch. A repository's
+  project-local `.claude/agents/*.md` stays its own —
+  `aidoc-flow-operations` carries its AI-employee roster (`ceo.md`,
+  `cto-platform.md`, …) under its own process.
+
+  **PRIVATE, and it is the live config, not a distribution:** that
+  repository's working tree *is* `~/.claude`, so a tracked edit changes
+  the rules in force with no deploy step. Canon cites it as a source of
+  record and never fetches, installs or pins it.
+
+  **Cite it by repository NAME, never as a URL — and NOT because CI would
+  catch it.** The blocking `links` gate runs `--offline` and skips
+  external URLs entirely; the external mode is non-blocking. Nothing in
+  CI would flag a URL to a private repo. It would just be a dead link for
+  every reader of this PUBLIC repo without access, which is why the
+  convention is held by hand.
 
 Full disambiguation table + rule of thumb in `docs/REPO_STANDARDS.md`
 §0 "Canonical source authority".

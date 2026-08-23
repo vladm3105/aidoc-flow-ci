@@ -13,10 +13,11 @@ complete rulebook.
 
 ## 0. Canonical source authority (disambiguation)
 
-The aidoc-flow workspace has **two** repos that consumers cite as
-"canonical source" — one for **CI + governance-workflow canon**, and
-one for **OPS-NNNN business decisions + multi-agent review prompt
-templates**. These are DISTINCT concerns; do not confuse them:
+The aidoc-flow workspace has **three** repos that consumers cite as
+"canonical source" — one for **CI + governance-workflow canon**, one for
+**OPS-NNNN business decisions + multi-agent review prompt templates**, and one
+for the **agent harness itself** (the global settings and agent definitions the
+AI runs under, in every repo). These are DISTINCT concerns; do not confuse them:
 
 | Concern | Canonical source | Read here |
 | --- | --- | --- |
@@ -30,6 +31,8 @@ templates**. These are DISTINCT concerns; do not confuse them:
 | Multi-agent review prompt templates | **`aidoc-flow-operations`** | `.claude/agents/review-prompts/` (per OPS-0067) |
 | Cross-repo playbooks (T-C, T-C', T-D) | **`aidoc-flow-operations`** | `docs/CROSS_REPO_PLAYBOOKS.md` |
 | Autonomy tiers table + AI-employees team registry | **`aidoc-flow-operations`** | `CLAUDE.md` |
+| Agent definitions (the `agents/*.md` an agent type resolves to — `security-auditor`, `code-reviewer`, `preprod-review-lens`, `verified-planning-reviewer`, …) | **`aidoc-flow-claude-agents-config`** | `agents/` |
+| Global agent settings — the global `CLAUDE.md`, the global `AGENTS.md` (Codex reads the same file), path-scoped `rules/`, and user-level `skills/` | **`aidoc-flow-claude-agents-config`** | repository root |
 
 **Rule of thumb for consumer docs:** when a consumer's `CLAUDE.md`
 (or DECISIONS entry, or CHANGELOG entry) needs to cite a canonical
@@ -37,7 +40,52 @@ source, ask: is this about CI, workflows, templates, scripts, static
 settings, or governance-file shape? → `aidoc-flow-ci`. Is it about an
 OPS-NNNN business decision, multi-agent review prompt templates,
 cross-repo playbooks, autonomy tiers, or AI-employees registry? →
-`aidoc-flow-operations`.
+`aidoc-flow-operations`. Is it about **which agents exist, how they are
+defined, or the global rules the AI itself runs under**? →
+`aidoc-flow-claude-agents-config`.
+
+**Two boundaries here are easy to get wrong. Both are drawn explicitly, because
+each has a live counter-example in this workspace.**
+
+**(a) Prompts vs agents.** `aidoc-flow-operations` owns the **review prompts** —
+which prompt a given diff class gets, and the verdict schema it must return.
+`aidoc-flow-claude-agents-config` owns the **agents** — what an agent type
+resolves to when dispatched, and its tools and model tier. A change to "what the
+reviewer is asked" is an operations change; a change to "what the reviewer _is_"
+is an agent-config change.
+
+**(b) GLOBAL agents vs a repo's OWN agents — and this row covers only the
+first.** The rows above are scoped to the **global, user-level** harness
+(`~/.claude/agents/`): the types any repo can dispatch, such as
+`security-auditor` or `verified-planning-reviewer`. A repository's own
+project-local `.claude/agents/*.md` stays owned by **that** repository.
+`aidoc-flow-operations` is the live example — it carries its own roster of
+AI-employee personas (`ceo.md`, `cto-platform.md`, `aidoc-flow-lead.md`, …)
+under its own change process, and those are **not** governed by the
+agent-config repo. So "which agents exist" is not by itself the routing
+question; ask whether the agent is dispatchable from any repo (global) or
+belongs to one repo's own roster (that repo).
+
+**It is a live config, not a distribution.** That repository's working tree _is_
+`~/.claude` — editing a tracked file changes the rules the AI is running under,
+with no deploy step and no drift between "the repo" and "what is loaded". Canon
+cites it as a source of record; canon does **not** fetch from it, install it, or
+pin it, and no workflow in this repository reads it.
+
+**It is PRIVATE, like `aidoc-flow-operations`** — private by intent, because
+although no single tracked file is a credential, together they map the autonomy
+tiers, merge policy and repo topology.
+
+**Cite it by repository NAME, never as a `https://github.com/…` URL** — and
+the reason is _not_ that CI would catch it. Canon's blocking `links` gate runs
+`mode: internal`, which adds `--offline`, so it skips external URLs and makes no
+request at all; the `external` mode that does reach the network ships
+`fail-on-error: false` and cannot fail a job. **Nothing in CI would ever flag a
+URL to a private repo** — it would simply be a dead link for every human reader
+of a PUBLIC repository who lacks access. That is exactly why the convention has
+to be held by hand, and every existing §0 row already holds it.
+(`exclude_all_private` in `.lychee.toml` is unrelated: it excludes private **IP
+ranges**, not private GitHub repositories.)
 
 **Historical note:** `IPLAN-0014_public-ci-actions-and-autofix.md`
 (lines 13, 18, 57) authored BEFORE `aidoc-flow-ci` was created uses
