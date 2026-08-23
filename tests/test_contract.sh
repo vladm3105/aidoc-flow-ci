@@ -188,7 +188,22 @@ assert_ok "jq -e '([.[].name] | index(\"handoff\") and index(\"todo\") and index
 # not reusing the colors #386 originally suggested.
 assert_ok "jq -e '[.[] | select(.name == \"handoff\" or .name == \"todo\" or .name == \"status:in-progress\") | .color] as \$i | [.[] | select((.name == \"handoff\" or .name == \"todo\" or .name == \"status:in-progress\") | not) | .color] as \$p | (\$i | map(. as \$c | \$p | index(\$c)) | all(. == null))' install/templates/labels.json >/dev/null" "issue-label colors do not collide with any PR-label color"
 assert_ok "jq -e '.[] | select(.name == \"skip-ai-review\") | .description | test(\"suppress re-review\")' install/templates/labels.json >/dev/null" "skip-ai-review description matches suppress-and-carry-forward behavior"
-assert_ok "grep -q '^# Branching standard' docs/BRANCHING.md && grep -q 'BRANCHING.md' docs/REPO_STANDARDS.md && grep -q 'BRANCHING.md' CHANGELOG.md && grep -q 'feat/' docs/BRANCHING.md && grep -q 'All changes reach the default branch through a pull request' docs/BRANCHING.md" "branching standard is linked, released, and retains core naming/lifecycle rules"
+# The PR-required rule is pinned by MEANING, not by its old literal. It used to
+# read "All changes reach the default branch through a pull request"; the
+# three-branch model adds exactly one exception (an authorized fast-forward
+# promotion push), so the sentence had to change. Pinning the old string would
+# have forced either a stale doc or a deleted assertion — instead pin BOTH
+# halves, so neither the rule nor its single exception can quietly disappear.
+assert_ok "grep -q '^# Branching standard' docs/BRANCHING.md && grep -q 'BRANCHING.md' docs/REPO_STANDARDS.md && grep -q 'BRANCHING.md' CHANGELOG.md && grep -q 'feat/' docs/BRANCHING.md && grep -q 'reach a protected branch through a pull request' docs/BRANCHING.md && grep -q 'for promotion' docs/BRANCHING.md" "branching standard is linked, released, and retains core naming/lifecycle rules"
+# The promotion exception is the one place this standard permits a direct push,
+# so the model's load-bearing invariant must be stated, not implied.
+assert_ok "grep -q 'receives ONLY fast-forwards' docs/BRANCHING.md" \
+  "branching standard states the main-receives-only-fast-forwards invariant"
+# And the model must be marked unadopted while its prerequisites are open —
+# a standard that reads as live is how someone flips a default branch and
+# silently loses CodeQL on every feature PR.
+assert_ok "grep -q 'not yet adopted anywhere' docs/BRANCHING.md" \
+  "branching standard marks the three-branch model as NOT yet adopted"
 assert_ok "jq -e '.allow_merge_commit == false and .allow_squash_merge == true and .allow_rebase_merge == false and .delete_branch_on_merge == true and .allow_update_branch == true' install/templates/repo-settings.json >/dev/null" "repository settings enforce canonical merge and cleanup strategy"
 assert_ok "jq -s -e 'all(.[]; .allow_force_pushes == false and .allow_deletions == false and .required_pull_request_reviews != null)' install/templates/branch-protection-governance.json install/templates/branch-protection-product.json install/templates/branch-protection-ops.json install/templates/branch-protection-bootstrap.json install/templates/branch-protection-umbrella.json >/dev/null" "active tier profiles protect default-branch history and require PRs"
 assert_ok "jq -e '.enforce_admins == false' install/templates/branch-protection-umbrella.json >/dev/null && jq -s -e 'all(.[]; .enforce_admins == true)' install/templates/branch-protection-governance.json install/templates/branch-protection-product.json install/templates/branch-protection-ops.json install/templates/branch-protection-bootstrap.json >/dev/null" "umbrella alone retains the documented administrator bypass"

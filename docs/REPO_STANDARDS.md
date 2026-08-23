@@ -121,7 +121,15 @@ declared before any settings apply (see §11 Rollout).
 
 ## 2. Branch protection
 
-All non-paused repos protect `main`. Tier drives the profile.
+All non-paused repos protect their **default branch**; tier drives the profile.
+
+**Under the opt-in three-branch model** (`dev` → `staging` → `main`,
+`BRANCHING.md` §0) a repo protects **all three**, `dev` is the `default_branch`,
+and `main` receives only fast-forwards. **No repo has adopted it yet, canon
+included** — the prerequisites are open in `plans/PLAN-028`, and flipping a
+default branch before they land silently disables CodeQL on every feature PR
+and stops all 17 post-merge arms. The table below describes the profile applied
+to a protected branch; it is the same profile whichever branch it is applied to.
 
 | Setting | Governance | Product code | Ops-private | Umbrella | Bootstrap |
 | --- | --- | --- | --- | --- | --- |

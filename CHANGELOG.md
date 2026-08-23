@@ -5,6 +5,67 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — the `dev` → `staging` → `main` branching model, documented and NOT adopted
+
+`docs/BRANCHING.md` gains the three-branch model (founder, 2026-08-23): `dev` is
+GitHub's `default_branch` and where feature PRs land, `staging` is the dev
+deployment, `main` is production and where `ci/vX.Y.Z` tags are cut. Promotion
+between them is a **fast-forward push**, so the three branches stay identical by
+SHA and "is this commit in production?" is answerable exactly.
+
+The standard previously **forbade** this outright — §2 barred long-lived
+development/release/environment branches and §6 said the standard "does not use
+long-lived release branches". Both are rewritten.
+
+**Squash-only is untouched.** It governs how a working branch enters `dev`;
+promotion is not a merge, so no merge method applies. Promoting by PR would
+defeat the model — with merge and rebase disabled GitHub would *squash* the
+promotion, giving identical content a new SHA and permanently diverging the
+branches.
+
+**Adoption is per-repo opt-in, and NOTHING has adopted it — canon included.**
+That is stated at the top of the document, because the prerequisites are open
+and flipping a default branch without them breaks things **silently**:
+
+- **CodeQL stops running on every feature PR.** Both codeql templates filter
+  `pull_request:` to `branches: [main]`, and that filter matches the PR's
+  **base** — so a PR into `dev` creates no check run at all. An absent gate, not
+  a failing one, and `codeql` is in no tier's required contexts.
+- **All 17 post-merge `push: [main]` arms stop firing.**
+- **The Code Scanning baseline is never populated** — alerts anchor to the
+  default branch and there is no `push: dev` run.
+- **Two trust anchors move**: `composition.yml` reads its allowlist from the
+  default branch *because that base is non-PR-mutable*, and `ai-review.yml`
+  resolves its canon pin from it.
+- **Branch protection follows the flip** — `apply-standards.sh` protects the
+  API-reported default branch, so it would protect `dev` and never `main`.
+
+`plans/PLAN-028` carries the work, a 61-row claim ledger and three independent
+review passes. It is **Draft and NOT READY**: the promotion bypass mechanism is
+unresolved (three drafts produced three different answers, and the protection
+profile canon ships blocks the very push the model needs), and the OPS-0066
+review cap is spent.
+
+### Added — post-merge branch hygiene, and the detector that actually works
+
+`BRANCHING.md` §3a: after a merge, sync the default branch, delete the local
+branch, and prune stale remote-tracking refs. Remote deletion was already
+covered by `delete_branch_on_merge`; the local half was documented nowhere.
+
+**`git branch --merged` is the WRONG detector and fails silently.** Squash merge
+rewrites the SHA, so a merged branch is not an ancestor. Measured on canon:
+`git branch --merged main` listed nothing but `main` itself while **14 of 16**
+local branches had merged PRs. A cleanup rule written against it deletes nothing
+and reports success. Merged-ness comes from PR state — with `any()`, because a
+reused branch has several PRs and an arbitrary element can read `CLOSED` while a
+merged PR exists — and `-D` (which `-d` forces) discards post-merge commits
+silently, so containment is checked first.
+
+**Recorded as a convention, not a gate.** `delete_branch_on_merge` is a server
+setting; nothing can prune your clone. §7's enforcement map says so rather than
+implying a check exists — a local pre-push warning is *available* at the same
+strength as the audit phrase, and PLAN-028 A4 decides whether to take it.
+
 ### Security — the SAST gate was bypassable, on the surface D23 was reproduced against
 
 `.github/workflows/sast-scan.yml` — the reusable that
