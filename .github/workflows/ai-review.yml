@@ -996,8 +996,32 @@ jobs:
           for pattern in patterns:
               source = pattern.sub('[REDACTED_SECRET_SHAPED_CONTENT]', source)
           encoded = source.encode()
-          if len(encoded) > 400_000:
-              raise SystemExit('::error::PR diff exceeds the 400000-byte AI review limit; refusing a partial review')
+          # BUDGET OBSERVABILITY. The cap below fails CLOSED — it refuses rather
+          # than reviewing a truncated diff, which is the right call. But a
+          # refusal is the FIRST signal anyone gets, and by then the PR is
+          # already unreviewable: there is no warning on the way up.
+          #
+          # Emit the headroom on EVERY run so the question "are we approaching
+          # the cap?" is answered by data instead of by the first refusal.
+          # Measured 2026-08-24 on real PRs: aidoc-flow-framework #527 was at
+          # 87% of the cap, #530 at 36%, aidoc-flow-ci #519 at 56% — grazing it,
+          # not hitting it. That is the evidence PLAN-011 asked for before
+          # building chunked map-reduce, and it is not yet enough to justify it.
+          LIMIT = 400_000
+          pct = len(encoded) * 100.0 / LIMIT
+          print(f'redacted diff: {len(encoded)} bytes ({pct:.1f}% of the {LIMIT}-byte review cap)')
+          if len(encoded) > LIMIT:
+              raise SystemExit(
+                  f'::error::PR diff is {len(encoded)} bytes, over the {LIMIT}-byte AI review'
+                  ' limit; refusing a partial review. Split the PR, or see PLAN-011 for the'
+                  ' chunked-review work this threshold defers.')
+          if pct >= 75.0:
+              # A warning, never a failure: this PR is reviewed normally. It
+              # exists so the trend is visible BEFORE a PR is refused outright.
+              print(
+                  f'::warning::PR diff is at {pct:.0f}% of the {LIMIT}-byte AI review cap.'
+                  ' Reviews still run normally; a PR past 100% is REFUSED, not truncated.'
+                  ' If this becomes common, that is the signal to revisit PLAN-011 chunking.')
           Path('.ai-review/diff-for-review.txt').write_bytes(encoded)
           PY
           # `diff-for-review.txt` IS THE ONLY COPY THAT LEAVES THIS STEP. The raw
