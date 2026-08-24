@@ -5,6 +5,45 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added
+
+- **The LLM credential's presentation sites are now pinned by a suite guard**
+  (`tests/test_credential_sites.sh`, PLAN-030). Neither `ai-review` job builds an
+  auth header — both run `scripts/llm_client.py`, which reads `LLM_API_KEY`,
+  hard-fails without it, and builds the bearer header. Nothing recorded that, and
+  two successive plan drafts got it wrong in opposite directions: one would have
+  retired the credential by editing only the two workflow `env:` blocks (every
+  review dies at the client's hard-fail, `call / ai-review` red fleet-wide), the
+  other asserted the client is the *only* builder (false — `install/set-llm-secrets.sh`
+  builds one at `:257` and `:319`).
+
+  The guard states a **closed allowlist of two** sites and fails if a third
+  appears or if the runtime hard-fail is removed. It is scoped to LLM-endpoint
+  headers: a header line is GitHub-family iff its post-`Bearer` credential
+  expression names a known GitHub token, so canon's many GitHub-API headers are
+  classified rather than swept in — and *that the scope guard holds* is itself an
+  assertion, because a test that fails on unrelated work gets weakened or
+  deleted. An unrecognised credential name fails loud rather than being exempted.
+
+  Scope is the `Authorization: Bearer` form (the proxy is OpenAI-compatible); an
+  `api-key:` header, a `?api_key=` query param or `.netrc` would not be detected.
+  Files come from `git ls-files`, not a walk — a walk reaches the gitignored
+  bootstrap scratch trees and reds a local run for files that are not yours.
+
+  Seven arms mutation-tested by **softening**, not deleting: allowlist compared
+  as a subset, unknown credential names silently exempted, comment-skip removed,
+  hard-fail check disabled, classification widened to the whole line, the
+  hard-fail matched as a loose substring, and case-sensitive detection. Each
+  turns a distinct assertion red.
+
+  Two of those arms exist because a pre-push review found the first version
+  defeatable in exactly those directions: a whole-file substring for the
+  hard-fail passed when the *condition* was softened rather than the call
+  deleted (the client would then send an empty bearer credential), and classifying on every
+  identifier after `Bearer` let a trailing comment naming `GH_TOKEN` file a
+  genuine `Bearer ${LLM_API_KEY}` line as GitHub-family — green with a third
+  presentation site in canon. Both measured, both now witnessed by fixtures.
+
 ## ci/v4.0.0 — 2026-08-23
 
 ### ⚠️ Breaking changes — read this before repinning
