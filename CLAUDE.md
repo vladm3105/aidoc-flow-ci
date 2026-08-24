@@ -245,7 +245,8 @@ session must not re-derive or get wrong:
   Loopback (`127.0.0.1`/`localhost`) resolves to the *container*, not the host —
   it works when tested from the host and fails only in CI.
   It is HTTP on the private bridge → callers set
-  `litellm_allow_insecure_http: true`. **This is scoped by the URL SCHEME, not by
+  `llm_allow_insecure_http: true` (RENAMED at ci/v4.0.0 from
+  `litellm_allow_insecure_http`; CI-0051). **This is scoped by the URL SCHEME, not by
   repo visibility:** any caller whose `LLM_URL` is `http://` needs the
   flag, and since PLAN-013 puts the whole AI flow on the shared pool, that
   includes every PUBLIC repo too — not just the private trio. (CI-0017.)

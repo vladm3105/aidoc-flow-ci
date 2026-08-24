@@ -18,16 +18,18 @@ that matters: [`docs/MIGRATION_v4.0.0.md`](docs/MIGRATION_v4.0.0.md).
 | 1 | **Runner labels renamed** `ci-runner`→`ci`, `single-use`→`ephemeral` (CI-0043) | Jobs **queue forever** — no failure, no timeout, no log. `timeout-minutes` cannot save a job that never starts. |
 | 2 | **`doc-maintainer.yml` deleted** (CI-0040) | A caller repinned to v4 gets `startup_failure`, which produces no logs. |
 | 3 | **`sast`/`dep`/`trivy` `config` + `scan-path` are now allowlisted** | A caller passing anything other than `p/default`, `p/security-audit`, `p/python` (or `scan-path` other than `.`) now **fails with a named error** instead of silently scanning nothing. |
+| 4 | **The `LITELLM_*` secret fallbacks are REMOVED — and no longer declared** (CI-0051) | A caller still forwarding the old trio makes the workflow fail to LOAD: **`startup_failure`, zero jobs, no logs** on a required check. The templates shipped at `ci/v2.12.0`…`ci/v3.0.0` forwarded exactly those three. Needs a **caller edit**; provisioning secrets does not rescue it and `--repin` cannot deliver it. |
+| 5 | **Caller input renamed** `litellm_allow_insecure_http` → `llm_allow_insecure_http` (CI-0051) | An unknown workflow input is rejected — rename it in your caller. Same meaning, same `false` default. |
 
-**Two ordering rules carry the whole risk, and both fail silently:**
+**Three ordering rules carry the whole risk, and all three fail silently:**
 
 1. **Register the coexistence runner label set BEFORE repinning**
    (`self-hosted,ci-runner,single-use,ci,ephemeral`), confirm a real job lands
    on the new labels, and only then narrow to `self-hosted,ci,ephemeral`.
 2. **Delete your `doc-maintainer.yml` caller BEFORE repinning**, not after.
+3. **Provision `LLM_URL` + `LLM_API_KEY` AND delete the three `LITELLM_*` lines from your caller's `secrets:` map, in the SAME change as the repin.** Secrets alone are not enough — an explicit map naming an undeclared secret fails to load. Take the new caller with `--update` (re-applying local edits) or hand-edit it; `--repin` rewrites tag strings only.
 
-**Not breaking, listed so you do not misread it as breaking:** LLM credentials
-unify on `LLM_URL`/`LLM_API_KEY` — the `LITELLM_*` names still resolve. The
+**Not breaking, listed so you do not misread it as breaking:** the
 `dev` → `staging` → `main` branching model ships **fully opt-in**: with no
 `.github/aidoc-ci.json` every surface reproduces its pre-v4 behaviour. The one
 unconditional effect is cosmetic — after `install.sh --update`, caller trigger
@@ -35,6 +37,64 @@ arms read `branches: ["main"]` where they read `branches: [main]`.
 
 `ci/v3.0.0` was **not** re-cut and remains a valid pin and the rollback target
 (CI-0044).
+
+### Changed — one credential pair, one name, no provider coupling (CI-0051)
+
+**The client was never LiteLLM-specific.** `scripts/llm_client.py` POSTs a
+standard OpenAI-compatible `{"model","messages"}` body to
+`<LLM_URL>/v1/chat/completions` with a bearer token, and contains **zero**
+provider-specific code. Switching to OpenAI, OpenRouter, vLLM, Together or any
+other OpenAI-compatible endpoint is three values — `LLM_URL`, `LLM_API_KEY`,
+`LLM_MODEL` — with no code change. The naming implied a coupling that did not
+exist, and two names for one credential is how #350 happened.
+
+- **The `secrets.LLM_URL || secrets.LITELLM_BASE_URL` fallbacks are gone**, at
+  both `ai-review` call sites (review + autofix) and in `llm-smoke.yml`. The
+  reusable no longer *declares* `LITELLM_BASE_URL` / `LITELLM_REVIEW_API_KEY` /
+  `LITELLM_FIX_API_KEY` either — a declared-but-unused secret invites a caller
+  to keep forwarding it. The shipped caller template no longer forwards them.
+- **`litellm_allow_insecure_http` → `llm_allow_insecure_http`.** The env var it
+  feeds was *already* unified (`LLM_ALLOW_INSECURE_HTTP`); only the input name
+  was legacy. Renamed at the definition, both references, the shipped template's
+  commented example, `install.sh`'s operator guidance, `REPO_STANDARDS.md` and
+  the runner README.
+- **Diagnostics no longer name a vendor.** `::error::litellm:` → `::error::llm:`;
+  the 401 explainer now says the unified name is the only one resolved rather
+  than pointing at deprecated fallbacks that no longer exist.
+
+**A deliberate deviation, recorded rather than buried.** The removed block
+carried the note *"Remove in the release AFTER every consumer has
+`LLM_URL`/`LLM_API_KEY`"* — and that condition is **not** met: most consumers
+still pin `ci/v1.9.5` or `ci/v3.0.0` and are not provisioned. The founder
+accepted the harder migration to avoid shipping a dual-name surface that would
+outlive v4. A consumer is unaffected until it repins, and `MIGRATION_v4.0.0.md`
+§3 now leads with the ordering requirement instead of promising compatibility.
+
+**The pre-push review caught the failure mode being wrong in all four migration
+surfaces.** The first draft documented `::error::LLM_API_KEY is unset` and said
+"provision before repinning". Both wrong: dropping the *declarations* means a
+caller still forwarding the old trio fails to LOAD (`startup_failure`, zero jobs,
+no logs), and since the `ci/v2.12.0`…`ci/v3.0.0` templates forwarded exactly
+those three and not the unified pair, most of the fleet needs a **caller edit**
+that `--repin` cannot deliver. Corrected in `MIGRATION_v4.0.0.md` §3, the
+breaking table, the ordering rules, `UPDATE_GUIDE.md`, and the reusable's own
+comment — which had asserted the opposite of what GitHub does, next to a test
+whose comment states the rule correctly. The same pass also caught a botched
+comment edit that left half a deleted sentence in the shipped caller template,
+`security.md` §4.3 and `REPO_STANDARDS.md` §4.0b still describing the removed
+behaviour as live, this repo's own `CLAUDE.md` still naming the removed input,
+and that `--mint` scopes its key to `ai-reviewer` only — so a minted repo that
+later enables autofix gets 403 model-scope, now noted at provisioning time.
+
+**Tests inverted, not deleted.** `tests/test_contract.sh` previously *required*
+the fallback and the deprecated declarations — three assertions that would have
+held the legacy path in place, the same shape as the fork guard whose test
+pinned the defective spelling (§4.3k). They now assert the fallback is absent
+outside comments, that both call sites read the unified key directly, and that
+neither the old input definition nor any `inputs.` reference survives. All are
+count comparisons: an earlier draft interpolated matched file content into an
+`eval`'d assertion and blew up on the matched text's own quotes instead of
+failing cleanly.
 
 ### Fixed — the `ci/v4.0.0` pre-production review, round 2 (the post-#515 delta)
 

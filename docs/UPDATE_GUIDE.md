@@ -309,10 +309,11 @@ Quick-reference:
      already marked; this one was the outlier. -->
 1. Add `LITELLM_BASE_URL` + `LITELLM_REVIEW_API_KEY` secrets — **these names,
    not the modern ones.** The unified `LLM_URL` / `LLM_API_KEY` pair arrived
-   2026-08-21, long after `ci/v2.0.0` was cut, and the fallback that accepts the
-   old names (`secrets.LLM_URL || secrets.LITELLM_BASE_URL`) lives in the
-   reusable — so at the **frozen `ci/v2.0.0` pin this step targets**, `LLM_URL`
-   is not read at all and the ai-review job cannot find its secret. This
+   2026-08-21, long after `ci/v2.0.0` was cut — so at the **frozen `ci/v2.0.0`
+   pin this step targets**, `LLM_URL` is not read at all and the ai-review job
+   cannot find its secret. (A `secrets.LLM_URL || secrets.LITELLM_BASE_URL`
+   fallback existed in the reusable between `ci/v2.0.0` and `ci/v4.0.0`; it was
+   REMOVED at v4 by CI-0051. It never applied at this pin either way.) This
    quick-reference said `LLM_URL` while the full guide it summarises
    (`MIGRATION_v2.0.0.md` §2) said `LITELLM_*`: two documents, one step, mutually
    exclusive names. Set the modern pair as well if you intend to keep moving
@@ -349,7 +350,8 @@ backward compatible:
 |---|---|
 | Runner labels `ci-runner`→`ci`, `single-use`→`ephemeral` (CI-0043) | Jobs **queue forever** — no failure, no timeout, no log |
 | `doc-maintainer` reusable **deleted** (CI-0040) | A repinned caller gets `startup_failure`, which produces no logs |
-| LLM credentials unify on `LLM_URL`/`LLM_API_KEY` | Nothing — the `LITELLM_*` names still resolve |
+| LLM credentials unify on `LLM_URL`/`LLM_API_KEY`; `LITELLM_*` fallbacks REMOVED **and undeclared** (CI-0051) | A caller still forwarding the old trio → **`startup_failure`, zero jobs, no logs**. Needs `--update` (or a hand edit) to drop those three lines; secrets alone and `--repin` alone both leave it broken |
+| Caller input renamed `litellm_allow_insecure_http` → `llm_allow_insecure_http` (CI-0051) | An unknown input is rejected — rename it in your caller |
 | `--update` requotes caller trigger arms: `branches: [main]` → `branches: ["main"]` (PLAN-028 B5) | Nothing — same branch. Expect a one-line diff per trigger arm on the first `--update` after adopting this tag; see §3 above. `--repin` does not deliver it |
 
 Two ordering rules carry the whole risk, and both are the kind that fail

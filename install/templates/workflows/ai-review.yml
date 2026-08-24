@@ -68,7 +68,7 @@ jobs:
       # applies there too. NB: LLM_URL must NOT be 127.0.0.1/localhost;
       # jobs run inside a container, so loopback is the container itself.
       # (CI-0017.)
-      # litellm_allow_insecure_http: true
+      # llm_allow_insecure_http: true
       # External adopters: point the trust config at YOUR ops/config repo
       # (holds `.github/ai-review/config.json`). Defaults to
       # vladm3105/aidoc-flow-operations@main.
@@ -88,10 +88,10 @@ jobs:
       # UNIFIED NAMES — provision these two on the repo.
       LLM_URL: ${{ secrets.LLM_URL }}
       LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-      # DEPRECATED, forwarded so this caller works BEFORE the repo is
-      # re-provisioned. An unset secret forwards as empty, and the reusable
-      # resolves `LLM_URL || LITELLM_BASE_URL`, so whichever pair exists wins.
-      # DELETE these three once LLM_URL + LLM_API_KEY are set on the repo.
-      LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
-      LITELLM_REVIEW_API_KEY: ${{ secrets.LITELLM_REVIEW_API_KEY }}
-      LITELLM_FIX_API_KEY: ${{ secrets.LITELLM_FIX_API_KEY }}
+      # ci/v4.0.0 (CI-0051): the LITELLM_BASE_URL / LITELLM_REVIEW_API_KEY /
+      # LITELLM_FIX_API_KEY forwards were REMOVED — the reusable no longer
+      # DECLARES them. If your caller still lists those three, DELETE the lines
+      # in the SAME commit as the repin: GitHub rejects an explicit `secrets:`
+      # map naming a secret the callee does not declare, and the workflow fails
+      # to LOAD (startup_failure, zero jobs, no logs). Provisioning secrets does
+      # not help — the map itself is invalid. See docs/MIGRATION_v4.0.0.md §3.

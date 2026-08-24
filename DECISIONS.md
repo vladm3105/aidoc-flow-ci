@@ -3453,3 +3453,79 @@ cases (the latter being F1 itself) under test.
 smoke, which has **never run against the post-CI-0040 workflow** and cannot run
 on canon as written (0 registered runners; the proxy is private-network). Both
 are founder-executed and tracked in PLAN-027 §3a.
+
+## CI-0051: one credential pair, one name, and no provider coupling in the naming (2026-08-23)
+
+**Context.** `ai-review` and `llm-smoke` resolved `secrets.LLM_URL ||
+secrets.LITELLM_BASE_URL` and `secrets.LLM_API_KEY || secrets.LITELLM_*_API_KEY`,
+and the caller input was `litellm_allow_insecure_http`. The naming asserted a
+coupling to one vendor that **does not exist in the code**: `scripts/llm_client.py`
+POSTs a standard OpenAI-compatible `{"model","messages"}` body to
+`<LLM_URL>/v1/chat/completions` with a bearer token and contains zero
+provider-specific logic. Switching to OpenAI, OpenRouter, vLLM or any other
+OpenAI-compatible endpoint is three values and no code change.
+
+**Decision.** At `ci/v4.0.0`:
+
+- `LLM_URL` and `LLM_API_KEY` are the **only** secret names resolved. The
+  `LITELLM_*` fallbacks are removed, and the reusable no longer *declares* them —
+  a declared-but-unused secret is an invitation for a caller to keep forwarding it.
+- The caller input is `llm_allow_insecure_http`. The env var it feeds
+  (`LLM_ALLOW_INSECURE_HTTP`) was already unified; only the input name lagged.
+- Diagnostics name no vendor: `::error::llm:`, and the 401 explainer points at
+  the one name that exists.
+
+**Why two names for one credential was itself the hazard.** #350: a
+`set-llm-secrets.sh` run adding one optional secret rewrote a working review key,
+all three writes printed ✓, and a required gate went red on a consumer. A dual-name
+resolution makes "which name is this repo actually using?" unanswerable from CI,
+because GitHub secrets are write-only. One name removes the question.
+
+**The deviation, stated.** The removed block carried `Remove in the release AFTER
+every consumer has LLM_URL/LLM_API_KEY`. **That condition is not met** — most
+consumers still pin `ci/v1.9.5` or `ci/v3.0.0`. The founder accepted the harder
+migration rather than ship a dual-name surface that would outlive v4. This is
+tolerable only because the break is *ordered and announced*: a consumer is
+unaffected until it repins, and `docs/MIGRATION_v4.0.0.md` §3 now opens with the
+ordering requirement instead of promising compatibility. **Do not read this entry
+as licence to drop a documented fallback whose stated precondition is unmet — the
+precondition was waived explicitly, once, by the founder.**
+
+**The failure mode is `startup_failure`, not a 401 — and the first draft of this
+change said the wrong one everywhere.** Removing the fallbacks was the easy half;
+removing the `workflow_call.secrets` DECLARATIONS is what actually bites. Callers
+forward secrets through an explicit FT-42 map (since `ci/v2.12.0`), and GitHub
+rejects a map naming a secret the callee does not declare: the workflow fails to
+LOAD — zero jobs, no logs — on a required check. **The caller templates shipped
+at `ci/v2.12.0` … `ci/v3.0.0` forwarded exactly the three deprecated names and
+NOT the unified pair**, so most of the fleet is affected, and neither
+provisioning secrets nor `--repin` rescues such a repo: only a caller-body edit
+does, which `--repin` cannot deliver. Every migration surface initially
+documented the milder `::error::LLM_API_KEY is unset` outcome and prescribed
+"provision before repinning", which would have been useless advice. Caught by
+the pre-push review, which cited this repo's own FT-42 test comment stating the
+rule. **The lesson generalises: removing a DECLARATION is a different, harder
+break than removing a fallback, and the two must be reasoned about separately.**
+
+**The boundary of this decision.** It unifies the names **canon owns** — the
+GitHub Actions secret names and the workflow inputs. It does **not** rename what
+an endpoint product calls its own configuration, and cannot: the workspace's
+LiteLLM deployment reads `LITELLM_MASTER_KEY` in its own `docker-compose.yml`
+and `config/router.*.yaml`, which live in `llm_router`, a separate repo.
+Operators therefore bridge one variable at the call site
+(`LLM_MASTER_KEY="$(read the endpoint's var)"`), in a subshell so the key does
+not linger in the interactive environment. **A vendor-specific name on the left
+of that bridge is expected; one inside canon is not** — that is the line this
+decision draws, and it is the line to check a future "we still see LiteLLM
+somewhere" report against. Documented in `docs/MIGRATION_v4.0.0.md` §3 and in
+`install/set-llm-secrets.sh`'s header.
+
+**What did NOT change.** Per-purpose key revocability was already surrendered when
+CI-0040 retired the doc key and the review/fix keys converged (`docs/security.md`
+§4.3). The master key is still never stored; `set-llm-secrets.sh --mint` issues a
+per-repo, review-scoped, revocable virtual key.
+
+**Consequence.** v4 carries five breaking changes, not three. The migration guide's
+"why this is a MAJOR" table, the CHANGELOG breaking block, and the ordering rules
+all now say so, and three `tests/test_contract.sh` assertions that previously
+*required* the fallback were inverted to forbid it.

@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Minimal dependency-free client for a LiteLLM OpenAI-compatible proxy."""
+"""Minimal dependency-free client for ANY OpenAI-compatible chat endpoint.
+
+Provider-agnostic by construction: it POSTs the standard
+`{"model", "messages"}` body to `<LLM_URL>/v1/chat/completions` with a bearer
+token. Swapping provider is three values — LLM_URL, LLM_API_KEY, LLM_MODEL.
+Nothing here is specific to LiteLLM, and since ci/v4.0.0 the diagnostics do not
+name one either (CI-0051)."""
 
 from __future__ import annotations
 
@@ -47,7 +53,7 @@ def open_no_redirect(request: urllib.request.Request, timeout: float):
 
 
 def fail(message: str) -> None:
-    print(f"::error::litellm: {message}", file=sys.stderr)
+    print(f"::error::llm: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
@@ -96,9 +102,9 @@ def loopback_hint(base_url: str) -> str:
 def auth_hint(code: int) -> str:
     """Name the likely cause of a rejected token instead of a bare status line.
 
-    LLM_API_KEY is populated from the repository secret of the same name (or,
-    on a consumer not yet re-provisioned, the deprecated LITELLM_REVIEW_API_KEY /
-    LITELLM_FIX_API_KEY) — so a 401 here is a secret-provisioning problem, not a
+    LLM_API_KEY is populated from the repository secret of the same name — since
+    ci/v4.0.0 that is the ONLY name resolved (CI-0051 removed the LITELLM_*
+    fallbacks) — so a 401 here is a secret-provisioning problem, not a
     code one. The bare status
     named neither the secret nor a cause, which is what made #350 expensive: a
     set-llm-secrets.sh run adding one optional key silently overwrote a
@@ -106,10 +112,10 @@ def auth_hint(code: int) -> str:
     """
     if code == 401:
         return (
-            " — the proxy rejected the bearer token. LLM_API_KEY comes from a"
-            " repository secret LLM_API_KEY — or, if this repo has not been"
-            " re-provisioned yet, the deprecated LITELLM_REVIEW_API_KEY /"
-            " LITELLM_FIX_API_KEY the caller still forwards. A recent"
+            " — the endpoint rejected the bearer token. LLM_API_KEY comes from"
+            " the repository secret of the same name, which since ci/v4.0.0 is"
+            " the ONLY name resolved: if this repo was never re-provisioned off"
+            " the deprecated LITELLM_* secrets, that is the cause (CI-0051). A recent"
             " install/set-llm-secrets.sh run may have overwritten the"
             " value. Re-provision the affected"
             " secret — GitHub secrets are write-only, so the value cannot be read"
@@ -123,7 +129,7 @@ def auth_hint(code: int) -> str:
         # send them back into the hand-re-provisioning loop #350 was about.
         return (
             " — the token authenticated but is not authorized for this model."
-            " Check the virtual key's model scope on the LiteLLM proxy; the secret"
+            " Check the key's model scope on the endpoint; the secret"
             " value itself is fine, so replacing it will not help."
         )
     return ""
@@ -137,7 +143,7 @@ def endpoint(base_url: str) -> str:
             "LLM_URL must use HTTPS (or explicitly allow HTTP). If your proxy"
             " is reached over http:// — which is the case for every consumer on the"
             " shared self-hosted pool, since the Docker bridge gateway is plain HTTP on"
-            " a private network — set `litellm_allow_insecure_http: true` on the"
+            " a private network — set `llm_allow_insecure_http: true` on the"
             " caller. This is determined by the URL SCHEME, not by repo visibility:"
             " public repos need it too. See docs/MIGRATION_v2.0.0.md §1. (CI-0017.)"
         )
