@@ -1,6 +1,6 @@
 # PLAN-030 — pin the LLM credential's presentation sites
 
-**Status:** Ready.
+**Status:** Executed 2026-08-24 — `tests/test_credential_sites.sh`, 27 assertions, suite green.
 **Owner:** canon (`aidoc-flow-ci`).
 **Scope:** one canon self-test. Tag-independent, probe-free, no consumer
 mutation, no credential mutation, no network.
@@ -129,3 +129,72 @@ rather than building one, and that every other bearer header in canon is a
 GitHub API token — which is why the scope guard is a named acceptance criterion.
 
 **Result:** ready. Zero load-bearing findings against the surviving scope.
+
+## Execution record — 2026-08-24
+
+Delivered as `tests/test_credential_sites.sh` (21 assertions, suite group
+`credential-sites`, 0 failed). All four Definition-of-Done criteria are asserted,
+each against a fixture built from **copies of the real files**, so the fixture
+tracks reality rather than an imitation of it.
+
+Scope is the `Authorization: Bearer` form — appropriate for an
+OpenAI-compatible proxy, but an `api-key:` header or a `?api_key=` query
+parameter would not be detected, and the guard's name should not be read as
+covering those.
+
+The guard was mutation-tested rather than merely run. Softening — not deleting —
+each of **seven** arms turns a distinct assertion red: allowlist compared as a
+subset instead of an equality; unknown credential names silently exempted;
+comment-skip removed; hard-fail check disabled; classification widened from the
+credential to the whole line; the hard-fail matched as a loose substring;
+case-sensitive detection.
+
+**A pre-push review found the first version defeatable in two directions, both
+reproduced before folding:**
+
+- the hard-fail check was a whole-file substring, so *softening the condition*
+  (`if not api_key and os.environ.get("LLM_STRICT"):`) left the message intact
+  and the check reported `HARDFAIL ok` — while the client would build a bearer
+  header with an empty credential and 401 across the fleet. Deletion is the one
+  direction a substring search catches, and deletion was the only mutation
+  originally run. Now anchored to the contiguous condition-and-call.
+- classification matched *any* identifier after `Bearer`, so a trailing comment
+  naming `GH_TOKEN` filed a genuine `Bearer ${LLM_API_KEY}` line as
+  GitHub-family: the suite went green with a third presentation site present.
+  Trailing comments on a header line are house style here
+  (`install/set-llm-secrets.sh:257`), so this was not contrived. Now classified
+  on the first identifier after `Bearer` — the credential itself.
+
+Also folded: file discovery moved to `git ls-files` (a walk reaches the
+gitignored bootstrap scratch trees, reddening a local run on files that are not
+yours while CI on a fresh clone stays green — the unreproducible failure that
+gets a guard deleted); detection made case-insensitive; and the failure text now
+prints the two sanctioned remediations, because remediation-free failure text is
+what turns into "delete the test".
+
+Two further defects were found in the guard *by* the author's own mutation pass
+and fixed:
+
+- the corroborating `LLM_*` signal only inspected the header line, so it missed
+  the common case where the credential is held in a local (`{api_key}`, `${!1}`)
+  and named on an earlier line — it now inspects the file, and is described as
+  corroboration rather than an independent detector, which is what it is;
+- the comment-skip fixture was first appended to an **already-allowlisted** file,
+  leaving the file set unchanged so the assertion passed either way. Measured: it
+  stayed green under the mutation. It now lives outside the allowlist, where the
+  comment-skip is the only thing standing between it and a false site.
+
+Three assertions were relabelled or replaced for the same two-arm reason:
+
+- `set-llm-secrets.sh:254` is excluded by the **comment-skip** (after `lstrip()`
+  it begins with `#`, so that arm returns before the Bearer filter is reached).
+  An earlier note here asserted the reverse; the Bearer filter is a sufficient
+  backup, which is why disabling the comment-skip left it green, but it is not
+  the arm that fires. Two arms exclude the line, so it witnesses neither.
+- an assertion that "reading a header is not presenting one" named
+  `tests/test_scripts.sh` — but `tests` is in `skip_dirs`, so that file is never
+  opened and the assertion would pass with the Bearer filter deleted. Replaced
+  with a fixture in a scanned directory.
+- the commented-out-builder fixture was first appended to an already-allowlisted
+  file, leaving the file set unchanged so it passed either way (measured green
+  under the mutation). Moved outside the allowlist.
