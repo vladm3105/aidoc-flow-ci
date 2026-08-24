@@ -156,8 +156,39 @@ assert_ok "grep -qE 'ai-review\\.yml@ci/v[0-9]' '$ROOT/install/templates/workflo
 SHA_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 SHA_B="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
-nblocks="$(grep -c '# >>> FT28-PEEL-VERIFY >>>' "$AR" || true)"
-assert_eq "$nblocks" "2" "both resolvers carry an extractable FT28-PEEL-VERIFY block"
+# EVERY resolver that turns a caller pin into a FETCH_REF must peel-verify, not
+# just ai-review's two. `standards-drift.yml` and `docs-sync.yml` carried the
+# identical `FETCH_REF="${CANON_SHA:-$CANON_TAG}"` construction with no check —
+# and unlike ai-review, which fetches review ASSETS, those two EXECUTE what they
+# fetch (`bash "$SCRIPT"`; `python3 .docs-sync-scripts/*.py`). This list is the
+# guard against a fifth resolver shipping without the block: derive the set from
+# the tree and assert every member is covered, rather than pinning a count in
+# one file.
+SD="$ROOT/.github/workflows/standards-drift.yml"
+DS="$ROOT/.github/workflows/docs-sync.yml"
+PEEL_FILES="$AR $SD $DS"
+
+# Any workflow that builds a FETCH_REF from a caller-supplied SHA is in scope.
+# --include, not a bare -r: a `*.yml.bak` / `*.disabled` leftover is not a file
+# GitHub executes, and letting one into this set makes the assertion fail for a
+# reason that has nothing to do with coverage. Same rule the resolvers themselves
+# apply when reading `uses:` lines.
+# Scan BEYOND .github/workflows/. §4.3l states the rule as "any file containing
+# this construction", and a composite action under actions/ would otherwise
+# escape the derived set entirely.
+_fetchref_files="$(grep -rlE --include='*.yml' --include='*.yaml' 'FETCH_REF="\$\{CANON_SHA:-\$CANON_TAG\}"' \
+  "$ROOT/.github/workflows/" "$ROOT/actions/" "$ROOT/install/templates/workflows/" 2>/dev/null | sort)"
+_peel_files_sorted="$(printf '%s\n' $PEEL_FILES | sort)"
+assert_eq "$_peel_files_sorted" "$_fetchref_files" \
+  "every workflow deriving FETCH_REF from a caller SHA is in the peel-verified set (a new one must be added here, not silently shipped)"
+
+nblocks="$(cat $PEEL_FILES | grep -c '# >>> FT28-PEEL-VERIFY >>>' || true)"
+assert_eq "$nblocks" "4" "all four resolvers carry an extractable FT28-PEEL-VERIFY block"
+# A TOTAL is satisfied by one file losing its block while another gains one, and
+# the block index -> file binding below depends on the per-file counts. Pin them.
+assert_eq "$(grep -c '# >>> FT28-PEEL-VERIFY >>>' "$AR" || true)" "2" "ai-review.yml carries exactly 2 peel blocks (indices 1-2)"
+assert_eq "$(grep -c '# >>> FT28-PEEL-VERIFY >>>' "$SD" || true)" "1" "standards-drift.yml carries exactly 1 peel block (index 3)"
+assert_eq "$(grep -c '# >>> FT28-PEEL-VERIFY >>>' "$DS" || true)" "1" "docs-sync.yml carries exactly 1 peel block (index 4)"
 
 # Extract the Nth block's body (comment lines inside are harmless when run).
 extract_peel() { # $1 = 1-based block index -> stdout
@@ -165,39 +196,52 @@ extract_peel() { # $1 = 1-based block index -> stdout
     /# >>> FT28-PEEL-VERIFY >>>/ { n++; inb=(n==want)?1:0; next }
     /# <<< FT28-PEEL-VERIFY <<</ { inb=0; next }
     inb { print }
-  ' "$AR"
+  ' $PEEL_FILES
 }
 
 # Run a block with curl stubbed. Mirrors the GitHub Actions default shell
 # (`bash -eo pipefail`, NOT -u). $2 = pinned CANON_SHA; $3 = SHA the stubbed curl
 # returns for the tag peel ('' = unreachable tag). Returns the block's exit code.
-drive_peel() { # $1=block-body-file $2=CANON_SHA $3=stub-tag-commit -> rc
+# $4 = the workflow file the block came from. Only the token names that file
+# actually DECLARES in an `env:` block are exported, and the driver runs under
+# the real `set -euo pipefail` — so a block referencing a token its own step does
+# not set aborts on the unbound variable, exactly as it would in Actions.
+# Pre-defining BOTH names (the previous shape) made that failure unreachable:
+# a copy-paste of ai-review's `${GITHUB_TOKEN}` into a resolver whose step sets
+# `GH_TOKEN` stayed green here and would have died at runtime.
+drive_peel() { # $1=block-body-file $2=CANON_SHA $3=stub-tag-commit $4=source-workflow -> rc
   {
-    echo 'set -eo pipefail'
+    echo 'set -euo pipefail'
     printf 'CANON_SHA=%s\n' "$2"
     echo 'CANON_TAG=ci/v9.9.9'
-    echo 'GITHUB_TOKEN=stub-token'
+    grep -oE '^[[:space:]]+(GH_TOKEN|GITHUB_TOKEN):' "$4" | tr -d ' :' | sort -u \
+      | while IFS= read -r _t; do [ -n "$_t" ] && printf '%s=stub-token\n' "$_t"; done
     echo "curl() { printf '%s' '$3'; }"
     cat "$1"
   } > "$FIX/drive.sh"
   ( bash "$FIX/drive.sh" ) >/dev/null 2>&1
 }
 
-for idx in 1 2; do
-  which="review"; [ "$idx" = 2 ] && which="autofix"
+for idx in 1 2 3 4; do
+  case "$idx" in
+    1) which="review";          _src="$AR" ;;
+    2) which="autofix";         _src="$AR" ;;
+    3) which="standards-drift"; _src="$SD" ;;
+    4) which="docs-sync";       _src="$DS" ;;
+  esac
   extract_peel "$idx" > "$FIX/peel-$idx.sh"
   assert_ok "grep -q 'TAG_COMMIT' '$FIX/peel-$idx.sh'" "$which resolver: peel block extracted"
 
-  drive_peel "$FIX/peel-$idx.sh" "$SHA_A" "$SHA_A"
+  drive_peel "$FIX/peel-$idx.sh" "$SHA_A" "$SHA_A" "$_src"
   assert_eq "$?" "0" "$which resolver: SHA matching the peeled tag is ACCEPTED (rc=0)"
 
-  drive_peel "$FIX/peel-$idx.sh" "$SHA_A" "$SHA_B"
+  drive_peel "$FIX/peel-$idx.sh" "$SHA_A" "$SHA_B" "$_src"
   assert_eq "$?" "1" "$which resolver: SHA ≠ the tag's commit is REJECTED (rc=1) — the FT-28 teeth"
 
-  drive_peel "$FIX/peel-$idx.sh" "$SHA_A" ""
+  drive_peel "$FIX/peel-$idx.sh" "$SHA_A" "" "$_src"
   assert_eq "$?" "1" "$which resolver: an unreachable tag (empty peel) is REJECTED (rc=1)"
 
-  drive_peel "$FIX/peel-$idx.sh" "" "$SHA_B"
+  drive_peel "$FIX/peel-$idx.sh" "" "$SHA_B" "$_src"
   assert_eq "$?" "0" "$which resolver: a tag-only pin (no SHA) skips the peel (rc=0)"
 done
 

@@ -121,6 +121,12 @@ jobs:
 
       - name: Fetch operation scripts from the adopted canon tag
         if: ${{ steps.cfg.outputs.skip != 'true' }}
+        env:
+          # Needed by the FT28-PEEL-VERIFY block below. Canon is public so the
+          # peel would resolve unauthenticated, but at 60 req/hr per IP — and a
+          # rate-limited peel returns empty, which this block treats as a hard
+          # infrastructure failure. Authenticate so the check cannot be starved.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           # WHICH canon version: read the adopted `@ci/vX.Y.Z` pin from the
@@ -174,6 +180,26 @@ jobs:
           # and can lag the SHA; trusting it would run one version's workflow with
           # another version's scripts (FT-15's class via the other pin form).
           FETCH_REF="${CANON_SHA:-$CANON_TAG}"
+          # FT-28: raw.githubusercontent serves ANY commit reachable in the public
+          # canon repo — including never-merged fork-PR commits — while the
+          # trailing tag comment reads as the released version in code review.
+          # This step fetches three `.py` files that later steps EXECUTE, and
+          # whose output is committed by the aidoc-flow-bot App token that holds
+          # the branch-protection bypass. ai-review has carried this check since
+          # FT-28; this resolver had the same construction and none of the
+          # verification.
+          # >>> FT28-PEEL-VERIFY >>> (extracted + DRIVEN by tests/test_resolver.sh
+          # with curl stubbed — keep these markers; the test runs THIS block, not a
+          # re-implemented copy. FT-40: a `if false;` mutation here must go red.)
+          if [ -n "$CANON_SHA" ] && [ -n "$CANON_TAG" ]; then
+            TAG_COMMIT="$(curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github.sha" \
+              "https://api.github.com/repos/vladm3105/aidoc-flow-ci/commits/${CANON_TAG}" 2>/dev/null || true)"
+            [ -n "$TAG_COMMIT" ] || { echo "::error::docs-sync: could not peel canon tag ${CANON_TAG} to verify the pinned SHA — INFRASTRUCTURE error, not a sync result. Re-run."; exit 1; }
+            [ "$TAG_COMMIT" = "$CANON_SHA" ] || { echo "::error::docs-sync: pinned SHA ${CANON_SHA} is NOT the commit of tag ${CANON_TAG} (tag → ${TAG_COMMIT}). The pin's '# ${CANON_TAG}' comment is misleading; refusing to fetch and EXECUTE operation scripts from an unverified commit (FT-28). INFRASTRUCTURE error, not a sync result."; exit 1; }
+          fi
+          # <<< FT28-PEEL-VERIFY <<<
           echo "::notice::docs-sync: adopted canon pin vladm3105/aidoc-flow-ci@${CANON_TAG} (fetching at ${FETCH_REF})"
 
           # owner/repo hardcoded to the canonical canon — never derived from

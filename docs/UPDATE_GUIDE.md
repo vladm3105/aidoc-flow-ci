@@ -350,6 +350,7 @@ backward compatible:
 | Runner labels `ci-runner`→`ci`, `single-use`→`ephemeral` (CI-0043) | Jobs **queue forever** — no failure, no timeout, no log |
 | `doc-maintainer` reusable **deleted** (CI-0040) | A repinned caller gets `startup_failure`, which produces no logs |
 | LLM credentials unify on `LLM_URL`/`LLM_API_KEY` | Nothing — the `LITELLM_*` names still resolve |
+| `--update` requotes caller trigger arms: `branches: [main]` → `branches: ["main"]` (PLAN-028 B5) | Nothing — same branch. Expect a one-line diff per trigger arm on the first `--update` after adopting this tag; see §3 above. `--repin` does not deliver it |
 
 Two ordering rules carry the whole risk, and both are the kind that fail
 silently rather than loudly:

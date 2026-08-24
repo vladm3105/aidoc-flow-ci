@@ -178,10 +178,12 @@ TEMPLATE_BASE="https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/${CI_TA
 if ! DEFAULT_BRANCH=$(gh api "repos/${REPO}" --jq '.default_branch' 2>/dev/null); then
   DEFAULT_BRANCH=""
 fi
+DEFAULT_BRANCH_RESOLVED=1
 case "$DEFAULT_BRANCH" in
   ''|*[!A-Za-z0-9._/-]*|null)
     echo "::warning::check-standards-drift: could not resolve the default branch of ${REPO} (token scope or API failure) — falling back to 'main'"
-    DEFAULT_BRANCH="main" ;;
+    DEFAULT_BRANCH="main"
+    DEFAULT_BRANCH_RESOLVED=0 ;;
 esac
 
 DRIFT=0
@@ -214,7 +216,19 @@ decl_b64=$(mktemp)
 decl_err=$(mktemp)
 decl_read=0
 if gh api "repos/${REPO}/contents/.github/aidoc-ci.json" --jq '.content' > "$decl_b64" 2>"$decl_err"; then
-  tr -d '\n' < "$decl_b64" | base64 -d > "$decl_raw" 2>/dev/null && [ -s "$decl_raw" ] && decl_read=1
+  # The FETCH succeeded, so the file EXISTS. A decode that then fails is
+  # "cannot-check", never "no declaration" — and it fell through to neither arm
+  # below, so it produced no warning, no FETCH_ERRORS, and a clean single-branch
+  # report for a repo that may have declared three. The adjacent bad-JSON arm
+  # already warns; this one did not, which is the same doctrine violated in the
+  # one arm nobody tested. Realistic trigger: BSD/macOS `base64` wants `-D`, so
+  # an operator run decodes nothing while CI (GNU) is fine.
+  if tr -d '\n' < "$decl_b64" | base64 -d > "$decl_raw" 2>/dev/null && [ -s "$decl_raw" ]; then
+    decl_read=1
+  else
+    echo "::warning::check-standards-drift: .github/aidoc-ci.json EXISTS on ${REPO} but its contents could not be base64-decoded (empty or malformed response) — falling back to the single-branch default (${DEFAULT_BRANCH}); branches this repo may have declared are NOT being verified"
+    FETCH_ERRORS=$((FETCH_ERRORS + 1))
+  fi
 elif ! grep -qiE '404|not found|no such file' "$decl_err"; then
   # A 404 is the COMMON, LEGITIMATE case — most repos declare nothing. Anything
   # else is a read this script could not perform, and treating it as "no
@@ -231,6 +245,22 @@ if [ "$decl_read" -eq 1 ]; then
     # could not read it, so every branch beyond the default would be reported
     # as verified-clean without ever being fetched. Warn and keep the default.
     echo "::warning::check-standards-drift: .github/aidoc-ci.json is present but is not a readable object with a .branching object — falling back to the single-branch default (${DEFAULT_BRANCH}); branches this repo may have declared are NOT being verified"
+    FETCH_ERRORS=$((FETCH_ERRORS + 1))
+  elif ! jq -e '["$schema","_note","version","branching"] as $top | ["_note","model","integration_branch","protected_branches","promotion_branches"] as $br
+    | ((keys_unsorted - $top) | length) == 0
+    and (.version == 1)
+    and ((.branching | keys_unsorted - $br) | length) == 0' "$decl_raw" >/dev/null 2>&1; then
+    # AIDOC-CI-DECL-VALIDATE — keys + version. The schema declares
+    # `additionalProperties: false` at both levels and requires `version`, and no
+    # reader enforced any of it. `"promotion_branchs": []` (one transposed letter)
+    # read as "not set", took the model default, and applied enforce_admins:false to
+    # the two branches the operator was opting OUT of. jq, not jsonschema: this runs
+    # on consumer machines and runner images that ship neither. Key lists are pinned
+    # to schemas/aidoc-ci-v1.schema.json by tests/test_scripts.sh. NOT full schema
+    # validation — no types, enums or maxItems; it covers unknown keys + version.
+    # A verifier never exits fatal on this: it reports and keeps the default,
+    # exactly like the sibling arms above.
+    echo "::warning::check-standards-drift: .github/aidoc-ci.json has unknown keys or a bad version (allowed top-level: \$schema, _note, version, branching with version==1; allowed under .branching: _note, model, integration_branch, protected_branches, promotion_branches). A MISSPELLED key is silently ignored and takes the model DEFAULT — falling back to the single-branch default (${DEFAULT_BRANCH}); declared branches are NOT being verified"
     FETCH_ERRORS=$((FETCH_ERRORS + 1))
   else
     _m=$(jq -r '.branching.model // "single-branch"' "$decl_raw")
@@ -349,6 +379,27 @@ if [ "${#PROMOTION_BRANCHES[@]}" -gt 0 ] && is_promotion_branch "$INTEGRATION_BR
   # default branch that has no admin enforcement.
   _keep=()
   for _b in "${PROMOTION_BRANCHES[@]}"; do [ "$_b" = "$INTEGRATION_BRANCH" ] || _keep+=("$_b"); done
+  PROMOTION_BRANCHES=()
+  [ "${#_keep[@]}" -gt 0 ] && PROMOTION_BRANCHES=("${_keep[@]}")
+fi
+
+# Same harm, reached by the OTHER ordering — and this arm is the one the check
+# above cannot see. When the declaration names an integration_branch that is not
+# yet the repo default (`integration_branch: "dev"` while the default is still
+# `main`), `is_promotion_branch "$INTEGRATION_BRANCH"` is FALSE, so nothing above
+# fires — while `main`, the branch every runtime resolver actually reads, sits in
+# the promotion set and gets the enforce_admins:false overlay applied to the
+# CANON side too, reporting that field as 0 drift. Mirrors the FATAL that
+# apply-standards.sh now raises for the same shape.
+# Only when the default branch was actually RESOLVED. On a failed repo read
+# DEFAULT_BRANCH is the literal fallback `main`, and a fully-adopted repo whose
+# real default is `dev` would get a phantom drift here naming a remedy already
+# in place. The failed read is already reported above and counted by --strict.
+if [ "$DEFAULT_BRANCH_RESOLVED" -eq 1 ] && [ "${#PROMOTION_BRANCHES[@]}" -gt 0 ] && is_promotion_branch "$DEFAULT_BRANCH"; then
+  echo "::warning::branch-protection: the repo's DEFAULT branch '${DEFAULT_BRANCH}' is a declared promotion branch (declared integration_branch='${INTEGRATION_BRANCH}') — enforce_admins:false on it strips admin enforcement from the branch composition.yml and ai-review.yml resolve at RUNTIME. Set the repo default branch to '${INTEGRATION_BRANCH}' first (BRANCHING.md §8c)."
+  DRIFT=$((DRIFT + 1))
+  _keep=()
+  for _b in "${PROMOTION_BRANCHES[@]}"; do [ "$_b" = "$DEFAULT_BRANCH" ] || _keep+=("$_b"); done
   PROMOTION_BRANCHES=()
   [ "${#_keep[@]}" -gt 0 ] && PROMOTION_BRANCHES=("${_keep[@]}")
 fi

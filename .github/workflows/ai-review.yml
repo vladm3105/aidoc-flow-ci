@@ -331,7 +331,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
-          IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
+          # D27 identity form. `head.repo.fork` is null when the fork was DELETED
+          # before a `reopened` event, and `[ "" = "true" ]` is false — so the
+          # fast-path below would fall through to the allowlist and TRUST a
+          # fork-origin head whose author happens to be allowlisted. This
+          # reusable is `workflow_call` from `pull_request_target`, so
+          # `head.repo` is always the PR's head: comparing full_name is total.
+          IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           CFG=.github/ai-review/config.json

@@ -229,7 +229,7 @@ jobs:
             # "(api.github.com)" string that previously cost hours of debugging
             # when the real cause was `gh: not found` in the runner image.
             cfg_reason=$(head -3 "$cfg_err" 2>/dev/null | tr '\n' ' ' | head -c 240)
-            command -v gh >/dev/null 2>&1 || cfg_reason="gh CLI not installed in runner image — rebuild via scripts/ci-runner/build-image.sh (Dockerfile bakes gh atop actions-runner:latest). ${cfg_reason}"
+            command -v gh >/dev/null 2>&1 || cfg_reason="gh CLI not installed in runner image — rebuild via install/templates/runner/build-image.sh in aidoc-flow-ci (Dockerfile bakes gh atop actions-runner:latest); see docs/runners.md section 2. ${cfg_reason}"
             echo "::warning::config.json read attempt $n failed: ${cfg_reason:-(no stderr captured)} — retrying"
             [ "$n" -lt 7 ] && sleep $(( n*3 < 20 ? n*3 : 20 ))
           done
@@ -306,7 +306,7 @@ jobs:
             # than the hardcoded "(api.github.com)" string that previously
             # hid a `gh CLI missing in runner image` bug.
             rev_reason=$(head -3 "$rev_err" 2>/dev/null | tr '\n' ' ' | head -c 240)
-            command -v gh >/dev/null 2>&1 || rev_reason="gh CLI not installed in runner image — rebuild via scripts/ci-runner/build-image.sh. ${rev_reason}"
+            command -v gh >/dev/null 2>&1 || rev_reason="gh CLI not installed in runner image — rebuild via install/templates/runner/build-image.sh in aidoc-flow-ci; see docs/runners.md section 2. ${rev_reason}"
             echo "::warning::reviews fetch attempt $n failed: ${rev_reason:-(no stderr captured)} — retrying"
             [ "$n" -lt 7 ] && sleep $(( n*3 < 20 ? n*3 : 20 ))
           done

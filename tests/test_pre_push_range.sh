@@ -355,7 +355,14 @@ for copy in scripts/pre_push_check.sh install/templates/pre_push_check.sh; do
   run_check "$script" "$d/work"
   assert_eq "$RC" "0" "$copy: a promotion-shaped push passes with NO arguments (the hook path)"
   assert_contains "$OUT" "PROMOTION-SHAPED push detected" "$copy: the no-argument path recognises the shape"
-  assert_contains "$OUT" "PROMOTION OK" "$copy: and reports its own pass"
+  # It reports the EMPTY-RANGE pass it can actually justify — NOT a promotion
+  # pass. This arm receives no target, so it cannot establish that the target is
+  # declared or that the push is a fast-forward; it used to print "PROMOTION OK"
+  # anyway, which passed a --force that discards commits made on the target.
+  assert_contains "$OUT" "EMPTY RANGE OK" "$copy: and reports the empty-range pass it can justify"
+  assert_absent   "$OUT" "PROMOTION OK" "$copy: it does NOT claim a promotion pass it did not check"
+  assert_contains "$OUT" "CANNOT check" "$copy: it names the two conditions it cannot evaluate"
+  assert_contains "$OUT" "FAST-FORWARD" "$copy: and names the fast-forward specifically"
 
   # 10b. THE TEETH. An UNDECLARED repo must still hard-fail on an empty range —
   # the auto-detect must not become a general empty-range amnesty.
@@ -364,6 +371,7 @@ for copy in scripts/pre_push_check.sh install/templates/pre_push_check.sh; do
   assert_eq "$RC" "1" "$copy: an UNDECLARED repo still hard-fails on an empty range"
   assert_contains "$OUT" "is EMPTY" "$copy: and still names the empty range"
   assert_absent   "$OUT" "PROMOTION OK" "$copy: no declaration, no auto-pass"
+  assert_absent   "$OUT" "EMPTY RANGE OK" "$copy: (new banner) no declaration, no auto-pass"
 
   # 10b-ii. THE DECLARATION TOOTH. A repo that HAS a declaration but declares
   # no promotion model must still hard-fail. This is the case that isolates the
@@ -376,6 +384,7 @@ for copy in scripts/pre_push_check.sh install/templates/pre_push_check.sh; do
   run_check "$script" "$d/work"
   assert_eq "$RC" "1" "$copy: a declared SINGLE-BRANCH repo still hard-fails on an empty range"
   assert_absent "$OUT" "PROMOTION OK" "$copy: no promotion model declared, no auto-pass"
+  assert_absent "$OUT" "EMPTY RANGE OK" "$copy: (new banner) no promotion model declared, no auto-pass"
 
   # 10b-iii. An explicit `"promotion_branches": []` is an opt-OUT and must be
   # honoured, not overwritten by the model default.
@@ -398,6 +407,7 @@ for copy in scripts/pre_push_check.sh install/templates/pre_push_check.sh; do
   run_check "$script" "$d/work"
   assert_eq "$RC" "1" "$copy: an empty range on a NON-integration branch still hard-fails"
   assert_absent "$OUT" "PROMOTION OK" "$copy: an already-pushed feature branch is not a promotion"
+  assert_absent "$OUT" "EMPTY RANGE OK" "$copy: (new banner) an already-pushed feature branch is not a promotion"
   assert_contains "$OUT" "is EMPTY" "$copy: and is still reported as the empty range it is"
 
   # 10d. A local commit moves HEAD off origin's tip; content that never went

@@ -105,6 +105,30 @@ canon templates set `strict: false` and `enforce_admins: true` — keep
 those unless you have a documented reason to diverge (a `--check` will
 flag any drift from the template).
 
+> **Two documented exceptions to `enforce_admins: true`, both deliberate.**
+> This paragraph used to state the rule without them, so it instructed
+> operators to "keep" a value canon itself inverts, and promised a drift check
+> that was explicitly taught not to fire.
+>
+> - **The umbrella tier** ships `enforce_admins: false`
+>   (`install/templates/branch-protection-umbrella.json`) because `--admin`
+>   merge *is* the intended bypass path there: the umbrella requires signed
+>   commits and AI commits are unsigned.
+> - **Promotion branches under the three-branch model.** If a repo declares
+>   `dev` → `staging` → `main` in `.github/aidoc-ci.json`, `apply-standards.sh`
+>   overlays `enforce_admins: false` on each declared promotion branch — per
+>   CI-0048 that is the only mechanism on a user-owned account that permits the
+>   fast-forward promotion push at all, and `bypass_pull_request_allowances`
+>   returns 422. `check-standards-drift.sh` applies the same overlay to the
+>   canon side, so this does **not** report as drift. The cost is stated
+>   plainly in CI-0049: on those branches the gate is **advisory for admins,
+>   not enforced**.
+>
+> Neither exception applies to a repo that has not adopted the promotion model,
+> which as of `ci/v4.0.0` is every repo including canon. Read
+> [`BRANCHING.md`](BRANCHING.md) §8 before adopting — §8c's step order is
+> load-bearing, and `apply-standards.sh` refuses the wrong order outright.
+
 ## Verifying
 
 ```bash

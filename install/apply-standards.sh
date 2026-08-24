@@ -730,6 +730,7 @@ apply_valid_branch_name() {
   esac
 }
 
+APPLY_DEFAULT_BRANCH_RESOLVED=0
 apply_default_branch() {
   # M4-sec: use the target's actual default branch, not hardcoded "main".
   #
@@ -742,9 +743,14 @@ apply_default_branch() {
   if ! db=$(gh api "repos/${REPO_LABEL}" --jq '.default_branch' 2>/dev/null); then
     db=""
   fi
+  # Record WHETHER this was resolved. The fallback is a guess, and a guard that
+  # treats a guess as an API-reported fact refuses correct configurations while
+  # naming a remedy that is already in place — see the promotion guard below.
+  APPLY_DEFAULT_BRANCH_RESOLVED=1
   if ! apply_valid_branch_name "$db"; then
     echo "    WARNING: could not resolve the default branch of ${REPO_LABEL} (token scope or API failure) — falling back to 'main'" >&2
     db="main"
+    APPLY_DEFAULT_BRANCH_RESOLVED=0
   fi
   printf '%s\n' "$db"
 }
@@ -795,6 +801,41 @@ resolve_branch_declaration() {
       echo "apply-standards: FATAL ${AIDOC_CI_DECL} on ${REPO_LABEL} is not an object with a .branching object." >&2
       echo "                 Refusing to guess a branch set — fix the file or delete it (an absent" >&2
       echo "                 file is a valid declaration and means the single-branch default)." >&2
+      exit 4
+    fi
+    # AIDOC-CI-DECL-VALIDATE — keys + version. The schema
+    # (schemas/aidoc-ci-v1.schema.json) declares `additionalProperties: false` at
+    # both levels and `required: ["version","branching"]`, and NOTHING enforced any
+    # of it: every reader checked only `.branching is an object`. So
+    # `"promotion_branchs": []` — one transposed letter — read as "not set", took
+    # the model default `[staging, main]`, and applied enforce_admins:false to two
+    # branches the operator was explicitly opting OUT of. A typo inverted the one
+    # setting that makes the gate advisory.
+    #
+    # jq, not a jsonschema dependency: this must run on a consumer machine and on a
+    # runner image that ships neither python-jsonschema nor check-jsonschema.
+    # Key lists are pinned to the schema by tests/test_scripts.sh, so a schema
+    # change that is not mirrored here goes red in canon's own suite.
+    # NOT full schema validation — it does not check types, enums, or maxItems.
+    # It covers the unknown-key and version classes and says so.
+    # >>> DECL-FILTER >>> (extracted + DRIVEN by tests/test_scripts.sh — keep
+    # these markers; the test runs THIS filter, not a retyped copy. A retyped
+    # copy stayed green when `and (.version == 1)` was deleted from every
+    # reader, which is the defect class this whole change is closing.)
+    if ! jq -e '["$schema","_note","version","branching"] as $top | ["_note","model","integration_branch","protected_branches","promotion_branches"] as $br
+      | ((keys_unsorted - $top) | length) == 0
+      and (.version == 1)
+      and ((.branching | keys_unsorted - $br) | length) == 0' "$decl_raw" >/dev/null 2>&1; then
+    # <<< DECL-FILTER <<<
+      echo "apply-standards: FATAL ${AIDOC_CI_DECL} on ${REPO_LABEL} has unknown keys or a bad version." >&2
+      echo '                 Allowed top-level: $schema, _note, version, branching (version must be 1).' >&2
+      echo "                 Allowed under .branching: _note, model, integration_branch," >&2
+      echo "                 protected_branches, promotion_branches." >&2
+      echo "                 A MISSPELLED key is silently ignored by every reader and takes the" >&2
+      echo "                 model DEFAULT instead — which is how an explicit opt-out becomes" >&2
+      echo "                 enforce_admins:false on two branches. Refusing to guess." >&2
+      jq -r '"                 unknown top-level: \(keys_unsorted - ["$schema","_note","version","branching"] | join(", "))"' "$decl_raw" 2>/dev/null >&2 || true
+      jq -r '"                 unknown .branching: \(.branching | keys_unsorted - ["_note","model","integration_branch","protected_branches","promotion_branches"] | join(", "))"' "$decl_raw" 2>/dev/null >&2 || true
       exit 4
     fi
     decl_model=$(jq -r '.branching.model // "single-branch"' "$decl_raw")
@@ -909,6 +950,46 @@ resolve_branch_declaration() {
       echo "                 the branch composition.yml and ai-review.yml anchor their trust to." >&2
       echo "                 Create the integration branch and make it the repo's GitHub default" >&2
       echo "                 FIRST (docs/BRANCHING.md §8c steps 1-2), then re-run." >&2
+      exit 4; }
+    # AND against the API-REPORTED DEFAULT, which is a different value.
+    #
+    # The check above compares a declaration-supplied value against another
+    # declaration-supplied one, so declaring `integration_branch` explicitly
+    # DISARMS it. Take the reverse of the ordering it was written for: default
+    # still `main`, declaration says `integration_branch: "dev"`. Then
+    # INTEGRATION_BRANCH=dev, `main` stays in the default promotion set, `main
+    # != dev` passes — and the overlay lands on the repo's ACTUAL default
+    # branch. That is the branch composition.yml's trusted allowlist and
+    # ai-review.yml's canon-pin resolution resolve at RUNTIME; neither reads
+    # this declaration, so the trust anchor is stripped exactly as in the case
+    # above, reached by the other ordering.
+    #
+    # The §8a divergence WARNING does fire here, unlike in the case above — but
+    # a warning does not stop the PUT, and this is the one setting that makes
+    # the gate advisory. Same harm, same verdict: FATAL.
+    [ "$b" != "$api_default" ] || {
+      # Refuse either way — an unverified default branch is not licence to write
+      # `enforce_admins:false`. But do NOT assert a fact we do not have: when the
+      # repo read failed, `api_default` is the literal fallback `main`, and a
+      # fully-adopted repo whose real default is `dev` would be refused here and
+      # told to "set the default branch to dev" — which is already true. Name the
+      # unresolved read instead.
+      if [ "${APPLY_DEFAULT_BRANCH_RESOLVED:-0}" -eq 0 ]; then
+        echo "apply-standards: FATAL could not resolve the GitHub default branch of ${REPO_LABEL}, so it cannot be" >&2
+        echo "                 confirmed that promotion branch '$b' is not the default." >&2
+        echo "                 Refusing to apply an enforce_admins:false overlay without knowing which" >&2
+        echo "                 branch every runtime resolver reads. Fix the token scope (needs repo" >&2
+        echo "                 metadata read) and re-run; see the WARNING above for the failed read." >&2
+        exit 4
+      fi
+      echo "apply-standards: FATAL promotion branch '$b' is this repo's GitHub DEFAULT branch." >&2
+      echo "                 (declared integration_branch is '$INTEGRATION_BRANCH', which is why the" >&2
+      echo "                 integration-branch check above did not catch it.)" >&2
+      echo "                 The enforce_admins:false overlay would strip admin enforcement from" >&2
+      echo "                 the branch composition.yml and ai-review.yml resolve at RUNTIME — they" >&2
+      echo "                 read the repo's default branch, never this declaration." >&2
+      echo "                 Set the repo's GitHub default branch to '$INTEGRATION_BRANCH' FIRST" >&2
+      echo "                 (docs/BRANCHING.md §8c steps 1-2), then re-run." >&2
       exit 4; }
   done
   # A promotion branch that is not also protected is a declaration error, not a

@@ -250,7 +250,14 @@ assert_absent "$(cat "$DS")" 'uses: google/osv-scanner' "dep-scan does NOT use a
 assert_ok "grep 'scan source' '$DS' | grep -q -- '--no-call-analysis'" "dep-scan enforces data-only via --no-call-analysis (osv Go call-analysis compiles source by default)"
 assert_absent "$(grep 'scan source' "$DS")" '--call-analysis' "dep-scan's invocation never passes the enabling --call-analysis flag"
 # FORK GUARD: forks never run the scanner on the self-hosted pool.
-assert_ok "grep -q 'github.event.pull_request.head.repo.fork != true' '$DS'" "dep-scan is fork-guarded (forks never scan on self-hosted)"
+# D27 IDENTITY form, and the null-permissive spelling must NOT come back.
+# This assertion used to pin `head.repo.fork != true` — the DEFECTIVE form —
+# so it actively held the bug in place: a deleted fork on `reopened` yields a
+# null `head.repo`, and `null != true` is TRUE, so the job ran a fork-origin
+# tree while holding `security-events: write`.
+assert_ok "grep -qE '^    if: .*head\\.repo\\.full_name == github\\.repository' '$DS'" "dep-scan JOB guard is fork-guarded by IDENTITY (null-safe; anchored to the job-level if:)"
+# Comments are excluded — the fix documents the old spelling on purpose.
+assert_ok "! grep -vE '^[[:space:]]*#' '$DS' | grep -q 'head.repo.fork'" "dep-scan carries no null-permissive head.repo.fork test outside comments"
 # Best-effort SARIF → Code scanning (continue-on-error + github/* action).
 assert_ok "grep -q 'continue-on-error: true' '$DS' && grep -q 'github/codeql-action/upload-sarif@' '$DS'" "dep-scan uploads SARIF best-effort (continue-on-error; no-ops where GHAS absent)"
 # Uniform protected caller: single template, self-hosted, report-only default, no variants.
@@ -281,7 +288,14 @@ assert_absent "$(grep -E 'BIN_DIR.*trivy|trivy\"' "$TV")" 'trivy" fs' "trivy-sca
 assert_ok "grep 'misconfig-scanners' '$TV' | grep -q 'dockerfile' && grep 'misconfig-scanners' '$TV' | grep -q 'kubernetes'" "trivy-scan restricts to static misconfig scanners (no-egress)"
 assert_absent "$(grep 'misconfig-scanners' "$TV")" 'terraform' "trivy-scan does NOT enable the terraform scanner (SSRF: fetches PR-controlled remote modules)"
 assert_absent "$(grep 'misconfig-scanners' "$TV")" 'helm' "trivy-scan does NOT enable the helm scanner (can fetch remote charts)"
-assert_ok "grep -q 'github.event.pull_request.head.repo.fork != true' '$TV'" "trivy-scan is fork-guarded (forks never scan on self-hosted)"
+# D27 IDENTITY form, and the null-permissive spelling must NOT come back.
+# This assertion used to pin `head.repo.fork != true` — the DEFECTIVE form —
+# so it actively held the bug in place: a deleted fork on `reopened` yields a
+# null `head.repo`, and `null != true` is TRUE, so the job ran a fork-origin
+# tree while holding `security-events: write`.
+assert_ok "grep -qE '^    if: .*head\\.repo\\.full_name == github\\.repository' '$TV'" "trivy-scan JOB guard is fork-guarded by IDENTITY (null-safe; anchored to the job-level if:)"
+# Comments are excluded — the fix documents the old spelling on purpose.
+assert_ok "! grep -vE '^[[:space:]]*#' '$TV' | grep -q 'head.repo.fork'" "trivy-scan carries no null-permissive head.repo.fork test outside comments"
 assert_ok "grep -q 'continue-on-error: true' '$TV' && grep -q 'github/codeql-action/upload-sarif@' '$TV'" "trivy-scan uploads SARIF best-effort (continue-on-error)"
 TVC=install/templates/workflows/trivy-scan.yml
 assert_ok "test -f '$TVC'" "trivy-scan caller template exists"
@@ -312,7 +326,14 @@ assert_absent "$(grep 'semgrep\" scan\|bin/semgrep' "$SG")" '--config auto' "sas
 assert_ok "grep -qE \"name '.semgrepignore'\" '$SG' && grep -q -- '-delete' '$SG'" "sast-scan strips PR-supplied .semgrepignore before scanning (gate controls coverage — no '*'-ignore bypass)"
 assert_ok "grep -q 'produced no SARIF' '$SG' && grep -q 'unparseable' '$SG'" "sast-scan fails loud on missing/unparseable SARIF (no silent green from a broken scan)"
 assert_ok "grep -q 'jq -e' '$SG'" "sast-scan uses 'jq -e' so a SARIF parse error is caught, not swallowed"
-assert_ok "grep -q 'github.event.pull_request.head.repo.fork != true' '$SG'" "sast-scan is fork-guarded (forks never scan on self-hosted)"
+# D27 IDENTITY form, and the null-permissive spelling must NOT come back.
+# This assertion used to pin `head.repo.fork != true` — the DEFECTIVE form —
+# so it actively held the bug in place: a deleted fork on `reopened` yields a
+# null `head.repo`, and `null != true` is TRUE, so the job ran a fork-origin
+# tree while holding `security-events: write`.
+assert_ok "grep -qE '^    if: .*head\\.repo\\.full_name == github\\.repository' '$SG'" "sast-scan JOB guard is fork-guarded by IDENTITY (null-safe; anchored to the job-level if:)"
+# Comments are excluded — the fix documents the old spelling on purpose.
+assert_ok "! grep -vE '^[[:space:]]*#' '$SG' | grep -q 'head.repo.fork'" "sast-scan carries no null-permissive head.repo.fork test outside comments"
 assert_ok "grep -q 'continue-on-error: true' '$SG' && grep -q 'github/codeql-action/upload-sarif@' '$SG'" "sast-scan uploads SARIF best-effort (continue-on-error)"
 assert_ok "grep -q 'autofix-preview:' '$SG'" "sast-scan exposes an autofix-preview input (PLAN-014 Phase 4)"
 assert_ok "grep -q -- '--autofix' '$SG'" "sast-scan autofix-preview runs semgrep --autofix (deterministic, rule-provided)"
@@ -1541,5 +1562,54 @@ assert_eq "$_b5_bad" "0" "B5: every caller template parses as YAML after substit
 _b5_resolved="$(grep -ho 'branches: \["dev"\]' "$_b5_tmp"/*.yml 2>/dev/null | wc -l)"
 assert_eq "$_b5_resolved" "$_b5_sites" "B5: substitution resolves every placeholder site ($_b5_sites)"
 rm -rf "$_b5_tmp"
+
+echo ""
+echo "== D27: the fork guard is an IDENTITY everywhere, and composition is the ONE exemption =="
+# The forbid-assertions above cover three job guards. The fold that added them
+# converted NINE surfaces, and the six unasserted ones could each regress
+# silently. Worse: the rule "no `head.repo.fork` outside comments" has exactly
+# one legitimate counterexample, and it was protected by a prose paragraph in
+# REPO_STANDARDS §4.3k rule 2 — so a mechanical sweep for the banned spelling,
+# or an agent applying the rule uniformly, would invert the ai-review gate.
+# Pin the exemption POSITIVELY.
+_D27_IDENT='head\.repo\.full_name'
+# Every PR-ish event, not just `pull_request`. These are `workflow_call`
+# reusables: `github.event_name` is the CALLER's event, so a caller wired to
+# `pull_request_target` made a bare `!= 'pull_request'` TRUE and ADMITTED a live
+# fork the old guard skipped.
+_D27_EVENTS='pull_request_target'
+for _f in .github/workflows/sast-scan.yml .github/workflows/dep-scan.yml \
+          .github/workflows/trivy-scan.yml .github/workflows/secret-scan.yml \
+          install/templates/workflows/scanners.yml .github/workflows/self-scanners.yml; do
+  assert_ok "grep -qE \"$_D27_IDENT\" '$ROOT/$_f'" \
+    "$_f: SARIF upload / job guard uses the identity form"
+  assert_ok "grep -q '$_D27_EVENTS' '$ROOT/$_f'" \
+    "$_f: the guard covers pull_request_target, not just pull_request (workflow_call sees the CALLER's event)"
+  assert_ok "! grep -vE '^[[:space:]]*#' '$ROOT/$_f' | grep -q 'head\.repo\.fork'" \
+    "$_f: carries no null-permissive head.repo.fork test outside comments"
+done
+
+# codeql's `upload:` selector — inverted polarity, same class.
+assert_ok "grep -qE 'upload:.*head\.repo\.full_name != github\.repository' '$ROOT/.github/workflows/codeql.yml'" \
+  "codeql.yml: the upload selector uses the identity form"
+assert_ok "grep -q 'pull_request_target' '$ROOT/.github/workflows/codeql.yml'" \
+  "codeql.yml: the upload selector covers pull_request_target"
+
+# ai-review's IS_FORK — a null here fell through to the trust allowlist and
+# would TRUST an allowlisted author pushing from a deleted fork.
+assert_ok "grep -qE 'IS_FORK: .*head\.repo\.full_name != github\.repository' '$ROOT/.github/workflows/ai-review.yml'" \
+  "ai-review.yml: IS_FORK is derived by identity, not from the nullable fork flag"
+
+# THE EXEMPTION, pinned positively. composition.yml builds IS_FORK and tests
+# `= "true"`: a null there means NOT exempted, so the gate BLOCKS — it fails
+# CLOSED. Converting it to the identity form would make a deleted fork EXEMPT
+# and take the "human-review-only, pass without enforcement" branch, turning the
+# required `composition` context green with zero review.
+assert_ok "grep -q 'head.repo.fork' '$ROOT/.github/workflows/composition.yml'" \
+  "composition.yml DELIBERATELY keeps head.repo.fork — its null fails CLOSED (do not 'fix' this)"
+assert_ok "grep -qE 'IS_FORK\W*=\W*.\"true\"|\\[ \"\\\$\\{IS_FORK:-\\}\" = \"true\" \\]' '$ROOT/.github/workflows/composition.yml'" \
+  "composition.yml still tests IS_FORK against the literal \"true\" (the property that makes null fail closed)"
+assert_ok "grep -qiE 'fail.?closed|null.*(not exempt|blocks)' '$ROOT/.github/workflows/composition.yml' || grep -q '4.3k' '$ROOT/docs/REPO_STANDARDS.md'" \
+  "the composition exemption is documented where a sweeper would look"
 
 suite_summary "contract"

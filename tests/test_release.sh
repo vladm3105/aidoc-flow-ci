@@ -292,6 +292,55 @@ _case "install/templates/pre-commit-hook-block.yaml" "the pre-commit fragment (e
 #      directly and they appear ONLY under visibility_variants (the B1 blind spot)
 _case "install/templates/workflows/y-private.yml" "a visibility_variants-only template"
 
+# (c5)/(c6) A surface path that exists on only ONE side of the diff.
+#
+# WHY THESE EXIST: `coldstart_material_changes` reads both sides with
+# `git show <rev>:<path> | sed`. For a path added since <prev> — or deleted
+# before HEAD while the manifest still names it, which is literally what F1 was
+# — one `git show` exits 128, and `set -o pipefail` makes that the pipeline's
+# status. The function then died under `set -e`.
+#
+# It died ASYMMETRICALLY, and that asymmetry is why every case above stayed
+# green through the bug: `tag` calls the function inside `changed="$(...)"`,
+# where bash does not propagate the subshell's death, so `_gtag` behaved
+# perfectly. Only the PLAIN call — the `_coldstart-changed` seam that
+# `ft30-dry-run.sh` and `tests/test_scripts.sh` drive — actually aborted, rc=128
+# with empty output, which both callers read as "surface unchanged".
+#
+# So these cases assert through BOTH entry points. Driving only `tag` reproduces
+# the original blind spot exactly.
+_gcold() { (cd "$GFIX" && bash scripts/release.sh _coldstart-changed 2>/dev/null); }
+_gcold_rc() { (cd "$GFIX" && bash scripts/release.sh _coldstart-changed >/dev/null 2>&1); }
+
+# (c5) a template ADDED since <prev>, with its manifest entry (the aidoc-ci.json
+#      shape: a new file that the manifest-derived surface names at HEAD).
+_seal
+printf 'brand new\n' > "$GFIX/install/templates/workflows/z.yml"
+printf '{"files":[{"path":".github/workflows/x.yml","template":"workflows/x.yml"},{"path":".github/workflows/z.yml","template":"workflows/z.yml"},{"path":".github/workflows/y.yml","template":"workflows/y-public.yml","visibility_variants":{"private":"workflows/y-private.yml","public":"workflows/y-public.yml"}}]}\n' > "$GFIX/install/templates/manifest.json"
+git -C "$GFIX" add -A; _gc commit -q -m "add z"; _gpush
+aout="$(_gtag)"
+assert_contains "$aout" "CHANGES the installer cold-start path" "gate: fires on an ADDED manifest template"
+assert_contains "$aout" "install/templates/workflows/z.yml" "gate: names the ADDED template"
+_gcold_rc; assert_eq "$?" "0" "_coldstart-changed: does NOT abort on an ADDED template (the rc=128 regression)"
+assert_contains "$(_gcold)" "install/templates/workflows/z.yml" "_coldstart-changed: reports the ADDED template"
+
+# (c6) F1 ITSELF: a template DELETED from the tree while the manifest still
+#      names it. The gate exists because this shipped broken for nine releases.
+_seal
+rm -f "$GFIX/install/templates/workflows/z.yml"
+git -C "$GFIX" add -A; _gc commit -q -m "delete z"; _gpush
+dout="$(_gtag)"
+assert_contains "$dout" "CHANGES the installer cold-start path" "gate: fires on a DELETED manifest template (F1)"
+assert_contains "$dout" "install/templates/workflows/z.yml" "gate: names the DELETED template"
+_gcold_rc; assert_eq "$?" "0" "_coldstart-changed: does NOT abort on a DELETED template (F1, rc=128 regression)"
+assert_contains "$(_gcold)" "install/templates/workflows/z.yml" "_coldstart-changed: reports the DELETED template"
+
+# (c7) THE TWO ENTRY POINTS MUST AGREE. `tag` gates on one, `ft30-dry-run.sh`
+#      preflights on the other; a divergence sends the founder to run (or skip)
+#      a 🔴 write-to-another-repo dry-run on the wrong answer.
+_tag_files="$(printf '%s\n' "$dout" | sed -n 's/^    //p' | sort)"
+assert_eq "$(_gcold | sort)" "$_tag_files" "tag and _coldstart-changed report the SAME changed surface"
+
 # (d) the flag overrides a changed surface.
 fout2="$(_gtag --dry-run-verified)"
 assert_contains "$fout2" "dry-run-verified supplied" "gate: --dry-run-verified is acknowledged"

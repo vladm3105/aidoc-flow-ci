@@ -60,7 +60,7 @@ the author's allowlist status:
 
 ```jsonc
 // ai-review.yml trust step (pseudo-logic)
-if pr.head.repo.fork:
+if pr.head.repo.full_name != github.repository:   // NOT `.fork` — see below
     label "ai:human-review-required"
     skip heavy reviewer
     exit 0
@@ -68,6 +68,27 @@ if pr.head.repo.fork:
 
 This is the **safe default** for the
 self-hosted-runner-on-public-repo concern (see §3 below).
+
+**"Is this a fork?" is answered by IDENTITY, never by the `fork` flag.**
+`github.event.pull_request.head.repo.fork` is **null** — not false — when the
+fork was deleted before a `reopened` event, and `null != true` is TRUE, so the
+flag-based test admits the very PR it exists to exclude. `fork == false` fails
+the same way, because GitHub coerces null and false alike. Comparing
+`head.repo.full_name` against `github.repository` fails CLOSED, since
+`null == 'owner/repo'` is false.
+
+Two consequences worth stating here rather than only in the rulebook:
+
+- **Enumerate every PR-ish event.** These are `workflow_call` reusables, so
+  `github.event_name` is the **caller's** event. A guard keyed to
+  `!= 'pull_request'` passes unconditionally for a caller wired to
+  `pull_request_target` (§5), which re-opens the boundary this section defines.
+- **`composition.yml` deliberately still reads the `fork` flag**, and must keep
+  doing so: there a null means "not exempted", so the gate BLOCKS. Converting it
+  would make a deleted fork *exempt* and pass the required check with no review.
+
+Canonical rule and the test that pins the exemption: `docs/REPO_STANDARDS.md`
+§4.3k.
 
 ### 2.3 Branch-protection trust (composition as required check)
 
