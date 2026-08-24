@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v3.0.0/schemas/aidoc-ci-v1.schema.json",
+  "$id": "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v4.0.0/schemas/aidoc-ci-v1.schema.json",
   "title": "aidoc-flow CI per-repo declaration v1",
   "description": "Per-repo shape declaration read by apply-standards.sh and check-standards-drift.sh. PLAN-028 B0. The file is OPTIONAL: an absent file means the single-branch model resolved against the repo's API-reported default branch, which is exactly the behaviour that shipped before this file existed.",
   "type": "object",

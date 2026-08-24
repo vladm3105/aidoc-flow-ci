@@ -155,7 +155,7 @@ jobs:
       - name: dep-scan (SCA — osv-scanner)
         id: depscan
         continue-on-error: true
-        uses: vladm3105/aidoc-flow-ci/actions/dep-scan@ci/v3.0.0
+        uses: vladm3105/aidoc-flow-ci/actions/dep-scan@ci/v4.0.0
         with:
           scan-path: .
           fail-on-findings: 'false'
@@ -165,7 +165,7 @@ jobs:
       - name: trivy-scan (IaC/misconfig)
         id: trivy
         continue-on-error: true
-        uses: vladm3105/aidoc-flow-ci/actions/trivy-scan@ci/v3.0.0
+        uses: vladm3105/aidoc-flow-ci/actions/trivy-scan@ci/v4.0.0
         with:
           scan-path: .
           fail-on-findings: 'false'
@@ -174,7 +174,7 @@ jobs:
       - name: sast-scan (semgrep)
         id: sast
         continue-on-error: true
-        uses: vladm3105/aidoc-flow-ci/actions/sast-scan@ci/v3.0.0
+        uses: vladm3105/aidoc-flow-ci/actions/sast-scan@ci/v4.0.0
         with:
           scan-path: .
           config: p/default

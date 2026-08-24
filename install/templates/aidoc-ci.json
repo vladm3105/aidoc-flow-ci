@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v3.0.0/schemas/aidoc-ci-v1.schema.json",
+  "$schema": "https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v4.0.0/schemas/aidoc-ci-v1.schema.json",
   "version": 1,
   "_note": "Per-repo shape declaration (PLAN-028 B0). OPTIONAL — an ABSENT file means exactly what this template ships: the single-branch model resolved against the repo's API-reported default branch, which is the behaviour that shipped before the file existed. `--tier` cannot express this: three repos share the `product` tier, so the branch set is not derivable from it. Adoption of the promotion model is per-repo opt-in; flipping `model` alone is NOT sufficient — read docs/BRANCHING.md §8 first, because the flip also moves the trust anchor of composition.yml and ai-review.yml.",
 

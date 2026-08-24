@@ -95,7 +95,7 @@ jobs:
       - name: links (external, report-only)
         id: links
         continue-on-error: true
-        uses: vladm3105/aidoc-flow-ci/actions/links@ci/v3.0.0
+        uses: vladm3105/aidoc-flow-ci/actions/links@ci/v4.0.0
         with:
           mode: external
           fail-on-error: 'true'
