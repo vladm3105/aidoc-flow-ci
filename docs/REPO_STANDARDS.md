@@ -1319,6 +1319,32 @@ setting that makes the gate advisory.**
    warns and counts a fetch error, because a verifier that exits fatal stops
    reporting the rest.
 
+#### 4.3o A fail-closed limit needs a gradient, not just a wall
+
+`ai-review` caps the redacted diff at 400 KB and **refuses** past it — it does
+not truncate, because a partial review presented as a complete one is the
+dangerous failure: the model approves a PR having seen part of it. That polarity
+is correct and must not be "simplified" into a truncation.
+
+What it lacked was a way to see the wall coming. The refusal was the **first**
+signal, and by then the PR is already unreviewable. Measured on real PRs
+2026-08-24: `aidoc-flow-framework` #527 sat at **87%** of the cap, #530 at 36%,
+`aidoc-flow-ci` #519 at 56% — grazing it, not hitting it, with nothing surfacing
+that fact.
+
+1. **Report the headroom on every run**, not only on the failure. A limit whose
+   utilisation is invisible is a limit you learn about by tripping it.
+2. **Warn on approach, fail only at the wall.** The `::warning::` at 75% never
+   fails a run; the PR is reviewed normally. It exists so the TREND is visible
+   while there is still time to act on it.
+3. **Do not let the warning become the fix.** It is an instrument, not a
+   remedy — the remedy (chunked map-reduce review) is deferred in PLAN-011
+   pending exactly this evidence. One PR at 87% is a data point, not a mandate.
+4. **Mutation-test the polarity, not just the threshold.** The test that matters
+   is the one that reds when someone replaces the refusal with
+   `encoded = encoded[:LIMIT]`. A threshold test alone passes happily while the
+   fail-closed property is removed underneath it.
+
 #### 4.3n A LIST call that feeds a decision must be PAGINATED, not defaulted
 
 `gh <thing> list` defaults to **30** and truncates **silently** — no warning, no

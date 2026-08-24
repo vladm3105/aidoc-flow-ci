@@ -260,6 +260,53 @@ _air=.github/workflows/ai-review.yml
 if [ -f "$_air" ]; then
   assert_ok "grep -q \"Path('.ai-review/diff-for-review.txt').write_bytes\" '$_air'" \
     "ai-review: the redaction step still writes diff-for-review.txt"
+
+  # --- diff-budget observability -----------------------------------------
+  # The 400KB cap fails CLOSED (refuses rather than truncating), which is right
+  # — but a refusal was the FIRST signal anyone got, with no warning on the way
+  # up. Measured 2026-08-24: framework #527 sat at 87% of the cap. EXTRACT the
+  # shipped budget block and drive it, rather than re-describing it here: a
+  # retyped copy would pass while the real thresholds drifted.
+  _budget="$TMP/ai_review_budget.py"
+  awk '/^          LIMIT = 400_000/{f=1} f{print} /diff-for-review.txt..\.write_bytes/{if(f) exit}' \
+    "$_air" | sed 's/^          //' > "$_budget"
+  assert_ok "grep -q 'LIMIT = 400_000' '$_budget'" "ai-review: the budget block was extracted from the shipped workflow"
+  assert_ok "grep -q 'pct >= 75.0' '$_budget'" "ai-review: the extracted block carries the 75% early-warning threshold"
+
+  # Drive it. `encoded` is the only input; Path(...).write_bytes is stubbed so
+  # the block runs standalone.
+  _drive_budget() { # $1 = byte count -> prints the block's stdout+stderr, rc in $?
+    python3 - "$1" "$_budget" <<'PYB'
+import sys, pathlib
+n, blk = int(sys.argv[1]), sys.argv[2]
+src = pathlib.Path(blk).read_text()
+class _P:
+    def __init__(self, *a): pass
+    def write_bytes(self, b): pass
+ns = {'encoded': b'x' * n, 'Path': _P}
+try:
+    exec(compile(src, 'budget', 'exec'), ns)
+except SystemExit as e:
+    print(e); raise SystemExit(1)
+PYB
+  }
+
+  _out="$(_drive_budget 7555 2>&1)"; _rc=$?
+  assert_eq "$_rc" "0" "budget: a small diff (1.9% of cap) is accepted"
+  assert_absent "$_out" "::warning::" "budget: ...and emits no warning"
+  assert_contains "$_out" "% of the 400000-byte review cap" "budget: ...but always reports the headroom"
+
+  _out="$(_drive_budget 348823 2>&1)"; _rc=$?
+  assert_eq "$_rc" "0" "budget: framework #527's real size (87% of cap) is still REVIEWED, not refused"
+  assert_contains "$_out" "::warning::" "budget: ...and warns, so the trend is visible before a refusal"
+
+  _out="$(_drive_budget 299000 2>&1)"; _rc=$?
+  assert_absent "$_out" "::warning::" "budget: just under 75% does not warn (the threshold is a threshold)"
+
+  _out="$(_drive_budget 420000 2>&1)"; _rc=$?
+  assert_eq "$_rc" "1" "budget: over the cap REFUSES (fail-closed — never a partial review)"
+  assert_contains "$_out" "refusing a partial review" "budget: ...and says so, rather than silently truncating"
+
   # The raw diff may be referenced ONLY where it is produced and consumed by the
   # redactor itself. Anywhere else is an egress path. Count the raw references
   # and pin them to those sites by line, so a NEW reader reds here.

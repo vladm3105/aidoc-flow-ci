@@ -38,6 +38,39 @@ arms read `branches: ["main"]` where they read `branches: [main]`.
 `ci/v3.0.0` was **not** re-cut and remains a valid pin and the rollback target
 (CI-0044).
 
+### Added — ai-review reports its diff-budget headroom on every run
+
+The 400 KB cap on the redacted diff fails CLOSED — it refuses rather than
+truncating, because a partial review presented as complete is the dangerous
+failure. That is unchanged. What is new is the gradient: every run now prints
+the utilisation, and a run at or above **75%** emits a `::warning::`. The
+warning never fails a run; the PR is reviewed normally.
+
+Measured on real PRs while investigating whether `ai-review` needs work:
+`aidoc-flow-framework` #527 at **87%** of the cap, #530 at 36%, and
+`aidoc-flow-ci` PR #519 at 56%. Grazing the limit, not hitting it — and
+previously invisible, since a refusal was the first and only signal.
+
+This is deliberately **observability only**: it does not raise the cap, does not
+chunk, and does not change what gets reviewed. PLAN-011 defers chunked
+map-reduce review pending evidence; this is the instrument that produces it, and
+one PR at 87% is not yet that evidence.
+
+**A recommendation withdrawn on inspection, recorded because the reasoning is
+the reusable part.** The same investigation first read a ~13% `ai-review`
+failure rate off run conclusions and proposed hardening the Gate step's GitHub
+API calls with retries. That was wrong: **a red `ai-review` job is the DESIGNED
+signal for `request_changes`** — the Gate step exits 1 on purpose so the check
+reds and blocks the merge. Verified on the one failing run whose PR still
+resolves: #527 carries `ai:review-changes` and the App posted a review at that
+head SHA. The proposed retry would have added complexity to a healthy path and
+been called a reliability fix. Two traps fed the misreading: the first log read
+was of the ECHOED SCRIPT SOURCE rather than runtime output (the `::error::`
+strings seen were definitions of error paths, not errors that fired), and
+`conclusion: failure` conflates "reviewer disagreed" with "reviewer broke". The
+signal that distinguishes them is the **`ai:review-infra-error` label**, which
+is the right instrument for any future reliability question.
+
 ### Fixed — re-running the bootstrap on an adopted repo aborted (broken idempotence)
 
 `install.sh` prefetched existing labels with `gh label list`, which **defaults to
