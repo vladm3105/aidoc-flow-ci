@@ -38,6 +38,52 @@ arms read `branches: ["main"]` where they read `branches: [main]`.
 `ci/v3.0.0` was **not** re-cut and remains a valid pin and the rollback target
 (CI-0044).
 
+### Fixed — re-running the bootstrap on an adopted repo aborted (broken idempotence)
+
+`install.sh` prefetched existing labels with `gh label list`, which **defaults to
+`--limit 30` and truncates silently**. The prefetch then omitted a label that
+existed, the idempotency loop concluded it was missing, `gh label create` was
+rejected as a duplicate, and the bootstrap hit `==> ABORT` with `exit 1`.
+
+**Truncation alone is harmless — the trigger is narrower and worse than a label
+count.** The prefetch is consulted only to SKIP creation, and `gh label create`
+fails only on a name that already exists. So the abort needs *a label canon
+wants* to exist on the repo AND fall outside the window. A first-time adopter
+with 39 non-colliding labels installs fine.
+
+The population that hits it **deterministically is a re-run on an already-adopted
+repo** — i.e. the idempotence `install.sh:5` advertises. `gh label list` defaults
+to `--sort created --order asc`, so canon's own labels are the newest and are
+exactly what gets truncated. Measured on the target that exposed it: 20 of
+canon's 21 inside the window, `todo` omitted, `todo` aborted the run. A
+first-time adopter can also hit it through a pre-existing name collision outside
+the window — `dependencies` is Dependabot-created, `docs`/`tests`/`security` are
+common.
+
+Canon ships 21 labels and GitHub creates 9 on a new repo, so 31 is the first
+truncating count; fleet at the time: `framework` 39, canon 32, `operations` 27.
+**Cold-start path only:** `--repin` and `--update` return before the label
+block, so repins were never affected. Present since the installer's first commit
+(`21b9068`) and shipped through `ci/v3.0.0`.
+
+Fixed with `gh api --paginate "repos/…/labels?per_page=100"` — the idiom
+`apply-standards.sh` and `check-standards-drift.sh` already used for the same
+data, and one with no ceiling to get wrong.
+
+**Why nine releases missed it, which is the reusable part.** A fresh throwaway
+has 9 labels; the prefetch sees 9, every create succeeds, FT-30 passes. The
+defect needs a target that ALREADY carries the labels — i.e. what a real adopter
+looks like. It surfaced only because an FT-30 dry-run was re-run against the
+previous run's target after `ci/v4.0.0`'s second prep, and the operator's
+assumption that reuse was safe turned out to be the more representative test.
+Recorded as `REPO_STANDARDS.md` §4.3n rule 3.
+
+**The first fix was also wrong**, and in the same family: it carried
+`--jq` on the `--paginate` call, which makes gh emit one array **per page**,
+concatenated — `json.load` rejects it with "Extra data". It passed a spot check
+only because 31 labels fit in one page of 100; forcing `per_page=10` exposed it.
+A truncation bug at 30 would have become a parse crash at 100.
+
 ### Changed — one credential pair, one name, no provider coupling (CI-0051)
 
 **The client was never LiteLLM-specific.** `scripts/llm_client.py` POSTs a
