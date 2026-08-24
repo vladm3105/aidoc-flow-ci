@@ -159,7 +159,25 @@ the 🔴 dry-run for you.
     runbook.
   - Expected: the run reaches "creating canonical labels" and the final
     next-steps block with no `FAIL`/`404`; the runner-pool probe and the
-    LiteLLM-HTTP note both print. Tear down the throwaway repo after.
+    LLM-HTTP note both print.
+  - **RUN IT TWICE AGAINST THE SAME TARGET, THEN tear the throwaway down.**
+    A fresh repo has ~9 labels, so run 1 proves only the greenfield cold start —
+    every `gh label create` succeeds because nothing collides. Run 2 is the one
+    that matters: the target now carries canon's ~21 labels on top of GitHub's
+    defaults, which is what an ADOPTED repo looks like, and it is the only run
+    that exercises the installer's advertised idempotence
+    (`install.sh` line 5, "Idempotent; safe to re-run").
+
+    This is not hypothetical. A truncated label prefetch broke exactly that
+    path from the installer's first commit through `ci/v3.0.0` — nine releases —
+    and every FT-30 run in that window passed, because every one of them used a
+    fresh target. It surfaced at the `ci/v4.0.0` cut only because a dry-run was
+    repeated against the previous run's repo. **When a gate's fixture is
+    materially cleaner than production, the gate is testing the easy case**
+    (`docs/REPO_STANDARDS.md` §4.3n rule 3).
+
+    Both runs must satisfy the criteria above. If run 2 fails where run 1
+    passed, the defect is in re-run/idempotence handling, not in the bootstrap.
 
 ## Tag + release
 
