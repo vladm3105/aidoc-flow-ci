@@ -1319,6 +1319,40 @@ setting that makes the gate advisory.**
    warns and counts a fetch error, because a verifier that exits fatal stops
    reporting the rest.
 
+#### 4.3n A LIST call that feeds a decision must be PAGINATED, not defaulted
+
+`gh <thing> list` defaults to **30** and truncates **silently** — no warning, no
+non-zero exit. When that list is then used to decide whether something exists,
+the truncation becomes a wrong answer rather than a short answer.
+
+`install.sh` prefetched labels with `gh label list` so it could tell "already
+exists" apart from a real failure — the right intent, stated in its own comment.
+But canon ships **21** labels and GitHub creates **9** on a new repo, so a repo
+sitting at 30 plus one local label makes the prefetch omit a label that exists;
+the loop concludes it is missing, `gh label create` is rejected as a duplicate,
+and the bootstrap **aborts**. Measured on the fleet when found: `framework` 39,
+canon 32. Present since the installer's first commit and shipped through
+`ci/v3.0.0`.
+
+1. **Use `gh api --paginate "…?per_page=100"`.** It has no ceiling to get wrong
+   on a normal REST collection — pagination ends when the `Link: rel="next"`
+   header does, not at a client-side number. A bigger `--limit` only moves the
+   same silent truncation further out. **Exception: the `/search/*` endpoints
+   cap at 1000 results regardless of pagination**, so a search-backed decision
+   needs its own completeness argument.
+2. **Do NOT add `--jq` to a `--paginate` call whose output is parsed as one
+   document.** `--paginate` merges JSON array pages into a single array only
+   when it is not also filtering; with `--jq` gh emits one array **per page**,
+   concatenated, and a `json.load` fails with "Extra data". The first fix for
+   the defect above carried `--jq` and would have traded a truncation bug at 30
+   labels for a parse crash at 100.
+3. **A fresh fixture cannot find this class.** A brand-new throwaway has 9
+   labels, so every create succeeds and the gate passes. It surfaces only
+   against a target that already holds the data — which is what a REAL adopter
+   looks like. When a dry-run's fixture is materially cleaner than production,
+   the gate is testing the easy case; re-running against a used target is not
+   contamination, it is the more representative run.
+
 ### 4.4 `markdown-lint` config template (`install/templates/.markdownlint.json`)
 
 The canon `.markdownlint.json` is the recommended ruleset consumers **copy**

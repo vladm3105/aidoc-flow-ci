@@ -1016,4 +1016,53 @@ assert_ok "grep -qE '^#!.*(bash|sh)' '$ROOT/install/check-precommit-hooks.sh'" \
 assert_contains "$_zh_blk" "could not determine" \
   "rc 2 (no PyYAML / unparseable) is REPORTED, not silently read as a pass"
 
+echo ""
+echo "== label prefetch must be PAGINATED, or the bootstrap aborts on a normal repo =="
+# `gh label list` DEFAULTS TO 30 and truncates silently. Canon ships 21 labels
+# and GitHub creates 9 on a new repo — exactly 30 — so ONE repo-local label
+# tips a cold start over: the prefetch omits a label that exists, the loop
+# concludes it is missing, `gh label create` is rejected as a duplicate, and
+# install.sh ABORTS with exit 1. Measured on the fleet when found: framework 39
+# labels, canon 32. Present since 21b9068 and shipped through ci/v3.0.0; caught
+# only because an FT-30 dry-run was re-run against a target already carrying
+# the labels — a FRESH target has 9 and passes, which is why nine releases did not.
+_INS="$ROOT/install/install.sh"
+# Counts computed here, in plain shell — NOT interpolated into an eval'd
+# assertion. The first draft put the literal pattern (which contains
+# ${TARGET_REPO}) inside an assert_ok string; assert_ok evals its argument, the
+# shell expanded it, and `set -u` aborted the whole group.
+# NON-COMMENT lines only. The fix documents the banned form in a comment to
+# explain WHY it is banned, so a bare count is 1 on a correct file. Third time
+# this shape has bitten in this release cycle (REPO_STANDARDS §4.3k rule 3, the
+# CI-0051 version clause) — assert on code, never on prose.
+_n_ghlist="$(grep -vE '^[[:space:]]*#' "$_INS" | grep -c 'gh label list' || true)"
+# Comment-excluded too. The first draft filtered only _n_ghlist, so these two
+# were satisfied by the explanatory comment alone — the group asserting a rule
+# it did not itself follow, three lines under the comment stating the rule.
+_INS_CODE="$(grep -vE '^[[:space:]]*#' "$_INS")"
+_n_paginate="$(printf '%s\n' "$_INS_CODE" | grep -c 'gh api --paginate' || true)"
+_n_labelpage="$(printf '%s\n' "$_INS_CODE" | grep -c 'labels?per_page=100' || true)"
+_pf_line="$(grep -n 'labels?per_page=100' "$_INS" | grep -vE ':[[:space:]]*#' | head -1 | cut -d: -f1)"
+# An empty address makes `sed -n "p"` print the WHOLE FILE, which would count
+# install.sh's five unrelated --jq uses and report a nonsense 5.
+assert_ok "[ -n \"$_pf_line\" ]" "the paginated prefetch line was located (non-comment)"
+_pf_text="$(sed -n "${_pf_line:-1}p" "$_INS")"
+_n_jq_on_pf="$(printf '%s' "$_pf_text" | grep -c -- '--jq' || true)"
+_n_jsonload="$(grep -c 'json.load(open(' "$_INS" || true)"
+
+assert_eq "$_n_ghlist" "0" \
+  "install.sh does NOT use 'gh label list' for the prefetch (it defaults to 30 and truncates silently)"
+assert_ok "[ \"$_n_paginate\" -ge 1 ]" \
+  "install.sh prefetches labels with gh api --paginate (no ceiling to get wrong)"
+assert_ok "[ \"$_n_labelpage\" -ge 1 ]" \
+  "...against the labels endpoint at per_page=100"
+# NO --jq on that call: with --paginate, a filter makes gh emit one array PER
+# PAGE, concatenated, which json.load rejects with "Extra data". The first draft
+# of the FIX carried --jq and would have traded a truncation bug at 30 labels
+# for a parse crash at 100. Verified both ways against a 31-label repo.
+assert_eq "$_n_jq_on_pf" "0" \
+  "the paginated prefetch carries NO --jq (a filter breaks page merging into one array)"
+assert_ok "[ \"$_n_jsonload\" -ge 1 ]" \
+  "the prefetch is consumed by a single json.load — so it must be ONE valid array"
+
 suite_summary "test_install"

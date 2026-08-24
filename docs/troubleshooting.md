@@ -174,11 +174,27 @@ aren't there.
 "already exists" — masking auth/permission/network failures.
 Caught on aidoc-flow-operations PR #116.
 
-**Fix:** `ci/v1.0.0`+'s `install.sh` prefetches existing labels
-via `gh label list --json name,color,description` and only treats
-a name match as "exists". Any failure on `gh label create` for
-a missing label is a REAL failure → exit nonzero with the actual
-stderr in the message.
+**Fix:** `install.sh` prefetches existing labels and only treats a
+name match as "exists". Any failure on `gh label create` for a
+label the prefetch says is missing is a REAL failure → exit
+nonzero with the actual stderr in the message.
+
+**`ci/v4.0.0` changed HOW it prefetches, and the old way had a
+defect.** Through `ci/v3.0.0` it used
+`gh label list --json name,color,description`, which **defaults to
+`--limit 30` and truncates silently**. Because `gh label list`
+sorts by creation ascending, canon's own labels are the newest and
+so the first to fall off the tail — meaning a **re-run on an
+already-adopted repo** hit it deterministically, breaking the
+idempotence the installer advertises. The symptom is the confusing
+one: `FAIL gh label create <name> failed … already exists`, on a
+label the installer itself created. Since `ci/v4.0.0` the prefetch
+is `gh api --paginate "repos/<owner>/<repo>/labels?per_page=100"`,
+which has no ceiling. See `docs/REPO_STANDARDS.md` §4.3n.
+
+If you are on a pin at or before `ci/v3.0.0` and hit this, the
+workaround is to delete the colliding label and re-run, or repin
+to `ci/v4.0.0`+.
 
 If you see `FAIL gh label create <name> failed (exit N): <reason>`,
 the `<reason>` text tells you the actual cause (auth /
