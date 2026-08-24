@@ -321,7 +321,7 @@ key. Runners must be able to reach the configured proxy. Proxy failures and
 malformed responses fail closed and never become an approving verdict.
 
 The proxy URL MUST use HTTPS. Plain HTTP requires the explicit caller opt-in
-`litellm_allow_insecure_http: true` and is limited to a controlled private
+`llm_allow_insecure_http: true` and is limited to a controlled private
 network. **The opt-in is required by the URL SCHEME, not by repo visibility**:
 any consumer whose `LLM_URL` begins `http://` must set it, public or
 private. On the shared self-hosted pool the proxy is reached over the Docker
@@ -331,9 +331,14 @@ flow to that pool, public repos are the common case rather than the exception.
 `LLM_URL` MUST NOT be loopback: jobs run inside a container, so
 `127.0.0.1`/`localhost` resolve to the container, not the proxy host. (CI-0017.)
 
-Use separate virtual keys per purpose — review and autofix — restricted to
-their model aliases with spend/rate limits and rotation; never use the LiteLLM
-master key. Disable sensitive prompt/response logging and apply an appropriate
+Use ONE scoped virtual key — `LLM_API_KEY` — restricted to the model aliases it
+must reach, with spend/rate limits and rotation; never use the endpoint's master
+key. **This superseded the per-purpose (review + autofix) key convention**: the
+doc key retired with `doc-maintainer` (CI-0040) and the remaining two converged
+by founder decision, so revoking the key now stops autofix as well as review —
+the trade-off is stated in `docs/security.md` §4.3. If you enable autofix, the
+key's model scope must include the fixer alias (default `ai-fixer`) as well as
+`ai-reviewer`, or the fixer gets HTTP 403 model-scope rather than 401. Disable sensitive prompt/response logging and apply an appropriate
 retention policy: AI review sends a bounded, secret-pattern-redacted PR diff to
 the proxy, which can still contain private source code. Secret-shaped source
 values use opaque placeholders during inference and are restored only after the

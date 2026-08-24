@@ -1718,17 +1718,17 @@ fi
 echo "    3. Add secrets to the consumer NOW (the ai-review gate hard-fails without them):"
 echo "         - APP_REVIEWER_1_ID + APP_REVIEWER_1_KEY   (reviewer GitHub App)"
 echo "         - LLM_URL + LLM_API_KEY (ai-review proxy; REQUIRED since ci/v2.0.0)"
-echo "       You must already operate a reachable LiteLLM proxy — see docs/AI_CI_DEPLOYMENT.md §1."
-# PLAN-018 F4 — the LiteLLM HTTP flag. llm_client.py hard-fails unless the
-# proxy scheme is HTTPS or litellm_allow_insecure_http is set, and the flag
+echo "       You must already operate a reachable OpenAI-compatible endpoint — see docs/AI_CI_DEPLOYMENT.md §1."
+# PLAN-018 F4 — the insecure-HTTP flag. llm_client.py hard-fails unless the
+# endpoint scheme is HTTPS or llm_allow_insecure_http is set, and the flag
 # ships COMMENTED OUT in the ai-review caller template. The workspace's only
 # proxy is HTTP on the docker bridge (172.17.0.1), so an adopter of it needs the
 # flag uncommented in .github/workflows/ai-review.yml. install.sh does NOT
 # uncomment it: ai-review.yml is safe_to_replace, so a later
 # --update --non-interactive would silently re-comment it and the gate would go
 # red — a breaking regression. This is operator-applied, by hand, deliberately."
-echo "       If your proxy is HTTP (e.g. the docker-bridge proxy at 172.17.0.1), UNCOMMENT"
-echo "         litellm_allow_insecure_http: true"
+echo "       If your endpoint is HTTP (e.g. the docker-bridge proxy at 172.17.0.1), UNCOMMENT"
+echo "         llm_allow_insecure_http: true"
 echo "       in .github/workflows/ai-review.yml — the client hard-fails on a non-HTTPS URL without it."
 echo "    4. Set vars.APP_REVIEWER_1_BOT_ID = 294948438 (App-global; do NOT wait for a first review —"
 echo "       until it is set, composition runs INERT and enforces nothing)."

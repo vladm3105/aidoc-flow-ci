@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# set-llm-secrets.sh — provision LiteLLM CI secrets on the aidoc-flow fleet.
+# set-llm-secrets.sh — provision the unified LLM CI secrets on the aidoc-flow
+# fleet. Endpoint-agnostic: any OpenAI-compatible URL (CI-0051).
 # PLAN-009 Phase 0 (founder-executed). Sets REPOSITORY-level GitHub Actions secrets:
 #   LLM_URL, LLM_API_KEY
 #
@@ -8,7 +9,7 @@
 #   * Values reach `gh secret set` on STDIN and the proxy probe via a 0600
 #     header file — never argv, so they never appear in `ps`/the process table.
 #   * GitHub stores them encrypted + write-only; they are masked in Actions logs.
-#   * Store only the SCOPED virtual key — never the LiteLLM master key.
+#   * Store only the SCOPED virtual key — never the endpoint master key.
 #
 # SAFETY (issue #350): a run adding ONE optional secret also rewrote the two
 # that were already correct, from an environment holding a loopback URL.
@@ -67,6 +68,18 @@
 #   # per-repo revocable keys (recommended once you have the master key locally):
 #   export LLM_MASTER_KEY="<key>"
 #   bash set-llm-secrets.sh --mint --budget 50
+#
+# LLM_MASTER_KEY IS THIS SCRIPT'S NAME FOR IT, NOT YOUR ENDPOINT'S (CI-0051).
+# Canon unified the names IT owns — the Actions secrets and the workflow inputs.
+# Your endpoint product keeps whatever it calls its own admin key, and this
+# script does not try to rename it. The workspace's LiteLLM deployment, for
+# instance, calls it LITELLM_MASTER_KEY; OpenAI would be OPENAI_API_KEY. Bridge
+# it at the call site, in a SUBSHELL so the key does not linger in your
+# interactive environment:
+#   ( export LLM_URL=... LLM_MASTER_KEY="$(...read your endpoint's var...)"
+#     bash set-llm-secrets.sh --mint --repos "owner/repo" )
+# A vendor-specific name on the LEFT of that bridge is expected; one inside
+# canon is not.
 #
 # TIP: run in a subshell so the exported keys leave no trace in your shell history:
 #   ( export LLM_URL=... LLM_API_KEY=...; bash set-llm-secrets.sh )
@@ -360,7 +373,7 @@ provision() {  # provision SECRET_NAME REPO VALUE_VARNAME
   if [ "$act" = create ]; then CREATED=$((CREATED+1)); else OVERWROTE=$((OVERWROTE+1)); fi
 }
 
-echo "LiteLLM secret provisioning — mode=$([ "$MINT" -eq 1 ] && echo mint || echo shared)  dry_run=$DRY_RUN  repos=${#REPOS[@]}  overwrite=$OVERWRITE  validate=$VALIDATE"
+echo "LLM secret provisioning — mode=$([ "$MINT" -eq 1 ] && echo mint || echo shared)  dry_run=$DRY_RUN  repos=${#REPOS[@]}  overwrite=$OVERWRITE  validate=$VALIDATE"
 for repo in "${REPOS[@]}"; do
   echo "• $repo"
   if ! gh repo view "$repo" >/dev/null 2>&1; then

@@ -28,8 +28,8 @@
 # Asset retrieval: trust gate uses actions/checkout (single checkout in its own job);
 # the ai-review job uses `curl` for cross-repo fetches per IPLAN-0024 (ci/v1.1.5+) —
 # the multi-checkout interaction caused the v1.1.0→v1.1.3 saga.
-# AI auth uses LLM_URL + LLM_API_KEY (the deprecated LITELLM_* names still
-# resolve as a `||` fallback — see the secrets: block). AI_REVIEW_TOKEN
+# AI auth uses LLM_URL + LLM_API_KEY — the ONLY names resolved since ci/v4.0.0
+# (CI-0051 removed the LITELLM_* fallbacks; see the secrets: block). AI_REVIEW_TOKEN
 # remains a scoped read-only PAT for cross-repo PRIVATE asset retrieval.
 # P1/P2 = review + label + block/auto-merge; auto-fix loop + escalation = P3 (deferred, IPLAN-0013).
 name: ai-review
@@ -40,11 +40,11 @@ on:
   workflow_call:
     inputs:
       model:
-        description: "LiteLLM model alias override; empty = config litellm.model"
+        description: "Model alias override, resolved by whatever OpenAI-compatible endpoint LLM_URL names; empty = the config default"
         type: string
         default: ""
-      litellm_allow_insecure_http:
-        description: "Explicitly allow an http:// LiteLLM URL on a controlled private network. Required by the URL SCHEME, not by repo visibility — public repos on the shared self-hosted pool reach the proxy over the plain-HTTP Docker bridge and need this too (CI-0017)."
+      llm_allow_insecure_http:
+        description: "Explicitly allow an http:// LLM_URL on a controlled private network. Required by the URL SCHEME, not by repo visibility — public repos on the shared self-hosted pool reach the endpoint over the plain-HTTP Docker bridge and need this too (CI-0017). RENAMED in ci/v4.0.0 from `litellm_allow_insecure_http`: the client speaks plain OpenAI-compatible HTTP and is not bound to any one provider (CI-0051)."
         type: boolean
         default: false
       tier:
@@ -91,17 +91,19 @@ on:
         required: false
       LLM_API_KEY:
         required: false
-      # DEPRECATED FALLBACKS, kept so a consumer on the pre-rename caller keeps
-      # working until it re-provisions. Callers forward secrets EXPLICITLY here
-      # (FT-42 least-privilege map, not `secrets: inherit`), so an old caller
-      # forwards only these three and the `||` fallbacks below pick them up.
-      # Remove in the release AFTER every consumer has `LLM_URL`/`LLM_API_KEY`.
-      LITELLM_BASE_URL:
-        required: false
-      LITELLM_REVIEW_API_KEY:
-        required: false
-      LITELLM_FIX_API_KEY:
-        required: false
+      # The deprecated LITELLM_BASE_URL / LITELLM_REVIEW_API_KEY /
+      # LITELLM_FIX_API_KEY fallbacks were REMOVED at ci/v4.0.0 (CI-0051).
+      # `LLM_URL` + `LLM_API_KEY` are now the only names resolved.
+      #
+      # AND THE OLD NAMES ARE NO LONGER DECLARED, WHICH IS THE HARDER HALF.
+      # Callers forward secrets EXPLICITLY (FT-42 least-privilege map, not
+      # `secrets: inherit`), and GitHub REJECTS a map naming a secret the callee
+      # does not declare: the workflow fails to LOAD — `startup_failure`, zero
+      # jobs, no logs — so a stale caller never reaches the preflight below.
+      # The caller templates shipped at ci/v2.12.0…ci/v3.0.0 forwarded exactly
+      # those three names and NOT the unified pair, so provisioning secrets does
+      # not rescue such a repo; only editing the caller does, and `--repin`
+      # cannot deliver a caller-body change. docs/MIGRATION_v4.0.0.md §3.
 
 permissions: {}
 
@@ -969,12 +971,12 @@ jobs:
         id: run_review
         if: ${{ env.SKIP_REVIEW != '1' }}
         env:
-          LLM_URL: ${{ secrets.LLM_URL || secrets.LITELLM_BASE_URL }}
-          LLM_API_KEY: ${{ secrets.LLM_API_KEY || secrets.LITELLM_REVIEW_API_KEY }}
-          LLM_ALLOW_INSECURE_HTTP: ${{ inputs.litellm_allow_insecure_http }}
+          LLM_URL: ${{ secrets.LLM_URL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_ALLOW_INSECURE_HTTP: ${{ inputs.llm_allow_insecure_http }}
         run: |
           set -euo pipefail
-          [ -n "$LLM_API_KEY" ] || { echo "::error::LLM_API_KEY is unset (nor the deprecated LITELLM_REVIEW_API_KEY)"; exit 1; }
+          [ -n "$LLM_API_KEY" ] || { echo "::error::LLM_API_KEY is unset. Since ci/v4.0.0 this is the ONLY name resolved (CI-0051). Either the secret is not provisioned (install/set-llm-secrets.sh) or your caller does not FORWARD it. NB: a caller still listing the removed LITELLM_* names fails earlier and differently — startup_failure with zero jobs, not this message. See docs/MIGRATION_v4.0.0.md section 3."; exit 1; }
           # ci/v2.0.1: name the cause if the runner image lacks python3 (the LiteLLM client needs it)
           # rather than failing mid-heredoc with a cryptic 127. INFRASTRUCTURE error, not a verdict.
           command -v python3 >/dev/null 2>&1 || { echo "::error::python3 not found on the runner — rebuild the runner image with python3 (the dependency-free LiteLLM client requires it). This is an INFRASTRUCTURE error, not a review verdict."; exit 1; }
@@ -1715,10 +1717,10 @@ jobs:
         id: fix
         if: ${{ steps.gate.outputs.proceed == '1' }}
         env:
-          LLM_URL: ${{ secrets.LLM_URL || secrets.LITELLM_BASE_URL }}
-          LLM_API_KEY: ${{ secrets.LLM_API_KEY || secrets.LITELLM_FIX_API_KEY }}
+          LLM_URL: ${{ secrets.LLM_URL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_MODEL: ${{ vars.LLM_FIXER_MODEL || 'ai-fixer' }}
-          LLM_ALLOW_INSECURE_HTTP: ${{ inputs.litellm_allow_insecure_http }}
+          LLM_ALLOW_INSECURE_HTTP: ${{ inputs.llm_allow_insecure_http }}
           LLM_MAX_TOKENS: '16384'
         run: |
           set -euo pipefail

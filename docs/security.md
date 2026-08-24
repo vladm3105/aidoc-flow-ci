@@ -287,9 +287,14 @@ credential is a separate App token, not this key. An operator who wants the old
 isolation can still mint per-alias keys at the proxy; canon no longer requires
 it.
 
-The deprecated names remain declared in `ai-review.yml` and forwarded by the
-caller template so a consumer keeps working until it re-provisions. They are
-removed in the release after the fleet has `LLM_URL` + `LLM_API_KEY`.
+**The deprecated names were REMOVED at `ci/v4.0.0` (CI-0051)** — both the `||`
+fallbacks and, more consequentially, the `workflow_call.secrets` *declarations*.
+A caller still forwarding `LITELLM_BASE_URL` / `LITELLM_REVIEW_API_KEY` /
+`LITELLM_FIX_API_KEY` in its explicit FT-42 map now makes the workflow fail to
+LOAD — `startup_failure`, zero jobs, no logs — because GitHub rejects a map
+naming a secret the callee does not declare. That is a caller edit, not a secret
+rotation. The removal shipped with its stated precondition ("after the fleet has
+`LLM_URL` + `LLM_API_KEY`") **unmet**, by explicit founder waiver; see CI-0051.
 
 ## 5. `pull_request_target` vs `pull_request` — why `_target`
 
