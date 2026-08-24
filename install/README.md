@@ -44,11 +44,11 @@ runners):
 ## Run it
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v3.0.0/install/install.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v4.0.0/install/install.sh) \
   vladm3105/<consumer-repo> --visibility private
 
 # Or override the tag explicitly:
-CI_TAG=ci/v3.0.0 bash install.sh vladm3105/<consumer-repo> --visibility public
+CI_TAG=ci/v4.0.0 bash install.sh vladm3105/<consumer-repo> --visibility public
 ```
 
 The pinned tag is resolved as **`CI_TAG` env > repo-root `VERSION` file
@@ -72,7 +72,7 @@ templates as they are fetched.
 | *(no flag)* `${INTEGRATION_BRANCH}` | the `branches:` filter of every caller trigger arm — 19 sites across 17 templates (PLAN-028 B5) | resolved per repo: `.github/aidoc-ci.json`'s `integration_branch`, else the repo's GitHub default branch, else `main` |
 
 ```bash
-CI_TAG=ci/v3.0.0 bash install.sh acme/their-repo --visibility private \
+CI_TAG=ci/v4.0.0 bash install.sh acme/their-repo --visibility private \
   --codeowner acme-bot \
   --canon-operations-url https://github.com/acme/ops-canon \
   --canon-ci-url https://github.com/acme/ci-canon

@@ -5,6 +5,8 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+## ci/v4.0.0 — 2026-08-23
+
 ### ⚠️ Breaking changes — read this before repinning
 
 `ci/v4.0.0` is a MAJOR. Everything an adopter must ACT on is in this block; the
