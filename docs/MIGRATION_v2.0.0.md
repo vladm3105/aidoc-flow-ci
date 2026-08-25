@@ -1,5 +1,37 @@
 # Migration — ci/v1.x → ci/v2.0.0
 
+> ## ⚠️ SUPERSEDED AS A RELEASE TARGET — but still a required leg
+>
+> `ci/v2.0.0` is not the current release (`ci/v4.0.0` is). **This document is
+> still the route for anyone pinned at `ci/v1.x`**, and the maintained v4 guide
+> says so itself: `MIGRATION_v4.0.0.md` covers arrival **from `ci/v3.0.0` only**
+> and directs v2 consumers to read `MIGRATION_v3.0.0.md` first. There is no
+> documented single-hop path from v1.x, and `install.sh` bootstrap is additive
+> (it never overwrites an adopted repo), so it is not a reset path either.
+>
+> **The ordered route from `ci/v1.x` is:** this document →
+> [`MIGRATION_v3.0.0.md`](MIGRATION_v3.0.0.md) →
+> [`MIGRATION_v4.0.0.md`](MIGRATION_v4.0.0.md). Do not repin across majors in one
+> jump — `--repin` is a `sed` on `uses:` strings with no major-gap guard, so it
+> exits 0 and leaves a caller that `startup_failure`s with no logs.
+>
+> **What in here is DEAD at v4, and must not be actioned:**
+>
+> - the `LITELLM_BASE_URL` / `LITELLM_REVIEW_API_KEY` secrets below were removed
+>   and **undeclared** at `ci/v4.0.0` (CI-0051) — provisioning them accomplishes
+>   nothing, and *forwarding* them from a caller's explicit `secrets:` map makes
+>   the workflow fail to LOAD (`startup_failure`, zero jobs, no logs). The
+>   current pair is `LLM_URL` + `LLM_API_KEY`.
+> - `LITELLM_DOC_API_KEY` went with the deleted `doc-maintainer` reusable
+>   (CI-0040), not with CI-0051, and has no replacement.
+> - "set per-repo (or at org level)" predates the per-repo requirement for the
+>   LLM key — see `docs/security.md` §4.3.
+>
+> **What in here is STILL LIVE at v4:** everything else in § Required consumer
+> actions, notably dropping the removed `reviewer:` input and the
+> `version: 2` + `litellm.model` trust-config schema, which `ai-review` still
+> hard-requires and refuses to guess.
+
 `ci/v2.0.0` unifies the AI review and doc-maintainer pipelines behind a
 single OpenAI-compatible LiteLLM proxy. Vendor CLI paths, credentials, and
 workflow inputs are removed. This is a **breaking change** — consumers
