@@ -112,6 +112,7 @@ CANON_CI_URL="../aidoc-flow-ci"
 # dependabot) and keeps everything else. Default (bootstrap) is unchanged.
 MODE_UPDATE=0
 MODE_REPIN=0
+MODE_ALLOW_MAJOR=0
 NONINTERACTIVE=0
 # PLAN-015 B2 Task 3: `--verify-standards` runs the server-side drift check
 # (no install) and exits non-zero on genuine drift/absent standards; `--tier`
@@ -131,6 +132,9 @@ while [ $# -gt 0 ]; do
     # `--update` (which re-applies the template body) must never be used for a
     # re-pin (FT-9: it clobbers customized callers → runner-self brick).
     --repin) MODE_REPIN=1; shift ;;
+    # Escape hatch for the major-change guard in repin_mode(). Deliberately NOT
+    # a general --force: it unlocks exactly one refusal and nothing else.
+    --allow-major-repin) MODE_ALLOW_MAJOR=1; shift ;;
     --verify-standards) MODE_VERIFY=1; shift ;;
     # --add-surface: install a manifested surface the consumer does NOT have.
     # The only path for an `auto_install: false` file — bootstrap installs only
@@ -159,6 +163,14 @@ fi
 # --update re-applies bodies of files they have and --repin rewrites tag strings
 # in place. Combining them would make "what did this run do to my tree?"
 # unanswerable, which is the question FT-9 was lost on.
+# --allow-major-repin unlocks exactly one refusal inside repin_mode(). Without
+# --repin it does nothing — and the failure is not benign: both flag names
+# contain "repin", so `install.sh <repo> --allow-major-repin` (no --repin) falls
+# through to a full BOOTSTRAP, turning an intended version bump into a surface
+# install with 21 labels. Reject rather than ignore — same rule as --tier below.
+if [ "$MODE_ALLOW_MAJOR" = 1 ] && [ "$MODE_REPIN" != 1 ]; then
+  echo "--allow-major-repin only applies to --repin (it unlocks repin's major-change refusal) — add --repin, or drop the flag" >&2; exit 1
+fi
 if [ "${#ADD_SURFACES[@]}" -gt 0 ] && { [ "$MODE_UPDATE" = 1 ] || [ "$MODE_REPIN" = 1 ] || [ "$MODE_VERIFY" = 1 ]; }; then
   echo "--add-surface is standalone — not combinable with --update/--repin/--verify-standards" >&2; exit 1
 fi
@@ -827,6 +839,7 @@ PYEOF
   return 0
 }
 
+# >>> REPIN-MODE >>>
 repin_mode() {
   # Version-only re-pin: rewrite the @ci/vX.Y.Z on every
   # `uses: …/aidoc-flow-ci/…` line in .github/workflows/*.yml to $CI_TAG.
@@ -834,6 +847,84 @@ repin_mode() {
   # customization — the ONLY change is the pinned tag. Idempotent.
   local target="$CI_TAG" changed=0 f
   [ -d .github/workflows ] || { echo "  no .github/workflows/ — nothing to re-pin" >&2; return 0; }
+
+  # --- major-change guard -----------------------------------------------------
+  # `--repin` rewrites `uses:` tag strings and NOTHING else. Across a MAJOR that
+  # is not enough and the shortfall is silent: a v4 caller that still forwards
+  # the removed LITELLM_* secrets, or still passes a renamed input, fails to
+  # LOAD — `startup_failure`, zero jobs, NO LOGS — on a required check. Without
+  # this guard the repin exits 0 and reports success, so the operator has a
+  # green install and a bricked gate with nothing to read.
+  #
+  # It refuses a major CHANGE, not just an upgrade: a CI_TAG-less run once
+  # pinned the fleet BACKWARDS onto known-fixed bugs (see the CI_TAG resolution
+  # note above), and a downgrade across a major is the same class of silent
+  # mismatch.
+  #
+  # Scan BEFORE mutating anything — a partial rewrite is worse than a refusal.
+  local _tmaj _cur_majors="" _cur_pins="" _sha_files=""
+  _tmaj="$(printf '%s' "$target" | sed -nE 's#^ci/v([0-9]+)\..*#\1#p')"
+  # A malformed target must ABORT, never skip the guard: the rewrite below is
+  # unconditional, so `CI_TAG=ci/4.0.0` (one character) would sail past an
+  # unguarded `if [ -n "$_tmaj" ]` and write a ref that does not exist into
+  # EVERY caller, exiting 0. The env var is not validated anywhere else — only
+  # the VERSION-file branch is.
+  if [ -z "$_tmaj" ]; then
+    echo "==> ABORT: CI_TAG='$target' is not a ci/vX.Y.Z tag." >&2
+    echo "    --repin writes this string into every caller; refusing to write a malformed ref." >&2
+    return 1
+  fi
+  if true; then
+    for f in .github/workflows/*.yml .github/workflows/*.yaml; do
+      [ -f "$f" ] || continue
+      # Tag pins only. A SHA pin's trailing `# ci/vX.Y.Z` comment is
+      # documentation and can lag, so it is NOT evidence of the running version.
+      local _p
+      _p="$(grep -hoE '^[[:space:]]*uses:[[:space:]]*vladm3105/aidoc-flow-ci/[^@]+@ci/v[0-9]+\.[0-9]+\.[0-9]+' "$f" 2>/dev/null \
+            | grep -oE 'ci/v[0-9]+\.[0-9]+\.[0-9]+' || true)"
+      [ -n "$_p" ] && _cur_pins="$_cur_pins$_p"$'\n'
+      # A SHA-pinned caller is rewritten to $target by the second sed below, so
+      # it crosses whatever majors lie between — but its version is unreadable,
+      # so the comparison above cannot see it. Track them separately: warning
+      # only when NO tag pin exists would stay SILENT on the mixed repo (seven
+      # tag pins + one SHA-pinned audit-trail), which is canon's documented
+      # shape and the worse case — a guard that ran and said nothing.
+      grep -qE '^[[:space:]]*uses:[[:space:]]*vladm3105/aidoc-flow-ci/[^@]+@[0-9a-f]{40}' "$f" 2>/dev/null \
+        && _sha_files="$_sha_files $f"
+    done
+    _cur_pins="$(printf '%s' "$_cur_pins" | grep -v '^$' | sort -u || true)"
+    _cur_majors="$(printf '%s' "$_cur_pins" | sed -nE 's#^ci/v([0-9]+)\..*#\1#p' | sort -u || true)"
+    local _mismatch=""
+    local _m; for _m in $_cur_majors; do [ "$_m" = "$_tmaj" ] || _mismatch="$_mismatch $_m"; done
+    if [ -n "$_mismatch" ] && [ "$MODE_ALLOW_MAJOR" -ne 1 ]; then
+      echo "==> ABORT: --repin refuses a MAJOR version change." >&2
+      echo "    current pin(s): $(printf '%s' "$_cur_pins" | tr '\n' ' ')" >&2
+      echo "    target:         $target  (major v${_tmaj}; mismatched major(s):${_mismatch})" >&2
+      echo "" >&2
+      echo "    --repin rewrites tag strings ONLY. A major also changes caller" >&2
+      echo "    BODIES — removed secrets, renamed inputs, deleted reusables — and" >&2
+      echo "    a caller that still names them fails to LOAD: startup_failure," >&2
+      echo "    zero jobs, no logs, on a required check. The repin would report" >&2
+      echo "    success and leave the gate bricked with nothing to read." >&2
+      echo "" >&2
+      echo "    Do the migration for each major you are crossing, in order —" >&2
+      echo "    docs/MIGRATION_v<major>.0.0.md — then re-pin within the major." >&2
+      echo "    Each guide names the caller edits --repin cannot deliver." >&2
+      echo "" >&2
+      echo "    If you have ALREADY made those caller edits by hand, re-run with" >&2
+      echo "    --allow-major-repin to bump the tag strings." >&2
+      return 1
+    fi
+    if [ -z "$_cur_pins" ]; then
+      echo "  note: no ci/vX.Y.Z tag pins found to compare (SHA-pinned or @main callers) — major-change guard could not run" >&2
+    fi
+    if [ -n "$_sha_files" ]; then
+      echo "  note: SHA-pinned caller(s) will be rewritten to @${target} UNVERIFIED —" >&2
+      echo "        a SHA pin carries no readable version, so the major-change guard" >&2
+      echo "        could not check them:$_sha_files" >&2
+    fi
+  fi
+  # --- end major-change guard -------------------------------------------------
   # Match both .yml and .yaml (GitHub Actions honors either); [ -f ] handles the
   # literal-glob no-match case so a repo with only one extension is fine.
   for f in .github/workflows/*.yml .github/workflows/*.yaml; do
@@ -863,6 +954,7 @@ repin_mode() {
   echo "==> re-pin summary: $changed file(s) bumped to @${target}"
   return 0
 }
+# <<< REPIN-MODE <<<
 
 # --- add-surface -------------------------------------------------------------
 #
@@ -1079,13 +1171,22 @@ if [ "${#ADD_SURFACES[@]}" -gt 0 ]; then
   exit "$add_rc"
 fi
 
+# >>> REPIN-DISPATCH >>>
 if [ "$MODE_REPIN" = 1 ]; then
   if repin_mode; then repin_rc=0; else repin_rc=$?; fi
   echo ""
-  echo "==> re-pin done (rc=$repin_rc). Working copy: $WORK_DIR/consumer"
-  echo "    Review the diff, then commit + push (version-only; topology preserved)."
+  if [ "$repin_rc" -eq 0 ]; then
+    echo "==> re-pin done (rc=0). Working copy: $WORK_DIR/consumer"
+    echo "    Review the diff, then commit + push (version-only; topology preserved)."
+  else
+    # A refusal is not a completed re-pin. Saying "done" here is how an operator
+    # reads past a loud ABORT on stderr and believes the fleet moved.
+    echo "==> re-pin REFUSED (rc=$repin_rc) — NOTHING was rewritten." >&2
+    echo "    Working copy left untouched: $WORK_DIR/consumer" >&2
+  fi
   exit "$repin_rc"
 fi
+# <<< REPIN-DISPATCH <<<
 
 if [ "$MODE_UPDATE" = 1 ]; then
   # Call in an `if` so a `return 1` from update_mode doesn't trip `set -e`

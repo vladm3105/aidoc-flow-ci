@@ -5,6 +5,57 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed
+
+- **`install.sh --repin` no longer succeeds across a MAJOR it cannot actually
+  deliver.** `--repin` rewrites `uses:` tag strings and nothing else — that is
+  what makes it safe on a consumer with local `runner_labels_*`, `permissions:`
+  and job splits that `--update` would clobber. Across a major it is not enough:
+  a major may remove a declared secret, rename an input, or delete a reusable,
+  and each lives in the caller **body**. A caller still naming the old thing
+  fails to LOAD — `startup_failure`, zero jobs, **no logs** — on a required
+  check.
+
+  Before this, `--repin` from `ci/v1.9.5` to `ci/v4.0.0` rewrote the strings,
+  printed per-file success and **exited 0**: a green install and a bricked gate
+  with nothing to read. That is live risk right now — no consumer is on v4, six
+  are on `ci/v1.9.5`, and `framework` carries two different majors at once.
+
+  `repin_mode()` now scans every caller **before** mutating anything and refuses
+  a major *change* — including a downgrade, since a `CI_TAG`-less run once
+  pinned the fleet backwards onto known-fixed bugs. The refusal names the
+  failure it prevents and points at the per-major migration guide.
+  `--allow-major-repin` unlocks exactly that one refusal for an operator who has
+  already made the caller edits by hand; it is not a general `--force`. A SHA
+  pin's trailing `# ci/vX.Y.Z` comment is documentation and may lag, so it is
+  never treated as evidence of the running version — those callers get a
+  "guard could not run" note and proceed, rather than a refusal that would break
+  the SHA-pinned callers `--repin` exists to support.
+
+  The summary line no longer reads "re-pin done" on a refusal — an operator who
+  sees "done" scrolls past a loud ABORT on stderr and believes the fleet moved.
+
+  Review of the first cut found four further silent-success paths, all fixed
+  here: a malformed `CI_TAG` skipped the guard entirely and then wrote the bad
+  ref into every caller; a repo mixing tag and SHA pins got no warning at all
+  while the SHA-pinned caller crossed every major in between; a mid-loop `sed`
+  failure left a partial rewrite reported as success, because `set -e` does not
+  apply inside a function called in a tested context; and `--allow-major-repin`
+  was accepted without `--repin` and silently ignored — which, since both names
+  contain "repin", would have turned an intended version bump into a full
+  bootstrap.
+
+  It also found that the migration guide the refusal points at still prescribed
+  the refused command with no mention of the escape hatch — so the guard's first
+  encounter with an operator was a dead end. `MIGRATION_v4.0.0.md` §4 and
+  `check-pin-currency.sh`'s remedy line now say what to do.
+
+  Standard: `docs/REPO_STANDARDS.md` §28. 29 assertions in
+  `tests/test_install.sh` (170 → 199), both extracted blocks marker-bounded with
+  the extraction asserted whole. Eight softenings were checked and each reds a
+  distinct assertion — including exiting 0 on a refusal and printing "done" on
+  one, two paths the first cut left entirely untested.
+
 ### Deprecated
 
 - **`AI_REVIEW_TOKEN`, `APP_AUTOFIX_ID`, `APP_AUTOFIX_KEY` are deprecated** —

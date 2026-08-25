@@ -3894,3 +3894,77 @@ surfaces above.
 
 **Origin:** issue [#417](https://github.com/vladm3105/aidoc-flow-ci/issues/417),
 a false negative from `call / verify` on PR #416. Recorded as CI-0033.
+
+## 28. A version-only rewriter must refuse a boundary it cannot rewrite across
+
+**A tool whose whole contract is "rewrite the version string and nothing else"
+must detect the version boundary beyond which that contract stops being
+sufficient, and refuse rather than succeed partially.** Exiting 0 having done
+its literal job is the wrong outcome when the caller is left broken.
+
+### 28.1 The failure mode
+
+`install.sh --repin` rewrites the `@ci/vX.Y.Z` on every
+`uses: …/aidoc-flow-ci/…` line and deliberately touches nothing else — that is
+what makes it safe to run on a consumer with local `runner_labels_*`,
+`permissions:` and job splits that `--update` would clobber.
+
+Across a MAJOR, tag strings are not the whole change. A major may remove a
+declared secret, rename an input, or delete a reusable outright, and each of
+those lives in the caller **body**. A caller that still names the old thing
+**fails to LOAD** — `startup_failure`, zero jobs, **no logs** — on a required
+check.
+
+So the pre-guard behaviour was: `--repin` from `ci/v1.9.5` to `ci/v4.0.0`
+rewrote the strings, printed a per-file success line, and exited 0. The operator
+had a green install and a bricked gate with nothing to read. The rewriter had
+done exactly what it promised; the promise was the wrong one at that boundary.
+
+### 28.2 The rule
+
+- **Scan before mutating.** The comparison runs over every **tag-pinned** caller
+  _before_ the first rewrite. A partial rewrite is worse than a refusal, because it leaves a
+  tree that is neither the old version nor the new one.
+- **Refuse a major CHANGE, not a major UPGRADE.** A downgrade across a major is
+  the same silent mismatch. Canon has already shipped one incident of `--repin`
+  pinning the fleet _backwards_ onto known-fixed bugs.
+- **Do not infer a version from documentation.** A SHA-pinned caller's trailing
+  `# ci/vX.Y.Z` comment is documentation and is allowed to lag, so it is not
+  evidence of the running version. Where no tag pin is readable the guard says
+  it could not run and proceeds — a refusal there would break the SHA-pinned
+  callers the rewriter exists to support.
+- **The escape hatch unlocks one refusal, not a mode.** `--allow-major-repin`
+  exists for the operator who has already made the caller edits by hand. It is
+  not `--force`, and it must not disable any other check.
+- **The refusal must name the failure it prevents.** "Refusing a major change"
+  alone invites `--allow-major-repin`. The message states that the caller would
+  `startup_failure` with no logs, and points at the per-major migration guide
+  that lists the edits `--repin` cannot deliver.
+- **A refusal is not a completed run.** The summary line must not read
+  "done" — an operator who sees "done" scrolls past a loud ABORT on stderr and
+  believes the fleet moved.
+
+- **A SHA-pinned caller is rewritten but cannot be checked**, so say so
+  whenever one is present — not only when NO tag pin is readable. A repo mixing
+  seven tag pins with one SHA-pinned caller is the shape canon documents, and it
+  is the worse case: the guard runs and reports nothing while that caller
+  crosses every major in between.
+- **A malformed target aborts.** The rewrite is unconditional, so a guard that
+  merely skips itself when it cannot parse the target lets one typo write a
+  non-existent ref into every caller and exit 0.
+- **A partial rewrite stops the run.** `set -e` does not apply inside a function
+  invoked in a tested context, so each writer needs its own explicit failure
+  return; otherwise a mid-loop failure leaves a half-rewritten tree reported as
+  success.
+
+Guard: `install/install.sh` `repin_mode()` plus its dispatch block; tests in
+`tests/test_install.sh` § "--repin major-change guard". Both blocks are
+marker-bounded and the extraction is asserted whole, because an unbounded range
+that truncates after the guard leaves every guard assertion still passing.
+
+Mutation-testing is how these were established, and the tests were extended
+until each softening reds: disabling the refusal, allowing a downgrade, trusting
+the SHA comment, moving the guard after the rewrite, exiting 0 on a refusal,
+printing "done" on a refusal, dropping `.yaml` from the scan, and breaking the
+escape hatch's case label. The suite does not ship an encoded mutant, so that
+list is a record of what was checked, not a property the suite re-verifies.
