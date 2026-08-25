@@ -164,7 +164,12 @@ when the reviewer returns `request_changes`, the fixer asks the model for a unif
 diff, applies it, and pushes it to the PR head via a **dedicated autofix App**; the
 push re-fires the gate so the reviewer re-reviews the fix. **DEFAULT-OFF** — inert
 unless the trusted config sets `autofix.enabled: true` AND `APP_AUTOFIX_ID/KEY` are
-present. This is the one flow that stops being diff-only (it checks out the PR head),
+present. **`APP_AUTOFIX_ID/KEY` are DEPRECATED** — withdrawn from the
+documented secret surface, so no new consumer should provision them. They remain
+declared and forwarded, and no consumer holds them, so the flow below is dormant
+fleet-wide. The threat model is retained because the code path still exists; it
+describes what the flow *would* do if a caller provisioned the App creds and the
+trusted config enabled it. This is the one flow that stops being diff-only (it checks out the PR head),
 so its safety rests on layered controls:
 
 - **Forks never reach it.** The job is gated on `auto_fix_ok`, which is false for any
@@ -193,7 +198,7 @@ feeds the fixer prompt (prompt-injection surface). It is contained — the model
 emits a diff we validate against the deny-floor and apply mechanically, and every fix
 is re-reviewed and capped — but it is a real surface, not "fully mitigated." The
 dedicated App uses an **ephemeral** installation token (not the standing PAT
-operations retired in OPS-0043). Credential: `APP_AUTOFIX_ID/KEY` (a SEPARATE App from
+operations retired in OPS-0043). Credential: `APP_AUTOFIX_ID/KEY` (deprecated; a SEPARATE App from
 the reviewer App, preserving judge≠generator at the identity level) + a fix-scoped
 `LLM_API_KEY` (the same key the review step uses).
 
@@ -274,6 +279,46 @@ The `APP_REVIEWER_1_*` names are the canonical reviewer-App contract and are
 declared explicitly by `ai-review.yml`. LiteLLM credentials deliberately use
 **one unified credential pair: `LLM_URL` + `LLM_API_KEY`.** Never use the proxy
 master key.
+
+#### `LLM_API_KEY` is not a model-provider API key
+
+The name invites that reading, so state it plainly. There are **two different
+credentials** and only one of them is ever written to a repository:
+
+| Credential | Lives | Reaches a repo? | Blast radius if leaked |
+|---|---|---|---|
+| Model-provider key (Anthropic, OpenAI, …) | inside the ai-reviewer proxy | **never** | the provider account |
+| `LLM_API_KEY` — a proxy **virtual key** | that repo's Actions secrets | yes, one per repo when minted | one repo's quota on one model alias |
+
+**This holds because `LLM_URL` addresses a gateway we operate.** The client is
+endpoint-agnostic by design (CI-0051), so an adopter may point `LLM_URL`
+directly at a model provider — and then `LLM_API_KEY` **is** a provider
+credential with provider-account blast radius, and none of the per-repo scoping
+below applies. The table describes the aidoc-flow deployment, not a property of
+the name.
+
+"one per repo" is a property of how the key was **provisioned**, not something
+canon can verify: GitHub secrets are write-only, so tooling can see that a
+secret exists but never whether two repos hold the same value
+(`install/set-llm-secrets.sh`). It is true when each repo was minted its own
+key; it is false if one key was pasted across the fleet or inherited from an
+org-level secret.
+
+The ai-reviewer is a **shared service**: one proxy, one `ai-reviewer` model
+alias, every consumer's `LLM_URL` pointing at the same endpoint. A shared
+service still has to tell its callers apart — otherwise it cannot attribute
+spend, cap one repo's budget, or cut off a single repo without cutting off all
+of them. `LLM_API_KEY` is that identity, not a provider credential.
+
+`install/set-llm-secrets.sh --mint` issues one per repo via `/key/generate`,
+scoped with `models` to the alias, capped with `max_budget`, and tagged
+`metadata.repo`. **Mint per repo; do not paste one key across the fleet** —
+sharing one key gives up per-repo revocability, which is the property that makes
+a shared service safe to share.
+
+"Shared service" therefore implies the *opposite* of "shared key". What is
+genuinely shared is the proxy and the provider credential behind it; what is
+per-repo is the token used to reach it.
 
 **This supersedes the earlier per-purpose key convention, and the trade-off is
 stated rather than buried.** Canon previously shipped `LITELLM_REVIEW_API_KEY`,

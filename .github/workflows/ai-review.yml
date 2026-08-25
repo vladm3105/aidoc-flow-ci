@@ -80,6 +80,31 @@ on:
         required: false
       APP_REVIEWER_1_KEY:
         required: false
+      # DEPRECATED — withdrawn from the documented secret surface: do not
+      # PROVISION these on a new consumer. They remain DECLARED here, READ by
+      # the body, and FORWARDED by the caller template. Deprecation is guidance,
+      # not de-wiring.
+      #
+      # The declarations STAY: removing a declared name is what makes a caller
+      # still listing it fail to LOAD — `startup_failure`, zero jobs, no logs —
+      # the CI-0051 break this release already spent its budget on. Retiring a
+      # name is a MAJOR, not a docs change.
+      #
+      # APP_AUTOFIX_*: the autofix job is opt-in and default-off; without these
+      # it self-skips with a notice. No consumer holds them.
+      #
+      # AI_REVIEW_TOKEN is DEPRECATED BUT NOT DEAD. It is the middle rung of
+      # App token -> AI_REVIEW_TOKEN -> GITHUB_TOKEN, and that ladder is
+      # load-bearing: the App mint is `continue-on-error` and the preflight
+      # blanks a token that cannot read the config, precisely so the ladder
+      # falls through. GITHUB_TOKEN is sufficient ONLY where the caller repo IS
+      # the trust_config_repo — it cannot read a PRIVATE trust-config repo from
+      # a different repo. So for every consumer that is not the trust-config
+      # repo, this PAT is the last working rung, and removing it turns an
+      # App-token failure into a failed trust job, a SKIPPED ai-review, and a
+      # required check that reports GREEN with no review performed. The
+      # supported way to stop needing it is to install the reviewer App on the
+      # trust-config repo with `contents: read` — not to drop the secret.
       APP_AUTOFIX_ID:
         required: false
       APP_AUTOFIX_KEY:
@@ -87,6 +112,22 @@ on:
       AI_REVIEW_TOKEN:
         required: false
       # UNIFIED LLM CREDENTIALS. One URL, one key — `LLM_URL` + `LLM_API_KEY`.
+      #
+      # WHAT `LLM_API_KEY` IS DEPENDS ON WHAT `LLM_URL` POINTS AT.
+      #
+      # Where `LLM_URL` addresses a GATEWAY YOU OPERATE — the aidoc-flow
+      # deployment, and the intended shape — `LLM_API_KEY` is that gateway's
+      # per-repo VIRTUAL key: scoped to one model alias, budget-capped, tagged
+      # with its repo, revocable without touching another consumer. The
+      # model-provider credential then lives inside the gateway and is never
+      # forwarded to a caller, so a leak exposes one repo's quota on one alias.
+      # Mint one per repo (`install/set-llm-secrets.sh --mint`, LiteLLM
+      # management API); never paste one key across repos, and never put the
+      # gateway MASTER key here.
+      #
+      # If `LLM_URL` points DIRECTLY at a model provider, `LLM_API_KEY` IS a
+      # provider credential and a leak exposes your provider account. Treat it
+      # accordingly. See docs/security.md section 4.3.
       LLM_URL:
         required: false
       LLM_API_KEY:

@@ -111,7 +111,7 @@ if True:
             # `Bearer ${LLM_API_KEY}` line as GitHub-family and the suite went
             # GREEN with a third presentation site in canon (measured). Trailing
             # comments on a header line are house style here — see
-            # install/set-llm-secrets.sh:257.
+            # install/set-llm-secrets.sh (the probe site).
             first = ident.search(cred)
             if first and first.group() in gh_names:
                 gh_sites.append(f"{rel}:{i}")
@@ -134,6 +134,29 @@ for s in sorted(llm_sites):
 
 found = sorted({s.rsplit(":", 1)[0] for s in llm_sites})
 print("LLM_FILES: " + (",".join(found) if found else "<none>"))
+# Per-file COUNT, not file:line. Line numbers drift the moment a comment is
+# added above a site — measured: a docs-only change to these very files redded
+# four assertions here for no behavioural reason, and a guard that reds on
+# unrelated edits gets weakened or deleted. The count keeps the only teeth the
+# line numbers actually carried: that set-llm-secrets.sh has TWO sites, which
+# the deduped LLM_FILES line cannot express.
+#
+# COVERAGE REDUCED, DECLARED. A swap WITHIN one allowlisted file — delete one
+# site, add another — leaves the file set and the count unchanged and is no
+# longer caught; the line pins caught that incidentally. Concretely: reworking
+# probe() while adding a revoke() that presents the MASTER key would keep the
+# count at 2. Accepted because the invariant this guard states is about the
+# file set and per-file count, and because the pins were false-positive-prone
+# in exactly the way measured above.
+for f in found:
+    # Trailing " sites" is a TERMINATOR, not decoration: assert_contains is a
+    # plain substring test (tests/lib.sh), so a bare `=1` also matches `=10`..
+    # `=19`. Since rc depends only on the file set and the hard-fail, these
+    # counts are the ONLY arm catching within-file proliferation — the hole
+    # would sit exactly on the arm this refactor made load-bearing.
+    print(f"LLM_SITE_COUNT {f}={sum(1 for x in llm_sites if x.rsplit(':', 1)[0] == f)} sites")
+for f in sorted({x.rsplit(":", 1)[0] for x in gh_sites}):
+    print(f"GH_FILE {f}")
 
 rc = 0
 if set(found) != allow:
@@ -180,23 +203,24 @@ out="$(python3 "$SCAN" "$ROOT" 2>&1)"; rc=$?
 assert_eq "$rc" "0" "HEAD passes the closed-allowlist guard"
 assert_contains "$out" "LLM_FILES: install/set-llm-secrets.sh,scripts/llm_client.py" \
   "the allowlist is exactly the two known sites"
-assert_contains "$out" "LLM_SITE scripts/llm_client.py:209"   "runtime site located"
-assert_contains "$out" "LLM_SITE install/set-llm-secrets.sh:257" "provisioning probe located"
-assert_contains "$out" "LLM_SITE install/set-llm-secrets.sh:319" "provisioning mint located"
+assert_contains "$out" "LLM_SITE_COUNT scripts/llm_client.py=1 sites"      "runtime: exactly one site"
+assert_contains "$out" "LLM_SITE_COUNT install/set-llm-secrets.sh=2 sites" "provisioning: exactly two sites (probe + mint)"
 assert_contains "$out" "HARDFAIL ok"                          "the runtime hard-fail is intact"
 
 echo "== the scope guard: canon's GitHub-API headers are classified, not swept in =="
-assert_contains "$out" "GH_SITE  .github/workflows/ai-review.yml:236"      "ai-review GitHub header excluded"
-assert_contains "$out" "GH_SITE  .github/workflows/standards-drift.yml:141" "drift GitHub header excluded"
+assert_contains "$out" "GH_FILE .github/workflows/ai-review.yml"      "ai-review GitHub headers excluded"
+assert_contains "$out" "GH_FILE .github/workflows/standards-drift.yml" "drift GitHub header excluded"
 assert_absent   "$out" "LLM_SITE .github/workflows/ai-review.yml"          "no ai-review line misread as an LLM site"
-# set-llm-secrets.sh:254 is excluded by the COMMENT-SKIP: after lstrip() it
+# The redirect-warning comment in set-llm-secrets.sh is excluded by the
+# COMMENT-SKIP: after lstrip() it
 # begins with `#`, so the comment arm returns before the Bearer filter is ever
 # reached. (An earlier comment here claimed the reverse. The Bearer filter is a
 # sufficient BACKUP — which is why disabling the comment-skip left this green —
 # but it is not the arm that fires.) Because two arms independently exclude this
 # line, it cannot witness either one; the comment-skip gets its own fixture
 # below, outside the allowlist, where it is the only thing in the way.
-assert_absent   "$out" "LLM_SITE install/set-llm-secrets.sh:254"  "a commented Authorization line is not a site"
+# The comment-skip's effect here is covered by LLM_SITE_COUNT=2 above (not 3):
+# a pinned line number would drift on any edit above it.
 # NOT asserted here: that "reading a header is not presenting one". `tests` is in
 # skip_dirs, so tests/test_scripts.sh is never opened — an absence assertion on
 # it would pass even with the Bearer filter deleted. The read-vs-present
@@ -295,7 +319,7 @@ echo "== DoD (teeth): a trailing GH_TOKEN comment does NOT exempt a real LLM sit
 # Classification reads the FIRST identifier after Bearer. Matching the whole
 # remainder let this line file as GitHub-family — measured GREEN with a third
 # presentation site present. Trailing comments on a header line are house style
-# (install/set-llm-secrets.sh:257), so this is not a contrived case.
+# (install/set-llm-secrets.sh, the probe site), so this is not contrived.
 mk_fixture "$F"; mkdir -p "$F/scripts"
 cat > "$F/scripts/sneaky.sh" <<'SH'
 curl -H "Authorization: Bearer ${LLM_API_KEY}" "$LLM_URL/v1/chat"  # same shape as the GH_TOKEN header in ai-review.yml

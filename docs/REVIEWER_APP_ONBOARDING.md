@@ -84,7 +84,19 @@ afterward; token loss or duplication fails closed.
    an App installation token to read the trust config (precedence: App token →
    `AI_REVIEW_TOKEN` → `GITHUB_TOKEN`). A pre-flight verifies the App can read the
    config and falls back to the PAT if not, so this is safe to leave enabled.
-   Consumers that keep `AI_REVIEW_TOKEN` are unaffected.
+
+   **`AI_REVIEW_TOKEN` is DEPRECATED — but only as *guidance*.** Do not
+   provision it on a new consumer; instead install the reviewer App on the
+   trust-config repo with `contents: read`, which is the supported path. The
+   name stays DECLARED by the reusable and stays FORWARDED by the caller
+   template, and **if you already have it set, keep it.**
+
+   It is not dead: `GITHUB_TOKEN` is the final rung but is sufficient only where
+   the caller repo **is** the `trust_config_repo` — it cannot read a PRIVATE
+   trust-config repo from a different repo. If the App token cannot be minted or
+   lacks `contents: read`, this PAT is the last rung that works; without it the
+   trust job fails, `ai-review` is skipped, and the required check reports green
+   with no review performed.
 
 4. **Set the secrets** on the consumer:
 

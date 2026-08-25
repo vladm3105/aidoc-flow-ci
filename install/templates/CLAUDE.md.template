@@ -151,7 +151,7 @@ and are not available on a personal-account owner, so each repo carries its own:
 | `LLM_URL` | the LiteLLM proxy endpoint (HTTPS) the reviewer calls |
 | `LLM_API_KEY` | the review-scoped LiteLLM virtual key |
 | `APP_REVIEWER_1_ID` / `APP_REVIEWER_1_KEY` | the reviewer-App identity (posts the verdict / gates composition) |
-| `AI_REVIEW_TOKEN` | cross-repo read of the trust-config repo (unless the reviewer App is installed there) |
+| `AI_REVIEW_TOKEN` | DEPRECATED for new repos — cross-repo read of the trust-config repo. Not needed when the reviewer App is installed there with `contents: read`; still required as the fallback rung if it is not, because `GITHUB_TOKEN` cannot read a private trust-config repo. If already set, keep it. |
 
 Without the LiteLLM secrets the gate **fails closed** — a red check, never a
 false approve. The self-hosted reviewer runner MUST have **network egress to

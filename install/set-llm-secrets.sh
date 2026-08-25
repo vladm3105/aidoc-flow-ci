@@ -11,6 +11,17 @@
 #   * GitHub stores them encrypted + write-only; they are masked in Actions logs.
 #   * Store only the SCOPED virtual key — never the endpoint master key.
 #
+# WHAT `LLM_API_KEY` IS. Not a model-provider API key, despite the name. The
+# ai-reviewer is a SHARED service; `LLM_API_KEY` is the per-repo VIRTUAL key it
+# issues, so the proxy can tell its callers apart — attribute spend, cap a
+# budget, and cut off ONE repo without cutting off the rest. `--mint` creates
+# exactly that: `/key/generate` with `models` scoped to the alias, `max_budget`,
+# and `metadata.repo` set to the target. The model-provider credential lives
+# inside the proxy and is never written to a repository.
+#
+# Mint per repo. Pasting one key across the fleet gives up the only property
+# that makes a shared service safe to share — per-repo revocability.
+#
 # SAFETY (issue #350): a run adding ONE optional secret also rewrote the two
 # that were already correct, from an environment holding a loopback URL.
 # All three writes printed ✓, the script exited 0, and a REQUIRED ai-review gate

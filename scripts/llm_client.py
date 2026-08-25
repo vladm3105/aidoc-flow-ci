@@ -3,9 +3,20 @@
 
 Provider-agnostic by construction: it POSTs the standard
 `{"model", "messages"}` body to `<LLM_URL>/v1/chat/completions` with a bearer
-token. Swapping provider is three values — LLM_URL, LLM_API_KEY, LLM_MODEL.
+token. Swapping endpoint is three values — LLM_URL, LLM_API_KEY, LLM_MODEL.
 Nothing here is specific to LiteLLM, and since ci/v4.0.0 the diagnostics do not
-name one either (CI-0051)."""
+name one either (CI-0051).
+
+LLM_API_KEY IS NOT A MODEL-PROVIDER API KEY in the aidoc-flow deployment, and
+the name invites that reading. This client accepts any bearer token, but as
+deployed here `LLM_URL` points at the SHARED ai-reviewer proxy and
+`LLM_API_KEY` is a per-repo **virtual key issued by that proxy** — scoped to
+one model alias, budget-capped, tagged with its repo, and revocable on its own.
+
+The model-provider credential (Anthropic, OpenAI, …) lives INSIDE the proxy and
+is never handed to a repository, a workflow, or this client. A leaked
+`LLM_API_KEY` exposes one repo's quota on one alias; it does not expose the
+provider account. See docs/security.md section 4.3."""
 
 from __future__ import annotations
 
