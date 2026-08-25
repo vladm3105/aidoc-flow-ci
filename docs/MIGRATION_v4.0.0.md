@@ -245,9 +245,17 @@ After §1 step 1 and §2 are done:
 ```sh
 CI_TAG=ci/v4.0.0 bash <(curl -fsSL \
   https://raw.githubusercontent.com/vladm3105/aidoc-flow-ci/ci/v4.0.0/install/install.sh) \
-  <owner>/<repo> --repin
+  <owner>/<repo> --repin --allow-major-repin
 ```
 <!-- sync-version-refs:ignore-end -->
+
+**`--allow-major-repin` is required here and only here.** `--repin` refuses a
+major version change by default, because tag strings alone do not carry the
+caller-body edits a major needs — a caller that still names a removed secret or
+a renamed input fails to LOAD (`startup_failure`, zero jobs, no logs). You have
+just made those edits in §3, so the refusal no longer applies to you and the
+flag says so. Do **not** add it to a within-major re-pin, and do not treat it as
+a general `--force`: it unlocks that one refusal and nothing else.
 
 `--repin` rewrites tag strings only. If you are coming from a release whose
 **caller bodies** changed, see `docs/UPDATE_GUIDE.md` on `--update` versus

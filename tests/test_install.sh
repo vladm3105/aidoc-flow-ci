@@ -1065,4 +1065,137 @@ assert_eq "$_n_jq_on_pf" "0" \
 assert_ok "[ \"$_n_jsonload\" -ge 1 ]" \
   "the prefetch is consumed by a single json.load — so it must be ONE valid array"
 
+# --- --repin major-change guard ------------------------------------------------
+# `--repin` rewrites `uses:` tag strings and nothing else. Across a MAJOR that is
+# not enough, and the shortfall is SILENT: a v4 caller still forwarding removed
+# secrets or passing a renamed input fails to LOAD — startup_failure, zero jobs,
+# no logs — on a required check, while the repin exits 0 reporting success.
+#
+# repin_mode() is driven directly rather than through install.sh, because
+# reaching it end-to-end needs `gh repo view` and this suite is offline.
+_RP_DIR="$(mktemp -d)"
+# Marker-bounded, matching this file's other extracted blocks. An unbounded
+# `/^repin_mode() {/,/^}/` range silently truncates if any `}` ever lands at
+# column 0 inside the function — and a truncation AFTER the guard leaves a
+# syntactically valid function on which every guard assertion still passes.
+_n_rp_start="$(grep -c '^# >>> REPIN-MODE >>>$' "$ROOT/install/install.sh")"
+_n_rp_end="$(grep -c '^# <<< REPIN-MODE <<<$' "$ROOT/install/install.sh")"
+assert_eq "$_n_rp_start" "1" "repin: exactly one REPIN-MODE start marker"
+assert_eq "$_n_rp_end"   "1" "repin: exactly one REPIN-MODE end marker"
+sed -n '/^# >>> REPIN-MODE >>>$/,/^# <<< REPIN-MODE <<<$/p' "$ROOT/install/install.sh" > "$_RP_DIR/repin_fn.sh"
+assert_ok "[ -s '$_RP_DIR/repin_fn.sh' ]" "repin: repin_mode() extracted for offline drive"
+# Prove the extraction is WHOLE, not just non-empty.
+assert_contains "$(cat "$_RP_DIR/repin_fn.sh")" "re-pin summary" \
+  "repin: the extracted block reaches the end of the function (not truncated)"
+cat > "$_RP_DIR/drive.sh" <<'DRVEOF'
+set -euo pipefail
+CI_TAG="$1"; MODE_ALLOW_MAJOR="${2:-0}"
+. "$RPDIR/repin_fn.sh"
+if repin_mode; then echo "RC=0"; else echo "RC=$?"; fi
+DRVEOF
+
+# $1 = dir name, $2.. = pins (one caller file each)
+_rp_mk() {
+  local d="$_RP_DIR/$1"; shift; rm -rf "$d"; mkdir -p "$d/.github/workflows"; local i=0 pin
+  for pin in "$@"; do
+    i=$((i+1))
+    printf 'jobs:\n  call:\n    uses: vladm3105/aidoc-flow-ci/.github/workflows/w%s.yml@%s\n' "$i" "$pin" \
+      > "$d/.github/workflows/w$i.yml"
+  done
+  printf '%s' "$d"
+}
+_rp_run() { ( cd "$1" && RPDIR="$_RP_DIR" bash "$_RP_DIR/drive.sh" "$2" "${3:-0}" 2>&1 ); }
+
+_d="$(_rp_mk rp_major ci/v1.9.5)"; _o="$(_rp_run "$_d" ci/v4.0.0)"
+assert_contains "$_o" "RC=1"                       "repin: a MAJOR jump (v1 -> v4) is REFUSED"
+assert_contains "$_o" "ABORT: --repin refuses"     "...and the refusal names itself"
+assert_contains "$_o" "startup_failure"            "...and states the failure mode it prevents"
+# The load-bearing property: a refusal must not leave a half-rewritten tree.
+assert_contains "$(cat "$_d/.github/workflows/w1.yml")" "@ci/v1.9.5" \
+  "repin: NOTHING is rewritten when the guard refuses"
+
+_d="$(_rp_mk rp_same ci/v4.0.0)"; _o="$(_rp_run "$_d" ci/v4.1.0)"
+assert_contains "$_o" "RC=0"                       "repin: a MINOR bump inside one major still proceeds"
+assert_contains "$(cat "$_d/.github/workflows/w1.yml")" "@ci/v4.1.0" "...and actually rewrites the pin"
+
+_d="$(_rp_mk rp_ovr ci/v1.9.5)"; _o="$(_rp_run "$_d" ci/v4.0.0 1)"
+assert_contains "$_o" "RC=0"                       "repin: --allow-major-repin unlocks the jump"
+assert_contains "$(cat "$_d/.github/workflows/w1.yml")" "@ci/v4.0.0" "...and then rewrites the pin"
+
+# framework's real shape at ci/v4.0.0: two DIFFERENT majors in one repo.
+_d="$(_rp_mk rp_mixed ci/v2.16.0 ci/v3.0.0)"; _o="$(_rp_run "$_d" ci/v4.0.0)"
+assert_contains "$_o" "RC=1"                       "repin: MIXED majors in one repo are refused"
+assert_contains "$_o" "ci/v2.16.0"                 "...and the report names every current pin"
+assert_contains "$_o" "ci/v3.0.0"                  "...including the second one"
+
+# A CI_TAG-less run once pinned the fleet BACKWARDS onto known-fixed bugs.
+_d="$(_rp_mk rp_down ci/v4.0.0)"; _o="$(_rp_run "$_d" ci/v3.0.0)"
+assert_contains "$_o" "RC=1"                       "repin: a major DOWNGRADE is refused too, not just an upgrade"
+
+# A SHA pin's trailing `# ci/vX` comment is documentation and can lag, so it is
+# not evidence of the running version — the guard must not refuse on it.
+_d="$_RP_DIR/rp_sha"; rm -rf "$_d"; mkdir -p "$_d/.github/workflows"
+printf 'jobs:\n  call:\n    uses: vladm3105/aidoc-flow-ci/.github/workflows/audit-trail-check.yml@e15ec7d44234726195da316a740ad1684a2c5abd # ci/v1.6.0\n' \
+  > "$_d/.github/workflows/at.yml"
+_o="$(_rp_run "$_d" ci/v4.0.0)"
+assert_contains "$_o" "RC=0"          "repin: SHA-only callers are not refused (version unreadable)"
+assert_contains "$_o" "could not run" "...but the operator is told the guard did not run"
+
+# The guard's refusal is worthless if the PROCESS exits 0 — any wrapper, CI job
+# or `&&` chain would read it as success. repin_mode() alone cannot show that:
+# the exit status and the summary wording live in the dispatch block, so drive
+# that too. (Both softenings below passed all the assertions above.)
+_n_rd_start="$(grep -c '^# >>> REPIN-DISPATCH >>>$' "$ROOT/install/install.sh")"
+assert_eq "$_n_rd_start" "1" "repin: exactly one REPIN-DISPATCH start marker"
+sed -n '/^# >>> REPIN-DISPATCH >>>$/,/^# <<< REPIN-DISPATCH <<<$/p' "$ROOT/install/install.sh" \
+  > "$_RP_DIR/dispatch.sh"
+cat > "$_RP_DIR/drive_dispatch.sh" <<'DDEOF'
+set -uo pipefail
+MODE_REPIN=1; WORK_DIR="$PWD"
+repin_mode() { echo "==> ABORT: --repin refuses a MAJOR version change." >&2; return 1; }
+. "$RPDIR/dispatch.sh"
+DDEOF
+_d="$(_rp_mk rp_disp ci/v1.9.5)"
+_o="$( cd "$_d" && RPDIR="$_RP_DIR" bash "$_RP_DIR/drive_dispatch.sh" 2>&1; echo "EXIT=$?" )"
+assert_contains "$_o" "EXIT=1"   "repin: a refusal exits NON-ZERO (a wrapper must not read it as success)"
+assert_absent   "$_o" "re-pin done" "repin: a refusal does NOT print 're-pin done'"
+assert_contains "$_o" "REFUSED"  "...it says REFUSED, so a loud ABORT is not scrolled past"
+
+# A malformed CI_TAG must abort, not skip the guard and then write the bad ref
+# into every caller — the env var is validated nowhere else.
+_d="$(_rp_mk rp_badtag ci/v4.0.0)"; _o="$(_rp_run "$_d" ci/4.0.0)"
+assert_contains "$_o" "RC=1"      "repin: a malformed CI_TAG is refused, not silently unguarded"
+assert_contains "$(cat "$_d/.github/workflows/w1.yml")" "@ci/v4.0.0" \
+  "...and the malformed ref is NOT written into the callers"
+
+# .yaml is honoured by GitHub Actions; the guard must scan it, not just .yml.
+_d="$_RP_DIR/rp_yaml"; rm -rf "$_d"; mkdir -p "$_d/.github/workflows"
+printf 'jobs:\n  call:\n    uses: vladm3105/aidoc-flow-ci/.github/workflows/w.yml@ci/v1.9.5\n' \
+  > "$_d/.github/workflows/w.yaml"
+_o="$(_rp_run "$_d" ci/v4.0.0)"
+assert_contains "$_o" "RC=1" "repin: a .yaml caller is scanned by the guard, not only .yml"
+
+# A SHA pin is rewritten across whatever majors lie between, and its version is
+# unreadable — so a repo MIXING tag and SHA pins must still be warned, or the
+# guard runs and says nothing on canon's own documented shape.
+_d="$_RP_DIR/rp_mix_sha"; rm -rf "$_d"; mkdir -p "$_d/.github/workflows"
+printf 'jobs:\n  call:\n    uses: vladm3105/aidoc-flow-ci/.github/workflows/w.yml@ci/v4.0.0\n' \
+  > "$_d/.github/workflows/tagged.yml"
+printf 'jobs:\n  call:\n    uses: vladm3105/aidoc-flow-ci/.github/workflows/audit-trail-check.yml@e15ec7d44234726195da316a740ad1684a2c5abd # ci/v1.6.0\n' \
+  > "$_d/.github/workflows/sha.yml"
+_o="$(_rp_run "$_d" ci/v4.1.0)"
+assert_contains "$_o" "UNVERIFIED" "repin: a SHA pin alongside tag pins is still reported as unverified"
+assert_contains "$_o" "sha.yml"    "...and the report names the file"
+
+# The escape hatch must reach repin_mode through the REAL parser, not only the
+# test driver — a broken case label would leave it unreachable, suite green.
+_pf_am="$(bash "$ROOT/install/install.sh" owner/repo --allow-major-repin 2>&1 || true)"
+assert_contains "$_pf_am" "only applies to --repin" \
+  "repin: --allow-major-repin without --repin is REJECTED, not silently ignored"
+_pf_ar="$(bash "$ROOT/install/install.sh" owner/repo --repin --allow-major-repin 2>&1 || true)"
+assert_absent "$_pf_ar" "unknown arg" \
+  "repin: --repin --allow-major-repin is accepted by the real parser"
+
+rm -rf "$_RP_DIR"
+
 suite_summary "test_install"

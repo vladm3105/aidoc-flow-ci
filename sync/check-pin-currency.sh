@@ -47,7 +47,7 @@ ver_cmp() {
 
 audit_repo() {  # $1 = "local" | owner/repo ; $2 = canon
   local repo="$1" canon="$2" stale=0 total=0
-  local files pin wf tag
+  local pin wf tag   # `files` removed: declared, never used (SC2034, pre-existing)
   if [ "$repo" = "local" ]; then
     for f in .github/workflows/*.yml .github/workflows/*.yaml; do
       [ -f "$f" ] || continue
@@ -83,7 +83,7 @@ audit_repo() {  # $1 = "local" | owner/repo ; $2 = canon
     # consumer-adoption work and is deferred with Phases C/D.
     if [ "$any" = 0 ]; then echo "    (no aidoc-flow-ci pins on $default_branch)";
     elif [ "$stale" = 0 ]; then echo "    ✅ all $total pins current (@$canon) on $default_branch";
-    else echo "    → $stale/$total stale on $default_branch; oldest @$worst.  Re-pin: install/install.sh $repo --repin  (CI_TAG=$canon)"; fi
+    else echo "    → $stale/$total stale on $default_branch; oldest @$worst.  Re-pin: install/install.sh $repo --repin  (CI_TAG=$canon; across a MAJOR do the migration first — --repin refuses it)"; fi
   fi
   return "$stale"
 }
