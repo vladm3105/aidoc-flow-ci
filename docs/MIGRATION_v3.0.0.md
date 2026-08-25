@@ -1,5 +1,27 @@
 # Migration — ci/v2.x → ci/v3.0.0
 
+> ## ⚠️ SUPERSEDED AS A RELEASE TARGET — but still a required leg
+>
+> `ci/v3.0.0` is not the current release (`ci/v4.0.0` is). **This document is
+> still the required v2→v3 leg**, and the maintained v4 guide says so itself:
+> `MIGRATION_v4.0.0.md` covers arrival **from `ci/v3.0.0` only** and tells anyone
+> still on v2 to "read that one **first**, then this one."
+>
+> **The ordered route is** `ci/v1.x` →
+> [`MIGRATION_v2.0.0.md`](MIGRATION_v2.0.0.md) → this document →
+> [`MIGRATION_v4.0.0.md`](MIGRATION_v4.0.0.md). Do not repin across majors in one
+> jump.
+>
+> Two further reasons it is retained: `ci/v3.0.0` was **not** re-cut and remains
+> a valid pin and the documented rollback target, and `install.sh` points at the
+> add-new → observe-green → remove-old context sequence described here, which is
+> a general procedure for any newly-manifested surface, not a v3-only one.
+>
+> **It predates every v4 break** — renamed runner labels, the deleted
+> `doc-maintainer` reusable, the removed `LITELLM_*` declarations, and the
+> renamed `llm_allow_insecure_http` input. Complete this leg, then read
+> [`MIGRATION_v4.0.0.md`](MIGRATION_v4.0.0.md) for those.
+
 **Status:** `ci/v3.0.0` is cut (2026-08-12) and every step below is actionable.
 Steps 1–7 are the procedure; §"Before you start" lists what must be true first.
 Adoption is per-consumer — nothing moves until that consumer repins.

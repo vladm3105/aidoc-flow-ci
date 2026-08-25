@@ -291,6 +291,14 @@ If it shows `pull-requests: read`, edit it to `write`.
 
 ## ci/v1.x → ci/v2.0.0 breaking-change migration
 
+> **SUPERSEDED AS A RELEASE TARGET — still the required first leg from
+> `ci/v1.x`.** `ci/v2.0.0` is not the current release, and the `LITELLM_*`
+> secrets this section names were removed and undeclared at v4 (CI-0051) — skip
+> those. Everything else here is still required. `MIGRATION_v4.0.0.md` covers
+> arrival from `ci/v3.0.0` only, so the ordered route is: this section → the
+> `ci/v2.x → ci/v3.0.0` section → the `ci/v3.0.0 → ci/v4.0.0` section. Do not
+> repin across majors in one jump.
+
 The `ci/v2.0.0` release replaces vendor CLIs with a unified LiteLLM proxy.
 This is a breaking change — consumers must complete additional steps beyond
 a normal `--update` or `--repin` cycle. Read the full migration guide:
@@ -380,6 +388,13 @@ silently rather than loudly:
   secrets, rollback)
 
 ## ci/v2.x → ci/v3.0.0 breaking-change migration
+
+> **SUPERSEDED AS A RELEASE TARGET — still the required v2→v3 leg.**
+> `ci/v3.0.0` is not the current release, though it remains a valid pin and the
+> documented rollback target. `MIGRATION_v4.0.0.md` covers arrival from
+> `ci/v3.0.0` only and directs v2 consumers here first, so complete this leg
+> before the `ci/v3.0.0 → ci/v4.0.0` section above. Do not repin across majors in
+> one jump.
 
 The `ci/v3.0.0` release repackages six reusable workflows as **composite
 actions** invoked from two consolidated jobs, plus a weekly `links-external`.
