@@ -87,6 +87,22 @@ on:
       AI_REVIEW_TOKEN:
         required: false
       # UNIFIED LLM CREDENTIALS. One URL, one key — `LLM_URL` + `LLM_API_KEY`.
+      #
+      # WHAT `LLM_API_KEY` IS DEPENDS ON WHAT `LLM_URL` POINTS AT.
+      #
+      # Where `LLM_URL` addresses a GATEWAY YOU OPERATE — the aidoc-flow
+      # deployment, and the intended shape — `LLM_API_KEY` is that gateway's
+      # per-repo VIRTUAL key: scoped to one model alias, budget-capped, tagged
+      # with its repo, revocable without touching another consumer. The
+      # model-provider credential then lives inside the gateway and is never
+      # forwarded to a caller, so a leak exposes one repo's quota on one alias.
+      # Mint one per repo (`install/set-llm-secrets.sh --mint`, LiteLLM
+      # management API); never paste one key across repos, and never put the
+      # gateway MASTER key here.
+      #
+      # If `LLM_URL` points DIRECTLY at a model provider, `LLM_API_KEY` IS a
+      # provider credential and a leak exposes your provider account. Treat it
+      # accordingly. See docs/security.md section 4.3.
       LLM_URL:
         required: false
       LLM_API_KEY:

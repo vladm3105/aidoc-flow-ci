@@ -5,6 +5,66 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Documentation
+
+- **Stated plainly that `LLM_API_KEY` is not a model-provider API key.** The name
+  invited that reading, and it is the wrong one: the ai-reviewer is a SHARED
+  service, `LLM_URL` addresses its proxy, and `LLM_API_KEY` is the per-repo
+  **virtual key** that proxy issues — scoped to one model alias, budget-capped,
+  tagged `metadata.repo`, revocable without touching another consumer. The
+  model-provider credential (Anthropic, OpenAI, …) lives inside the proxy and is
+  never written to a repository; a leaked `LLM_API_KEY` exposes one repo's quota
+  on one alias, not the provider account.
+
+  Scoped, not asserted flatly: the client is endpoint-agnostic (CI-0051), so an
+  adopter may point `LLM_URL` straight at a provider — and then `LLM_API_KEY`
+  **is** a provider credential with provider-account blast radius, and the
+  per-repo scoping does not apply. Each surface now says which case it describes.
+  "One per repo" is likewise stated as a property of how the key was
+  *provisioned* (GitHub secrets are write-only, so no tooling can verify two
+  repos do not hold the same value), not as a fact about the name.
+
+  Clarified across five surfaces:
+  `docs/security.md` §4.3 (new subsection with the two-credential table),
+  `.github/workflows/ai-review.yml`'s `secrets:` declaration,
+  `install/templates/workflows/ai-review.yml`'s consumer header,
+  `install/set-llm-secrets.sh`, and `scripts/llm_client.py`'s module docstring —
+  which previously read "Swapping provider is three values", the sentence most
+  directly implying a provider key. **Not** updated:
+  `docs/REVIEWER_APP_ONBOARDING.md` and `install/README.md`, which still offer an
+  org-level secret — that contradicts per-repo revocability and is tracked
+  separately rather than widened into this change.
+
+  Also recorded the corollary: **"shared service" implies the opposite of
+  "shared key"**. Mint one per repo with `--mint`; pasting one key across the
+  fleet gives up per-repo revocability, which is the property that makes a
+  shared service safe to share.
+
+  Comments and prose only — no rename, no behaviour change, nothing breaking for
+  `ci/v4.0.0`. Verified: the four shell/YAML files are byte-identical with
+  comments stripped, and `scripts/llm_client.py` is AST-identical apart from its
+  module docstring.
+
+### Changed
+
+- `tests/test_credential_sites.sh` now asserts a per-file **site count**
+  (`LLM_SITE_COUNT <file>=<n>`) instead of pinned `file:line` positions. The
+  pre-push review of that guard flagged the pinned lines as brittle; the very
+  next change to those files — the docs clarification above — drifted four
+  assertions red for no behavioural reason. A guard that reds on unrelated edits
+  gets weakened or deleted. The count preserves the teeth the line numbers
+  carried (that `set-llm-secrets.sh` has TWO sites, which the deduped
+  `LLM_FILES` line cannot express); the six red-path fixtures and five
+  green-path fixtures all still behave, and each hand-softened arm of the
+  scanner still reds a distinct assertion.
+
+  Two gaps in that guard were closed in the same change, both raised by review:
+  the count line now carries a `sites` terminator, because `assert_contains` is
+  a substring test and a bare `=1` also matched `=10`..`=19` — a hole sitting
+  directly on the arm this refactor made load-bearing. And the within-file swap
+  (delete one site, add another in the same file) is now recorded as a **declared
+  coverage reduction** rather than left implicit.
+
 ### Added
 
 - **The LLM credential's presentation sites are now pinned by a suite guard**
@@ -15,7 +75,7 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   retired the credential by editing only the two workflow `env:` blocks (every
   review dies at the client's hard-fail, `call / ai-review` red fleet-wide), the
   other asserted the client is the *only* builder (false — `install/set-llm-secrets.sh`
-  builds one at `:257` and `:319`).
+  builds one in its pre-write probe and again when minting).
 
   The guard states a **closed allowlist of two** sites and fails if a third
   appears or if the runtime hard-fail is removed. It is scoped to LLM-endpoint

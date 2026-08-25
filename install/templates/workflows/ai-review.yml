@@ -7,9 +7,26 @@
 #
 # Secrets required (consumer adds to repo secrets):
 #   APP_REVIEWER_1_ID + APP_REVIEWER_1_KEY  reviewer App credentials
-#   LLM_URL                                  proxy base URL (normally .../v1)
-#   LLM_API_KEY                              the LLM virtual key (one key, all
-#                                            steps — review AND autofix)
+#   LLM_URL                                  shared ai-reviewer proxy base URL
+#                                            (normally .../v1)
+#   LLM_API_KEY                              this repo's VIRTUAL key to that
+#                                            proxy — NOT a model-provider API
+#                                            key (one key, all steps — review
+#                                            AND autofix)
+#
+# WHAT `LLM_API_KEY` IS DEPENDS ON WHAT `LLM_URL` POINTS AT.
+#
+# In the aidoc-flow deployment the ai-reviewer is a SHARED gateway, and
+# `LLM_API_KEY` is the identity this repo presents to it: scoped to one model
+# alias, budget-capped, tagged with this repo, revocable on its own. The
+# model-provider credential then lives inside the gateway and never reaches a
+# repository, so a leak exposes this repo's quota on one alias. Mint this
+# repo's key with `install/set-llm-secrets.sh --mint` (LiteLLM management API);
+# do not paste one key across repos.
+#
+# If you point `LLM_URL` DIRECTLY at a model provider — supported; the client
+# is endpoint-agnostic — then `LLM_API_KEY` IS a provider credential and a leak
+# exposes your provider account. The per-repo scoping above does not apply.
 #
 # Autofix (PLAN-012) — OPT-IN, DEFAULT-OFF. The `autofix` job in the reusable is
 # INERT unless BOTH the trusted config sets `autofix.enabled: true` AND these are set:
