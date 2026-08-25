@@ -1643,7 +1643,42 @@ echo "==> creating canonical labels on $TARGET_REPO"
 LABELS_TMP=$(mktemp)
 fetch_template "labels.json" "$LABELS_TMP" || exit 1
 EXISTING_TMP=$(mktemp)
-if ! gh label list --json name,color,description -R "$TARGET_REPO" > "$EXISTING_TMP" 2>/dev/null; then
+# `gh api --paginate`, NOT `gh label list`. `gh label list` DEFAULTS TO 30 and
+# silently truncates: the prefetch then omits a label that DOES exist, the loop
+# below concludes it is missing, `gh label create` is called, GitHub rejects it
+# as already existing, and the whole bootstrap ABORTS with exit 1.
+#
+# The trigger is NOT "more than 30 labels" — truncation alone is harmless. The
+# prefetch is consulted only to SKIP creation, and `gh label create` fails only
+# on a name that already exists. So the necessary condition is: A LABEL CANON
+# WANTS already exists on the repo AND falls outside the prefetch window. A
+# first-time adopter with 39 non-colliding labels installs fine.
+#
+# The population that hits it deterministically is A RE-RUN ON AN ADOPTED REPO —
+# which is the idempotence this file advertises on line 5. `gh label list`
+# defaults to `--sort created --order asc`, so canon's own labels are the NEWEST
+# and therefore exactly the ones truncated off the tail. Measured on the target
+# that exposed it: 20 of canon's 21 inside the window, `todo` omitted, and
+# `todo` is what aborted the run. A first-time adopter can also hit it via a
+# pre-existing name collision outside the window (`dependencies` is
+# Dependabot-created; `docs`, `tests`, `security` are common).
+#
+# Present since the installer's first commit (21b9068) and shipped through
+# ci/v3.0.0; found only because an FT-30 dry-run was re-run against a target
+# that already carried the labels — a FRESH target has 9 and always passes.
+#
+# This is the idiom apply-standards.sh:1117 and check-standards-drift.sh:744
+# already use for the same data. `--paginate` has no ceiling to get wrong,
+# which is why it is preferred over a bigger `--limit`: a raised limit just
+# moves the same silent truncation further out.
+#
+# NO `--jq` HERE, DELIBERATELY. `--paginate` merges JSON array pages into ONE
+# array only when it is not also filtering; add `--jq` and gh emits one array
+# PER PAGE, concatenated — `[...][...]` — which `json.load` below rejects with
+# "Extra data". Verified both ways against a 31-label repo at per_page=10. The
+# first draft of THIS fix carried the `--jq` and would have traded a
+# truncation bug at 30 labels for a parse crash at 100.
+if ! gh api --paginate "repos/${TARGET_REPO}/labels?per_page=100" > "$EXISTING_TMP" 2>/dev/null; then
   echo "  FAIL  failed to list existing labels on $TARGET_REPO (auth/permission/network?). Cannot safely idempotent-create." >&2
   rm -f "$LABELS_TMP" "$EXISTING_TMP"
   exit 1
@@ -1657,7 +1692,11 @@ for d in desired:
     name = d['name']
     if name in existing_by_name:
         cur = existing_by_name[name]
-        if cur.get('color') == d['color'] and cur.get('description') == d['description']:
+        # `or ''` on BOTH sides: `gh api` passes a null description through as
+        # JSON null (Python None) where `gh label list --json` normalised it to
+        # "". Inert today because all 21 canon descriptions are non-empty, but
+        # the day one ships empty, None == '' would flip `exists` to `WARN`.
+        if cur.get('color') == d['color'] and (cur.get('description') or '') == (d['description'] or ''):
             print(f'  exists   label {name}')
         else:
             print(f'  WARN     label {name} exists with different color/description (color: {cur.get(\"color\")} vs {d[\"color\"]}; not overwriting)')
@@ -1718,17 +1757,17 @@ fi
 echo "    3. Add secrets to the consumer NOW (the ai-review gate hard-fails without them):"
 echo "         - APP_REVIEWER_1_ID + APP_REVIEWER_1_KEY   (reviewer GitHub App)"
 echo "         - LLM_URL + LLM_API_KEY (ai-review proxy; REQUIRED since ci/v2.0.0)"
-echo "       You must already operate a reachable LiteLLM proxy — see docs/AI_CI_DEPLOYMENT.md §1."
-# PLAN-018 F4 — the LiteLLM HTTP flag. llm_client.py hard-fails unless the
-# proxy scheme is HTTPS or litellm_allow_insecure_http is set, and the flag
+echo "       You must already operate a reachable OpenAI-compatible endpoint — see docs/AI_CI_DEPLOYMENT.md §1."
+# PLAN-018 F4 — the insecure-HTTP flag. llm_client.py hard-fails unless the
+# endpoint scheme is HTTPS or llm_allow_insecure_http is set, and the flag
 # ships COMMENTED OUT in the ai-review caller template. The workspace's only
 # proxy is HTTP on the docker bridge (172.17.0.1), so an adopter of it needs the
 # flag uncommented in .github/workflows/ai-review.yml. install.sh does NOT
 # uncomment it: ai-review.yml is safe_to_replace, so a later
 # --update --non-interactive would silently re-comment it and the gate would go
 # red — a breaking regression. This is operator-applied, by hand, deliberately."
-echo "       If your proxy is HTTP (e.g. the docker-bridge proxy at 172.17.0.1), UNCOMMENT"
-echo "         litellm_allow_insecure_http: true"
+echo "       If your endpoint is HTTP (e.g. the docker-bridge proxy at 172.17.0.1), UNCOMMENT"
+echo "         llm_allow_insecure_http: true"
 echo "       in .github/workflows/ai-review.yml — the client hard-fails on a non-HTTPS URL without it."
 echo "    4. Set vars.APP_REVIEWER_1_BOT_ID = 294948438 (App-global; do NOT wait for a first review —"
 echo "       until it is set, composition runs INERT and enforces nothing)."

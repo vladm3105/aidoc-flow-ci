@@ -178,23 +178,57 @@ was verified against source before acceptance.
 | 14 | `UPDATE_GUIDE.md` v4 table omits the trigger-arm requoting its own §3 documents | LOW | FIXED |
 | 15 | `sarif-path` unconstrained | LOW | **NOT fixed** — already carried as §5 C6; unchanged by this round |
 | 16 | No CI-side promotion verifier (nothing asserts a promotion push is a fast-forward) | HIGH-as-gap | **NOT fixed** — see C7 below. Zero blast radius today: no repo has adopted |
-| 17 | 🔴 FT-30 cold-start dry-run owed and unexecuted | BLOCKER | **OPEN — founder-gated.** §4 B1 |
-| 18 | 🔴 MAJOR-bump LiteLLM smoke never run against the current workflow | BLOCKER | **OPEN — founder-gated.** See below |
+| 17 | 🔴 FT-30 cold-start dry-run owed and unexecuted | BLOCKER | **EXECUTED 2026-08-23/24 — PASSED, and it FOUND a defect.** Must be re-run against the final tag SHA; see below |
+| 18 | 🔴 MAJOR-bump LLM smoke never run against the current workflow | BLOCKER | **PARTIALLY CLOSED** — substance verified against the live endpoint; the CI leg is still unrun. See below |
 
-**Two items this plan cannot close, and neither is a code defect.**
+**Where the two 🔴 gates actually stand (updated 2026-08-24).** Recorded here
+because no log artifact is committed. `DECISIONS.md` **CI-0037** ("`ci/v3.0.0`
+is released — the three founder gates, discharged with their evidence") set the
+precedent and names the weakness plainly: *"`ft30-dry-run.sh` writes nothing to
+the scratch repo and no log artifact is committed, so `FT-30 DRY-RUN PASSED`
+survives only as this record."* A gate result that lives only in a session
+transcript is a gate result that did not happen — the CI-0050 defect applied to
+this plan.
 
-- **FT-30 (#17).** Measured: `release.sh tag` fires the gate and names 32
-  changed bootstrap-path files. `--dry-run-verified` is owed. 🔴 founder-executed,
-  writes to a throwaway repo, and must run against the **prep-merge SHA**.
-- **LiteLLM smoke (#18).** `.github/workflows/llm-smoke.yml` has **zero runs**.
-  The last success (2026-08-10, `7a474a9`) was the previous file,
-  `litellm-smoke.yml` — the two-arm version, **before** CI-0040 rewrote the
-  credential resolution the smoke exists to test. Canon also has **0 registered
-  runners**, so the workflow's default `["self-hosted","ci","ephemeral"]` queues
-  forever, and `ubuntu-latest` cannot reach a private-network proxy. The gate is
-  therefore unsatisfiable *on canon as written* and must be dispatched with a
-  label set that has a runner which can reach the proxy. Re-derive with:
-  `gh api repos/vladm3105/aidoc-flow-ci/actions/workflows/.github%2Fworkflows%2Fllm-smoke.yml/runs --jq '.workflow_runs | length'`
+- **FT-30 (#17) — EXECUTED, PASSED, and it earned its keep.**
+  - Run 1, against the prep-merge SHA `a2b5f96`, on a **fresh** throwaway:
+    **PASSED**, all 11 criteria.
+  - Run 2, against `aa55255` (after CI-0051 changed two bootstrap-path files),
+    reusing the **same, now-populated** throwaway: **FAILED** —
+    `gh label create todo failed … already exists`, `==> ABORT`. That is the
+    truncated label prefetch, a defect present since the installer's first
+    commit and shipped through `ci/v3.0.0`. Fixed in #524.
+  - Run 3, against the fix, same populated target: **PASSED**, all 11 criteria.
+  - **It must be RE-RUN against whatever SHA the tag will point at.** `main` has
+    moved three times since run 1 (#522, #524), each touching the bootstrap
+    path. Three invalidations so far; cut the tag promptly rather than
+    accumulating more pre-tag changes.
+  - **And it must be run TWICE against the same target** — see
+    `docs/RELEASE_CHECKLIST.md`. A fresh throwaway has ~9 labels and can only
+    prove the greenfield case; run 2 is the one that exercises idempotence, and
+    is the only reason the defect above was ever seen. The throwaway used here
+    was deleted 2026-08-24, so the next run starts fresh and needs the second
+    pass to regain that coverage.
+- **LLM smoke (#18) — substance PASSED, CI leg still unrun.**
+  - **Verified 2026-08-23:** the smoke's exact command
+    (`scripts/llm_client.py --json`, `LLM_MODEL=ai-reviewer`) run against the
+    live endpoint returned `{"ok":true,"agent":"review"}` and satisfied the
+    workflow's own `jq -e '.ok == true and .agent == "review"'` gate. The
+    `ai-reviewer` alias is registered and responding. So the unified
+    `LLM_URL`/`LLM_API_KEY` resolution that CI-0040 rewrote **does** work.
+  - **What that does NOT establish**, and why #18 is not fully closed:
+    authentication used the endpoint's master key read locally, **not** canon's
+    stored repository secret, which is write-only and unreadable. If that secret
+    is stale, this run would not have caught it. The Actions runner/secret
+    plumbing is also untested.
+  - **Blocker to the CI leg:** canon holds no `LLM_URL`/`LLM_API_KEY` (only the
+    deprecated pair). Since CI-0051 removed the fallbacks, the smoke cannot
+    authenticate until canon is provisioned:
+    `install/set-llm-secrets.sh --mint --repos "vladm3105/aidoc-flow-ci"`.
+    Note this does **not** affect canon's own PR gates — canon has no
+    `ai-review` caller and `call / ai-review` is not a required context.
+  - Re-derive the run count with:
+    `gh api repos/vladm3105/aidoc-flow-ci/actions/workflows/.github%2Fworkflows%2Fllm-smoke.yml/runs --jq '.workflow_runs | length'`
 
 **What this round confirms about the previous one.** §3's A5 recorded that every
 cycle found a blocker inside the previous cycle's fold. This round extends it

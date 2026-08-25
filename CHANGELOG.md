@@ -5,6 +5,45 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added
+
+- **The LLM credential's presentation sites are now pinned by a suite guard**
+  (`tests/test_credential_sites.sh`, PLAN-030). Neither `ai-review` job builds an
+  auth header — both run `scripts/llm_client.py`, which reads `LLM_API_KEY`,
+  hard-fails without it, and builds the bearer header. Nothing recorded that, and
+  two successive plan drafts got it wrong in opposite directions: one would have
+  retired the credential by editing only the two workflow `env:` blocks (every
+  review dies at the client's hard-fail, `call / ai-review` red fleet-wide), the
+  other asserted the client is the *only* builder (false — `install/set-llm-secrets.sh`
+  builds one at `:257` and `:319`).
+
+  The guard states a **closed allowlist of two** sites and fails if a third
+  appears or if the runtime hard-fail is removed. It is scoped to LLM-endpoint
+  headers: a header line is GitHub-family iff its post-`Bearer` credential
+  expression names a known GitHub token, so canon's many GitHub-API headers are
+  classified rather than swept in — and *that the scope guard holds* is itself an
+  assertion, because a test that fails on unrelated work gets weakened or
+  deleted. An unrecognised credential name fails loud rather than being exempted.
+
+  Scope is the `Authorization: Bearer` form (the proxy is OpenAI-compatible); an
+  `api-key:` header, a `?api_key=` query param or `.netrc` would not be detected.
+  Files come from `git ls-files`, not a walk — a walk reaches the gitignored
+  bootstrap scratch trees and reds a local run for files that are not yours.
+
+  Seven arms mutation-tested by **softening**, not deleting: allowlist compared
+  as a subset, unknown credential names silently exempted, comment-skip removed,
+  hard-fail check disabled, classification widened to the whole line, the
+  hard-fail matched as a loose substring, and case-sensitive detection. Each
+  turns a distinct assertion red.
+
+  Two of those arms exist because a pre-push review found the first version
+  defeatable in exactly those directions: a whole-file substring for the
+  hard-fail passed when the *condition* was softened rather than the call
+  deleted (the client would then send an empty bearer credential), and classifying on every
+  identifier after `Bearer` let a trailing comment naming `GH_TOKEN` file a
+  genuine `Bearer ${LLM_API_KEY}` line as GitHub-family — green with a third
+  presentation site in canon. Both measured, both now witnessed by fixtures.
+
 ## ci/v4.0.0 — 2026-08-23
 
 ### ⚠️ Breaking changes — read this before repinning
@@ -18,16 +57,18 @@ that matters: [`docs/MIGRATION_v4.0.0.md`](docs/MIGRATION_v4.0.0.md).
 | 1 | **Runner labels renamed** `ci-runner`→`ci`, `single-use`→`ephemeral` (CI-0043) | Jobs **queue forever** — no failure, no timeout, no log. `timeout-minutes` cannot save a job that never starts. |
 | 2 | **`doc-maintainer.yml` deleted** (CI-0040) | A caller repinned to v4 gets `startup_failure`, which produces no logs. |
 | 3 | **`sast`/`dep`/`trivy` `config` + `scan-path` are now allowlisted** | A caller passing anything other than `p/default`, `p/security-audit`, `p/python` (or `scan-path` other than `.`) now **fails with a named error** instead of silently scanning nothing. |
+| 4 | **The `LITELLM_*` secret fallbacks are REMOVED — and no longer declared** (CI-0051) | A caller still forwarding the old trio makes the workflow fail to LOAD: **`startup_failure`, zero jobs, no logs** on a required check. The templates shipped at `ci/v2.12.0`…`ci/v3.0.0` forwarded exactly those three. Needs a **caller edit**; provisioning secrets does not rescue it and `--repin` cannot deliver it. |
+| 5 | **Caller input renamed** `litellm_allow_insecure_http` → `llm_allow_insecure_http` (CI-0051) | An unknown workflow input is rejected — rename it in your caller. Same meaning, same `false` default. |
 
-**Two ordering rules carry the whole risk, and both fail silently:**
+**Three ordering rules carry the whole risk, and all three fail silently:**
 
 1. **Register the coexistence runner label set BEFORE repinning**
    (`self-hosted,ci-runner,single-use,ci,ephemeral`), confirm a real job lands
    on the new labels, and only then narrow to `self-hosted,ci,ephemeral`.
 2. **Delete your `doc-maintainer.yml` caller BEFORE repinning**, not after.
+3. **Provision `LLM_URL` + `LLM_API_KEY` AND delete the three `LITELLM_*` lines from your caller's `secrets:` map, in the SAME change as the repin.** Secrets alone are not enough — an explicit map naming an undeclared secret fails to load. Take the new caller with `--update` (re-applying local edits) or hand-edit it; `--repin` rewrites tag strings only.
 
-**Not breaking, listed so you do not misread it as breaking:** LLM credentials
-unify on `LLM_URL`/`LLM_API_KEY` — the `LITELLM_*` names still resolve. The
+**Not breaking, listed so you do not misread it as breaking:** the
 `dev` → `staging` → `main` branching model ships **fully opt-in**: with no
 `.github/aidoc-ci.json` every surface reproduces its pre-v4 behaviour. The one
 unconditional effect is cosmetic — after `install.sh --update`, caller trigger
@@ -35,6 +76,143 @@ arms read `branches: ["main"]` where they read `branches: [main]`.
 
 `ci/v3.0.0` was **not** re-cut and remains a valid pin and the rollback target
 (CI-0044).
+
+### Added — ai-review reports its diff-budget headroom on every run
+
+The 400 KB cap on the redacted diff fails CLOSED — it refuses rather than
+truncating, because a partial review presented as complete is the dangerous
+failure. That is unchanged. What is new is the gradient: every run now prints
+the utilisation, and a run at or above **75%** emits a `::warning::`. The
+warning never fails a run; the PR is reviewed normally.
+
+Measured on real PRs while investigating whether `ai-review` needs work:
+`aidoc-flow-framework` #527 at **87%** of the cap, #530 at 36%, and
+`aidoc-flow-ci` PR #519 at 56%. Grazing the limit, not hitting it — and
+previously invisible, since a refusal was the first and only signal.
+
+This is deliberately **observability only**: it does not raise the cap, does not
+chunk, and does not change what gets reviewed. PLAN-011 defers chunked
+map-reduce review pending evidence; this is the instrument that produces it, and
+one PR at 87% is not yet that evidence.
+
+**A recommendation withdrawn on inspection, recorded because the reasoning is
+the reusable part.** The same investigation first read a ~13% `ai-review`
+failure rate off run conclusions and proposed hardening the Gate step's GitHub
+API calls with retries. That was wrong: **a red `ai-review` job is the DESIGNED
+signal for `request_changes`** — the Gate step exits 1 on purpose so the check
+reds and blocks the merge. Verified on the one failing run whose PR still
+resolves: #527 carries `ai:review-changes` and the App posted a review at that
+head SHA. The proposed retry would have added complexity to a healthy path and
+been called a reliability fix. Two traps fed the misreading: the first log read
+was of the ECHOED SCRIPT SOURCE rather than runtime output (the `::error::`
+strings seen were definitions of error paths, not errors that fired), and
+`conclusion: failure` conflates "reviewer disagreed" with "reviewer broke". The
+signal that distinguishes them is the **`ai:review-infra-error` label**, which
+is the right instrument for any future reliability question.
+
+### Fixed — re-running the bootstrap on an adopted repo aborted (broken idempotence)
+
+`install.sh` prefetched existing labels with `gh label list`, which **defaults to
+`--limit 30` and truncates silently**. The prefetch then omitted a label that
+existed, the idempotency loop concluded it was missing, `gh label create` was
+rejected as a duplicate, and the bootstrap hit `==> ABORT` with `exit 1`.
+
+**Truncation alone is harmless — the trigger is narrower and worse than a label
+count.** The prefetch is consulted only to SKIP creation, and `gh label create`
+fails only on a name that already exists. So the abort needs *a label canon
+wants* to exist on the repo AND fall outside the window. A first-time adopter
+with 39 non-colliding labels installs fine.
+
+The population that hits it **deterministically is a re-run on an already-adopted
+repo** — i.e. the idempotence `install.sh:5` advertises. `gh label list` defaults
+to `--sort created --order asc`, so canon's own labels are the newest and are
+exactly what gets truncated. Measured on the target that exposed it: 20 of
+canon's 21 inside the window, `todo` omitted, `todo` aborted the run. A
+first-time adopter can also hit it through a pre-existing name collision outside
+the window — `dependencies` is Dependabot-created, `docs`/`tests`/`security` are
+common.
+
+Canon ships 21 labels and GitHub creates 9 on a new repo, so 31 is the first
+truncating count; fleet at the time: `framework` 39, canon 32, `operations` 27.
+**Cold-start path only:** `--repin` and `--update` return before the label
+block, so repins were never affected. Present since the installer's first commit
+(`21b9068`) and shipped through `ci/v3.0.0`.
+
+Fixed with `gh api --paginate "repos/…/labels?per_page=100"` — the idiom
+`apply-standards.sh` and `check-standards-drift.sh` already used for the same
+data, and one with no ceiling to get wrong.
+
+**Why nine releases missed it, which is the reusable part.** A fresh throwaway
+has 9 labels; the prefetch sees 9, every create succeeds, FT-30 passes. The
+defect needs a target that ALREADY carries the labels — i.e. what a real adopter
+looks like. It surfaced only because an FT-30 dry-run was re-run against the
+previous run's target after `ci/v4.0.0`'s second prep, and the operator's
+assumption that reuse was safe turned out to be the more representative test.
+Recorded as `REPO_STANDARDS.md` §4.3n rule 3.
+
+**The first fix was also wrong**, and in the same family: it carried
+`--jq` on the `--paginate` call, which makes gh emit one array **per page**,
+concatenated — `json.load` rejects it with "Extra data". It passed a spot check
+only because 31 labels fit in one page of 100; forcing `per_page=10` exposed it.
+A truncation bug at 30 would have become a parse crash at 100.
+
+### Changed — one credential pair, one name, no provider coupling (CI-0051)
+
+**The client was never LiteLLM-specific.** `scripts/llm_client.py` POSTs a
+standard OpenAI-compatible `{"model","messages"}` body to
+`<LLM_URL>/v1/chat/completions` with a bearer token, and contains **zero**
+provider-specific code. Switching to OpenAI, OpenRouter, vLLM, Together or any
+other OpenAI-compatible endpoint is three values — `LLM_URL`, `LLM_API_KEY`,
+`LLM_MODEL` — with no code change. The naming implied a coupling that did not
+exist, and two names for one credential is how #350 happened.
+
+- **The `secrets.LLM_URL || secrets.LITELLM_BASE_URL` fallbacks are gone**, at
+  both `ai-review` call sites (review + autofix) and in `llm-smoke.yml`. The
+  reusable no longer *declares* `LITELLM_BASE_URL` / `LITELLM_REVIEW_API_KEY` /
+  `LITELLM_FIX_API_KEY` either — a declared-but-unused secret invites a caller
+  to keep forwarding it. The shipped caller template no longer forwards them.
+- **`litellm_allow_insecure_http` → `llm_allow_insecure_http`.** The env var it
+  feeds was *already* unified (`LLM_ALLOW_INSECURE_HTTP`); only the input name
+  was legacy. Renamed at the definition, both references, the shipped template's
+  commented example, `install.sh`'s operator guidance, `REPO_STANDARDS.md` and
+  the runner README.
+- **Diagnostics no longer name a vendor.** `::error::litellm:` → `::error::llm:`;
+  the 401 explainer now says the unified name is the only one resolved rather
+  than pointing at deprecated fallbacks that no longer exist.
+
+**A deliberate deviation, recorded rather than buried.** The removed block
+carried the note *"Remove in the release AFTER every consumer has
+`LLM_URL`/`LLM_API_KEY`"* — and that condition is **not** met: most consumers
+still pin `ci/v1.9.5` or `ci/v3.0.0` and are not provisioned. The founder
+accepted the harder migration to avoid shipping a dual-name surface that would
+outlive v4. A consumer is unaffected until it repins, and `MIGRATION_v4.0.0.md`
+§3 now leads with the ordering requirement instead of promising compatibility.
+
+**The pre-push review caught the failure mode being wrong in all four migration
+surfaces.** The first draft documented `::error::LLM_API_KEY is unset` and said
+"provision before repinning". Both wrong: dropping the *declarations* means a
+caller still forwarding the old trio fails to LOAD (`startup_failure`, zero jobs,
+no logs), and since the `ci/v2.12.0`…`ci/v3.0.0` templates forwarded exactly
+those three and not the unified pair, most of the fleet needs a **caller edit**
+that `--repin` cannot deliver. Corrected in `MIGRATION_v4.0.0.md` §3, the
+breaking table, the ordering rules, `UPDATE_GUIDE.md`, and the reusable's own
+comment — which had asserted the opposite of what GitHub does, next to a test
+whose comment states the rule correctly. The same pass also caught a botched
+comment edit that left half a deleted sentence in the shipped caller template,
+`security.md` §4.3 and `REPO_STANDARDS.md` §4.0b still describing the removed
+behaviour as live, this repo's own `CLAUDE.md` still naming the removed input,
+and that `--mint` scopes its key to `ai-reviewer` only — so a minted repo that
+later enables autofix gets 403 model-scope, now noted at provisioning time.
+
+**Tests inverted, not deleted.** `tests/test_contract.sh` previously *required*
+the fallback and the deprecated declarations — three assertions that would have
+held the legacy path in place, the same shape as the fork guard whose test
+pinned the defective spelling (§4.3k). They now assert the fallback is absent
+outside comments, that both call sites read the unified key directly, and that
+neither the old input definition nor any `inputs.` reference survives. All are
+count comparisons: an earlier draft interpolated matched file content into an
+`eval`'d assertion and blew up on the matched text's own quotes instead of
+failing cleanly.
 
 ### Fixed — the `ci/v4.0.0` pre-production review, round 2 (the post-#515 delta)
 

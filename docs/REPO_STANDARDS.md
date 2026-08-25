@@ -321,7 +321,7 @@ key. Runners must be able to reach the configured proxy. Proxy failures and
 malformed responses fail closed and never become an approving verdict.
 
 The proxy URL MUST use HTTPS. Plain HTTP requires the explicit caller opt-in
-`litellm_allow_insecure_http: true` and is limited to a controlled private
+`llm_allow_insecure_http: true` and is limited to a controlled private
 network. **The opt-in is required by the URL SCHEME, not by repo visibility**:
 any consumer whose `LLM_URL` begins `http://` must set it, public or
 private. On the shared self-hosted pool the proxy is reached over the Docker
@@ -331,9 +331,14 @@ flow to that pool, public repos are the common case rather than the exception.
 `LLM_URL` MUST NOT be loopback: jobs run inside a container, so
 `127.0.0.1`/`localhost` resolve to the container, not the proxy host. (CI-0017.)
 
-Use separate virtual keys per purpose — review and autofix — restricted to
-their model aliases with spend/rate limits and rotation; never use the LiteLLM
-master key. Disable sensitive prompt/response logging and apply an appropriate
+Use ONE scoped virtual key — `LLM_API_KEY` — restricted to the model aliases it
+must reach, with spend/rate limits and rotation; never use the endpoint's master
+key. **This superseded the per-purpose (review + autofix) key convention**: the
+doc key retired with `doc-maintainer` (CI-0040) and the remaining two converged
+by founder decision, so revoking the key now stops autofix as well as review —
+the trade-off is stated in `docs/security.md` §4.3. If you enable autofix, the
+key's model scope must include the fixer alias (default `ai-fixer`) as well as
+`ai-reviewer`, or the fixer gets HTTP 403 model-scope rather than 401. Disable sensitive prompt/response logging and apply an appropriate
 retention policy: AI review sends a bounded, secret-pattern-redacted PR diff to
 the proxy, which can still contain private source code. Secret-shaped source
 values use opaque placeholders during inference and are restored only after the
@@ -1313,6 +1318,66 @@ setting that makes the gate advisory.**
    (`apply-standards.sh`) and the push gate refuse outright; the _verifier_
    warns and counts a fetch error, because a verifier that exits fatal stops
    reporting the rest.
+
+#### 4.3o A fail-closed limit needs a gradient, not just a wall
+
+`ai-review` caps the redacted diff at 400 KB and **refuses** past it — it does
+not truncate, because a partial review presented as a complete one is the
+dangerous failure: the model approves a PR having seen part of it. That polarity
+is correct and must not be "simplified" into a truncation.
+
+What it lacked was a way to see the wall coming. The refusal was the **first**
+signal, and by then the PR is already unreviewable. Measured on real PRs
+2026-08-24: `aidoc-flow-framework` #527 sat at **87%** of the cap, #530 at 36%,
+`aidoc-flow-ci` #519 at 56% — grazing it, not hitting it, with nothing surfacing
+that fact.
+
+1. **Report the headroom on every run**, not only on the failure. A limit whose
+   utilisation is invisible is a limit you learn about by tripping it.
+2. **Warn on approach, fail only at the wall.** The `::warning::` at 75% never
+   fails a run; the PR is reviewed normally. It exists so the TREND is visible
+   while there is still time to act on it.
+3. **Do not let the warning become the fix.** It is an instrument, not a
+   remedy — the remedy (chunked map-reduce review) is deferred in PLAN-011
+   pending exactly this evidence. One PR at 87% is a data point, not a mandate.
+4. **Mutation-test the polarity, not just the threshold.** The test that matters
+   is the one that reds when someone replaces the refusal with
+   `encoded = encoded[:LIMIT]`. A threshold test alone passes happily while the
+   fail-closed property is removed underneath it.
+
+#### 4.3n A LIST call that feeds a decision must be PAGINATED, not defaulted
+
+`gh <thing> list` defaults to **30** and truncates **silently** — no warning, no
+non-zero exit. When that list is then used to decide whether something exists,
+the truncation becomes a wrong answer rather than a short answer.
+
+`install.sh` prefetched labels with `gh label list` so it could tell "already
+exists" apart from a real failure — the right intent, stated in its own comment.
+But canon ships **21** labels and GitHub creates **9** on a new repo, so a repo
+sitting at 30 plus one local label makes the prefetch omit a label that exists;
+the loop concludes it is missing, `gh label create` is rejected as a duplicate,
+and the bootstrap **aborts**. Measured on the fleet when found: `framework` 39,
+canon 32. Present since the installer's first commit and shipped through
+`ci/v3.0.0`.
+
+1. **Use `gh api --paginate "…?per_page=100"`.** It has no ceiling to get wrong
+   on a normal REST collection — pagination ends when the `Link: rel="next"`
+   header does, not at a client-side number. A bigger `--limit` only moves the
+   same silent truncation further out. **Exception: the `/search/*` endpoints
+   cap at 1000 results regardless of pagination**, so a search-backed decision
+   needs its own completeness argument.
+2. **Do NOT add `--jq` to a `--paginate` call whose output is parsed as one
+   document.** `--paginate` merges JSON array pages into a single array only
+   when it is not also filtering; with `--jq` gh emits one array **per page**,
+   concatenated, and a `json.load` fails with "Extra data". The first fix for
+   the defect above carried `--jq` and would have traded a truncation bug at 30
+   labels for a parse crash at 100.
+3. **A fresh fixture cannot find this class.** A brand-new throwaway has 9
+   labels, so every create succeeds and the gate passes. It surfaces only
+   against a target that already holds the data — which is what a REAL adopter
+   looks like. When a dry-run's fixture is materially cleaner than production,
+   the gate is testing the easy case; re-running against a used target is not
+   contamination, it is the more representative run.
 
 ### 4.4 `markdown-lint` config template (`install/templates/.markdownlint.json`)
 

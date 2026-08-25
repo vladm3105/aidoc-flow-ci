@@ -1,20 +1,20 @@
-name: LiteLLM agent smoke
+name: LLM agent smoke
 
 on:
   workflow_dispatch:
     inputs:
       runner_labels:
-        description: JSON runner labels; use ubuntu-latest only for a publicly reachable proxy
+        description: JSON runner labels; use ubuntu-latest only for a publicly reachable endpoint
         required: true
         default: '["self-hosted", "ci", "ephemeral"]'
         type: string
       review_model:
-        description: LiteLLM review model alias
+        description: Review model alias, resolved by the endpoint LLM_URL names
         required: true
         default: ai-reviewer
         type: string
       allow_insecure_http:
-        description: Allow HTTP for a controlled private-network proxy
+        description: Allow HTTP for a controlled private-network endpoint
         required: true
         default: false
         type: boolean
@@ -37,8 +37,10 @@ jobs:
 
       - name: Smoke review alias
         env:
-          LLM_URL: ${{ secrets.LLM_URL || secrets.LITELLM_BASE_URL }}
-          LLM_API_KEY: ${{ secrets.LLM_API_KEY || secrets.LITELLM_REVIEW_API_KEY }}
+          # ci/v4.0.0 (CI-0051): LLM_URL / LLM_API_KEY are the ONLY names resolved.
+          # The LITELLM_* fallbacks were removed fleet-wide.
+          LLM_URL: ${{ secrets.LLM_URL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_ALLOW_INSECURE_HTTP: ${{ inputs.allow_insecure_http }}
           LLM_MODEL: ${{ inputs.review_model }}
         run: |

@@ -9,17 +9,19 @@ applies to anyone still on v2 — read that one **first**, then this one.
 
 ## Why this is a MAJOR bump
 
-Three changes since `ci/v3.0.0` alter an expected consumer surface, which
+Four changes since `ci/v3.0.0` alter an expected consumer surface, which
 `CLAUDE.md` "Semver discipline" defines as MAJOR:
 
 | # | Change | Decision | What breaks if you ignore it |
 |---|---|---|---|
 | 1 | Runner labels renamed `ci-runner`→`ci`, `single-use`→`ephemeral` | CI-0043 | Jobs **queue forever** — no failure, no timeout |
 | 2 | `doc-maintainer` reusable **deleted** | CI-0040 | A caller pinned to v4 gets `startup_failure` |
-| 3 | LLM credentials unified on `LLM_URL` + `LLM_API_KEY` | founder, 2026-08-21 | Nothing, if you do nothing — see §3 |
+| 3 | LLM credentials unified on `LLM_URL` + `LLM_API_KEY`; the `LITELLM_*` fallbacks **REMOVED** and no longer declared | CI-0051 | A caller still forwarding the old trio gets **`startup_failure` — zero jobs, no logs**. Needs a CALLER EDIT, not just secrets; `--repin` cannot deliver it — see §3 |
+| 4 | Caller input renamed `litellm_allow_insecure_http` → `llm_allow_insecure_http` | CI-0051 | An unknown input is rejected; rename it in your caller |
 
-Item 3 is **backward compatible** and listed for completeness. Items 1 and 2 are
-not, and item 2 is the one that bites during the repin itself.
+**None of the four is backward compatible.** Items 1 and 2 bite during the
+repin; items 3 and 4 bite on the FIRST PR after it. Item 3 is the one with an
+ordering requirement — provision the secrets before you repin, not after.
 
 ## Before you start
 
@@ -120,23 +122,118 @@ git commit -m "chore(ci): drop doc-maintainer ahead of the ci/v4.0.0 repin (CI-0
 doc automation (PLAN-024 A6). If you relied on doc-maintainer's behaviour, adopt
 `docs-sync.yml` — note it is **dry-run-first** and its live mode is gated.
 
-## 3. LLM credentials — `LLM_URL` + `LLM_API_KEY`
+## 3. LLM credentials — 🔴 DO THIS BEFORE YOU REPIN
 
-The reusables now resolve `secrets.LLM_URL || secrets.LITELLM_BASE_URL` and
-`secrets.LLM_API_KEY || secrets.LITELLM_REVIEW_API_KEY`. **The deprecated names
-still work**, so this step does not block your repin and nothing breaks if you
-skip it.
+> ### ⚠️ The `LITELLM_*` fallbacks are REMOVED at `ci/v4.0.0` (CI-0051) — and this needs a CALLER EDIT, not just secrets
+>
+> `LLM_URL` and `LLM_API_KEY` are the **only** names resolved, and the old names
+> are **no longer declared** by the reusable. That second half is the one that
+> bites.
+>
+> **Your caller forwards secrets by an explicit map** (FT-42, since `ci/v2.12.0`
+> — not `secrets: inherit`). GitHub **rejects a map naming a secret the callee
+> does not declare**: the workflow fails to LOAD. You get
+> **`startup_failure` — zero jobs, no logs** — on a required check, which is the
+> same silent shape as the `doc-maintainer` break in row 2.
+>
+> **The caller templates shipped at `ci/v2.12.0` … `ci/v3.0.0` forwarded exactly
+> those three names and NOT the unified pair.** So if you installed or updated
+> anywhere in that range — most of the fleet — you are affected, and:
+>
+> - **Provisioning the secrets does NOT rescue you.** The map is invalid whatever
+>   the repo holds.
+> - **`--repin` does NOT rescue you.** It rewrites `uses:` tag strings only and
+>   cannot touch a caller body.
+>
+> **Do all three in the SAME change:** provision the unified pair, delete the
+> three `LITELLM_*` lines from your caller's `secrets:` map, and repin.
 
-Do it anyway, on your own schedule — the fallback is scheduled for removal in
-the release after every consumer carries the new names:
+**Why now.** Two names for one credential is how #350 happened: a run that added
+one secret rewrote a working key, and nothing could tell the two paths apart.
+The client was never LiteLLM-specific — it POSTs a standard OpenAI-compatible
+`{"model","messages"}` body to `<LLM_URL>/v1/chat/completions` — so the split
+naming implied a provider coupling that does not exist.
+
+**Provision (recommended — per-repo, revocable, review-scoped):**
 
 ```sh
-gh secret set LLM_URL     --repo <owner>/<repo> --body "$(gh secret list ... )"  # your proxy URL
-gh secret set LLM_API_KEY --repo <owner>/<repo>                                   # reads stdin
+export LLM_URL="https://your-endpoint/v1"     # NOT 127.0.0.1/localhost: that
+                                              # resolves to the job CONTAINER (CI-0017)
+export LLM_MASTER_KEY="<master key>"          # used to MINT; never stored
+bash install/set-llm-secrets.sh --mint --repos "<owner>/<repo>"
 ```
 
+Or with a key you already hold:
+
+```sh
+export LLM_URL="https://your-endpoint/v1"
+export LLM_API_KEY="<scoped key>"             # never the master key
+bash install/set-llm-secrets.sh --repos "<owner>/<repo>"
+```
+
+`--dry-run` prints the per-secret plan and makes no network call. An existing
+secret is never replaced without `--overwrite` (#350).
+
+**If you use autofix, widen the minted key's model scope.** `--mint` issues a
+key scoped to the **review** alias (`ai-reviewer`) only. Autofix runs the same
+`LLM_API_KEY` against the fixer alias (`ai-fixer`, or `vars.LLM_FIXER_MODEL`),
+so a `--mint`-provisioned repo that later enables autofix gets **HTTP 403
+model-scope**, not 401 — a different symptom with a different cause. Add the
+fixer alias to the key's model list at mint time, or provision with a key that
+already covers both. Autofix is default-off, so this bites only when you turn
+it on, which may be long after the repin.
+
+**Any OpenAI-compatible endpoint works.** Switching provider is these three
+values — `LLM_URL`, `LLM_API_KEY`, and the model alias — with no code change.
+
+> ### The unified names are CANON's — your endpoint keeps its own
+>
+> CI-0051 unified what **this library** calls things: the GitHub Actions secret
+> names and the workflow inputs. It has no authority over what your endpoint
+> product calls its own configuration, and does not try to rename it. Expect to
+> see both, and expect the bridge between them to be the only place they meet.
+>
+> Worked example — the workspace's own LiteLLM deployment names its admin key
+> `LITELLM_MASTER_KEY` (its `docker-compose.yml` and `config/router.*.yaml` read
+> that variable), while `set-llm-secrets.sh --mint` expects the unified
+> `LLM_MASTER_KEY`. One line bridges them:
+>
+> ```sh
+> # The ( … ) is LOAD-BEARING: it confines the exports to a subshell that exits
+> # immediately, so the master key does not linger in your interactive shell's
+> # environment for every later process to read.
+> ( export LLM_URL="http://172.17.0.1:4001/v1"
+>   export LLM_MASTER_KEY="$(grep -m1 '^LITELLM_MASTER_KEY=' /path/to/proxy/.env | cut -d= -f2-)"
+>   bash install/set-llm-secrets.sh --mint --repos "<owner>/<repo>" )
+> ```
+>
+> Point `LLM_URL` at OpenAI instead and the source variable becomes
+> `OPENAI_API_KEY`; **only that one line changes.** Canon, the reusables and the
+> client are untouched — which is the property the rename exists to make
+> obvious. Seeing a vendor-specific name on the LEFT of that bridge is expected;
+> seeing one inside canon is not.
+
+**Update your caller — this is REQUIRED, not cleanup.** The shipped
+`ai-review.yml` template no longer forwards the deprecated trio. If yours still
+lists them the workflow will not load at all. Either take the new template with
+`install.sh --update` (then re-apply any local `runner_labels_*` / `permissions:`
+/ `config-path:` edits — `--update` replaces whole caller bodies), or hand-edit
+the three lines out. `--repin` alone is not sufficient.
+
+```yaml
+    secrets:
+      LLM_URL: ${{ secrets.LLM_URL }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      # DELETE: LITELLM_BASE_URL / LITELLM_REVIEW_API_KEY / LITELLM_FIX_API_KEY
+```
+
+**Input renamed:** `litellm_allow_insecure_http:` → `llm_allow_insecure_http:`.
+Same meaning, same default (`false`). If your caller passes the old name,
+rename it — an unknown input is rejected.
+
 `LITELLM_DOC_API_KEY` is **gone** and has no replacement — it existed only for
-`doc-maintainer`. Delete it once §2 is done.
+`doc-maintainer`. Delete it once §2 is done. The other three can be deleted once
+you have repinned and one PR has gone green.
 
 ## 4. Repin
 

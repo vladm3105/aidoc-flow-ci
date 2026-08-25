@@ -116,7 +116,7 @@ no benefit.)
 
 Before enabling AI workflows, verify a ephemeral container can reach the
 configured `LLM_URL` without exposing other host services. HTTP
-endpoints require the callers' explicit `litellm_allow_insecure_http: true`;
+endpoints require the callers' explicit `llm_allow_insecure_http: true`;
 prefer TLS whenever the proxy can provide it.
 
 Host-side network diagnostics (probing api.github.com reachability from the
