@@ -343,8 +343,8 @@ compose into one repin.
 ## ci/v3.0.0 → ci/v4.0.0 breaking-change migration
 
 `ci/v4.0.0` changes the **operating contract**, not the packaging — the v3
-composite-action rework is unchanged. Three breaks, and the first two are not
-backward compatible:
+composite-action rework is unchanged. **Four breaks, and none of them is
+backward compatible** (the fifth row below is cosmetic and breaks nothing):
 
 | Change | What breaks if you ignore it |
 |---|---|
@@ -354,7 +354,7 @@ backward compatible:
 | Caller input renamed `litellm_allow_insecure_http` → `llm_allow_insecure_http` (CI-0051) | An unknown input is rejected — rename it in your caller |
 | `--update` requotes caller trigger arms: `branches: [main]` → `branches: ["main"]` (PLAN-028 B5) | Nothing — same branch. Expect a one-line diff per trigger arm on the first `--update` after adopting this tag; see §3 above. `--repin` does not deliver it |
 
-Two ordering rules carry the whole risk, and both are the kind that fail
+Three ordering rules carry the whole risk, and all three are the kind that fail
 silently rather than loudly:
 
 1. **Register the coexistence runner label set BEFORE repinning**
@@ -363,6 +363,14 @@ silently rather than loudly:
    whose labels match no registered runner queues forever; `timeout-minutes`
    cannot fire on a job that never starts.
 2. **Delete your `doc-maintainer.yml` caller BEFORE repinning**, not after.
+3. **Drop the three `LITELLM_*` lines from your caller's `secrets:` map in the
+   SAME change as the repin** — only if your caller uses an explicit FT-42 map
+   (`secrets: inherit` callers are unaffected: `inherit` forwards by name
+   regardless of the declaration block). `--repin` cannot deliver a caller-body
+   edit, and provisioning `LLM_URL`/`LLM_API_KEY` does not rescue it: the
+   workflow fails to LOAD before any job runs, so there are no logs to read.
+   Rename `litellm_allow_insecure_http` → `llm_allow_insecure_http` in the same
+   edit — an unknown input is rejected the same way.
 
 `ci/v3.0.0` was **not** re-cut and remains a valid pin and the rollback target
 (`DECISIONS.md` CI-0044).

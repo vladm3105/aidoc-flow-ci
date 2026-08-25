@@ -5,6 +5,47 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed
+
+- **`README.md` and `docs/UPDATE_GUIDE.md` told repinners the v4 credential break
+  was backward compatible.** It is not, and it is the break that produces **no
+  logs** — the `LITELLM_*` names are no longer *declared*, so a caller forwarding
+  them in an explicit FT-42 map fails to LOAD (`startup_failure`, zero jobs) and
+  needs a caller-body edit `--repin` cannot deliver. Both surfaces are the first
+  things an operator reads before a repin, and both contradicted
+  `docs/MIGRATION_v4.0.0.md`'s "None of the four is backward compatible."
+  (aidoc-flow-ci#533)
+
+  `UPDATE_GUIDE` was the worse of the two: it said "Three breaks, and the first
+  two are not backward compatible" above a **five-row** table in which the
+  credential break is **third** — i.e. it named that break specifically as the
+  compatible one. Its "two ordering rules carry the whole risk" list also omitted
+  the caller edit, which `MIGRATION_v4.0.0.md` marks 🔴 do-this-before-you-repin.
+  Corrected to four breaks, none backward compatible, and a third ordering rule
+  added — scoped to explicit-map callers, since `secrets: inherit` callers are
+  unaffected. `README.md`'s "three consumer-visible breaks" is likewise corrected
+  to four (the renamed `llm_allow_insecure_http` input is rejected the same way).
+
+- **`install/README.md` and `docs/REVIEWER_APP_ONBOARDING.md` sanctioned an
+  org-level `LLM_API_KEY`.** An org secret is one key fleet-wide, which forfeits
+  the per-repo spend attribution, budget caps and single-repo revocation that
+  make a *shared* reviewer gateway safe to share. Now per-repo, scoped to the
+  case where `LLM_URL` addresses a gateway you operate — an adopter pointing it
+  directly at a model provider holds a provider credential, for which none of
+  that scoping applies and `--mint` does not work at all. This discharges the
+  "Not updated" note in the Documentation entry below. (aidoc-flow-ci#534)
+
+  The org-wide option is **kept** for the App credentials, where it is
+  legitimate, with a blast-radius qualifier added: `APP_REVIEWER_1_KEY` is the
+  App's private PEM, and anything that can read it can mint a token for every
+  repo the App is installed on and approve as the reviewer App — the identity
+  `composition` counts. Its secret scope must match the F5 only-select-repos
+  install boundary, not exceed it.
+
+  Also corrected: `install/README.md` labelled the row `(ci/v2.0.0)` and linked
+  to the v2 migration, but the unified names arrived at `ci/v4.0.0` — a v1.x
+  adopter following it would set two secrets their pin never reads.
+
 ### Deprecated
 
 - **`AI_REVIEW_TOKEN`, `APP_AUTOFIX_ID`, `APP_AUTOFIX_KEY` are deprecated** —

@@ -223,7 +223,7 @@ discovered during framework Phase A):
 |---|---|---|
 | **Actions allowlist** | If the consumer is in `selected actions` mode, `patterns_allowed` must admit canon — `vladm3105/*` (canonical) or the older `vladm3105/aidoc-flow-ci/*` — or the reusable returns `startup_failure` | [`../docs/troubleshooting.md` §13](../docs/troubleshooting.md) |
 | **Caller `permissions:` block** | If the consumer's repo-default `workflow_permissions: read`, the reusable's `contents: write` is rejected — add an explicit `permissions:` block to the caller | [`../docs/troubleshooting.md` §14](../docs/troubleshooting.md) |
-| **LiteLLM secrets** (ci/v2.0.0) | `LLM_URL` + `LLM_API_KEY` are required for the ai-review gate to connect to the LiteLLM proxy. Set per-repo or at org level. | [`../docs/REVIEWER_APP_ONBOARDING.md`](../docs/REVIEWER_APP_ONBOARDING.md), [`../docs/MIGRATION_v2.0.0.md`](../docs/MIGRATION_v2.0.0.md) |
+| **LLM secrets** (unified at ci/v4.0.0 — CI-0051) | `LLM_URL` + `LLM_API_KEY` are required for the ai-review gate to reach the shared reviewer gateway. `LLM_URL` may be set per-repo or at org level. **Where `LLM_URL` addresses a gateway you operate, `LLM_API_KEY` must be per-repo** — mint one with `set-llm-secrets.sh --mint`; an org secret is one key fleet-wide, which forfeits per-repo spend attribution, budget caps, and the ability to revoke one repo without cutting off the rest. (If `LLM_URL` points directly at a model provider, it is a provider credential and none of that scoping applies.) | [`../docs/security.md`](../docs/security.md) §4.3, [`../docs/MIGRATION_v4.0.0.md`](../docs/MIGRATION_v4.0.0.md) §3 |
 
 See [`../docs/troubleshooting.md`](../docs/troubleshooting.md) for the full
 troubleshooting guide.

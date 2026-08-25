@@ -31,6 +31,27 @@ Secrets can be set at the **repo** level (`gh secret set … --repo`) or
 inherited from an **org** secret; the variable is per-repo (`gh variable
 set …`).
 
+**If you set the App credentials org-wide, restrict the secret's repository
+access.** Org-wide is defensible for *attribution* — it is the same App
+everywhere, so there is nothing to tell apart — but not for *exposure*.
+`APP_REVIEWER_1_KEY` is the App's private PEM, and any workflow that can read it
+can mint an installation token for every repo the App is installed on and submit
+an APPROVED review as the reviewer App, which is the identity `composition`
+counts. Its secret scope must therefore match the only-select-repositories
+install boundary (F5) above, not exceed it.
+
+**`LLM_API_KEY` must be per-repo.** Unlike the App credentials it — it is the identity a repo presents to
+the *shared* reviewer gateway, so one org secret means one key fleet-wide and
+gives up per-repo spend attribution, budget caps, and the ability to cut off a
+single repo without cutting off all of them. Mint one per repo with
+`install/set-llm-secrets.sh --mint`.
+
+This applies where `LLM_URL` addresses a gateway you operate — the intended
+shape. If you point `LLM_URL` **directly at a model provider**, `LLM_API_KEY` is
+a provider credential, none of the per-repo scoping applies, and `--mint` will
+not work at all (it POSTs to a LiteLLM management endpoint that a provider API
+does not serve). See `docs/security.md` section 4.3.
+
 ## LiteLLM model alias (config-driven)
 
 Which model reviews PRs is config-driven. The reusable resolves it as:
