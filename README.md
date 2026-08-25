@@ -39,11 +39,16 @@ rationale.
 > rather than from prose here — a hardcoded "latest" in a README goes stale at
 > the next cut, and this one did.
 >
-> **`ci/v4.0.0` is a MAJOR with three consumer-visible breaks** — the runner
+> **`ci/v4.0.0` is a MAJOR with four consumer-visible breaks** — the runner
 > labels are renamed (`ci-runner`→`ci`, `single-use`→`ephemeral`, and a job
 > whose labels match no registered runner **queues forever** rather than
 > failing), `doc-maintainer` is **deleted**, and the LLM credentials unify on
-> `LLM_URL`/`LLM_API_KEY` (backward compatible). Read
+> `LLM_URL`/`LLM_API_KEY` — the `LITELLM_*` names are no longer **declared**, so
+> a caller still forwarding them in an explicit `secrets:` map fails to LOAD:
+> `startup_failure`, zero jobs, **no logs**. That one needs a CALLER EDIT;
+> `--repin` cannot deliver it — and the caller input
+> `litellm_allow_insecure_http` is renamed `llm_allow_insecure_http`, an unknown
+> input being rejected the same way. Read
 > [`docs/MIGRATION_v4.0.0.md`](docs/MIGRATION_v4.0.0.md) before repinning — the
 > runner cutover is order-sensitive and the `doc-maintainer` caller must be
 > deleted *before* the repin, not after.
