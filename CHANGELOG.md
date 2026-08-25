@@ -5,6 +5,48 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Deprecated
+
+- **`AI_REVIEW_TOKEN`, `APP_AUTOFIX_ID`, `APP_AUTOFIX_KEY` are deprecated** —
+  withdrawn from the documented secret surface. Do not provision them on a new
+  consumer.
+
+  **Deprecation here is guidance, not de-wiring.** All three remain DECLARED by
+  the reusable, READ by its body, and FORWARDED by the caller template. Only the
+  advice to set them is withdrawn.
+
+  That distinction is the whole finding. An earlier draft of this change also
+  dropped the three from the template's `secrets:` map, on the reasoning that
+  forwarding an unset secret and not forwarding it are equivalent. They are
+  equivalent only for a repo that does **not** have the secret. For a repo that
+  does, the forward is a working fallback, and review showed dropping it is a
+  real and silent regression:
+
+  - `AI_REVIEW_TOKEN` is the middle rung of App token → `AI_REVIEW_TOKEN` →
+    `GITHUB_TOKEN`, and that ladder is load-bearing by design — the App mint is
+    `continue-on-error` and the preflight deliberately blanks a token that cannot
+    read the config, so the ladder falls through.
+  - `GITHUB_TOKEN` is sufficient **only where the caller repo is the
+    `trust_config_repo`** — canon's own comment says so — and the trust-config
+    repo is private. For every other consumer, dropping the PAT forward turns an
+    App-token failure into a failed trust job, a **skipped** `ai-review`, and a
+    required check that reports **green with no review performed**.
+
+  The supported way to stop needing the PAT is to install the reviewer App on the
+  trust-config repo with `contents: read` — not to drop the secret. If a repo has
+  it set, keep it.
+
+  Retiring any of the names remains a MAJOR: removing a declared name is what
+  makes a caller still listing it fail to LOAD — `startup_failure`, zero jobs, no
+  logs — the CI-0051 break this release already spent its budget on.
+
+  `docs/security.md`'s autofix threat model is **kept**, annotated dormant — the
+  code path still exists, so deleting the analysis would be the wrong trade.
+
+  `tests/test_contract.sh` now guards all three wiring directions for the
+  deprecated set — a name must stay **declared**, stay **read**, and stay
+  **forwarded** — so no half of the guarantee can rot silently.
+
 ### Documentation
 
 - **Stated plainly that `LLM_API_KEY` is not a model-provider API key.** The name

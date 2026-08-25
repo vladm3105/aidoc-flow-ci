@@ -28,14 +28,18 @@
 # is endpoint-agnostic — then `LLM_API_KEY` IS a provider credential and a leak
 # exposes your provider account. The per-repo scoping above does not apply.
 #
-# Autofix (PLAN-012) — OPT-IN, DEFAULT-OFF. The `autofix` job in the reusable is
-# INERT unless BOTH the trusted config sets `autofix.enabled: true` AND these are set:
-#   APP_AUTOFIX_ID + APP_AUTOFIX_KEY         DEDICATED autofix App (contents:write) —
-#                                            a SEPARATE App from the reviewer App
-#   (repo var) LLM_FIXER_MODEL               fixer model alias (default `ai-fixer`)
-#   (autofix reuses LLM_API_KEY — there is no separate fix key)
-# Without the App creds the job self-skips; a PR branch cannot enable autofix
-# (autofix.enabled is resolved from the trusted config repo, never the PR).
+# DEPRECATED — do not PROVISION on a new consumer: `APP_AUTOFIX_ID`,
+# `APP_AUTOFIX_KEY`, `AI_REVIEW_TOKEN`. They stay DECLARED by the reusable and
+# stay FORWARDED by this template; only the guidance to set them is withdrawn.
+#   * autofix is opt-in and default-off — without its App creds the job
+#     self-skips with a notice. No consumer holds them.
+#   * AI_REVIEW_TOKEN is a legacy PAT rung between the reviewer App token and
+#     GITHUB_TOKEN. It is NOT dead: `GITHUB_TOKEN` is sufficient only where the
+#     caller repo IS the `trust_config_repo`. Elsewhere, if the App token cannot
+#     be minted or lacks `contents: read` on a PRIVATE trust-config repo, this
+#     PAT is the only remaining way the trust gate can read its config. If you
+#     have it set, KEEP it; if you do not, install the reviewer App on the
+#     trust-config repo with `contents: read` instead.
 #
 # `pull_request_target` (not `pull_request`) is required so the trust gate has
 # write-capable credentials + secrets; the heavy job runs only for trusted
@@ -99,6 +103,15 @@ jobs:
     secrets:
       APP_REVIEWER_1_ID: ${{ secrets.APP_REVIEWER_1_ID }}
       APP_REVIEWER_1_KEY: ${{ secrets.APP_REVIEWER_1_KEY }}
+      # DEPRECATED — do not PROVISION these on a new consumer. They are still
+      # FORWARDED, deliberately: forwarding an unset secret is an empty string
+      # and costs nothing, while NOT forwarding one a repo actually has removes
+      # a working fallback. `AI_REVIEW_TOKEN` is the middle rung of
+      # App token -> AI_REVIEW_TOKEN -> GITHUB_TOKEN, and GITHUB_TOKEN cannot
+      # read a PRIVATE trust_config_repo from a different repo — so for every
+      # consumer that is not the trust-config repo itself, dropping this line
+      # turns an App-token failure into a FAILED trust job, a SKIPPED ai-review,
+      # and a required check that reports GREEN with no review performed.
       APP_AUTOFIX_ID: ${{ secrets.APP_AUTOFIX_ID }}
       APP_AUTOFIX_KEY: ${{ secrets.APP_AUTOFIX_KEY }}
       AI_REVIEW_TOKEN: ${{ secrets.AI_REVIEW_TOKEN }}

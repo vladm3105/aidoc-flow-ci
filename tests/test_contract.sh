@@ -459,9 +459,24 @@ on = d.get(True, d.get("on", {}))
 declared = set((on.get("workflow_call", {}).get("secrets") or {}).keys())
 forwarded = set(re.findall(r'^\s*([A-Z_0-9]+):\s*\$\{\{\s*secrets\.',
                            open("install/templates/workflows/ai-review.yml").read(), re.M))
+# DEPRECATED: withdrawn from the documented surface (do not PROVISION on a new
+# consumer) but still DECLARED, still READ by the body, and still FORWARDED by
+# the template. All three are load-bearing and each is guarded below.
+#   * dropping a DECLARATION makes a stale caller fail to LOAD (zero logs).
+#   * dropping the READ silently removes the fallback the declaration advertises.
+#   * dropping the FORWARD removes a working fallback from a repo that HAS the
+#     secret — for AI_REVIEW_TOKEN that turns an App-token failure into a failed
+#     trust job, a skipped ai-review, and a required check green with no review.
+deprecated_still_wired = {"AI_REVIEW_TOKEN", "APP_AUTOFIX_ID", "APP_AUTOFIX_KEY"}
 gaps = []
 if used - declared: gaps.append("undeclared:" + ",".join(sorted(used - declared)))
 if used - forwarded: gaps.append("not-forwarded:" + ",".join(sorted(used - forwarded)))
+undeclared_dep = deprecated_still_wired - declared
+if undeclared_dep: gaps.append("deprecated-but-undeclared:" + ",".join(sorted(undeclared_dep)))
+unread_dep = deprecated_still_wired - used
+if unread_dep: gaps.append("deprecated-but-unread:" + ",".join(sorted(unread_dep)))
+unforwarded_dep = deprecated_still_wired - forwarded
+if unforwarded_dep: gaps.append("deprecated-but-unforwarded:" + ",".join(sorted(unforwarded_dep)))
 # Also fail if the caller forwards a secret the reusable does NOT declare — GitHub
 # rejects an undeclared secret in an explicit map with a startup_failure (0 jobs).
 if forwarded - declared: gaps.append("forwarded-undeclared:" + ",".join(sorted(forwarded - declared)))

@@ -164,7 +164,12 @@ when the reviewer returns `request_changes`, the fixer asks the model for a unif
 diff, applies it, and pushes it to the PR head via a **dedicated autofix App**; the
 push re-fires the gate so the reviewer re-reviews the fix. **DEFAULT-OFF** — inert
 unless the trusted config sets `autofix.enabled: true` AND `APP_AUTOFIX_ID/KEY` are
-present. This is the one flow that stops being diff-only (it checks out the PR head),
+present. **`APP_AUTOFIX_ID/KEY` are DEPRECATED** — withdrawn from the
+documented secret surface, so no new consumer should provision them. They remain
+declared and forwarded, and no consumer holds them, so the flow below is dormant
+fleet-wide. The threat model is retained because the code path still exists; it
+describes what the flow *would* do if a caller provisioned the App creds and the
+trusted config enabled it. This is the one flow that stops being diff-only (it checks out the PR head),
 so its safety rests on layered controls:
 
 - **Forks never reach it.** The job is gated on `auto_fix_ok`, which is false for any
@@ -193,7 +198,7 @@ feeds the fixer prompt (prompt-injection surface). It is contained — the model
 emits a diff we validate against the deny-floor and apply mechanically, and every fix
 is re-reviewed and capped — but it is a real surface, not "fully mitigated." The
 dedicated App uses an **ephemeral** installation token (not the standing PAT
-operations retired in OPS-0043). Credential: `APP_AUTOFIX_ID/KEY` (a SEPARATE App from
+operations retired in OPS-0043). Credential: `APP_AUTOFIX_ID/KEY` (deprecated; a SEPARATE App from
 the reviewer App, preserving judge≠generator at the identity level) + a fix-scoped
 `LLM_API_KEY` (the same key the review step uses).
 
