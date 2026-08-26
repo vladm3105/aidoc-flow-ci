@@ -5,7 +5,7 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
-### Fixed
+### Fixed — `--repin` refuses a major boundary it cannot rewrite across (§28)
 
 - **`install.sh --repin` no longer succeeds across a MAJOR it cannot actually
   deliver.** `--repin` rewrites `uses:` tag strings and nothing else — that is
@@ -58,8 +58,9 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ### Deprecated
 
-- **`AI_REVIEW_TOKEN`, `APP_AUTOFIX_ID`, `APP_AUTOFIX_KEY` are deprecated** —
-  withdrawn from the documented secret surface. Do not provision them on a new
+- **`AI_REVIEW_TOKEN`, `APP_AUTOFIX_ID`, `APP_AUTOFIX_KEY` are deprecated**
+  (CI-0052; shipped in aidoc-flow-ci#535) — withdrawn from the documented secret
+  surface. Do not provision them on a new
   consumer.
 
   **Deprecation here is guidance, not de-wiring.** All three remain DECLARED by
@@ -126,7 +127,7 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
   `install.sh` points at the v3 doc's context sequence at runtime, and
   `sync/check-standards-drift.sh` lists all three as version-ref targets.
 
-### Fixed
+### Fixed — v4 migration docs contradicted the migration guide (#533, #534)
 
 - **`README.md` and `docs/UPDATE_GUIDE.md` told repinners the v4 credential break
   was backward compatible.** It is not, and it is the break that produces **no

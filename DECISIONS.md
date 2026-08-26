@@ -3529,3 +3529,62 @@ per-repo, review-scoped, revocable virtual key.
 "why this is a MAJOR" table, the CHANGELOG breaking block, and the ordering rules
 all now say so, and three `tests/test_contract.sh` assertions that previously
 *required* the fallback were inverted to forbid it.
+
+---
+
+## CI-0052: deprecating a `workflow_call` secret is a docs change; REMOVING it is a MAJOR (2026-08-25)
+
+**Context.** Three secrets were withdrawn from the documented secret surface
+**after `ci/v4.0.0`** (`CHANGELOG.md` Unreleased → Deprecated; shipped in #535) —
+`AI_REVIEW_TOKEN`, `APP_AUTOFIX_ID`, `APP_AUTOFIX_KEY`. The `ci/v4.0.0` tag is
+immutable and does **not** carry this deprecation; a consumer auditing that tag
+will not find it. The first attempt treated
+"deprecated" as licence to stop wiring them: the declarations were kept, but the
+shipped caller template stopped **forwarding** them. That is wrong in a way the
+name hides, and pre-push review caught it.
+
+**Decision.** Deprecation is **guidance, not de-wiring**. A deprecated secret
+stays DECLARED by the reusable, stays READ by its body, and stays FORWARDED by
+the caller template. Only the advice to provision it is withdrawn.
+
+**Why forwarding must continue.** "Forwarding an unset secret and not forwarding
+it are equivalent" is true only for a repo that does **not** hold the secret. For
+one that does, the forward is a live fallback. `AI_REVIEW_TOKEN` is the middle
+rung of `App token → AI_REVIEW_TOKEN → GITHUB_TOKEN`, and that ladder is
+load-bearing by construction: the App mint is `continue-on-error`, and the
+preflight deliberately blanks a token that cannot read the trust config precisely
+so the ladder falls through. `GITHUB_TOKEN` is sufficient **only where the caller
+repo IS the `trust_config_repo`** — `ai-review.yml` says so in its own comment —
+and that repo is private. For every other consumer, dropping the forward turns an
+App-token failure into a failed trust job, a **skipped** `ai-review`, and a
+required check reporting **green with no review performed**. The supported way to
+stop needing the PAT is installing the reviewer App on the trust-config repo with
+`contents: read` — not dropping the secret.
+
+**Why removal is a MAJOR, not a docs change.** GitHub rejects an explicit
+`secrets:` map naming a secret the callee does not declare: the workflow fails to
+**LOAD** — `startup_failure`, zero jobs, **no logs** — on a required check. That
+is the CI-0051 break this line already spent its budget on. Removing a declared
+name is therefore a consumer-surface break and takes a major bump, and it must be
+announced with the caller edit `--repin` cannot deliver.
+
+**Enforcement, and its stated limit.** `tests/test_contract.sh`'s FT-42
+completeness check carries an explicit `deprecated_still_wired` set asserted in
+three directions — a deprecated name must stay **declared**, stay **read**, and
+stay **forwarded** — rather than a weakened comparison. Adding a name to that set
+is a deliberate edit, and every other missing forward still fails.
+
+**The "read" direction is asserted at NAME level, not per call site**, and that
+matters here because the argument above rests on ONE site: the trust-job token
+ladder. `used` is built by `re.findall(r'secrets\.([A-Z_0-9]+)', body)` over the
+whole file, so deleting `|| secrets.AI_REVIEW_TOKEN` from that ladder while the
+review job's `env:` still names the same secret leaves the set unchanged and the
+suite **green** — with the regression described above live. The regex also reads
+comments, and this file carries heavy comment prose about these three names, so a
+commented-out reference would satisfy the read direction too. Site-level pinning
+is deferred; do not read this entry as a claim that the ladder rung itself is
+guarded.
+
+**Scope note.** The related rule for a version-only rewriter refusing a boundary
+it cannot rewrite across is `docs/REPO_STANDARDS.md` §28, which is the rulebook
+and owns it. It is not duplicated here.
