@@ -30,6 +30,16 @@ docs/**                                 @vladm3105
 .github/workflows/**                    @vladm3105
 .github/ai-review/**                    @vladm3105
 
+# Release-critical files
+scripts/**                              @vladm3105
+sync/**                                 @vladm3105
+install/**                              @vladm3105
+actions/**                              @vladm3105
+VERSION                                 @vladm3105
+CHANGELOG.md                            @vladm3105
+DECISIONS.md                            @vladm3105
+plans/**                                @vladm3105
+
 # Governance surfaces (specific files — LAST so they win over
 # the broader docs/** and .github/** rules above)
 CLAUDE.md                               @vladm3105

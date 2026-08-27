@@ -55,6 +55,21 @@ The PR body below records the outcome for reviewers.
 
 **Fold outcome:** <!-- e.g. "cycle 1 APPROVED, 0 findings" or "cycle 1 REVISIONS-NEEDED, N findings folded". Cap at 3 fold cycles per OPS-0066. -->
 
+## Consumer impact
+
+<!--
+This repo is the CI canon — changes here propagate to every consumer
+that pins the next ci/vX.Y.Z tag. Assess downstream impact:
+-->
+
+**Affected consumer tiers:** <!-- all / governance+product / product-only / none (canon-internal) -->
+
+**Requires consumer re-pin:** <!-- yes (MAJOR/MINOR) / no (PATCH or canon-internal) -->
+
+**Breaking changes:** <!-- yes — describe migration path / no -->
+
+**Migration notes:** <!-- Steps consumers need to take after re-pinning. Delete if none. -->
+
 ## Cross-references
 
 <!-- OPS-NNNN, IPLAN-NNNN, PLAN-NNN, related PRs. Delete section if none. -->
