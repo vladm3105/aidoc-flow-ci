@@ -71,14 +71,14 @@ list_instances() {
 
 # Get the TARGET_REPO from an instance's env file.
 instance_repo() {
-  local inst="$1" env_file="$ENV_DIR/$inst.env"
-  [ -f "$env_file" ] && grep -m1 '^TARGET_REPO=' "$env_file" | cut -d= -f2
+  local inst="${1:-}" env_file="$ENV_DIR/${1:-}.env"
+  [ -n "$inst" ] && [ -f "$env_file" ] && grep -m1 '^TARGET_REPO=' "$env_file" | cut -d= -f2
 }
 
 # Get the RUNNER_LABELS from an instance's env file.
 instance_labels() {
-  local inst="$1" env_file="$ENV_DIR/$inst.env"
-  [ -f "$env_file" ] && grep -m1 '^RUNNER_LABELS=' "$env_file" | cut -d= -f2
+  local inst="${1:-}" env_file="$ENV_DIR/${1:-}.env"
+  [ -n "$inst" ] && [ -f "$env_file" ] && grep -m1 '^RUNNER_LABELS=' "$env_file" | cut -d= -f2
 }
 
 # Check if a systemd unit is active.
