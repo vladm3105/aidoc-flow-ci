@@ -375,6 +375,11 @@ the matching variant. **A consumer MUST register the self-hosted `ci` /
 `ephemeral` pool before adopting** (now also for the AI-flows on public repos).
 Full detail: `docs/runners.md` "Workspace policy".
 
+**Pool management and monitoring** — `install/templates/runner/manage.sh`
+provides drain, safe update, scale, status, and health commands;
+`install/templates/runner/monitor.sh` provides health checks and queue-depth
+reporting. Full detail: `docs/runners.md` §7–§8.
+
 As of `ci/v1.9.0` the `-private.yml` templates ship the **real**
 `["self-hosted", "ci", "ephemeral"]` label directly (earlier releases
 shipped a `runner-self` placeholder that resolved to `runs-on: runner-self`,

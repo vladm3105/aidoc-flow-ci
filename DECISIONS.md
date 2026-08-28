@@ -3588,3 +3588,50 @@ guarded.
 **Scope note.** The related rule for a version-only rewriter refusing a boundary
 it cannot rewrite across is `docs/REPO_STANDARDS.md` §28, which is the rulebook
 and owns it. It is not duplicated here.
+
+---
+
+## CI-0053: Runner pool management and monitoring tooling (2026-08-23)
+
+**Context**
+
+The ephemeral self-hosted runner pool (`install/templates/runner/`) had
+provisioning and supervision but no operational tooling for safe updates,
+scaling, or health monitoring. Updating the runner image while jobs were in
+flight killed those jobs. Scaling required manual `systemctl` commands.
+Health checks were ad-hoc. With ~20 repos sharing the pool, a structured
+management layer was needed.
+
+**Decision**
+
+Add `manage.sh` (drain, update, scale, status, health) and `monitor.sh`
+(health checks, queue-depth reporting, alerting) to
+`install/templates/runner/`. Both extend the existing systemd-based
+architecture — no new platform (Kubernetes, Nomad, etc.) was introduced.
+
+Key design choices:
+- **Drain mode** stops supervisors and waits for in-flight jobs to finish
+  before image updates, preventing job kills during maintenance.
+- **Safe update cycle** (drain → build → verify → restart) is a single
+  command.
+- **Scaling** provisions or removes systemd instances per repo.
+- **Monitoring** checks instance state, Docker daemon, image contract,
+  GitHub API, and queue depth with structured exit codes (0/2/3).
+- **Systemd timer** for automated periodic health checks.
+
+The tools work with the existing `ci-runner@.service` setup. No Docker
+Compose, no Kubernetes, no new platform dependencies.
+
+**Alternatives considered**
+
+- *Docker Compose*: would replace the systemd per-instance model. Rejected
+  because the existing systemd setup is already well-suited (per-repo
+  instances, `loginctl enable-linger`, `RestartPreventExitStatus` for
+  stale-image refusal).
+- *Kubernetes + ARC*: auto-scaling, self-healing pods, declarative config.
+  Rejected because the operational overhead of a cluster is not justified
+  for ~20 repos on a single host.
+- *Nomad / other orchestrators*: same problem as Kubernetes with a smaller
+  ecosystem.
+
+**Scope note.** Full documentation in `docs/runners.md` §7–§8.

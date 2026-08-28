@@ -5,6 +5,20 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Added — runner pool management and monitoring
+
+- **`manage.sh`** — pool management commands: `status`, `drain`, `update`,
+  `scale`, `health`. Drain mode stops supervisors and waits for in-flight
+  jobs to finish before image updates. Safe update cycle: drain → build →
+  verify → restart. Scaling adjusts instance count per repo.
+- **`monitor.sh`** — health monitoring: instance state, Docker daemon, image
+  contract, GitHub API reachability, queue depth. Supports one-shot, watch
+  mode, and JSON output for alerting. Exit codes: 0=ok, 2=warn, 3=critical.
+- **`ci-runner-monitor.service` + `ci-runner-monitor.timer`** — systemd
+  timer for automated periodic health checks (every 5 min).
+- Updated `docs/runners.md` §7 (pool management) and §8 (monitoring).
+- Updated `docs/REPO_STANDARDS.md` §4.1 with management/monitoring reference.
+
 ### Fixed — `--repin` refuses a major boundary it cannot rewrite across (§28)
 
 - **`install.sh --repin` no longer succeeds across a MAJOR it cannot actually

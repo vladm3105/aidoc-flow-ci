@@ -25,6 +25,10 @@ them directly.
 | `run-ephemeral.sh` | the supervisor loop — one-shot JIT registration → one job per fresh container → repeat |
 | `ci-runner@.service` | user-systemd template for the supervisor — **not raw-`cp` installable** (carries an `@RUNNER_HOME@` ExecStart placeholder) |
 | `provision-runner.sh` | **the only documented installer** — builds the image, substitutes the placeholder, writes the env file, enables the service |
+| `manage.sh` | pool management — drain, safe update, scale, status, health |
+| `monitor.sh` | health monitoring — instance state, Docker, image contract, GitHub API, queue depth |
+| `ci-runner-monitor.service` | systemd oneshot unit for periodic health checks |
+| `ci-runner-monitor.timer` | systemd timer (every 5 min) for automated monitoring |
 
 ## How it works
 
@@ -98,6 +102,48 @@ upstream `actions-runner` digest, or when another tool must be baked in. **No
 service restart is needed** — each container is one-shot, so the next spawned
 container picks up the new image. (A restart would kill an in-flight job for
 no benefit.)
+
+For a **safe update** that waits for in-flight jobs to finish before
+restarting:
+
+```bash
+manage.sh update --repo owner/repo
+```
+
+## Pool management (`manage.sh`)
+
+```bash
+manage.sh status                          # all instances
+manage.sh status --repo owner/repo        # one repo
+manage.sh drain --repo owner/repo         # stop + wait for jobs
+manage.sh update --repo owner/repo        # drain → build → restart
+manage.sh scale --repo owner/repo --count 6
+manage.sh health                          # health check all
+```
+
+See [`../../../docs/runners.md`](../../../docs/runners.md) §7 for full
+documentation.
+
+## Monitoring (`monitor.sh`)
+
+```bash
+monitor.sh                                # one-shot all repos
+monitor.sh --repo owner/repo              # one repo
+monitor.sh --watch                        # continuous (every 60s)
+monitor.sh --json                         # JSON for alerting
+```
+
+Install as a systemd timer for automated checks:
+
+```bash
+cp ci-runner-monitor.service ~/.config/systemd/user/
+cp ci-runner-monitor.timer ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now ci-runner-monitor.timer
+```
+
+See [`../../../docs/runners.md`](../../../docs/runners.md) §8 for full
+documentation.
 
 ## Env knobs (`run-ephemeral.sh`)
 

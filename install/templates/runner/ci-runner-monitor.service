@@ -1,0 +1,12 @@
+# One-shot health check for the CI runner pool.
+# Paired with ci-runner-monitor.timer for periodic execution.
+[Unit]
+Description=CI runner pool health monitor
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/ci-runner/*.env
+ExecStart=%h/.local/share/aidoc-flow-ci/install/templates/runner/monitor.sh --json
+StandardOutput=journal
+StandardError=journal

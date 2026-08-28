@@ -1,0 +1,12 @@
+# Periodic health check for the CI runner pool.
+# Install: cp to ~/.config/systemd/user/ && systemctl --user enable --now ci-runner-monitor.timer
+[Unit]
+Description=CI runner pool health check (every 5 min)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -316,7 +316,152 @@ or AWS-Fargate self-registered):
 Consumers can then override their caller workflow's `runner_labels`
 input to the new label.
 
-## 7. Where the runner work lives
+## 7. Pool management — drain, update, scale
+
+`manage.sh` (same directory as the runner templates) provides operational
+commands for the runner pool. It works with the existing `ci-runner@.service`
+systemd setup — no new platform required.
+
+### 7.1 Commands
+
+| Command | Purpose | Example |
+| --- | --- | --- |
+| `status` | Show all instances, their state, and queue depth | `manage.sh status --repo owner/repo` |
+| `drain` | Stop supervisors, wait for in-flight jobs to finish | `manage.sh drain --repo owner/repo` |
+| `update` | Safe cycle: drain → rebuild image → restart | `manage.sh update --repo owner/repo` |
+| `scale` | Adjust instance count for a repo | `manage.sh scale --repo owner/repo --count 6` |
+| `health` | Check Docker, image contract, GitHub API, queue | `manage.sh health` |
+
+### 7.2 Safe update cycle (`manage.sh update`)
+
+Updating the runner image while jobs are in flight kills those jobs (SIGTERM →
+container destroyed → GitHub marks the job failed after ~2min). The `update`
+command prevents this:
+
+1. **Drain** — stops all supervisor units for the target repo. No new JIT
+   configs are minted. In-flight containers continue to completion.
+2. **Build** — runs `build-image.sh` to rebuild `aidoc-flow-runner:latest`.
+3. **Verify** — checks the image contract stamp.
+4. **Restart** — starts supervisors. New jobs use the updated image
+   automatically (each container is one-shot).
+
+If drain times out (default 30min), the update aborts and supervisors stay
+stopped — the operator must restart manually after resolving the stuck job.
+
+```bash
+# Safe update for one repo
+manage.sh update --repo vladm3105/iplanic
+
+# Dry-run first
+manage.sh update --repo vladm3105/iplanic --dry-run
+```
+
+### 7.3 Scaling
+
+One supervisor = one job at a time (serial). A PR fans out to ~8 jobs; a
+single instance runs them one-by-one. Scale to match peak concurrency:
+
+```bash
+# Check current state
+manage.sh status --repo vladm3105/iplanic
+
+# Scale to 6 parallel instances
+manage.sh scale --repo vladm3105/iplanic --count 6
+
+# Scale down during quiet periods
+manage.sh scale --repo vladm3105/iplanic --count 2
+```
+
+`manage.sh scale` provisions new instances via `provision-runner.sh` (scale up)
+or stops + disables excess instances (scale down). Existing in-flight jobs are
+not affected when scaling down — the supervisor's signal handler lets the
+current job finish.
+
+### 7.4 Drain mode
+
+Drain stops all supervisors for a repo and waits for in-flight jobs to
+complete. Use before maintenance, host reboots, or manual image updates:
+
+```bash
+# Drain with confirmation prompt
+manage.sh drain --repo vladm3105/iplanic
+
+# Skip confirmation (for scripts)
+manage.sh drain --repo vladm3105/iplanic --force
+
+# Custom timeout (default 30min)
+manage.sh drain --repo vladm3105/iplanic --timeout 3600
+```
+
+After drain, supervisors are stopped. Restart with:
+```bash
+manage.sh scale --repo vladm3105/iplanic --count <N>
+# or: systemctl --user start ci-runner@<instance>.service
+```
+
+## 8. Monitoring
+
+`monitor.sh` provides health checks and queue-depth reporting for the runner
+pool. It checks:
+
+- **Instance state** — are all systemd units active?
+- **Docker daemon** — is the daemon reachable?
+- **Image contract** — is the runner image current?
+- **GitHub API** — is the API reachable, and is the rate budget healthy?
+- **Queue depth** — are jobs building up (runner starvation)?
+
+### 8.1 One-shot check
+
+```bash
+# All repos
+monitor.sh
+
+# One repo
+monitor.sh --repo vladm3105/iplanic
+
+# JSON output for alerting
+monitor.sh --json
+```
+
+Exit codes: `0` = all clear, `2` = warning (degraded), `3` = critical.
+
+### 8.2 Continuous monitoring
+
+```bash
+# Watch mode (checks every 60s)
+monitor.sh --watch
+
+# Custom interval
+WATCH_INTERVAL=30 monitor.sh --watch
+```
+
+### 8.3 Systemd timer (automated)
+
+Install the monitor as a systemd timer for periodic health checks:
+
+```bash
+# Copy timer and service files
+cp ci-runner-monitor.service ~/.config/systemd/user/
+cp ci-runner-monitor.timer ~/.config/systemd/user/
+
+# Enable
+systemctl --user daemon-reload
+systemctl --user enable --now ci-runner-monitor.timer
+
+# Check status
+systemctl --user status ci-runner-monitor.timer
+journalctl --user -u ci-runner-monitor.service -f
+```
+
+### 8.4 Alert thresholds
+
+| Var | Default | Meaning |
+| --- | --- | --- |
+| `QUEUE_WARN` | `3` | Warn if queued jobs exceed this |
+| `QUEUE_CRIT` | `8` | Critical if queued jobs exceed this |
+| `STALE_MINUTES` | `30` | Warn if no jobs picked up in this long |
+
+## 9. Where the runner work lives
 
 - **Reference image spec + build:**
   [`../install/templates/runner/`](../install/templates/runner/)
@@ -326,6 +471,13 @@ input to the new label.
   (`run-ephemeral.sh`, `ci-runner@.service`, `provision-runner.sh`) — canon
   templates; deployed host state (env files, enabled units, built images,
   registrations) stays operator-side
+- **Pool management:**
+  [`../install/templates/runner/`](../install/templates/runner/)
+  (`manage.sh`) — drain, update, scale, status, health
+- **Monitoring:**
+  [`../install/templates/runner/`](../install/templates/runner/)
+  (`monitor.sh`, `ci-runner-monitor.service`, `ci-runner-monitor.timer`) —
+  health checks, queue-depth reporting, alerting
 - **Network monitor:** operations' `scripts/ci-runner/network-monitor.sh`
   (host-side debugging for the api.github.com flake class — operator
   tooling, deliberately not templatized)
