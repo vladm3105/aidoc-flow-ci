@@ -97,7 +97,7 @@ jobs:
           persist-credentials: false
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           languages: ${{ matrix.language }}
           config-file: ${{ inputs.config-file }}
@@ -105,7 +105,7 @@ jobs:
 
       - name: Autobuild
         if: ${{ inputs.build-command == '' }}
-        uses: github/codeql-action/autobuild@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        uses: github/codeql-action/autobuild@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
 
       - name: Manual build
         if: ${{ inputs.build-command != '' }}
@@ -122,7 +122,7 @@ jobs:
           bash -c "$BUILD_COMMAND"
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           category: /language:${{ matrix.language }}
           # Fork PRs get a read-only GITHUB_TOKEN (security-events: write is
