@@ -241,7 +241,7 @@ jobs:
       - name: Upload dep-scan SARIF (best-effort)
         continue-on-error: true
         if: always() && hashFiles('osv.sarif') != '' && (!contains(fromJSON('["pull_request","pull_request_target","pull_request_review"]'), github.event_name) || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           sarif_file: osv.sarif
           category: dep-scan
@@ -249,7 +249,7 @@ jobs:
       - name: Upload trivy SARIF (best-effort)
         continue-on-error: true
         if: always() && hashFiles('trivy.sarif') != '' && (!contains(fromJSON('["pull_request","pull_request_target","pull_request_review"]'), github.event_name) || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           sarif_file: trivy.sarif
           category: trivy-scan
@@ -257,7 +257,7 @@ jobs:
       - name: Upload sast SARIF (best-effort)
         continue-on-error: true
         if: always() && hashFiles('semgrep.sarif') != '' && (!contains(fromJSON('["pull_request","pull_request_target","pull_request_review"]'), github.event_name) || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           sarif_file: semgrep.sarif
           category: sast-scan
