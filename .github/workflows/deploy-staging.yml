@@ -1,0 +1,184 @@
+# deploy-staging.yml — reusable workflow for deploying a service to staging.
+#
+# Called by consumer repos via workflow_call. Runs on a self-hosted deploy
+# runner that has direct access to the Docker daemon and git repo.
+#
+# Required consumer setup:
+#   1. Self-hosted runner with labels: [self-hosted, deploy, staging]
+#   2. Git repo cloned on the deploy host at deploy_dir
+#   3. Docker Compose project running on the host
+#
+# The workflow:
+#   1. Pulls latest code on the deploy host
+#   2. Builds and restarts the specified service
+#   3. Runs health check with retry
+#   4. Rolls back automatically on health check failure
+#   5. Runs smoke tests after successful deploy
+
+name: Deploy Staging
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: 'Service to deploy (matches docker-compose service name)'
+        required: true
+        type: string
+      deploy_host:
+        description: 'SSH target (user@host) or empty for local execution'
+        required: false
+        type: string
+        default: ''
+      deploy_dir:
+        description: 'Deployment directory on host (where docker-compose.yml lives)'
+        required: true
+        type: string
+      health_url:
+        description: 'Health check endpoint URL'
+        required: true
+        type: string
+      health_retries:
+        description: 'Max health check retries'
+        required: false
+        type: number
+        default: 6
+      health_interval:
+        description: 'Seconds between retries'
+        required: false
+        type: number
+        default: 10
+      docker_compose_profile:
+        description: 'Docker Compose profile (if any)'
+        required: false
+        type: string
+        default: ''
+      docker_compose_file:
+        description: 'Docker Compose file (default: docker-compose.yml)'
+        required: false
+        type: string
+        default: 'docker-compose.yml'
+      runner_labels:
+        description: 'JSON array of runner labels'
+        required: false
+        type: string
+        default: '["self-hosted","deploy","staging"]'
+      environment:
+        description: 'GitHub environment name for protection rules'
+        required: false
+        type: string
+        default: 'staging'
+    secrets:
+      SSH_PRIVATE_KEY:
+        required: false
+        description: 'SSH key for remote host (not needed for local execution)'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging-${{ inputs.service }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.service }}
+    runs-on: ${{ fromJson(inputs.runner_labels) }}
+    timeout-minutes: 15
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Deploy service
+        env:
+          SERVICE: ${{ inputs.service }}
+          DEPLOY_HOST: ${{ inputs.deploy_host }}
+          DEPLOY_DIR: ${{ inputs.deploy_dir }}
+          PROFILE: ${{ inputs.docker_compose_profile }}
+          COMPOSE_FILE: ${{ inputs.docker_compose_file }}
+        run: |
+          set -euo pipefail
+
+          # Build compose flags
+          COMPOSE_FLAGS="-f ${COMPOSE_FILE}"
+          PROFILE_FLAG=""
+          if [ -n "${PROFILE}" ]; then
+            PROFILE_FLAG="--profile ${PROFILE}"
+          fi
+
+          # Execute deploy (local or SSH)
+          deploy_local() {
+            cd "${DEPLOY_DIR}"
+            git pull origin staging
+            docker compose ${COMPOSE_FLAGS} ${PROFILE_FLAG} build "${SERVICE}"
+            docker compose ${COMPOSE_FLAGS} ${PROFILE_FLAG} up -d "${SERVICE}"
+          }
+
+          if [ -n "${DEPLOY_HOST}" ]; then
+            echo "Deploying to ${DEPLOY_HOST}:${DEPLOY_DIR}"
+            ssh -o StrictHostKeyChecking=no "${DEPLOY_HOST}" "$(declare -f deploy_local); deploy_local"
+          else
+            echo "Deploying locally to ${DEPLOY_DIR}"
+            deploy_local
+          fi
+
+      - name: Health check with retry
+        env:
+          HEALTH_URL: ${{ inputs.health_url }}
+          MAX_RETRIES: ${{ inputs.health_retries }}
+          RETRY_INTERVAL: ${{ inputs.health_interval }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 "${MAX_RETRIES}"); do
+            echo "Health check attempt ${i}/${MAX_RETRIES}..."
+            if curl -sf --max-time 5 "${HEALTH_URL}"; then
+              echo "Health check passed on attempt ${i}"
+              exit 0
+            fi
+            if [ "${i}" -lt "${MAX_RETRIES}" ]; then
+              echo "Failed, retrying in ${RETRY_INTERVAL}s..."
+              sleep "${RETRY_INTERVAL}"
+            fi
+          done
+          echo "::error::Health check failed after ${MAX_RETRIES} attempts"
+          exit 1
+
+      - name: Rollback on failure
+        if: failure()
+        env:
+          SERVICE: ${{ inputs.service }}
+          DEPLOY_HOST: ${{ inputs.deploy_host }}
+          DEPLOY_DIR: ${{ inputs.deploy_dir }}
+          HEALTH_URL: ${{ inputs.health_url }}
+          COMPOSE_FILE: ${{ inputs.docker_compose_file }}
+        run: |
+          set -euo pipefail
+          echo "::warning::Deployment failed — rolling back"
+
+          rollback_local() {
+            cd "${DEPLOY_DIR}"
+            PREVIOUS_SHA=$(git rev-parse HEAD~1)
+            git checkout "${PREVIOUS_SHA}"
+            docker compose -f "${COMPOSE_FILE}" build "${SERVICE}"
+            docker compose -f "${COMPOSE_FILE}" up -d "${SERVICE}"
+            sleep 5
+            if curl -sf --max-time 5 "${HEALTH_URL}"; then
+              echo "Rollback successful"
+            else
+              echo "::error::Rollback health check failed — manual intervention required"
+              exit 1
+            fi
+          }
+
+          if [ -n "${DEPLOY_HOST}" ]; then
+            ssh -o StrictHostKeyChecking=no "${DEPLOY_HOST}" "$(declare -f rollback_local); rollback_local"
+          else
+            rollback_local
+          fi
+
+  smoke:
+    name: Post-deploy smoke test
+    needs: deploy
+    if: success()
+    uses: ./.github/workflows/smoke-test.yml
+    with:
+      target_url: ${{ inputs.health_url }}
+      runner_labels: ${{ inputs.runner_labels }}
+    secrets: inherit

@@ -1,0 +1,142 @@
+# rollback.yml — manual rollback to a previous commit.
+#
+# Reverts a specific commit and triggers a redeploy. The revert commit
+# is pushed to staging, which triggers the auto-deploy workflow.
+
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Commit SHA to revert'
+        required: true
+        type: string
+      service:
+        description: 'Service to rollback'
+        required: true
+        type: choice
+        options:
+          - all
+          - llm-router
+          - embedding-service
+          - nginx
+          - admin-ui
+      deploy_host:
+        description: 'SSH target (user@host) or empty for local'
+        required: false
+        type: string
+        default: ''
+      deploy_dir:
+        description: 'Deployment directory'
+        required: true
+        type: string
+      health_url:
+        description: 'Health check URL'
+        required: true
+        type: string
+      docker_compose_profile:
+        description: 'Docker Compose profile'
+        required: false
+        type: string
+        default: ''
+      runner_labels:
+        description: 'JSON runner labels'
+        required: false
+        type: string
+        default: '["self-hosted","deploy","staging"]'
+
+permissions:
+  contents: write
+
+jobs:
+  rollback:
+    name: Rollback to pre-${{ inputs.commit_sha }}
+    runs-on: ${{ fromJson(inputs.runner_labels) }}
+    timeout-minutes: 15
+    environment: staging
+    steps:
+      - name: Verify commit exists
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          DEPLOY_HOST: ${{ inputs.deploy_host }}
+          DEPLOY_DIR: ${{ inputs.deploy_dir }}
+        run: |
+          set -euo pipefail
+
+          verify_local() {
+            cd "${DEPLOY_DIR}"
+            if ! git cat-file -e "${COMMIT_SHA}" 2>/dev/null; then
+              echo "::error::Commit ${COMMIT_SHA} not found"
+              exit 1
+            fi
+            echo "Commit ${COMMIT_SHA} verified:"
+            git log --oneline -1 "${COMMIT_SHA}"
+          }
+
+          if [ -n "${DEPLOY_HOST}" ]; then
+            ssh -o StrictHostKeyChecking=no "${DEPLOY_HOST}" "$(declare -f verify_local); verify_local"
+          else
+            verify_local
+          fi
+
+      - name: Create revert and deploy
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          SERVICE: ${{ inputs.service }}
+          DEPLOY_HOST: ${{ inputs.deploy_host }}
+          DEPLOY_DIR: ${{ inputs.deploy_dir }}
+          HEALTH_URL: ${{ inputs.health_url }}
+          PROFILE: ${{ inputs.docker_compose_profile }}
+        run: |
+          set -euo pipefail
+
+          rollback_local() {
+            cd "${DEPLOY_DIR}"
+
+            # Create revert commit
+            echo "Reverting ${COMMIT_SHA}..."
+            git revert --no-edit "${COMMIT_SHA}"
+
+            # Build compose flags
+            PROFILE_FLAG=""
+            if [ -n "${PROFILE}" ]; then
+              PROFILE_FLAG="--profile ${PROFILE}"
+            fi
+
+            # Deploy the reverted code
+            if [ "${SERVICE}" = "all" ]; then
+              docker compose ${PROFILE_FLAG} build
+              docker compose ${PROFILE_FLAG} up -d
+            else
+              docker compose ${PROFILE_FLAG} build "${SERVICE}"
+              docker compose ${PROFILE_FLAG} up -d "${SERVICE}"
+            fi
+
+            # Push to staging (triggers auto-deploy if configured)
+            git push origin staging
+
+            # Verify health
+            sleep 5
+            MAX_RETRIES=6
+            RETRY_INTERVAL=10
+            for i in $(seq 1 "${MAX_RETRIES}"); do
+              echo "Post-rollback health check attempt ${i}/${MAX_RETRIES}..."
+              if curl -sf --max-time 5 "${HEALTH_URL}"; then
+                echo "Rollback successful — service healthy"
+                exit 0
+              fi
+              if [ "${i}" -lt "${MAX_RETRIES}" ]; then
+                sleep "${RETRY_INTERVAL}"
+              fi
+            done
+            echo "::error::Rollback health check failed — manual intervention required"
+            exit 1
+          }
+
+          if [ -n "${DEPLOY_HOST}" ]; then
+            echo "Rolling back on ${DEPLOY_HOST}:${DEPLOY_DIR}"
+            ssh -o StrictHostKeyChecking=no "${DEPLOY_HOST}" "$(declare -f rollback_local); rollback_local"
+          else
+            rollback_local
+          fi
