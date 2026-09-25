@@ -11,10 +11,9 @@ stronger isolation for jobs that execute PR content.
 is the source of record for the *implementation* (image spec, supervisor,
 provisioning). What lands on a runner host — `~/.config/ci-runner/*.env`
 files, enabled systemd units, the built image, live runner registrations — is
-operator-side state, never tracked in this repo. Workspace consumers vendor a
-pinned copy of these files (`aidoc-flow-operations/scripts/ci-runner/`
-re-baselines to this set per PLAN-016 W3 — pending); external adopters copy
-them directly.
+operator-side state, never tracked in this repo. Operators deploying a pool
+vendor a pinned copy of these files and re-baseline to this set when canon
+updates (PLAN-016 W3); otherwise copy them directly.
 
 ## What's in the box
 
