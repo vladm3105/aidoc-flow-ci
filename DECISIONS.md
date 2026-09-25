@@ -3610,6 +3610,7 @@ Add `manage.sh` (drain, update, scale, status, health) and `monitor.sh`
 architecture — no new platform (Kubernetes, Nomad, etc.) was introduced.
 
 Key design choices:
+
 - **Drain mode** stops supervisors and waits for in-flight jobs to finish
   before image updates, preventing job kills during maintenance.
 - **Safe update cycle** (drain → build → verify → restart) is a single

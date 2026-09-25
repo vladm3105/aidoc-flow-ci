@@ -18,7 +18,6 @@
 #
 set -euo pipefail
 
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 ENV_DIR="${ENV_DIR:-$HOME/.config/ci-runner}"
 WATCH_INTERVAL="${WATCH_INTERVAL:-60}"
 QUEUE_WARN="${QUEUE_WARN:-3}"       # warn if queued jobs exceed this
@@ -38,8 +37,24 @@ discover_repos() {
   for env_file in "$ENV_DIR"/*.env; do
     [ -f "$env_file" ] || continue
     local repo
-    repo="$(grep -m1 '^TARGET_REPO=' "$env_file" | cut -d= -f2)"
-    [ -n "$repo" ] && echo "$repos" | grep -qF "$repo" || repos="${repos}${repo}"$'\n'
+    # `|| true`: under this file's `set -euo pipefail` a `.env` with no
+    # `TARGET_REPO=` line makes grep exit 1, pipefail propagates it, and the
+    # assignment ABORTS the whole discovery — one stray file silently empties
+    # the monitored set. Empty output is the intended "no repo here" signal.
+    repo="$(grep -m1 '^TARGET_REPO=' "$env_file" | cut -d= -f2 || true)"
+    # CI-0033: `case`, not a piped `grep -qF`. This was
+    #   `[ -n "$repo" ] && echo "$repos" | grep -qF "$repo" || repos=…`
+    # which is wrong twice over: `grep -q` inverts under `pipefail` once
+    # `$repos` outgrows a pipe buffer (a match reads as a miss → duplicates),
+    # and the `A && B || C` form runs C whenever A is false. Collapsing the two
+    # into a single inverted `case` would therefore append an EMPTY repo, so the
+    # guard stays its own statement. `sort -u` below is the real dedup; this is
+    # the short-circuit that keeps `$repos` from growing quadratically.
+    [ -n "$repo" ] || continue
+    case "$repos" in
+      *"$repo"*) ;;
+      *) repos="${repos}${repo}"$'\n' ;;
+    esac
   done
   echo "$repos" | sort -u | grep .
 }
@@ -50,7 +65,7 @@ count_instances() {
   for env_file in "$ENV_DIR"/*.env; do
     [ -f "$env_file" ] || continue
     local inst_repo
-    inst_repo="$(grep -m1 '^TARGET_REPO=' "$env_file" | cut -d= -f2)"
+    inst_repo="$(grep -m1 '^TARGET_REPO=' "$env_file" | cut -d= -f2 || true)"
     [ "$inst_repo" = "$repo" ] && count=$((count + 1))
   done
   echo "$count"
@@ -62,7 +77,7 @@ count_active_instances() {
   for env_file in "$ENV_DIR"/*.env; do
     [ -f "$env_file" ] || continue
     local inst_repo inst_name
-    inst_repo="$(grep -m1 '^TARGET_REPO=' "$env_file" | cut -d= -f2)"
+    inst_repo="$(grep -m1 '^TARGET_REPO=' "$env_file" | cut -d= -f2 || true)"
     [ "$inst_repo" = "$repo" ] || continue
     inst_name="$(basename "$env_file" .env)"
     systemctl --user is-active "ci-runner@${inst_name}.service" &>/dev/null && count=$((count + 1))
@@ -151,7 +166,7 @@ check_repo() {
   "instances_active": $active,
   "queued_jobs": "$queued",
   "running_jobs": "$running",
-  "issues": "$(echo "$issues" | sed 's/; $//')"
+  "issues": "${issues%; }"
 }
 EOF
   else
@@ -209,13 +224,11 @@ main() {
     fi
 
     worst=0
-    local first=1
     while read -r r; do
       [ -z "$r" ] && continue
       local rc=0
       check_repo "$r" "$json_mode" || rc=$?
       [ "$rc" -gt "$worst" ] && worst="$rc"
-      first=0
     done <<< "$repos"
 
     if [ "$json_mode" = 0 ]; then
