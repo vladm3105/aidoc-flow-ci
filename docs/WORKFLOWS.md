@@ -10,7 +10,7 @@ if a workflow doesn't appear here, it doesn't exist in the library.
 > covers how a new company project onboards. [`overrides.md`](overrides.md)
 > covers the 3 override modes. This doc is the workflow-catalog layer.
 
-## 1. Complete workflow catalog (15 reusables)
+## 1. Complete workflow catalog (17 reusables)
 
 Every workflow ships as `workflow_call` at
 `vladm3105/aidoc-flow-ci/.github/workflows/<name>.yml@ci/vX.Y.Z`.
@@ -33,6 +33,8 @@ Pin at a released tag; never `@main` in a consumer.
 | 13 | `dep-scan.yml` | Dependency-vulnerability (SCA) gate via **osv-scanner binary** (SHA-256-verified `run:` install — NOT `google/osv-scanner-action`, allowlist-blocked §4.3). **Uniform protected** (PLAN-014): one self-hosted template, public+private, no visibility split (a flip is a no-op); **fork-guarded** (forks skip → human review; data-only, never `--call-analysis`). `fail-on-findings` (default false → report-only rollout). Best-effort SARIF → Code scanning (`continue-on-error`; no-ops on private w/o GHAS). | ~20-60 s | PLAN-014 (`ci/v2.4.0`) |
 | 16 | `standards-drift.yml` | Consumer-installable server-side drift detector (PLAN-015 B2). `workflow_call` reusable: fetches `check-standards-drift.sh` from the adopted canon tag and runs it against the CALLER repo, comparing branch protection / repo settings / actions-permissions / labels against the tier template. Warning-only by default (IPLAN-0017 §3.1b); `strict: true` for a release/adoption gate. Opt-in (`auto_install: false`); `-private` variant for the self-hosted pool. Canon's own weekly self-check is `standards-drift-self.yml`. | ~20-60 s | PLAN-015 (`ci/v2.8.0`) |
 | 12 | `audit-trail-check.yml` | OPS-0069 audit-trail phrase gate. Belt-and-suspenders CI check for the local pre-push hook (REPO_STANDARDS.md §14): verifies every non-exempt PR carries `Multi-agent self-review per OPS-0065` OR `Self-review skipped per founder OK` in some commit body. Exemptions: bot-authored range (dependabot/renovate/github-actions), revert-only range, two-signal `skip-audit-trail` label + body marker. Check-name renders as `call / verify`. `fetch-depth: 0` prevents fork-PR false-pass. | ~10-30 s | PLAN-002 PR-U3 (2026-07-08) |
+| 17 | `deploy-staging.yml` | Staging deployment reusable: pulls on the deploy host, `docker compose build`/`up -d` for one service (optional compose profile), then a health check with configurable retries and automatic rollback on failure. Requires a **persistent** self-hosted runner labelled `[self-hosted, deploy, staging]` with Docker-daemon and git access — unlike the ephemeral `ci` pool, these jobs need host state. Second job chains `smoke-test.yml`. Deploy may run locally on the runner or over SSH to `deploy_host`. | ~1-5 min | PR #547 |
+| 18 | `smoke-test.yml` | Post-deploy smoke testing: health-payload classification, an admin-port guard check (an exposed admin port is a finding, not a pass), and endpoint reachability. Callable standalone or as the second stage of `deploy-staging.yml`. Also takes `runner_labels` as JSON. | ~30-90 s | PR #547 |
 
 ## 2. Per-repo applicability matrix
 

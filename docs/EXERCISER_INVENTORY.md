@@ -30,14 +30,16 @@ place, per PLAN-018 contract item 7.
 | **descoped** | deliberately NOT self-run, with a standing reason; regression risk is carried by an offline-test or accepted |
 | **unexercised** | a genuine gap, tagged with the FT that closes it |
 
-## Reusable workflows (16)
+## Reusable workflows (17)
 
-Canon ships 16 `workflow_call` reusables. It self-runs **5** of them today
+Canon ships 17 `workflow_call` reusables. It self-runs **5** of them today
 (`audit-trail-check`, `docs-sync`, `secret-scan`, `pre-commit`, `markdown-lint` —
 a canon workflow carries a non-comment `uses:` at that reusable, so a regression
 fails canon's own checks);
 the rest are covered offline or descoped. (The table also lists the
-`audit-trail.yml` *caller* template — a consumer surface, not a 17th reusable.)
+`audit-trail.yml` *caller* template — a consumer surface, not an 18th reusable.
+`rollback.yml` and `unified-deploy.yml` are `workflow_dispatch` only, so they are
+not reusables; they are tracked in "Open exerciser gaps" below.)
 
 | Surface | Exerciser | Kind |
 | --- | --- | --- |
@@ -67,6 +69,8 @@ the rest are covered offline or descoped. (The table also lists the
 | `.github/workflows/sast-scan.yml` | `test_contract.sh` | descoped — PLAN-014 optional report-only scanner; not adopted on canon |
 | `.github/workflows/labeler.yml` | `test_contract.sh` | descoped — PR-labeling automation; low regression risk, not self-run |
 | `.github/workflows/links.yml` | `test_contract.sh` | descoped — link checker; self-run candidate, not currently adopted |
+| `.github/workflows/deploy-staging.yml` | `test_contract.sh` (generic I/O-contract shape only) | descoped — deployment CD; canon does not deploy anywhere, so it cannot self-run. **Deploy behaviour is NOT tested**: compose-flag assembly, the health-check retry, and the auto-rollback path have no behavioural assertion |
+| `.github/workflows/smoke-test.yml` | `test_contract.sh` (generic I/O-contract shape only); `test_sigpipe_guard.sh` (CI-0033 walk over its `run:` blocks) | descoped — same reason as `deploy-staging.yml`. The health-response matcher is a `[[ =~ ]]` on the value, not a piped `grep -q`, which the sigpipe walk enforces; the three response shapes it classifies have no behavioural assertion |
 
 > **The descoped AI-flows are a founder decision, not an oversight.**
 > `aidoc-flow-ci` is a **library**; running `ai-review`/`composition` on itself would require registering a `ci,ephemeral`
@@ -134,3 +138,6 @@ Not a workflow or script, but shipped to every adopter and therefore in scope fo
 | No automated rev bump | `pre-commit-hooks` rev | FT-35 |
 | ~~No zero-hook detector~~ | `pre-commit` config vacuity | **FT-31 CLOSED (PR C2)** — `install/check-precommit-hooks.sh`, operator-side |
 | ~~No required-context ↔ producer validator~~ | branch-protection contexts | **FT-18 CLOSED (PR C3)** — `install/required-context-map.py` + wizard preflight §6 |
+| No behavioural test for the deploy workflows | `rollback.yml`, `unified-deploy.yml` (`workflow_dispatch`), and the deploy/rollback paths of `deploy-staging.yml` | open — PR #547. These mutate real infrastructure (`git revert` + `git push`, `docker compose up -d`, SSH to a deploy host), so shape-level coverage from `test_contract.sh` is the only thing they have |
+| SSH deploy path passes no environment to the remote shell | `deploy-staging.yml`, `unified-deploy.yml` | open — PR #547. `ssh "$DEPLOY_HOST" "$(declare -f deploy_local); deploy_local"` transmits only the FUNCTION body. `DEPLOY_DIR`, `SERVICE` and the compose flags are not sent, so the remote shell expands them empty and `cd ""` / `docker compose build ""` run against nothing. Same shape in both files |
+| `StrictHostKeyChecking=no` on the deploy SSH calls | `deploy-staging.yml`, `unified-deploy.yml` | open — PR #547. Disables host-key verification on a connection that then runs a deploy, so it accepts a MITM host. Should be `accept-new` at minimum, or a pinned `known_hosts` |

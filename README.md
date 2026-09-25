@@ -29,7 +29,7 @@ install references in sync).
 
 ## What ships
 
-The library provides **15 reusable workflows**. See
+The library provides **17 reusable workflows**. See
 [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md) for the full catalog (purpose,
 per-repo applicability matrix, and skip guidance) and
 [`docs/architecture.md`](docs/architecture.md) for the per-workflow design

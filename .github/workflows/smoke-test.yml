@@ -1,0 +1,139 @@
+# smoke-test.yml — reusable workflow for post-deploy smoke testing.
+#
+# Verifies the service is healthy and key endpoints are reachable after deploy.
+# Can be called standalone or as part of a deploy pipeline.
+
+name: Smoke Test
+
+on:
+  workflow_call:
+    inputs:
+      target_url:
+        description: 'Base URL of the service to smoke test'
+        required: true
+        type: string
+      admin_port:
+        description: 'Admin port for guard test'
+        required: false
+        type: string
+        default: '18081'
+      timeout_seconds:
+        description: 'Max seconds to wait for service readiness'
+        required: false
+        type: number
+        default: 300
+      skip_tunnel:
+        description: 'Skip tunnel connectivity test'
+        required: false
+        type: boolean
+        default: false
+      runner_labels:
+        description: 'JSON array of runner labels'
+        required: false
+        type: string
+        default: '["self-hosted","deploy","staging"]'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Health + guard + endpoint checks
+    runs-on: ${{ fromJson(inputs.runner_labels) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Wait for service readiness
+        env:
+          TARGET: ${{ inputs.target_url }}
+          MAX_WAIT: ${{ inputs.timeout_seconds }}
+        run: |
+          set -euo pipefail
+          ELAPSED=0
+          INTERVAL=10
+          echo "Waiting for ${TARGET} (max ${MAX_WAIT}s)..."
+          while [ "${ELAPSED}" -lt "${MAX_WAIT}" ]; do
+            if curl -sf "${TARGET}" >/dev/null 2>&1; then
+              echo "Service ready after ${ELAPSED}s"
+              exit 0
+            fi
+            sleep "${INTERVAL}"
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+          echo "::error::Service not ready after ${MAX_WAIT}s"
+          exit 1
+
+      - name: Health check with payload verification
+        env:
+          TARGET: ${{ inputs.target_url }}
+        run: |
+          set -euo pipefail
+          RESPONSE=$(curl -sf "${TARGET}" 2>/dev/null || echo '{"error":"no response"}')
+          echo "Health response: ${RESPONSE}"
+
+          # CI-0033: decide on the STRING with bash's own matcher, never on the
+          # exit status of a pipeline feeding `grep -q`. `grep -q` exits the
+          # instant it matches, `echo` takes EPIPE (141), and this block's
+          # `set -o pipefail` hands the pipeline that 141 — so a HEALTHY response
+          # would be reported unhealthy, and the inversion grows more likely as
+          # the response body grows (it needs `echo` to still be writing when
+          # grep exits). Canon's remedy is the same one used in
+          # scripts/pre_push_check.sh: match the value, so there is no status to
+          # invert.
+          #
+          # `\s` is a GNU grep extension that regcomp (which `[[ =~ ]]` uses)
+          # does NOT implement, so the classes are spelled POSIX here. The
+          # original `grep -i` is reproduced with `nocasematch`; this shell is
+          # step-local and exits at the end of the block, so it is not restored.
+          shopt -s nocasematch
+          RE_HEALTHY='"healthy":[[:space:]]*true|"status":[[:space:]]*"ok"|"status":[[:space:]]*healthy'
+          RE_DEGRADED='"status":[[:space:]]*"degraded"'
+          if [[ "${RESPONSE}" =~ $RE_HEALTHY ]]; then
+            echo "Health check: healthy"
+          elif [[ "${RESPONSE}" =~ $RE_DEGRADED ]]; then
+            echo "::warning::Health response indicates degraded status"
+          else
+            echo "::warning::Health response may not indicate healthy status"
+            echo "Response: ${RESPONSE}"
+          fi
+
+      - name: Admin guard test
+        if: inputs.admin_port != ''
+        env:
+          TARGET: ${{ inputs.target_url }}
+          ADMIN_PORT: ${{ inputs.admin_port }}
+        run: |
+          set -euo pipefail
+          # Extract base URL without port/path
+          BASE_URL=$(echo "${TARGET}" | sed -E 's|https?://[^:/]+.*||')
+          if [ -z "${BASE_URL}" ]; then
+            BASE_URL="${TARGET}"
+          fi
+
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${BASE_URL}:${ADMIN_PORT}/admin/" 2>/dev/null || echo "000")
+
+          if [ "${STATUS}" = "401" ]; then
+            echo "Admin guard returned 401 as expected"
+          elif [ "${STATUS}" = "000" ]; then
+            echo "::warning::Could not reach admin port ${ADMIN_PORT} — skipping guard test"
+          else
+            echo "::error::Expected 401 from admin guard, got ${STATUS}"
+            exit 1
+          fi
+
+      - name: Tunnel connectivity test
+        if: ${{ !inputs.skip_tunnel }}
+        env:
+          TARGET: ${{ inputs.target_url }}
+        run: |
+          set -euo pipefail
+          # Basic connectivity test — just verify the URL is reachable
+          if curl -sf --max-time 10 "${TARGET}" >/dev/null 2>&1; then
+            echo "Tunnel connectivity: OK"
+          else
+            echo "::warning::Could not reach ${TARGET} — tunnel may not be configured"
+          fi

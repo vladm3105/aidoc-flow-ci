@@ -68,7 +68,7 @@ docs](https://docs.github.com/en/actions/sharing-automations/reusing-workflows):
 
 ## 2. The shared workflows
 
-15 reusable workflows ship; the table below summarizes the most-used ones. For
+17 reusable workflows ship; the table below summarizes the most-used ones. For
 the canonical enumeration + per-repo applicability matrix + adoption sequencing,
 see [`WORKFLOWS.md`](WORKFLOWS.md).
 

@@ -1737,7 +1737,7 @@ coordinated-merge-window pattern from
 
 ## 13. Cross-references
 
-- [`WORKFLOWS.md`](WORKFLOWS.md) — workflow registry (15 reusables +
+- [`WORKFLOWS.md`](WORKFLOWS.md) — workflow registry (17 reusables +
   per-repo applicability matrix)
 - [`architecture.md`](architecture.md) — reusable-workflow model + trust
   flow
