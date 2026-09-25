@@ -19,6 +19,36 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 - Updated `docs/runners.md` §7 (pool management) and §8 (monitoring).
 - Updated `docs/REPO_STANDARDS.md` §4.1 with management/monitoring reference.
 
+### Fixed — runner-pool templates aborted on a piped `grep -q`, and on a malformed `.env`
+
+The `manage.sh` / `monitor.sh` added above shipped three CI-0033 violations, and
+`tests.yml` has been red on `main` since they landed. Under their own
+`set -euo pipefail`, `grep -q` exits the instant it matches, the writer takes
+EPIPE (141), and pipefail hands the pipeline that 141 — so a **match read as a
+miss**. `manage.sh:442`'s `… && continue` never fired, so the "only query the API
+once per repo" dedup re-queried every repo it had already seen; `monitor.sh:42`'s
+`A && B || C` form also ran `C` when `A` was false. All three now use canon's own
+`case` idiom (`scripts/pre_push_check.sh:462`), rewritten **per site** rather than
+with one shape — a bare inversion of the `monitor.sh` idiom would have appended an
+empty repo. The inversion is size-dependent (it needs the accumulator past a pipe
+buffer), which is why it passed on a laptop and fired in CI.
+
+Fixed alongside, and invisible to the lint walk that caught the above:
+`repo="$(grep -m1 '^TARGET_REPO=' "$f" | cut -d= -f2)"` **aborts the whole
+command** when a `.env` lacks that key — grep exits 1, pipefail propagates it, and
+`set -e` kills the assignment. One stray or partially-written `.env` therefore
+emptied the entire monitored set with no error at all. Now `|| true` at all six
+sites (`manage.sh:65,79,86`; `monitor.sh:45,69,81`), with empty output as the
+intended "no repo here" signal.
+
+New `tests/test_runner_dedup.sh` (15 assertions) sources the **shipped** files
+(minus their trailing `main "$@"`) instead of re-typing the logic, and asserts the
+dedup at BOTH a small accumulator and one past the 64 KiB pipe buffer — a
+small-input test cannot see this defect class. Carries teeth: the same harness
+measures 3 API queries with the dedup removed and 1 with it present, so an
+expected-count assertion here is falsifiable rather than a check that can only
+pass.
+
 ### Fixed — `--repin` refuses a major boundary it cannot rewrite across (§28)
 
 - **`install.sh --repin` no longer succeeds across a MAJOR it cannot actually

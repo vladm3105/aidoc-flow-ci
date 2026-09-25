@@ -62,7 +62,7 @@ list_instances() {
           local env_file="$ENV_DIR/$inst.env"
           [ -f "$env_file" ] || continue
           local inst_repo
-          inst_repo="$(grep -m1 '^TARGET_REPO=' "$env_file" 2>/dev/null | cut -d= -f2)"
+          inst_repo="$(grep -m1 '^TARGET_REPO=' "$env_file" 2>/dev/null | cut -d= -f2 || true)"
           [ "$inst_repo" = "$repo_filter" ] || continue
         fi
         echo "$inst"
@@ -72,13 +72,18 @@ list_instances() {
 # Get the TARGET_REPO from an instance's env file.
 instance_repo() {
   local inst="${1:-}" env_file="$ENV_DIR/${1:-}.env"
-  [ -n "$inst" ] && [ -f "$env_file" ] && grep -m1 '^TARGET_REPO=' "$env_file" | cut -d= -f2
+  if [ -z "$inst" ] || [ ! -f "$env_file" ]; then return 0; fi
+  # `|| true` so a `.env` lacking TARGET_REPO yields empty output and status 0.
+  # Without it `set -euo pipefail` turns grep's 1 into a fatal assignment in
+  # every caller, aborting the command instead of skipping one instance.
+  grep -m1 '^TARGET_REPO=' "$env_file" | cut -d= -f2 || true
 }
 
 # Get the RUNNER_LABELS from an instance's env file.
 instance_labels() {
   local inst="${1:-}" env_file="$ENV_DIR/${1:-}.env"
-  [ -n "$inst" ] && [ -f "$env_file" ] && grep -m1 '^RUNNER_LABELS=' "$env_file" | cut -d= -f2
+  if [ -z "$inst" ] || [ ! -f "$env_file" ]; then return 0; fi
+  grep -m1 '^RUNNER_LABELS=' "$env_file" | cut -d= -f2 || true
 }
 
 # Check if a systemd unit is active.
@@ -124,12 +129,27 @@ cmd_status() {
 
   local repos_seen=""
   while read -r inst; do
-    local repo state queued running
+    local repo state queued running repo_dup
     repo="$(instance_repo "$inst")"
     state="$(systemctl --user is-active "ci-runner@$inst.service" 2>/dev/null || echo "inactive")"
 
     # Only query API once per repo.
-    if echo "$repos_seen" | grep -qF "|$repo|"; then
+    #
+    # CI-0033: `case`, never `echo … | grep -qF`. `grep -q` exits the instant
+    # it matches, the writer takes EPIPE (141), and this file's
+    # `set -o pipefail` hands the pipeline that 141 — so a repo that HAS been
+    # seen reads as unseen and its API queries run again, defeating the very
+    # dedup this branch exists for. The inversion is size-dependent (it needs
+    # `repos_seen` large enough for `echo` to still be writing when grep exits),
+    # which is why it passes on a laptop and fires on a fleet host. A quoted
+    # expansion in a case pattern is a literal, so this is `grep -F` semantics
+    # with no pipeline status to invert.
+    repo_dup=0
+    case "$repos_seen" in
+      *"|$repo|"*) repo_dup=1 ;;
+    esac
+
+    if [ "$repo_dup" = 1 ]; then
       queued="-"
       running="-"
     else
@@ -415,7 +435,13 @@ cmd_health() {
   while read -r inst; do
     local repo
     repo="$(instance_repo "$inst")"
-    echo "$repos_seen" | grep -qF "|$repo|" && continue
+    # CI-0033: `case`, not a piped `grep -qF` — see the note in the status
+    # command's dedup. A piped `grep -q` inverts under `pipefail` once
+    # `repos_seen` grows past a pipe buffer, so the `continue` would silently
+    # stop firing and every duplicate repo would be queried again.
+    case "$repos_seen" in
+      *"|$repo|"*) continue ;;
+    esac
     repos_seen="${repos_seen}|$repo|"
     local queued
     queued="$(count_queued_jobs "$repo")"
