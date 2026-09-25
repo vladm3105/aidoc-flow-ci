@@ -149,4 +149,6 @@ jobs:
     with:
       target_url: ${{ inputs.health_url }}
       runner_labels: ${{ inputs.runner_labels }}
-    secrets: inherit
+    # NO `secrets:` block — see the same note in deploy-staging.yml. The callee
+    # declares no secrets and reads none, so `secrets: inherit` would only widen
+    # access, not enable anything.

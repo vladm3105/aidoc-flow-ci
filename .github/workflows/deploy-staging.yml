@@ -184,4 +184,9 @@ jobs:
     with:
       target_url: ${{ inputs.health_url }}
       runner_labels: ${{ inputs.runner_labels }}
-    secrets: inherit
+    # NO `secrets:` block at all — smoke-test.yml declares no `secrets:` on its
+    # `workflow_call` and references no `secrets.` context, so there is nothing
+    # to pass. `secrets: inherit` here would hand every repository secret to a
+    # workflow that needs none (Semgrep OSS flags it, correctly): least
+    # privilege, and it also stops this job from being a route to secrets if a
+    # future edit points `uses:` somewhere else.
