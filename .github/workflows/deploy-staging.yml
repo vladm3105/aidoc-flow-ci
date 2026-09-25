@@ -96,19 +96,22 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Build compose flags
-          COMPOSE_FLAGS="-f ${COMPOSE_FILE}"
-          PROFILE_FLAG=""
+          # Build compose flags as an ARRAY. As a string they would have to be
+          # word-split to expand into separate flags (exactly what SC2086 flags
+          # here), and quoting that string instead would pass
+          # "-f file --profile x" as ONE argument to docker. This array is never
+          # empty — it always carries -f — so it expands plainly.
+          COMPOSE_FLAGS=(-f "${COMPOSE_FILE}")
           if [ -n "${PROFILE}" ]; then
-            PROFILE_FLAG="--profile ${PROFILE}"
+            COMPOSE_FLAGS+=(--profile "${PROFILE}")
           fi
 
           # Execute deploy (local or SSH)
           deploy_local() {
             cd "${DEPLOY_DIR}"
             git pull origin staging
-            docker compose ${COMPOSE_FLAGS} ${PROFILE_FLAG} build "${SERVICE}"
-            docker compose ${COMPOSE_FLAGS} ${PROFILE_FLAG} up -d "${SERVICE}"
+            docker compose "${COMPOSE_FLAGS[@]}" build "${SERVICE}"
+            docker compose "${COMPOSE_FLAGS[@]}" up -d "${SERVICE}"
           }
 
           if [ -n "${DEPLOY_HOST}" ]; then

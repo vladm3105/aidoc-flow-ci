@@ -394,6 +394,7 @@ manage.sh drain --repo vladm3105/iplanic --timeout 3600
 ```
 
 After drain, supervisors are stopped. Restart with:
+
 ```bash
 manage.sh scale --repo vladm3105/iplanic --count <N>
 # or: systemctl --user start ci-runner@<instance>.service

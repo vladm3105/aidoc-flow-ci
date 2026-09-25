@@ -91,19 +91,23 @@ jobs:
             fi
 
             # Build compose flags
-            PROFILE_FLAG=""
+            # Compose flags as an ARRAY, expanded via the set -u safe form
+            # because it can be empty (see deploy-staging.yml for why a string
+            # cannot be used here — SC2086, and quoting it would pass the whole
+            # flag list as one argument).
+            COMPOSE_FLAGS=()
             if [ -n "${PROFILE}" ]; then
-              PROFILE_FLAG="--profile ${PROFILE}"
+              COMPOSE_FLAGS+=(--profile "${PROFILE}")
             fi
 
             if [ "${SERVICE}" = "all" ]; then
               echo "Deploying all services..."
-              docker compose ${PROFILE_FLAG} build
-              docker compose ${PROFILE_FLAG} up -d
+              docker compose ${COMPOSE_FLAGS[@]+"${COMPOSE_FLAGS[@]}"} build
+              docker compose ${COMPOSE_FLAGS[@]+"${COMPOSE_FLAGS[@]}"} up -d
             else
               echo "Deploying ${SERVICE}..."
-              docker compose ${PROFILE_FLAG} build "${SERVICE}"
-              docker compose ${PROFILE_FLAG} up -d "${SERVICE}"
+              docker compose ${COMPOSE_FLAGS[@]+"${COMPOSE_FLAGS[@]}"} build "${SERVICE}"
+              docker compose ${COMPOSE_FLAGS[@]+"${COMPOSE_FLAGS[@]}"} up -d "${SERVICE}"
             fi
           }
 

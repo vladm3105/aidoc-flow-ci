@@ -98,19 +98,23 @@ jobs:
             echo "Reverting ${COMMIT_SHA}..."
             git revert --no-edit "${COMMIT_SHA}"
 
-            # Build compose flags
-            PROFILE_FLAG=""
+            # Build compose flags as an ARRAY (see deploy-staging.yml). This one
+            # CAN be empty, so it expands via `${a[@]+"${a[@]}"}` — the set -u
+            # safe form canon uses in scripts/pre_push_check_ci.sh. A bare
+            # "${COMPOSE_FLAGS[@]}" would abort under `set -u` when no profile
+            # is set.
+            COMPOSE_FLAGS=()
             if [ -n "${PROFILE}" ]; then
-              PROFILE_FLAG="--profile ${PROFILE}"
+              COMPOSE_FLAGS+=(--profile "${PROFILE}")
             fi
 
             # Deploy the reverted code
             if [ "${SERVICE}" = "all" ]; then
-              docker compose ${PROFILE_FLAG} build
-              docker compose ${PROFILE_FLAG} up -d
+              docker compose ${COMPOSE_FLAGS[@]+"${COMPOSE_FLAGS[@]}"} build
+              docker compose ${COMPOSE_FLAGS[@]+"${COMPOSE_FLAGS[@]}"} up -d
             else
-              docker compose ${PROFILE_FLAG} build "${SERVICE}"
-              docker compose ${PROFILE_FLAG} up -d "${SERVICE}"
+              docker compose ${COMPOSE_FLAGS[@]+"${COMPOSE_FLAGS[@]}"} build "${SERVICE}"
+              docker compose ${COMPOSE_FLAGS[@]+"${COMPOSE_FLAGS[@]}"} up -d "${SERVICE}"
             fi
 
             # Push to staging (triggers auto-deploy if configured)

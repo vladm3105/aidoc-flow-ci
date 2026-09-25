@@ -74,10 +74,26 @@ jobs:
           RESPONSE=$(curl -sf "${TARGET}" 2>/dev/null || echo '{"error":"no response"}')
           echo "Health response: ${RESPONSE}"
 
-          # Check for common healthy indicators
-          if echo "${RESPONSE}" | grep -qiE '"healthy":\s*true|"status":\s*"ok"|"status":\s*healthy'; then
+          # CI-0033: decide on the STRING with bash's own matcher, never on the
+          # exit status of a pipeline feeding `grep -q`. `grep -q` exits the
+          # instant it matches, `echo` takes EPIPE (141), and this block's
+          # `set -o pipefail` hands the pipeline that 141 — so a HEALTHY response
+          # would be reported unhealthy, and the inversion grows more likely as
+          # the response body grows (it needs `echo` to still be writing when
+          # grep exits). Canon's remedy is the same one used in
+          # scripts/pre_push_check.sh: match the value, so there is no status to
+          # invert.
+          #
+          # `\s` is a GNU grep extension that regcomp (which `[[ =~ ]]` uses)
+          # does NOT implement, so the classes are spelled POSIX here. The
+          # original `grep -i` is reproduced with `nocasematch`; this shell is
+          # step-local and exits at the end of the block, so it is not restored.
+          shopt -s nocasematch
+          RE_HEALTHY='"healthy":[[:space:]]*true|"status":[[:space:]]*"ok"|"status":[[:space:]]*healthy'
+          RE_DEGRADED='"status":[[:space:]]*"degraded"'
+          if [[ "${RESPONSE}" =~ $RE_HEALTHY ]]; then
             echo "Health check: healthy"
-          elif echo "${RESPONSE}" | grep -qiE '"status":\s*"degraded"'; then
+          elif [[ "${RESPONSE}" =~ $RE_DEGRADED ]]; then
             echo "::warning::Health response indicates degraded status"
           else
             echo "::warning::Health response may not indicate healthy status"
