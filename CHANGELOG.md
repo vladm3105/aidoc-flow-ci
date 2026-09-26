@@ -5,6 +5,31 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — the rulebook is standalone canon: no sibling repos, plus the bidirectional-gate rule (PLAN-031 J + K5)
+
+`docs/REPO_STANDARDS.md` §0 rebuilt its canonical-source authority on a
+three-repo disambiguation (CI canon here, business decisions + review prompts
+on a sibling, agent harness on a third) with `../` paths and private-repo
+URLs a public repo's readers cannot open. It now states the authority
+standalone — what is canonical HERE (config templates, canonical scripts,
+governance-file templates, the ai-review rubric, the per-tier rulebook) —
+and §18 generalises "a sibling submodule" to "an upstream library". The §0
+sibling rows, `../` paths, and private URLs are stripped, as are the §11
+rollout's playbook and onboarding references (now "consumer playbook" /
+"consumer onboarding record", matching §12). Same-repo relative links
+(`../LABELS.md`, `../VERSION`) stay — they never left the repo.
+`OPS-*`/`IPLAN-*` IDs stay as inert provenance, and the
+`vladm3105/aidoc-flow-ci` self-references stay (pins,
+fetch URLs, regexes — load-bearing, not branding). Sibling-named passages
+elsewhere in this file (including §5.2's dispatch table and the
+installer URL table) are untouched by this PR — K7-remainder, not
+silently kept.
+
+New §29 states the rule from the three measured instances: a completeness
+gate must verify both directions — every real item has a row, every row names
+a real item, counts are derived never hardcoded — and its mutation test must
+be able to fail, or it is a check that can only ever pass.
+
 ### Fixed — the exerciser-inventory gate now verifies both directions, and the shipped-but-untested scripts are covered (PLAN-031 D+E)
 
 `tests/test_exerciser_inventory.sh` asked "does every real script have a row?"
