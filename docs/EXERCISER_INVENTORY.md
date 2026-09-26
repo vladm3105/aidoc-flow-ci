@@ -113,6 +113,7 @@ installer/update path plus the offline tests that drive it.
 | `install/required-context-map.py` | `test_required_contexts.sh` (the invariant + non-obvious chains + teeth) | offline-test |
 | `tests/lib_count_stage_hooks.py` | `test_install.sh` Part 4 (fragment stage count) | offline-test |
 | `install/set-llm-secrets.sh` | `test_llm_secrets.sh` (loopback refusal, pre-write proxy probe, keep-unless-`--overwrite`, fail-closed on an unreadable secret list, no mint for a secret it would keep, key never on argv) | offline-test |
+| `install/generate-required-contexts.py` | `test_unproduced_contexts.sh` (drift gate: committed `install/templates/required-contexts.json` must match regeneration; fails closed on a missing/empty/malformed map) | offline-test |
 | `scripts/sync-version-refs.sh` | `test_version_sync.sh`; pre-commit hook | self-caller + offline-test |
 | `scripts/release.sh` | `test_release.sh` (guard rejections: bad version, tag-without-dry-run-gate, existing-tag prep, on-main) | offline-test |
 | `scripts/ft30-dry-run.sh` | `test_scripts.sh` (preflight arg-handling + criteria assertions driven against crafted logs) | offline-test |
