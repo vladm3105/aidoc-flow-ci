@@ -1,0 +1,86 @@
+{
+  "bootstrap": [
+    {
+      "context": "call / Lint / format / security hooks",
+      "producer": ".github/workflows/pre-commit.yml",
+      "cold_start_installed": true
+    }
+  ],
+  "governance": [
+    {
+      "context": "call / ai-review",
+      "producer": ".github/workflows/ai-review.yml",
+      "cold_start_installed": true
+    },
+    {
+      "context": "call / composition",
+      "producer": ".github/workflows/composition.yml",
+      "cold_start_installed": true
+    },
+    {
+      "context": "call / verify",
+      "producer": ".github/workflows/audit-trail.yml",
+      "cold_start_installed": false
+    },
+    {
+      "context": "call / Lint / format / security hooks",
+      "producer": ".github/workflows/pre-commit.yml",
+      "cold_start_installed": true
+    }
+  ],
+  "ops": [
+    {
+      "context": "call / ai-review",
+      "producer": ".github/workflows/ai-review.yml",
+      "cold_start_installed": true
+    },
+    {
+      "context": "call / composition",
+      "producer": ".github/workflows/composition.yml",
+      "cold_start_installed": true
+    },
+    {
+      "context": "call / verify",
+      "producer": ".github/workflows/audit-trail.yml",
+      "cold_start_installed": false
+    },
+    {
+      "context": "call / Lint / format / security hooks",
+      "producer": ".github/workflows/pre-commit.yml",
+      "cold_start_installed": true
+    },
+    {
+      "context": "call / gitleaks",
+      "producer": ".github/workflows/secret-scan.yml",
+      "cold_start_installed": false
+    }
+  ],
+  "product": [
+    {
+      "context": "call / ai-review",
+      "producer": ".github/workflows/ai-review.yml",
+      "cold_start_installed": true
+    },
+    {
+      "context": "call / composition",
+      "producer": ".github/workflows/composition.yml",
+      "cold_start_installed": true
+    },
+    {
+      "context": "call / verify",
+      "producer": ".github/workflows/audit-trail.yml",
+      "cold_start_installed": false
+    },
+    {
+      "context": "call / Lint / format / security hooks",
+      "producer": ".github/workflows/pre-commit.yml",
+      "cold_start_installed": true
+    },
+    {
+      "context": "call / gitleaks",
+      "producer": ".github/workflows/secret-scan.yml",
+      "cold_start_installed": false
+    }
+  ],
+  "umbrella": []
+}
