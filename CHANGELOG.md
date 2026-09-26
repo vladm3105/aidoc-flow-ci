@@ -5,6 +5,34 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Fixed — the exerciser-inventory gate now verifies both directions, and the shipped-but-untested scripts are covered (PLAN-031 D+E)
+
+`tests/test_exerciser_inventory.sh` asked "does every real script have a row?"
+and never "does every row name a real file?" — the one-directional-gate class
+PLAN-031 diagnoses. It now also asserts every inventory row names a path that
+is on disk, tracked in git, or declared as a consumer destination in
+`install/templates/manifest.json` (so the three legitimate caller-only
+destinations `quick-gates`/`scanners`/`links-external`, which never live in
+canon, do not newly fail the suite), with a planted-phantom teeth check proving
+the reverse guard is reachable, and a derived-count assertion pinning the
+`## Reusable workflows (N)` header to the live `workflow_call` file count
+instead of a hardcoded number. The three mis-filed caller rows move to their
+own table, the stale FT-21 rationale is refreshed for self-adoption, and the
+`auto-merge-ai-prs.yml` row now names its real exercisers.
+
+The walk that made two scripts invisible — globbing only
+`install|scripts|sync/*.sh` — now covers `*.py` plus `scripts/docs-sync/`, so
+`scripts/docs-sync/version_sync.py` and `cross_ref_repair.py`, which run on
+every consumer, are exercised by the new `tests/test_docs_sync_ops.sh` (skip
+paths, real-version detection reporting, fail-closed malformed config with
+`::error::` and no traceback, the never-writes guarantee, and the
+enabled-by-default asymmetry pinned). Both scripts fail closed instead of dying
+on a bare traceback. `changelog_stub.py` remains unexercised and its inventory
+row says so. `manage.sh`/`monitor.sh` are inventoried as canon-internal host
+scripts with `test_runner_dedup.sh` as exerciser — deliberately not in
+`manifest.json`, which indexes 1:1 consumer-file copies and must not gain an
+entry that `--add-surface` could install into a repo.
+
 ### Changed (MAJOR) — `apply-standards.sh` refuses to arm branch protection when a required context has no producer in the target repo
 
 `apply-standards.sh --apply` used to PUT the tier's `required_status_checks`
