@@ -1,122 +1,86 @@
 # Repo standards — `aidoc-flow-ci`
 
-Canonical rules for every repository in the aidoc-flow workspace.
-Complements [`WORKFLOWS.md`](WORKFLOWS.md) (workflow-side compliance) and
-`aidoc-flow-operations/docs/REPO_ONBOARDING.md` (CI activation steps).
+Canonical rules for every repository that adopts this canon.
+Complements [`WORKFLOWS.md`](WORKFLOWS.md) (workflow-side compliance).
 
 This doc codifies the **static settings** side: branch protection, GitHub
 security settings, labels, dependabot, CODEOWNERS, PR template, Actions
 permissions, merge/cleanup, `.gitignore`/`.gitattributes`. The workflow-
-adoption side lives in `WORKFLOWS.md`; the activation checklist for a new
-repo lives in `REPO_ONBOARDING.md`. All three docs together are the
-complete rulebook.
+adoption side lives in `WORKFLOWS.md`; the CI-activation checklist for a new
+repo is per-consumer onboarding material, not canon body. Both docs together
+are the complete rulebook.
 
-## 0. Canonical source authority (disambiguation)
+## 0. Canonical source authority
 
-The aidoc-flow workspace has **three** repos that consumers cite as
-"canonical source" — one for **CI + governance-workflow canon**, one for
-**OPS-NNNN business decisions + multi-agent review prompt templates**, and one
-for the **agent harness itself** (the global settings and agent definitions the
-AI runs under, in every repo). These are DISTINCT concerns; do not confuse them:
+**This repo (`aidoc-flow-ci`) is the canon source** for CI reusables,
+config templates, canonical scripts, governance-file templates, the
+ai-review rubric, and the per-tier rulebook in this file:
 
-| Concern | Canonical source | Read here |
-| --- | --- | --- |
-| CI reusable workflows (ai-review, composition, audit-trail-check, standards-drift, secret-scan, etc.) | **`aidoc-flow-ci`** | `.github/workflows/*.yml` (this repo) |
-| Config templates (CODEOWNERS, dependabot, branch protection, PR template) | **`aidoc-flow-ci`** | `install/templates/*` (this repo) |
-| Canonical scripts (`pre_push_check.sh`, `apply-standards.sh`, `parse-governance-table.py`) | **`aidoc-flow-ci`** | `scripts/pre_push_check.sh` + `install/apply-standards.sh` + `install/parse-governance-table.py` (this repo) |
-| Governance-file templates (`CLAUDE.md.template`, `HANDOFF.md.template`, `DECISIONS.md.template`, `ROADMAP.md.template`, `plans-README.md.template`) | **`aidoc-flow-ci`** | `install/templates/` (this repo) |
-| AI-review rubric + verdict schema | **`aidoc-flow-ci`** | `ai-review/` (this repo) |
-| Static-settings + workflow-adoption + tier rules | **`aidoc-flow-ci`** | THIS FILE (`docs/REPO_STANDARDS.md`) |
-| OPS-NNNN durable business decisions (governance-PR discipline, auto-merge default, multi-agent review dispatch, circuit-breaker, aidoc-flow-standard scope, audit-trail phrase, project-governance-canon ratification) | **`aidoc-flow-operations`** | `ops/DECISIONS.md` |
-| Multi-agent review prompt templates | **`aidoc-flow-operations`** | `.claude/agents/review-prompts/` (per OPS-0067) |
-| Cross-repo playbooks (T-C, T-C', T-D) | **`aidoc-flow-operations`** | `docs/CROSS_REPO_PLAYBOOKS.md` |
-| Autonomy tiers table + AI-employees team registry | **`aidoc-flow-operations`** | `CLAUDE.md` |
-| Agent definitions (the `agents/*.md` an agent type resolves to — `security-auditor`, `code-reviewer`, `preprod-review-lens`, `verified-planning-reviewer`, …) | **`aidoc-flow-claude-agents-config`** | `agents/` |
-| Global agent settings — the global `CLAUDE.md`, the global `AGENTS.md` (Codex reads the same file), path-scoped `rules/`, and user-level `skills/` | **`aidoc-flow-claude-agents-config`** | repository root |
+| Concern | Read here |
+|---|---|
+| CI reusable workflows (ai-review, composition, audit-trail-check, standards-drift, secret-scan, etc.) | `.github/workflows/*.yml` (this repo) |
+| Config templates (CODEOWNERS, dependabot, branch protection, PR template) | `install/templates/*` (this repo) |
+| Canonical scripts (`pre_push_check.sh`, `apply-standards.sh`, `parse-governance-table.py`) | `scripts/pre_push_check.sh` + `install/apply-standards.sh` + `install/parse-governance-table.py` (this repo) |
+| Governance-file templates (`CLAUDE.md.template`, `HANDOFF.md.template`, `DECISIONS.md.template`, `ROADMAP.md.template`, `plans-README.md.template`) | `install/templates/` (this repo) |
+| AI-review rubric + verdict schema | `ai-review/` (this repo) |
+| Static-settings + workflow-adoption + tier rules | THIS FILE (`docs/REPO_STANDARDS.md`) |
 
-**Rule of thumb for consumer docs:** when a consumer's `CLAUDE.md`
-(or DECISIONS entry, or CHANGELOG entry) needs to cite a canonical
-source, ask: is this about CI, workflows, templates, scripts, static
-settings, or governance-file shape? → `aidoc-flow-ci`. Is it about an
-OPS-NNNN business decision, multi-agent review prompt templates,
-cross-repo playbooks, autonomy tiers, or AI-employees registry? →
-`aidoc-flow-operations`. Is it about **which agents exist, how they are
-defined, or the global rules the AI itself runs under**? →
-`aidoc-flow-claude-agents-config`.
+**Rule of thumb for consumer docs:** when a `CLAUDE.md` (or DECISIONS
+entry, or CHANGELOG entry) needs to cite a canonical source, ask: is this
+about CI, workflows, templates, scripts, static settings, or
+governance-file shape? → this repo. Otherwise the owner is whichever
+upstream repo owns the concern — file the defect there (§18) and cite that
+repo's own record, not canon.
 
-**Two boundaries here are easy to get wrong. Both are drawn explicitly, because
-each has a live counter-example in this workspace.**
+Decision IDs of the form `OPS-NNNN` / `IPLAN-NNNN` appear throughout this
+file as **inert provenance**: they record where a rule came from, and no
+workflow reads them. The one exception is load-bearing: the enforced
+audit-trail phrase stated in §14.1 must match byte-for-byte, so the
+decision ID embedded in it is frozen — renaming it is a fleet-wide MAJOR
+break.
 
-**(a) Prompts vs agents.** `aidoc-flow-operations` owns the **review prompts** —
-which prompt a given diff class gets, and the verdict schema it must return.
-`aidoc-flow-claude-agents-config` owns the **agents** — what an agent type
-resolves to when dispatched, and its tools and model tier. A change to "what the
-reviewer is asked" is an operations change; a change to "what the reviewer _is_"
-is an agent-config change.
-
-**(b) GLOBAL agents vs a repo's OWN agents — and this row covers only the
-first.** The rows above are scoped to the **global, user-level** harness
-(`~/.claude/agents/`): the types any repo can dispatch, such as
-`security-auditor` or `verified-planning-reviewer`. A repository's own
-project-local `.claude/agents/*.md` stays owned by **that** repository.
-`aidoc-flow-operations` is the live example — it carries its own roster of
-AI-employee personas (`ceo.md`, `cto-platform.md`, `aidoc-flow-lead.md`, …)
-under its own change process, and those are **not** governed by the
-agent-config repo. So "which agents exist" is not by itself the routing
-question; ask whether the agent is dispatchable from any repo (global) or
-belongs to one repo's own roster (that repo).
-
-**It is a live config, not a distribution.** That repository's working tree _is_
-`~/.claude` — editing a tracked file changes the rules the AI is running under,
-with no deploy step and no drift between "the repo" and "what is loaded". Canon
-cites it as a source of record; canon does **not** fetch from it, install it, or
-pin it, and no workflow in this repository reads it.
-
-**It is PRIVATE, like `aidoc-flow-operations`** — private by intent, because
-although no single tracked file is a credential, together they map the autonomy
-tiers, merge policy and repo topology.
-
-**Cite it by repository NAME, never as a `https://github.com/…` URL** — and
-the reason is _not_ that CI would catch it. Canon's blocking `links` gate runs
-`mode: internal`, which adds `--offline`, so it skips external URLs and makes no
-request at all; the `external` mode that does reach the network ships
-`fail-on-error: false` and cannot fail a job. **Nothing in CI would ever flag a
-URL to a private repo** — it would simply be a dead link for every human reader
-of a PUBLIC repository who lacks access. That is exactly why the convention has
-to be held by hand, and every existing §0 row already holds it.
-(`exclude_all_private` in `.lychee.toml` is unrelated: it excludes private **IP
-ranges**, not private GitHub repositories.)
+**Cite an upstream repo by NAME, never as a `https://github.com/…` URL** —
+and the reason is _not_ that CI would catch it. Canon's blocking `links`
+gate runs `mode: internal`, which adds `--offline`, so it skips external
+URLs and makes no request at all; the `external` mode that does reach the
+network ships `fail-on-error: false` and cannot fail a job. **Nothing in CI
+would ever flag a URL to a private repo** — it would simply be a dead link
+for every human reader of a PUBLIC repository who lacks access. That is
+exactly why the convention has to be held by hand, and every existing §0
+row already holds it.
+(`exclude_all_private` in `.lychee.toml` is unrelated: it excludes private
+**IP ranges**, not private GitHub repositories.)
 
 **Historical note:** `IPLAN-0014_public-ci-actions-and-autofix.md`
 (lines 13, 18, 57) authored BEFORE `aidoc-flow-ci` was created uses
 "canonical template in operations" for CI concerns; that reflects the
-pre-2026-06 layout where `operations/templates/` was the temporary home.
-`IPLAN-0017-CHARTER_aidoc-flow-ci.md` is the migration doc that MOVED
-those templates to `aidoc-flow-ci` — its "port operations Stage-1
-designs as canonical defaults" language (line 171) reflects that
-transition, not a pre-`aidoc-flow-ci` canon assignment. For the
-AI-review rubric specifically, `operations/templates/ai-review/` was
-the pre-2026-06 vendoring source; per IPLAN-0022 it now lives at
-`aidoc-flow-ci/ai-review/`, with the reusable `ai-review.yml`
-fetching it at the consumer's pinned tag. Historical text is not
-back-annotated — read it in its temporal context.
+pre-2026-06 layout where the operations repo's `templates/` was the
+temporary home. `IPLAN-0017-CHARTER_aidoc-flow-ci.md` is the migration doc
+that MOVED those templates here — its "port operations Stage-1 designs as
+canonical defaults" language (line 171) reflects that transition, not a
+pre-`aidoc-flow-ci` canon assignment. For the AI-review rubric
+specifically, the operations repo's `templates/ai-review/` was the
+pre-2026-06 vendoring source; per IPLAN-0022 it now lives at
+`aidoc-flow-ci/ai-review/`, with the reusable `ai-review.yml` fetching it
+at the consumer's pinned tag. Historical text is not back-annotated — read
+it in its temporal context.
 
 ## 1. Tier taxonomy (6 tiers)
 
-Every workspace repo belongs to exactly one tier. Tier drives every
+Every repo adopting canon belongs to exactly one tier. Tier drives every
 per-repo requirement below.
 
-| Tier | Repos (2026-07-11) | Signal |
-| --- | --- | --- |
-| **Governance** | `aidoc-flow-framework`, `aidoc-flow-iplan-standard` | Public spec/schema repo; human-merge only |
-| **Product code** | `iplan-runner`, `aidoc-flow-engramory`, `aidoc-flow-ci` | Public runtime/library repo |
-| **Ops-private** | `aidoc-flow-operations`, `aidoc-flow-business`, `aidoc-flow-iplanic`, `aidoc-flow-interlog` | Private operations/docs repo |
-| **Umbrella** | `aidoc-flow` | Multi-repo umbrella; submodule-pointer PRs only; `--admin` merge |
-| **Bootstrap** | _(none currently — `aidoc-flow-interlog` graduated to Ops-private 2026-07 after full CI adoption)_ | New repo pending CI adoption |
-| **Paused** | `aidoc-flow-knowledge-rag`, `aidoc-flow-site` | Frozen per founder direction 2026-07-04 |
+| Tier | Signal |
+| --- | --- |
+| **Governance** | Public spec/schema repo; human-merge only |
+| **Product code** | Public runtime/library repo |
+| **Ops-private** | Private operations/docs repo |
+| **Umbrella** | Multi-repo umbrella; submodule-pointer PRs only; `--admin` merge |
+| **Bootstrap** | New repo pending CI adoption |
+| **Paused** | Frozen per founder direction 2026-07-04 |
 
 Tier is not property of the repo file — it's a canonical assignment
-maintained here. When a new repo enters the workspace, its tier is
+maintained here. When a new repo adopts canon, its tier is
 declared before any settings apply (see §11 Rollout).
 
 ## 2. Branch protection
@@ -223,7 +187,7 @@ blocked forever. The canon reusables emit `call / <job>`; the verified map is:
 | pre-commit | `call / Lint / format / security hooks` |
 | secret-scan (canon) | `call / gitleaks` |
 
-**Caveat:** a repo using its own standalone `security.yml` (business, interlog)
+**Caveat:** a repo using its own standalone `security.yml`
 emits `Secret scan (gitleaks)`, NOT `call / gitleaks` — arm that name instead on
 those repos. `tests/test_checknames.sh` asserts every `call / …` context in a
 branch-protection template maps to a real reusable job, so this can't drift again.
@@ -481,9 +445,10 @@ released tags only.
 **A reusable MUST assert the schema version of any config it reads from a SHARED
 source BEFORE reading any field, and MUST fail loud rather than default.**
 
-The trust config is a single shared source (`trust_config_repo`, default
-`vladm3105/aidoc-flow-operations@main`) while every consumer pins its **own**
-`ci/vX.Y.Z` reusable. That combination has a property worth stating plainly:
+The trust config is a single shared source (the `trust_config_repo` input,
+defaulting to the canon operator's config repo) while every consumer pins
+its **own** `ci/vX.Y.Z` reusable. That combination has a property worth
+stating plainly:
 
 > **One repo's config upgrade is a breaking change for every consumer that has
 > not re-pinned yet.**
@@ -1333,8 +1298,8 @@ is correct and must not be "simplified" into a truncation.
 
 What it lacked was a way to see the wall coming. The refusal was the **first**
 signal, and by then the PR is already unreviewable. Measured on real PRs
-2026-08-24: `aidoc-flow-framework` #527 sat at **87%** of the cap, #530 at 36%,
-`aidoc-flow-ci` #519 at 56% — grazing it, not hitting it, with nothing surfacing
+2026-08-24: one consumer PR sat at **87%** of the cap, another at 36%,
+canon's own #519 at 56% — grazing it, not hitting it, with nothing surfacing
 that fact.
 
 1. **Report the headroom on every run**, not only on the failure. A limit whose
@@ -1463,8 +1428,8 @@ config maps the paths above.
 
 ### 5.3 Area labels (tier-specific; optional)
 
-- `platform: hermes`, `platform: claude` — framework-specific
-- `sub-plan: PLAN-XXX` — iplan-runner / iplanic
+- `platform: <name>` — consumer-specific product area
+- `sub-plan: PLAN-XXX` — consumer repos with plan subdivisions
 - `dependencies` — Dependabot PRs
 - `security` — security-tagged issues/PRs
 
@@ -1692,9 +1657,8 @@ Templates ship in `install/templates/.gitignore.template` +
 
 ## 11. Rollout — coordinated-merge-window pattern
 
-Rolling out the canon to 10 workspace repos is exactly the T-C
-coordinated-merge-window pattern from
-`operations/docs/CROSS_REPO_PLAYBOOKS.md`. Sequence:
+Rolling out the canon to a fleet of adopting repos is exactly the T-C
+coordinated-merge-window pattern (consumer playbook). Sequence:
 
 1. **PR-A merges first** — this doc + index entry + CHANGELOG.
 2. **PR-B merges second** — templates + `install/apply-standards.sh`.
@@ -1702,12 +1666,12 @@ coordinated-merge-window pattern from
 4. **Per-repo compliance PRs** — one PR per repo touching the doc-shipped
    surfaces (CODEOWNERS, PR template, dependabot.yml, .gitignore/
    .gitattributes, labels sync). Rolled out per tier priority:
-   1. **Governance** (framework, iplan-standard) — highest blast radius.
-   2. **Ops-private** (operations, business, iplanic) — internal-only.
-   3. **Product code** (iplan-runner, engramory, aidoc-flow-ci) — most
-      of these also need `WORKFLOWS.md` §2.1 gaps closed alongside.
-   4. **Bootstrap** (none currently — all repos have been graduated).
-   5. **Umbrella** (aidoc-flow) — apply last; special-case per OPS-0062.
+   1. **Governance** — highest blast radius.
+   2. **Ops-private** — internal-only.
+   3. **Product code** — most of these also need `WORKFLOWS.md` §2.1
+      gaps closed alongside.
+   4. **Bootstrap** (none currently — all known repos have graduated).
+   5. **Umbrella** — apply last; special-case per OPS-0062.
 5. **Server-side settings** (branch protection, security, Actions
    permissions) apply via `--apply` mode as a SEPARATE pass AFTER each
    tier's per-repo compliance PR (step 4) has merged. The per-repo PR
@@ -1715,7 +1679,7 @@ coordinated-merge-window pattern from
    .gitignore/.gitattributes, labels-sync via `gh api`); the follow-up
    `--apply` invocation flips the server-side knobs. Founder runs
    `bash install/apply-standards.sh --apply <owner/repo>` per repo (F5
-   blast-radius per REPO_ONBOARDING.md — server-side changes stay
+   blast-radius per the consumer onboarding record — server-side changes stay
    founder-manual).
 
 ## 12. Compliance evidence — where each rule's audit-trail lives
@@ -1723,7 +1687,7 @@ coordinated-merge-window pattern from
 | Requirement | Evidence location |
 | --- | --- |
 | Workflow adoption | [`WORKFLOWS.md`](WORKFLOWS.md) §2 matrix |
-| CI activation (reviewer App install, allowlist) | `operations/docs/REPO_ONBOARDING.md` Steps 1-4 |
+| CI activation (reviewer App install, allowlist) | Consumer onboarding record (per-consumer material, not canon body) |
 | Branch protection | GitHub API — verify via `bash install/apply-standards.sh --check` (PR-B) |
 | Security settings | Same as branch protection |
 | Actions permissions | Same |
@@ -1741,21 +1705,21 @@ coordinated-merge-window pattern from
   per-repo applicability matrix)
 - [`architecture.md`](architecture.md) — reusable-workflow model + trust
   flow
-- [`multi-project-guide.md`](multi-project-guide.md) — new-project
-  onboarding flow
+- [`AI_CI_DEPLOYMENT.md`](AI_CI_DEPLOYMENT.md) — new-project
+  onboarding flow (full CI-stack deploy playbook)
 - [`overrides.md`](overrides.md) — 3 override modes
 - [`security.md`](security.md) — threat model + secrets
 - [`../LABELS.md`](../LABELS.md) — pre-existing label conventions
   (label separators + runner-label namespace)
 - [`BRANCHING.md`](BRANCHING.md) — canonical branch naming, lifecycle,
   update, merge, cleanup, and enforcement boundary
-- `aidoc-flow-operations/docs/REPO_ONBOARDING.md` — 4-step CI
-  activation checklist
-- `aidoc-flow-operations/docs/CROSS_REPO_PLAYBOOKS.md` — T-C
-  coordinated-merge-window pattern (used by §11 rollout)
-- `aidoc-flow-operations/.github/ai-review/config.json` — trust
-  allowlist + `auto_merge.repos` allowlist
-- `aidoc-flow-operations/ops/DECISIONS.md`:
+- Consumer onboarding checklist — 4-step CI activation (per-consumer
+  material, not canon body)
+- Consumer coordinated-merge-window playbook — the T-C pattern §11 rollout
+  uses (per-consumer material, not canon body)
+- Consumer trust config — reviewer allowlist + `auto_merge.repos` allowlist
+  (per-consumer material; canon asserts the schema it reads, §4.2b)
+- Decision provenance (inert — the enforced statements live in this file):
   - OPS-0061 Rule-1 (≤3 doc surfaces per PR)
   - OPS-0062 (auto-merge default; umbrella `--admin`)
   - OPS-0065 (multi-agent diff-class dispatch — informs label taxonomy §5.2)
@@ -1853,11 +1817,11 @@ so it calls two files identical when one has extra blank lines.
 - Two-signal `skip-audit-trail` label + `[skip-audit-trail]` body
   marker → **CI-side only** (git has no PR-label context at push time).
 
-**Repo-specific extras** (e.g., verified-planning `check_plan.py`,
-operations classify-parity) live in a consumer wrapper
+**Repo-specific extras** (e.g., a planning `check_plan.py`, a consumer
+classify-parity check) live in a consumer wrapper
 `scripts/pre_push_check_<repo>.sh` that runs canon + adds its own checks.
 Wrapper preserves the canon's `set -uo pipefail` + rc-accumulator
-pattern. See PLAN-002 §4.8 for the operations wrapper reference.
+pattern. See PLAN-002 §4.8 for the reference wrapper.
 
 **The wrapper must RUN canon as a subprocess, never `source` it.** Canon
 exits — `exit "$rc"` at the end, and `exit 2` at three earlier guard points —
@@ -2232,10 +2196,9 @@ verify with no path on disk.
 
 ### 16.2 Additional rows (repo-specific)
 
-A repo with multiple surfaces of the same conceptual kind (e.g.
-framework's dual DECISIONS log at `plans/DECISIONS.md` + nested
-`framework/governance/DECISIONS.md`; framework's per-package CHANGELOGs
-at `platforms/*/CHANGELOG.md`; engramory's dual ROADMAP) declares
+A repo with multiple surfaces of the same conceptual kind (e.g. a dual
+DECISIONS log split between a plan directory and a nested governance path,
+per-package CHANGELOGs, or a dual ROADMAP) declares
 each as an ADDITIONAL row below the required 6 in the same table
 shape. Additional rows are read + verified by the parser but not
 counted toward required-row completeness.
@@ -2318,7 +2281,7 @@ the template is fetched (PLAN-004 D2 + FT-7):
 | Placeholder | Template | `install.sh` flag | Default |
 |---|---|---|---|
 | `${CODEOWNER_HANDLE}` | `config.json.template` (`trust.ai_review`, `governance.code_owners`) + `CODEOWNERS.template` (all owner routes) | `--codeowner` | `vladm3105` |
-| `${CANON_OPERATIONS_URL}` | `CLAUDE.md.template` (operations canon links) | `--canon-operations-url` | `../operations` |
+| `${CANON_OPERATIONS_URL}` | `CLAUDE.md.template` (operations-canon links) | `--canon-operations-url` | workspace-layout relative path (override at install) |
 | `${CANON_CI_URL}` | `CLAUDE.md.template` (CI canon link) | `--canon-ci-url` | `../aidoc-flow-ci` |
 
 Discipline for this mechanism:
@@ -2529,7 +2492,7 @@ the template verbatim into its `.github/workflows/auto-merge-ai-prs.yml`.
 - **ai-review + composition callers must be present** as the
 workflow_run triggers. Bootstrap-tier repos without CI adoption
 get auto-merge as part of full CI adoption, not standalone. (No
-bootstrap-tier repos currently exist — interlog was promoted to
+bootstrap-tier repos currently exist — the last one was promoted to
 ops-private tier as of PLAN-006 W4.)
 
 ### 17.4 Non-goals
@@ -2544,13 +2507,11 @@ ops-private tier as of PLAN-006 W4.)
 
 OPS-0062 (AI agent auto-merge default) codified 2026-06-27; server-
 side companion codified in IPLAN-0030 (auto-merge-ai-prs enforcer).
-See:
+The rules are stated locally above (§17.1–§17.4); `OPS-0062`'s full
+record is in this repo's `DECISIONS.md`, and `IPLAN-0030` is retained as
+inert provenance for the server-side design. The enforced implementation
+is local. See:
 
-- `../operations/CLAUDE.md` — search `OPS-0062` (the AI-agent-in-session
-  auto-merge default rule).
-- `../operations/ops/DECISIONS.md` — `OPS-0062` full record.
-- `../operations/ops/iplans/IPLAN-0030_*.md` — server-side enforcer
-  design.
 - `.github/workflows/auto-merge-ai-prs.yml` (this repo) — reusable
   implementation.
 - `install/templates/workflows/auto-merge-ai-prs-{public,private}.yml`
@@ -2559,7 +2520,7 @@ See:
 ## 18. Cross-repo defects are filed as issues on the OWNING repo
 
 **When work in one repo surfaces a defect owned by ANOTHER repo — the CI canon,
-a sibling submodule, an upstream spec — file it there as a GitHub issue.**
+an upstream library, an upstream spec — file it there as a GitHub issue.**
 
 Recording it only in the finding repo's `DECISIONS.md` / `HANDOFF.md` /
 `plans/` is not sufficient. Those files are read by sessions entering _that_
@@ -2632,7 +2593,7 @@ longer than a sentence, and verify before considering the defect reported —
 under §18 an empty issue discharges nothing.
 
 **Origin:** issue #310, proposed from the `ci/v2.14.0` migration; adopted first
-in `aidoc-flow-framework`. Recorded as CI-0020.
+on a consumer repo. Recorded as CI-0020.
 
 ## 19. Infrastructure break-glass — an outage must not require `--admin`
 
@@ -3049,7 +3010,7 @@ denylist of the events the gate itself emits.**
 
 ### 23.1 The failure mode
 
-**Observed** on the CI-0025 incident (`aidoc-flow-framework` #346): a `cancelled`
+**Observed** on the CI-0025 incident (consumer PR #346): a `cancelled`
 and a `SUCCESS` check-run for the same context name, from two different workflow
 runs, both persisted on the same head SHA, both reported `isRequired`, and the
 rollup was `FAILURE`. A later success from a _different run_ did not displace the
@@ -3065,7 +3026,7 @@ is therefore about _separate runs_. A
 a stuck check; a **separate run adds a second check-run alongside**, and both are
 retained. Measured both ways: an in-place re-run took `suite` from check-run
 `89856301834` (`failure`) to `89857163070` (`success`) leaving **one** check-run
-on the SHA, while two separate runs on `aidoc-flow-framework` #346 left **two**
+on the SHA, while two separate runs on that PR left **two**
 `call / ai-review` check-runs (`cancelled` + `success`) and a `FAILURE` rollup.
 
 `docs/troubleshooting.md` §15 previously recommended a label cycle to clear a
@@ -3196,7 +3157,7 @@ those `ai:review-*` writes are now excluded explicitly. §23.2's allowlist rule
 covers cancellation; this covers _triggering_. Both reduce to: enumerate what the
 gate emits, and make sure none of it comes back in.
 
-**Origin:** issue #322, reproduced on `aidoc-flow-framework` PR #346. Recorded as
+**Origin:** issue #322, reproduced on consumer PR #346. Recorded as
 CI-0025. §23.4 added from #331.
 
 ## 24. The PLAN-021 cluster — shell, message, template and prompt discipline
@@ -3297,9 +3258,9 @@ expression-free inner block, not the whole step: a `run:` body containing
 `${{ }}` expressions is a bash syntax error, and a harness fed one goes red for
 the wrong reason.
 
-**Origin:** issue #352, reproduced on `aidoc-flow-framework` runs
-[30546848518](https://github.com/vladm3105/aidoc-flow-framework/actions/runs/30546848518),
-30548353113 and 30553994621. Recorded as CI-0027 (PLAN-021 PR-A). Same class as
+**Origin:** issue #352, reproduced on consumer runs 30546848518,
+30548353113 and 30553994621 under `ci/v2.16.0`. Recorded as CI-0027
+(PLAN-021 PR-A). Same class as
 the closed #306 — a dry-run branch that cannot complete, in a flow whose whole
 purpose during pilot is the dry run.
 
@@ -3312,7 +3273,7 @@ plan path: X` — is a defect whichever condition actually fired, because the
 reader cannot tell which, and the two conditions have different owners and
 different fixes.
 
-**Measured.** Across `aidoc-flow-framework`'s pilot — 23 failures over its first
+**Measured.** Across a consumer pilot — 23 failures over its first
 47 runs — `planner.py` rejected 15 plans under one such guard. **9 of the 15
 named `plans/HANDOFF.md`, a path that _is_ in that consumer's `allowed_paths`**
 — the cause was a duplicate every time. Read literally, the message pointed at
@@ -3371,7 +3332,7 @@ accepted sets**, not merely that the message changed; a message-only assertion
 passes against both bugs. Drive both shapes — one rejected path on disk, one
 not.
 
-**Origin:** issue #353, measured on `aidoc-flow-framework`'s 23 `doc-maintainer`
+**Origin:** issue #353, measured on a consumer's 23 `doc-maintainer`
 failures over its first 47 runs under `ci/v2.16.0`. Recorded as CI-0027
 (PLAN-021 PR-B). The
 blast-radius half of the same defect on a different guard — the 30 %-deletion
@@ -3395,16 +3356,16 @@ diagnosis, `wc -c` on 2026-07-30:
 
 | File | Bytes | Against the limit |
 |---|---:|---|
-| `aidoc-flow-ci/CHANGELOG.md` | 363,377 | 1.8× — canon's own |
-| `framework/CHANGELOG.md` | 281,502 | 1.4× — failing at the time |
-| `operations/CHANGELOG.md` | 89,703 | under, and running `dry_run: false` |
+| canon's own `CHANGELOG.md` | 363,377 | 1.8× |
+| a consumer `CHANGELOG.md` | 281,502 | 1.4× — failing at the time |
+| a second consumer `CHANGELOG.md` | 89,703 | under, and running `dry_run: false` |
 
-Re-measured 2026-08-06: `aidoc-flow-ci` 392,780 and `framework` 316,335, both
-larger; `operations` unchanged at 89,703, because it has taken no entry since.
+Re-measured 2026-08-06: canon 392,780 and the first consumer 316,335, both
+larger; the second unchanged at 89,703, because it has taken no entry since.
 **Growth is monotonic, not continuous** — a file under the limit is not safe, it
 is undated.
 
-Three of `aidoc-flow-framework`'s 23 pilot failures — **3 of its 12 distinct
+Three of that pilot's 23 failures — **3 of its 12 distinct
 failing merges** — were this refusal. Nothing between the two files stops it:
 the planner is given no file sizes at all — only the allowlist and a `*.md`
 inventory — and the size limit lives in a different script that runs later, so
@@ -3414,11 +3375,10 @@ planning call has been spent.
 **The threshold is one-way, which is what makes "under the limit today"
 worthless as an argument.** A Keep a Changelog file is append-only by
 construction: entries are added, never rewritten, reordered or pruned (the
-workspace's changelog rule, in the global `CLAUDE.md` under "Changelog and
-Roadmap Policy" — a per-agent file, so state the property rather than citing it
-at a consumer). No adopter's changelog comes back under the limit. The only open
-question is when each one crosses it — and `operations` will cross it in
-**live** mode, not dry-run.
+changelog rule lives in per-agent policy, not in canon — state the property,
+not the pointer). No adopter's changelog comes back under the limit. The only
+open question is when each one crosses it — and a changelog still under the
+limit in dry-run mode will cross it in **live** mode, not dry-run.
 
 **It also mis-attributes.** The refusal names the file, so it reads as a
 property of that document rather than of the configuration that nominated it,
@@ -3479,7 +3439,8 @@ document.
 
 **State the cost of the demotion, or it reads as free.** Demoting a changelog to
 high-risk on a live consumer **retires changelog auto-maintenance there** —
-which on `aidoc-flow-operations` is that flow's primary operation. That cost was
+which, where that is the consumer's primary operation, retires the operation.
+That cost was
 put to the founder and accepted (CI-0027); it is not a side effect to discover
 after the fact.
 
@@ -3495,8 +3456,7 @@ mode is a separate change.
 
 **Origin:** issue
 [#354](https://github.com/vladm3105/aidoc-flow-ci/issues/354), measured on
-`aidoc-flow-framework` under `ci/v2.16.0` (runs
-[30557567489](https://github.com/vladm3105/aidoc-flow-framework/actions/runs/30557567489),
+a consumer under `ci/v2.16.0` (runs 30557567489,
 30546425750, 30504587299). Recorded as CI-0027 (PLAN-021 PR-C).
 
 ### 24.4 What canon shows a model must agree with what canon will accept from it
@@ -3572,9 +3532,8 @@ is indistinguishable from an unstarted one, so agents handed "the open issues in
 priority order" all start the same one.
 
 Re-derive with `gh label list -R <repo> --limit 200 | grep status:`. Measured
-2026-08-05, **before** §5.4 shipped, across seven repos (`aidoc-flow-ci`,
-`-operations`, `-framework`, `-interlog`, `-business`, `b-local-privy`,
-`llm-router`): **0 carried any `status:*` label**, so the claim was unrecordable
+2026-08-05, **before** §5.4 shipped, across seven repos (`aidoc-flow-ci` plus
+six consumers): **0 carried any `status:*` label**, so the claim was unrecordable
 everywhere. `aidoc-flow-ci` now carries it — it self-adopted with §5.4 — so that
 repo no longer reproduces the zero.
 
@@ -3973,3 +3932,44 @@ the SHA comment, moving the guard after the rewrite, exiting 0 on a refusal,
 printing "done" on a refusal, dropping `.yaml` from the scan, and breaking the
 escape hatch's case label. The suite does not ship an encoded mutant, so that
 list is a record of what was checked, not a property the suite re-verifies.
+
+## 29. A completeness gate must verify both directions
+
+**A completeness gate must verify both directions.** (a) Every real item
+has a row; (b) every row names a real item; (c) counts are derived, never
+hardcoded. A gate that checks one direction passes while the other rots —
+and the rot is silent, because the gate is green.
+
+### 29.1 The three measured instances
+
+1. `tests/test_exerciser_inventory.sh:83` walks `install/*.sh`,
+   `scripts/*.sh`, `sync/*.sh` — `*.sh` only, no subdirectories (paths are
+   repo-relative from the repo root) — asking
+   "does every real script have a row?" and never "does every row name a
+   real file?". `scripts/docs-sync/*.py` therefore stood outside both gate
+   and inventory while `.github/workflows/docs-sync.yml:284,291` executes
+   those scripts on every consumer, still labelled "alpha.1 stub" at
+   `docs-sync.yml:9`.
+2. `docs/EXERCISER_INVENTORY.md:35` hardcoded "Canon ships 16" against 15
+   actual `workflow_call` files (`grep -rl 'workflow_call:'`
+   `.github/workflows/`). A literal count can only decay.
+3. `install/required-context-map.py:153` marks every `!` producer at every
+   tier — `!` means "shipped but not cold-start installed", i.e. the tier
+   template requires a context whose producer workflow a cold start does
+   not install — but only the bootstrap tier is asserted
+   (`tests/test_required_contexts.sh:133`, with the enforcing filter at
+   `:153`) — the arming path at the other three tiers was unguarded, which
+   is how the #481 class (required contexts armed with no producer: every
+   PR hanging on "Expected — Waiting for status to be reported" with no
+   `--admin` escape) stayed live there.
+
+### 29.2 The corollary — a mutation test must be able to fail
+
+A gate whose mutation test cannot fail is a check that can only ever pass.
+`tests/test_required_contexts.sh:174` already states it for `!`
+reachability ("must be REACHABLE, or section 5 of that suite is a check
+that can only ever pass"): the mutation must flip a genuinely-`true` producer the guard
+depends on, an unrelated-`true` control must NOT flip it, and mutating an
+already-false target must be refused by the harness, not silently no-op.
+Apply the same teeth to every new gate: if no mutation reds it, it asserts
+nothing.
