@@ -5,6 +5,21 @@ tags (independent of framework spec semver per IPLAN-0017 §6 Q2).
 
 ## Unreleased
 
+### Removed — the fleet-rollout docs are retired; canon is standalone (PLAN-031 K2 + K4)
+
+`docs/multi-project-guide.md`, `docs/FLEET_BRANCH_PROTECTION_ARMING.md`,
+and `docs/PLAYBOOK_governance-canon-rollout.md` existed only to roll the
+workspace fleet onto canon — per the founder's standalone-canon directive
+there is no fleet to roll out, so they are deleted, not archived. Their
+`docs/README.md` index rows go with them, as does the "Cross-references
+(design + governance)" section (three URLs into a private sibling from a
+public repo). `scripts/sync-version-refs.sh` no longer lists the deleted
+docs as version-sync targets, and `tests/test_version_sync.sh` pins the
+matching list. The rollout sequence they described lives on in
+`docs/REPO_STANDARDS.md` §11's T-C pattern. (Founder waiver: 3 deletions plus the
+index plus this entry exceed the letter of the OPS-0061 ≤3-doc-surface cap;
+a deletion has almost no review surface.)
+
 ### Fixed — the rulebook is standalone canon: no sibling repos, plus the bidirectional-gate rule (PLAN-031 J + K5)
 
 `docs/REPO_STANDARDS.md` §0 rebuilt its canonical-source authority on a
