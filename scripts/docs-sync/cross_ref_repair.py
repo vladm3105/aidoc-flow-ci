@@ -10,7 +10,8 @@ alpha.1 stub: skipped entirely. Full implementation in alpha.2 depends on:
   - Git-rename detection threshold tuning on a real corpus
 
 Reads config from $CONFIG_PATH (default .github/docs-sync.json).
-Exits 0 always.
+Exits 0 on success or skip; exits 1 if the config exists but is not parseable,
+so a broken config surfaces as a named error rather than a silent no-op.
 """
 from __future__ import annotations
 import json
@@ -25,8 +26,26 @@ def main() -> int:
         print(f"cross_ref_repair: {config_path} not found; skipping")
         return 0
 
-    cfg = json.loads(Path(config_path).read_text())
-    cr_cfg = cfg.get("cross_ref_repair", {})
+    try:
+        cfg = json.loads(Path(config_path).read_text())
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
+        # Fail closed and LOUD rather than on a bare traceback — see the note in
+        # version_sync.py, which shares this shape.
+        print(
+            f"::error::cross_ref_repair: {config_path} is not valid JSON ({exc}); "
+            "refusing to guess at a repair config"
+        )
+        return 1
+    cr_cfg = cfg.get("cross_ref_repair", {}) if isinstance(cfg, dict) else None
+    if not isinstance(cfg, dict) or not isinstance(cr_cfg, dict):
+        # Same shape-guard as version_sync.py: valid JSON with a non-object top
+        # level or section must fail closed, not AttributeError.
+        print(
+            f"::error::cross_ref_repair: {config_path} must contain a JSON object "
+            'with an object "cross_ref_repair" section; '
+            "refusing to guess at a repair config"
+        )
+        return 1
     if not cr_cfg.get("enabled", False):
         print("cross_ref_repair: disabled in config; skipping")
         return 0

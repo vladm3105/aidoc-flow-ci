@@ -13,6 +13,11 @@
 # FT-NN" row is a valid, passing state. It asserts only that every surface is
 # ACCOUNTED FOR. Silence about a surface is the bug.
 #
+# Since PLAN-031 Phase D it also asserts the REVERSE: every inventory row must
+# name a repo-relative full path that is on disk (and not git-ignored), tracked
+# in git, or declared as a consumer destination in manifest.json — a row citing
+# nothing real is the phantom the forward walks cannot see.
+#
 # HOW IT STAYS HONEST: the surface lists are derived from manifest.json and the
 # workflow files at run time, never copied into this test. The inventory's
 # coverage is checked against the live surfaces, so it cannot drift green.
@@ -34,7 +39,10 @@ assert_ok "[ -f '$INV' ]" "exerciser inventory exists"
 # "present but silently unexercised" mode F1 was. A surface is 'covered' here only
 # by an actual row keyed on it.
 inv_surfaces() {
-  grep -E '^\| `' "$INV" | sed -E 's/^\| `([^`]+)`.*/\1/' | sort -u
+  # Optional $1 overrides the inventory file (the §5 teeth point it at a
+  # mutated copy); default is the real inventory.
+  local f="${1:-$INV}"
+  grep -E '^\| `' "$f" | sed -E 's/^\| `([^`]+)`.*/\1/' | sort -u
 }
 in_inventory() { inv_surfaces | grep -qxF "$1"; }
 
@@ -76,11 +84,14 @@ assert_eq "$missing_wf" "0" "all reusable workflows are in the inventory"
 #    (install/update/drift) or release-critical; an unlisted one is an untracked
 #    surface. Every canonical script now carries a real exerciser, so this holds
 #    for all of them with no accepted-unexercised entries in that table.
+#    Covers *.sh AND *.py plus one level of subdirectory (scripts/docs-sync):
+#    the old install|scripts|sync/*.sh glob was blind to the .py files that run
+#    on every consumer via docs-sync.yml (PLAN-031 G06).
 # ---------------------------------------------------------------------------
 echo ""
 echo "== every canonical script is accounted for =="
 missing_script=0
-for f in "$ROOT"/install/*.sh "$ROOT"/scripts/*.sh "$ROOT"/sync/*.sh; do
+for f in "$ROOT"/install/*.sh "$ROOT"/install/*.py "$ROOT"/scripts/*.sh "$ROOT"/scripts/*.py "$ROOT"/scripts/docs-sync/*.py "$ROOT"/sync/*.sh "$ROOT"/sync/*.py; do
   [ -f "$f" ] || continue
   base="$(basename "$f")"
   # Match by basename (a script may be referenced by either of its homes, e.g.
@@ -151,15 +162,117 @@ while IFS= read -r line; do
   # the word without being surface rows.
   case "$line" in '| `'*) ;; *) continue ;; esac
   case "$line" in *unexercised*) ;; *) continue ;; esac
-  # Owner = a closing FT, or the explicit sentinel `accepted-no-FT`. The bare
-  # word 'accepted' is NOT accepted (it substring-matches "not accepted by
-  # anyone" and other prose); the sentinel is unambiguous.
-  if printf '%s' "$line" | grep -qE 'FT-[0-9]+|`accepted-no-FT`'; then
+  # Owner = a closing FT, a plan reference WITH its phase (plans/ IS the
+  # backlog per CI-0046, so a plan + phase names an owner — a bare PLAN-NN
+  # mention in prose does not), or the explicit sentinel `accepted-no-FT`.
+  # The bare word 'accepted' is NOT accepted (it substring-matches "not
+  # accepted by anyone" and other prose); the sentinel is unambiguous.
+  if printf '%s' "$line" | grep -qE 'FT-[0-9]+|PLAN-[0-9]+ Phase [A-Z]+|`accepted-no-FT`'; then
     _g "unexercised row is owned: $(printf '%s' "$line" | grep -oE '`[^`]+`' | head -1)"
   else
     _r "unexercised row names no FT and no accepted-no-FT sentinel: $line"; bad_rows=1
   fi
 done < "$INV"
 assert_eq "$bad_rows" "0" "no orphan unexercised rows"
+
+# ---------------------------------------------------------------------------
+# 5. Reverse guard: every inventory row names a path that is on disk (and not
+#    git-ignored), TRACKED in git, or declared as a consumer destination `path`
+#    in manifest.json. The forward walks (§1-§3b) ask "does every real file have
+#    a row?" and can never see a row citing nothing real. Legitimate untracked
+#    rows exist: consumer destination paths
+#    (quick-gates/scanners/links-external) never live in canon, so manifest
+#    membership exempts them (PLAN-031 G05); and a NEW script's row must pass in
+#    the same uncommitted change that adds the file, so on-disk presence counts
+#    (PLAN-031 §9 gate-bug note). Rows MUST be repo-relative full paths.
+# ---------------------------------------------------------------------------
+echo ""
+echo "== every inventory row names a tracked file or a manifest destination =="
+TRACKED_LIST="$(mktemp)"; git -C "$ROOT" ls-files > "$TRACKED_LIST"
+MANIFEST_PATHS="$(mktemp)"
+python3 -c "import json; print('\n'.join(f['path'] for f in json.load(open('$MANIFEST'))['files']))" > "$MANIFEST_PATHS"
+TEETH_DIR="$(mktemp -d)"
+trap 'rm -f "$TRACKED_LIST" "$MANIFEST_PATHS"; rm -rf "$TEETH_DIR"' EXIT
+row_is_real() {  # $1 = surface, a repo-relative FULL path (never a bare basename:
+  # §3 matches scripts by basename but §5 demands the full path, so a
+  # basename-keyed row would pass §3 and fail here — rows MUST be full paths);
+  # 0 iff on disk and not git-ignored, tracked in git, or a manifest destination
+  # On-disk presence counts as much as tracked status, and the reason is a
+  # chicken-and-egg: a NEW canon script MUST ship with its inventory row in the
+  # SAME change (that coupling is the point of this walk), but `git ls-files`
+  # cannot see the new file until that change is committed. Tracked-only would
+  # therefore make the row phantom on the way in and real only afterwards —
+  # unpassable inside the very commit that satisfies it. Measured, not
+  # hypothetical: it reds on install/generate-required-contexts.py.
+  # This still catches the defect the check exists for — a path that never
+  # existed is neither on disk nor tracked nor manifested. The on-disk disjunct
+  # excludes git-ignored files: otherwise a stray `touch` at a bogus path (or a
+  # build artifact that happens to share the name) would silently neuter the
+  # guard while the row stays untracked and unmanifested.
+  { [ -f "$ROOT/$1" ] && ! git -C "$ROOT" check-ignore -q -- "$1"; } \
+    || grep -qxF -- "$1" "$TRACKED_LIST" || grep -qxF -- "$1" "$MANIFEST_PATHS"
+}
+# Echo the surfaces in $1 (an inventory file) that are neither — the checker's
+# core, shared by the live walk below and the teeth.
+unreal_surfaces() {
+  local f="$1" surf
+  while IFS= read -r surf; do
+    [ -n "$surf" ] || continue
+    if row_is_real "$surf"; then :; else printf '%s\n' "$surf"; fi
+  done < <(inv_surfaces "$f")
+}
+reverse_rows=0
+reverse_bad=0
+while IFS= read -r surf; do
+  [ -n "$surf" ] || continue
+  reverse_rows=$((reverse_rows+1))
+  if row_is_real "$surf"; then _g "row is real: $surf"
+  else _r "row is PHANTOM (neither tracked nor manifested): $surf"; reverse_bad=1; fi
+done < <(inv_surfaces)
+assert_eq "$reverse_bad" "0" "every inventory row names a tracked file or manifest destination"
+# WITHOUT THIS THE SECTION CANNOT FAIL. An empty extraction (grep/sed drift,
+# renamed file) yields zero rows, zero phantoms, and a green assertion over
+# nothing — the vacuous-pass class test_required_contexts.sh:174 names.
+assert_ok "[ '$reverse_rows' -gt 0 ]" "reverse walk inspected $reverse_rows inventory rows (non-vacuous)"
+
+# ---------------------------------------------------------------------------
+# 5b. TEETH for §5 — the reverse check must be REACHABLE, or §5 is a check
+#     that can only ever pass. Mutate a COPY (never the real inventory): plant
+#     a bogus path and require exactly one phantom; the unmutated copy must
+#     stay clean, or the checker is hardcoded to red. Cf.
+#     test_required_contexts.sh §6 (mutation + unrelated control + no-op
+#     refusal).
+# ---------------------------------------------------------------------------
+echo ""
+echo "== reverse-guard teeth: a planted phantom is caught, the clean copy passes =="
+bogus='.github/workflows/bogus-phantom-teeth.yml'
+# Preconditions: the teeth path must REALLY be neither on disk, tracked, nor
+# manifested, or the red below discriminates nothing.
+assert_fail "test -e '$ROOT/$bogus'" "teeth precondition: bogus path is not on disk"
+assert_fail "grep -qxF -- '$bogus' '$TRACKED_LIST'" "teeth precondition: bogus path is not tracked"
+assert_fail "grep -qxF -- '$bogus' '$MANIFEST_PATHS'" "teeth precondition: bogus path is not manifested"
+cp "$INV" "$TEETH_DIR/inv-bogus.md"
+printf '| `%s` | nothing exercises this | offline-test |\n' "$bogus" >> "$TEETH_DIR/inv-bogus.md"
+assert_ok "grep -qF -- '$bogus' '$TEETH_DIR/inv-bogus.md'" "teeth precondition: the planted row is really in the mutated copy"
+assert_eq "$(unreal_surfaces "$TEETH_DIR/inv-bogus.md")" "$bogus" "teeth: the planted bogus row — and only it — fails the reverse check"
+cp "$INV" "$TEETH_DIR/inv-clean.md"
+assert_eq "$(unreal_surfaces "$TEETH_DIR/inv-clean.md")" "" "control: the unmutated copy passes the reverse check"
+
+# ---------------------------------------------------------------------------
+# 6. The stated reusable count is DERIVED, not hardcoded. The inventory names
+#    its count once, in the `## Reusable workflows (N)` header; this asserts it
+#    equals the live workflow_call file count using the SAME predicate as §2,
+#    so the two cannot drift apart (PLAN-031 G05: the "16" that was really 15).
+# ---------------------------------------------------------------------------
+echo ""
+echo "== the inventory's stated reusable count matches the live tree =="
+live_reusables=0
+for f in "$WF"/*.yml; do
+  grep -qE '^\s+workflow_call:' "$f" || continue
+  live_reusables=$((live_reusables+1))
+done
+stated_reusables="$(sed -n -e 's/^## Reusable workflows (\([0-9][0-9]*\))$/\1/p' "$INV")"
+assert_ok "[ -n '$stated_reusables' ]" "the inventory states its reusable count in the section header (machine-readable)"
+assert_eq "$stated_reusables" "$live_reusables" "stated reusable count matches the live workflow_call file count"
 
 suite_summary "exerciser-inventory"

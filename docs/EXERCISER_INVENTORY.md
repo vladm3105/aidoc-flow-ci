@@ -32,12 +32,15 @@ place, per PLAN-018 contract item 7.
 
 ## Reusable workflows (17)
 
-Canon ships 17 `workflow_call` reusables. It self-runs **5** of them today
+Canon ships 17 `workflow_call` reusables. (The count lives in this header so
+`tests/test_exerciser_inventory.sh` §6 can assert it against the live tree —
+never hardcode it in prose.) It self-runs **5** of them today
 (`audit-trail-check`, `docs-sync`, `secret-scan`, `pre-commit`, `markdown-lint` —
 a canon workflow carries a non-comment `uses:` at that reusable, so a regression
 fails canon's own checks);
 the rest are covered offline or descoped. (The table also lists the
 `audit-trail.yml` *caller* template — a consumer surface, not an 18th reusable.
+Three more caller-only destinations live in their own table below.
 `rollback.yml` and `unified-deploy.yml` are `workflow_dispatch` only, so they are
 not reusables; they are tracked in "Open exerciser gaps" below.)
 
@@ -56,13 +59,10 @@ not reusables; they are tracked in "Open exerciser gaps" below.)
 | `actions/dep-scan/action.yml` | `test_actions.sh` (D20 checksum, D24 `--no-call-analysis`, D12 zero-coverage exit 128, D14, **D23 — the block is sliced and DRIVEN across BOTH surfaces (action + reusable), asserting the planted configs are GONE, not merely rc=0**), `test_lint.sh` | offline-test — same FT-21 constraint; the D23 driver needs no network or tool, so that defense is exercised rather than read. Five mutations confirmed to red the suite |
 | `actions/trivy-scan/action.yml` | `test_actions.sh` (D20, D25 scanner restriction, D14, **D23 — the block is sliced and DRIVEN across BOTH surfaces (action + reusable), asserting the planted configs are GONE, not merely rc=0**), `test_lint.sh` | offline-test — same FT-21 constraint; the D23 driver needs no network or tool, so that defense is exercised rather than read. Five mutations confirmed to red the suite |
 | `actions/sast-scan/action.yml` | `test_actions.sh` (D23 strip, D26 explicit config + no telemetry, D14), `test_lint.sh` | offline-test — same FT-21 constraint, **and** semgrep cannot install on the current runner image (#349) |
-| `.github/workflows/quick-gates.yml` | `test_actions.sh` (D1/D3/D4/D7/D9 + drift guard + forward-pin markers), `test_lint.sh` (actionlint), `test_checknames.sh`, `test_required_contexts.sh` | offline-test — **not self-run**: canon would need the `ci/v3.0.0` tag to exist before it can call its own composite actions (FT-21 chicken-and-egg). Self-adoption lands at the tag cut (P6, Wave 0) |
-| `.github/workflows/scanners.yml` | `test_actions.sh` (D27 job-level fork guard, D3, D4, verdict step, uniform-protected labels), `test_lint.sh` (actionlint + composite-body shellcheck), `test_checknames.sh`, `test_required_contexts.sh` | offline-test — **not self-run**: same FT-21 constraint as `quick-gates.yml`, plus semgrep cannot install on the current runner image (#349) |
-| `.github/workflows/links-external.yml` | `test_actions.sh` (schedule + `mode: external` + report-only) | offline-test — same FT-21 constraint as `quick-gates.yml` |
 | `.github/actionlint.yaml` | `test_actions.sh` (declares `ci` + `ephemeral`), and every `actionlint` invocation in `test_lint.sh` + `scripts/pre_push_check.sh` resolves through it | self-caller — canon's own private-variant template fails the runner-label rule without it |
 | `.github/workflows/ai-review.yml` | `test_resolver.sh` (resolver — the FT-15 surface), `test_checknames.sh`, `test_contract.sh` | descoped (library repo, founder 2026-07-22; live self-run needs LiteLLM + reviewer App + self-hosted pool this library does not warrant) + offline-test |
 | `.github/workflows/composition.yml` | `test_checknames.sh`, `test_contract.sh` | descoped (library; live self-run needs the reviewer App identity) + offline-test |
-| `.github/workflows/auto-merge-ai-prs.yml` | `test_contract.sh` (I/O contract) | descoped — self-running it would auto-merge canon's own PRs; the behaviour cannot be safely dogfooded + offline-test |
+| `.github/workflows/auto-merge-ai-prs.yml` | `test_lint.sh` (actionlint + yamllint over `.github/workflows/*.yml`, which includes this file) + `test_contract.sh` (caller-template walk over the `auto-merge-ai-prs-public/private` templates that install it) | descoped — self-running it would auto-merge canon's own PRs; the behaviour cannot be safely dogfooded + offline-test |
 | `.github/workflows/codeql.yml` | `test_contract.sh` | descoped — consumer-customized (`languages` input); not adopted on canon |
 | `.github/workflows/dep-scan.yml` | `test_contract.sh` | descoped — PLAN-014 optional report-only scanner; not adopted on canon |
 | `.github/workflows/trivy-scan.yml` | `test_contract.sh` | descoped — PLAN-014 optional report-only scanner; not adopted on canon |
@@ -71,6 +71,24 @@ not reusables; they are tracked in "Open exerciser gaps" below.)
 | `.github/workflows/links.yml` | `test_contract.sh` | descoped — link checker; self-run candidate, not currently adopted |
 | `.github/workflows/deploy-staging.yml` | `test_contract.sh` (generic I/O-contract shape only) | descoped — deployment CD; canon does not deploy anywhere, so it cannot self-run. **Deploy behaviour is NOT tested**: compose-flag assembly, the health-check retry, and the auto-rollback path have no behavioural assertion |
 | `.github/workflows/smoke-test.yml` | `test_contract.sh` (generic I/O-contract shape only); `test_sigpipe_guard.sh` (CI-0033 walk over its `run:` blocks) | descoped — same reason as `deploy-staging.yml`. The health-response matcher is a `[[ =~ ]]` on the value, not a piped `grep -q`, which the sigpipe walk enforces; the three response shapes it classifies have no behavioural assertion |
+
+### Caller-only consumer destinations (not `workflow_call` reusables)
+
+These three paths never live in canon — zero commits in git history by design —
+but they are legitimate consumer **destination** paths declared in
+`install/templates/manifest.json` (from templates
+`workflows/quick-gates.yml`, `workflows/scanners.yml`,
+`workflows/links-external.yml`). They are v3 *caller* templates whose jobs
+invoke composite actions; no `workflow_call` reusable sits behind them, so they
+are counted separately from the 17 above. What the offline tests drive is the
+caller template; what canon self-runs is the underlying action logic, via the
+local-`uses:` self-callers that landed after the FT-21 chicken-and-egg.
+
+| Surface | Exerciser | Kind |
+| --- | --- | --- |
+| `.github/workflows/quick-gates.yml` | `test_actions.sh` (quick-gates caller: D1/D3/D4/D7/D9 + drift guard + forward-pin markers, actionlint-clean) + `test_lint.sh` (actionlint over caller templates) | caller-destination + offline-test — the template is driven offline; the underlying composite actions are self-run by `self-quick-gates.yml` (local `./actions/…`, every canon PR) |
+| `.github/workflows/scanners.yml` | `test_actions.sh` (scanners caller: D27 job-level fork guard, D3, D4, verdict step, uniform-protected labels) + `test_lint.sh` | caller-destination + offline-test — same shape as `quick-gates.yml`; action logic self-run by `self-scanners.yml`, minus the runner image (#349: image-level failures are still only caught by `build-image.sh`) |
+| `.github/workflows/links-external.yml` | `test_actions.sh` (schedule + `mode: external` + report-only) + `test_lint.sh` | caller-destination + offline-test — weekly report-only half of the links split; not self-run |
 
 > **The descoped AI-flows are a founder decision, not an oversight.**
 > `aidoc-flow-ci` is a **library**; running `ai-review`/`composition` on itself would require registering a `ci,ephemeral`
@@ -111,6 +129,8 @@ installer/update path plus the offline tests that drive it.
 | `install/apply-standards.sh` | `test_scripts.sh` | offline-test |
 | `install/check-precommit-hooks.sh` | `test_precommit_stage.sh` (exit 0/1/2 on green/vacuous/undeterminable configs; agrees with the reusable's default stage) | offline-test |
 | `install/required-context-map.py` | `test_required_contexts.sh` (the invariant + non-obvious chains + teeth) | offline-test |
+| `install/parse-governance-table.py` | `test_contract.sh` (drives the parser over fixture repos: a valid governance table passes, a broken one fails) | offline-test |
+| `scripts/llm_client.py` | `test_credential_sites.sh` (allowlists it as the sole bearer-header builder; runtime asserts exactly one credential site) | offline-test |
 | `tests/lib_count_stage_hooks.py` | `test_install.sh` Part 4 (fragment stage count) | offline-test |
 | `install/set-llm-secrets.sh` | `test_llm_secrets.sh` (loopback refusal, pre-write proxy probe, keep-unless-`--overwrite`, fail-closed on an unreadable secret list, no mint for a secret it would keep, key never on argv) | offline-test |
 | `install/generate-required-contexts.py` | `test_unproduced_contexts.sh` (drift gate: committed `install/templates/required-contexts.json` must match regeneration; fails closed on a missing/empty/malformed map) | offline-test |
@@ -120,6 +140,11 @@ installer/update path plus the offline tests that drive it.
 | `sync/check-drift.sh` | `test_scripts.sh` | offline-test |
 | `sync/check-pin-currency.sh` | `test_scripts.sh` | offline-test |
 | `sync/check-standards-drift.sh` | `standards-drift-self.yml` self-caller; `test_scripts.sh` | self-caller + offline-test |
+| `scripts/docs-sync/version_sync.py` | `test_docs_sync_ops.sh` (skip paths; detection reports the FILE's real version content; `enabled` defaults TRUE; malformed config fails closed with `::error::` and no traceback; **never writes** VERSION or the configured target) | offline-test — alpha.1 detection-only stub, runs on every consumer post-merge via `docs-sync.yml:284` |
+| `scripts/docs-sync/cross_ref_repair.py` | `test_docs_sync_ops.sh` (same contract; `enabled` defaults FALSE — the asymmetry is pinned so a refactor cannot silently switch it on for every consumer) | offline-test — alpha.1 stub, runs on every consumer post-merge via `docs-sync.yml:291` |
+| `scripts/docs-sync/changelog_stub.py` | none — runs on every consumer via `docs-sync.yml`, zero tests | unexercised — PLAN-031 Phase E (G06), remaining |
+| `install/templates/runner/manage.sh` | `test_runner_dedup.sh` (dedup queries once per repo at small AND >64 KiB accumulator sizes; teeth proven by driving a dedup-free variant); `test_sigpipe_guard.sh` (CI-0033 walk) | offline-test — **canon-internal host script**, not a consumer surface: it manages the ephemeral runner pool ON A RUNNER HOST, so it has no consumer destination path and is deliberately NOT in `manifest.json`. It was invisible to the gate for that reason (PLAN-031 G07) |
+| `install/templates/runner/monitor.sh` | `test_runner_dedup.sh` (`discover_repos` emits each repo once, and a missing/empty `TARGET_REPO` yields no line instead of aborting under `set -euo pipefail`); `test_sigpipe_guard.sh` | offline-test — same canon-internal host-script status as `manage.sh` |
 
 ## Third-party surfaces canon distributes
 
@@ -128,7 +153,7 @@ Not a workflow or script, but shipped to every adopter and therefore in scope fo
 
 | Surface | Exerciser | Kind |
 | --- | --- | --- |
-| `pre-commit/pre-commit-hooks` rev in the canon fragment | pinned at a frozen SHA; **no automated bump path** | **unexercised** — **FT-35** (no dependabot `pre-commit` ecosystem; bump with `pre-commit autoupdate --freeze`) |
+| `install/templates/pre-commit-hook-block.yaml` (third-party `pre-commit-hooks` rev) | pinned at a frozen SHA; **no automated bump path** | **unexercised** — **FT-35** (no dependabot `pre-commit` ecosystem; bump with `pre-commit autoupdate --freeze`) |
 
 ## Open exerciser gaps (the worklist)
 
@@ -141,4 +166,4 @@ Not a workflow or script, but shipped to every adopter and therefore in scope fo
 | ~~No required-context ↔ producer validator~~ | branch-protection contexts | **FT-18 CLOSED (PR C3)** — `install/required-context-map.py` + wizard preflight §6 |
 | No behavioural test for the deploy workflows | `rollback.yml`, `unified-deploy.yml` (`workflow_dispatch`), and the deploy/rollback paths of `deploy-staging.yml` | open — PR #547. These mutate real infrastructure (`git revert` + `git push`, `docker compose up -d`, SSH to a deploy host), so shape-level coverage from `test_contract.sh` is the only thing they have |
 | SSH deploy path passes no environment to the remote shell | `deploy-staging.yml`, `unified-deploy.yml` | open — PR #547. `ssh "$DEPLOY_HOST" "$(declare -f deploy_local); deploy_local"` transmits only the FUNCTION body. `DEPLOY_DIR`, `SERVICE` and the compose flags are not sent, so the remote shell expands them empty and `cd ""` / `docker compose build ""` run against nothing. Same shape in both files |
-| `StrictHostKeyChecking=no` on the deploy SSH calls | `deploy-staging.yml`, `unified-deploy.yml` | open — PR #547. Disables host-key verification on a connection that then runs a deploy, so it accepts a MITM host. Should be `accept-new` at minimum, or a pinned `known_hosts` |
+| SSH host-key verification disabled on the deploy calls | `deploy-staging.yml`, `unified-deploy.yml` | open — PR #547. `StrictHostKeyChecking=no` on a connection that then runs a deploy accepts a MITM host. Should be `accept-new` at minimum, or a pinned `known_hosts` |
