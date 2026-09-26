@@ -3,7 +3,7 @@
 # VERSION file) into the INSTALL-COMMAND references in the docs of record.
 #
 # PLAN-004 BL-4 fix: README + install/README (and, as PLAN-004 PR-A2 extends
-# this list, multi-project-guide + PLAYBOOK) carried hand-edited `ci/vX.Y.Z`
+# this list, two docs retired by PLAN-031 K2) carried hand-edited `ci/vX.Y.Z`
 # pins that silently went stale across release cuts. This script makes VERSION
 # the sole source and rewrites only the mechanical install references:
 #
@@ -40,8 +40,6 @@ VERSION_FILE="$REPO_ROOT/VERSION"
 TARGETS=(
   "README.md"
   "install/README.md"
-  "docs/multi-project-guide.md"
-  "docs/PLAYBOOK_governance-canon-rollout.md"
   "docs/REVIEWER_APP_ONBOARDING.md"
   "docs/BRANCH_PROTECTION.md"
   # install.sh carries BOTH a `CI_TAG=ci/vX.Y.Z bash install.sh` usage EXAMPLE in

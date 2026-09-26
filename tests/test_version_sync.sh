@@ -272,11 +272,9 @@ docs/BRANCH_PROTECTION.md
 docs/MIGRATION_v2.0.0.md
 docs/MIGRATION_v3.0.0.md
 docs/MIGRATION_v4.0.0.md
-docs/PLAYBOOK_governance-canon-rollout.md
 docs/REVIEWER_APP_ONBOARDING.md
 docs/UPDATE_GUIDE.md
 docs/architecture.md
-docs/multi-project-guide.md
 docs/overrides.md
 docs/security.md
 install/README.md
